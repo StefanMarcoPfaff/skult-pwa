@@ -1,92 +1,91 @@
-// src/app/courses/new/page.tsx
-"use client";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase-server";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+async function createCourse(formData: FormData) {
+  "use server";
+
+  const supabase = await createClient();
+
+  const title = String(formData.get("title") || "").trim();
+  const subtitle = String(formData.get("subtitle") || "").trim() || null;
+  const location = String(formData.get("location") || "").trim() || null;
+  const capacityRaw = formData.get("capacity");
+  const capacity = Math.max(1, Number(capacityRaw || 10));
+
+  if (!title) throw new Error("Titel ist erforderlich");
+
+  const { error } = await supabase.from("courses_lite").insert({
+    title,
+    subtitle,
+    location,
+    capacity,
+    seats_taken: 0,
+  });
+
+  if (error) throw new Error(error.message);
+
+  redirect("/courses");
+}
 
 export default function NewCoursePage() {
-  const router = useRouter();
-  const [title, setTitle] = useState("");
-  const [subtitle, setSubtitle] = useState("");
-  const [date, setDate] = useState("");
-  const [location, setLocation] = useState("");
-  const [capacity, setCapacity] = useState(10);
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    // Hier würden wir später an Supabase senden.
-    console.log({ title, subtitle, date, location, capacity });
-    alert("Kurs gespeichert (Demo) ✔️ – gleich speichern wir wirklich in Supabase.");
-    router.push("/courses");
-  }
-
   return (
     <main className="mx-auto max-w-md p-4 space-y-4">
       <header className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Kurs anlegen</h1>
-        <button onClick={() => router.back()} className="text-sm text-gray-600">Abbrechen</button>
+        <Link href="/courses" className="text-sm text-gray-600">
+          Zurück
+        </Link>
       </header>
 
-      <form onSubmit={handleSubmit} className="space-y-3">
+      <form action={createCourse} className="space-y-3">
         <label className="block">
           <span className="text-sm font-medium">Titel*</span>
           <input
+            name="title"
             required
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2"
             placeholder="z. B. Impro Basics"
+            className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2"
           />
         </label>
 
         <label className="block">
           <span className="text-sm font-medium">Untertitel</span>
           <input
-            value={subtitle}
-            onChange={(e) => setSubtitle(e.target.value)}
+            name="subtitle"
+            placeholder="z. B. Locker werden & spielen"
             className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2"
-            placeholder="kurzer Zusatz"
-          />
-        </label>
-
-        <label className="block">
-          <span className="text-sm font-medium">Datum/Zeit (frei)</span>
-          <input
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2"
-            placeholder="Mo, 19:00–21:00"
           />
         </label>
 
         <label className="block">
           <span className="text-sm font-medium">Ort</span>
           <input
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
+            name="location"
+            placeholder="z. B. Berlin-Mitte oder Online"
             className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2"
-            placeholder="Berlin-Mitte oder Online"
           />
         </label>
 
         <label className="block">
           <span className="text-sm font-medium">Kapazität</span>
           <input
+            name="capacity"
             type="number"
             min={1}
-            value={capacity}
-            onChange={(e) => setCapacity(parseInt(e.target.value || "1", 10))}
+            defaultValue={10}
             className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2"
           />
         </label>
 
-        <button
-          type="submit"
-          className="w-full rounded-xl bg-black text-white py-2 font-semibold active:scale-[0.99]"
-        >
+        <button className="w-full rounded-xl bg-black text-white py-2 font-semibold active:scale-[0.99]">
           Speichern
         </button>
       </form>
+
+      <p className="text-xs text-gray-500">
+        Hinweis: Speichert direkt in Supabase (courses_lite).
+      </p>
     </main>
   );
 }
