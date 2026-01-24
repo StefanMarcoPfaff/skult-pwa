@@ -1,115 +1,166 @@
-// src/app/courses/[id]/actions.ts
 "use server";
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase-server";
 
-export type ReserveResult =
-  | { ok: true; message: string }
-  | { ok: false; message: string };
+const DEMO_USER = "demo-user"; // später: Supabase Auth user.id
 
-const ATTENDEE_KEY = "demo-user"; // später ersetzen wir das mit echtem Login/User
+type CourseRow = {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  description: string | null;
+  location: string | null;
+  offer_type: "course" | "workshop";
+  price_type: "free" | "paid";
+  price_cents: number;
+  currency: string;
+};
 
-export async function reserveSeat(courseId: string): Promise<ReserveResult> {
+type SessionRow = {
+  id: string;
+  course_id: string;
+  starts_at: string;
+  ends_at: string | null;
+  capacity: number;
+  seats_taken: number;
+};
+
+export async function reserveCourseSession(courseId: string, sessionId: string) {
   const supabase = await createClient();
 
-  // 1) Kurs holen
-  const { data: course, error: courseErr } = await supabase
-    .from("courses_lite")
-    .select("id, capacity, seats_taken")
-    .eq("id", courseId)
-    .single();
+  // 1) Session laden
+  const { data: session, error: sessErr } = await supabase
+    .from("course_sessions")
+    .select("id,course_id,capacity,seats_taken,starts_at,ends_at")
+    .eq("id", sessionId)
+    .single<SessionRow>();
 
-  if (courseErr || !course) {
-    return { ok: false, message: "Kurs nicht gefunden." };
-  }
-
-  if (course.seats_taken >= course.capacity) {
-    return { ok: false, message: "Ausgebucht." };
-  }
+  if (sessErr || !session) throw new Error("Termin nicht gefunden");
+  if (session.course_id !== courseId) throw new Error("Termin passt nicht zum Kurs");
+  if (session.seats_taken >= session.capacity) throw new Error("Dieser Termin ist ausgebucht");
 
   // 2) Schon reserviert?
-  const { data: existing, error: existingErr } = await supabase
+  const { data: existing, error: existErr } = await supabase
     .from("bookings")
     .select("id")
     .eq("course_id", courseId)
-    .eq("attendee_key", ATTENDEE_KEY)
+    .eq("session_id", sessionId)
+    .eq("attendee_key", DEMO_USER)
+    .eq("status", "reserved")
     .maybeSingle();
 
-  if (existingErr) {
-    return { ok: false, message: existingErr.message };
-  }
+  if (existErr) throw new Error(existErr.message);
+  if (existing) throw new Error("Du hast diesen Termin bereits reserviert.");
 
-  if (existing) {
-    return { ok: false, message: "Du hast bereits reserviert." };
-  }
+  // 3) seats_taken hochzählen (optimistisch)
+  const { error: updateErr } = await supabase
+    .from("course_sessions")
+    .update({ seats_taken: session.seats_taken + 1 })
+    .eq("id", sessionId)
+    .eq("seats_taken", session.seats_taken);
 
-  // 3) Booking anlegen
-  const { error: insertErr } = await supabase.from("bookings").insert({
+  if (updateErr) throw new Error(updateErr.message);
+
+  // 4) booking schreiben
+  const { error: insErr } = await supabase.from("bookings").insert({
     course_id: courseId,
-    attendee_key: ATTENDEE_KEY,
+    session_id: sessionId,
+    attendee_key: DEMO_USER,
     status: "reserved",
+    payment_status: "none",
   });
 
-  if (insertErr) {
-    return { ok: false, message: insertErr.message };
-  }
-
-  // 4) seats_taken hochzählen (optimistisches Locking)
-  const { error: updateErr } = await supabase
-    .from("courses_lite")
-    .update({ seats_taken: course.seats_taken + 1 })
-    .eq("id", courseId)
-    .eq("seats_taken", course.seats_taken);
-
-  if (updateErr) {
-    // Wenn Update schiefgeht, lassen wir das Booking stehen (für Demo ok).
-    // Später können wir hier "rollback" bauen.
-    return { ok: false, message: updateErr.message };
-  }
+  if (insErr) throw new Error(insErr.message);
 
   revalidatePath(`/courses/${courseId}`);
   revalidatePath("/courses");
-
-  return { ok: true, message: "Reserviert! ✅" };
 }
 
-export async function cancelSeat(courseId: string): Promise<ReserveResult> {
+export async function cancelCourseSession(courseId: string, sessionId: string) {
   const supabase = await createClient();
 
-  // 1) Booking finden
-  const { data: booking, error: bookingErr } = await supabase
+  // Booking finden
+  const { data: booking, error: bErr } = await supabase
     .from("bookings")
-    .select("id")
+    .select("id,status")
     .eq("course_id", courseId)
-    .eq("attendee_key", ATTENDEE_KEY)
+    .eq("session_id", sessionId)
+    .eq("attendee_key", DEMO_USER)
+    .eq("status", "reserved")
     .maybeSingle();
 
-  if (bookingErr) return { ok: false, message: bookingErr.message };
-  if (!booking) return { ok: false, message: "Keine Reservierung gefunden." };
+  if (bErr) throw new Error(bErr.message);
+  if (!booking) throw new Error("Keine Reservierung gefunden.");
 
-  // 2) Booking löschen
-  const { error: delErr } = await supabase
-    .from("bookings")
-    .delete()
-    .eq("id", booking.id);
+  // Session laden
+  const { data: session, error: sErr } = await supabase
+    .from("course_sessions")
+    .select("id,seats_taken")
+    .eq("id", sessionId)
+    .single<Pick<SessionRow, "id" | "seats_taken">>();
 
-  if (delErr) return { ok: false, message: delErr.message };
+  if (sErr || !session) throw new Error("Termin nicht gefunden");
 
-  // 3) seats_taken runterzählen (einfach & robust für Demo)
-  const { data: course, error: courseErr } = await supabase
-    .from("courses_lite")
-    .select("seats_taken")
-    .eq("id", courseId)
-    .single();
+  // Booking löschen
+  const { error: delErr } = await supabase.from("bookings").delete().eq("id", booking.id);
+  if (delErr) throw new Error(delErr.message);
 
-  if (!courseErr && course) {
-    const next = Math.max(0, (course.seats_taken ?? 0) - 1);
-    await supabase.from("courses_lite").update({ seats_taken: next }).eq("id", courseId);
-  }
+  // seats_taken runterzählen (nicht unter 0)
+  const newTaken = Math.max(0, session.seats_taken - 1);
+  const { error: updErr } = await supabase
+    .from("course_sessions")
+    .update({ seats_taken: newTaken })
+    .eq("id", sessionId)
+    .eq("seats_taken", session.seats_taken);
+
+  if (updErr) throw new Error(updErr.message);
 
   revalidatePath(`/courses/${courseId}`);
   revalidatePath("/courses");
+}
 
-  return { ok: true, message: "Reservierung storniert." };
+/**
+ * Workshop "Direktkauf" (V1):
+ * Wir erstellen eine Buchung mit payment_status='pending'.
+ * Nächster Schritt: Stripe Checkout → nach success → payment_status='paid'
+ */
+export async function buyWorkshop(courseId: string) {
+  const supabase = await createClient();
+
+  const { data: course, error: cErr } = await supabase
+    .from("courses_lite")
+    .select("id,offer_type,price_type,price_cents,currency,title")
+    .eq("id", courseId)
+    .single<CourseRow>();
+
+  if (cErr || !course) throw new Error("Workshop nicht gefunden");
+  if (course.offer_type !== "workshop") throw new Error("Das ist kein Workshop.");
+  if (course.price_type !== "paid" || (course.price_cents ?? 0) <= 0) {
+    throw new Error("Workshop braucht einen Preis (paid).");
+  }
+
+  // (V1) keine doppelte pending/paid Buchung
+  const { data: existing, error: existErr } = await supabase
+    .from("bookings")
+    .select("id,payment_status")
+    .eq("course_id", courseId)
+    .eq("attendee_key", DEMO_USER)
+    .in("payment_status", ["pending", "paid"])
+    .maybeSingle();
+
+  if (existErr) throw new Error(existErr.message);
+  if (existing) throw new Error("Du hast diesen Workshop bereits gestartet/gekauft.");
+
+  const { error: insErr } = await supabase.from("bookings").insert({
+    course_id: courseId,
+    attendee_key: DEMO_USER,
+    status: "reserved",
+    payment_status: "pending",
+  });
+
+  if (insErr) throw new Error(insErr.message);
+
+  revalidatePath(`/courses/${courseId}`);
+  revalidatePath("/courses");
 }
