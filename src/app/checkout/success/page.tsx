@@ -1,26 +1,20 @@
-import Link from "next/link";
+import SuccessClient from "./SuccessClient";
 
-export default function SuccessPage({
-  searchParams,
-}: {
-  searchParams: { courseId?: string };
-}) {
-  return (
-    <main className="mx-auto max-w-md p-6 space-y-4">
-      <h1 className="text-2xl font-bold">Zahlung erfolgreich ✅</h1>
-      <p className="text-sm text-gray-700">
-        Danke! Der Workshop ist (Test-Flow) als bezahlt durchgelaufen.
-      </p>
+type Props = {
+  searchParams: Promise<{ session_id?: string }>;
+};
 
-      {searchParams.courseId && (
-        <Link className="text-sm underline" href={`/courses/${searchParams.courseId}`}>
-          Zurück zum Workshop
-        </Link>
-      )}
+export default async function SuccessPage({ searchParams }: Props) {
+  const { session_id } = await searchParams;
 
-      <Link className="text-sm underline" href="/courses">
-        Alle Kurse
-      </Link>
-    </main>
-  );
+  if (!session_id) {
+    return (
+      <main style={{ padding: 24 }}>
+        <h1 style={{ fontSize: 42, fontWeight: 800 }}>Zahlung erfolgreich ✅</h1>
+        <p style={{ fontSize: 18, marginTop: 12 }}>Hinweis: session_id fehlt.</p>
+      </main>
+    );
+  }
+
+  return <SuccessClient sessionId={session_id} />;
 }

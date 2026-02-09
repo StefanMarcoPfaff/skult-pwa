@@ -6,7 +6,6 @@ import crypto from "crypto";
 export const runtime = "nodejs";
 
 function makeAttendeeKey() {
-  // kurz + eindeutig genug für V1 (kannst du später ändern)
   return crypto.randomBytes(16).toString("hex");
 }
 
@@ -47,6 +46,7 @@ export async function POST(req: Request) {
         course_id: course.id,
         attendee_key: attendeeKey,
         status: "pending",
+        payment_provider: "stripe",
       })
       .select("id, attendee_key")
       .single();
@@ -84,6 +84,21 @@ export async function POST(req: Request) {
       },
       client_reference_id: booking.id,
     });
+
+    // 4) Session-IDs in Supabase speichern (für Success-Page & Debugging)
+    const { error: updErr } = await supabase
+      .from("bookings")
+      .update({
+        stripe_session_id: session.id,
+        payment_session_id: session.id,
+        payment_provider: "stripe",
+      })
+      .eq("id", booking.id);
+
+    if (updErr) {
+      // nicht hart abbrechen – Checkout soll trotzdem funktionieren
+      console.warn("⚠️ Could not store stripe_session_id:", updErr.message);
+    }
 
     return NextResponse.json({ url: session.url });
   } catch (e: any) {
