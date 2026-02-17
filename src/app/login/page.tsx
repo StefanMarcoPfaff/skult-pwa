@@ -1,0 +1,6 @@
+// src/app/login/page.tsx
+import LoginClient from "./login-client";
+
+export default function LoginPage() {
+  return <LoginClient />;
+}
