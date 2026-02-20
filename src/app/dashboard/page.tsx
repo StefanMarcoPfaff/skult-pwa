@@ -33,7 +33,7 @@ export default async function DashboardPage() {
         <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
           {/* ✅ WICHTIG: Erstellen-Seite */}
           <Link
-            href="/courses/new"
+            href="/dashboard/courses/new"
             style={{
               padding: "14px 18px",
               borderRadius: 14,
