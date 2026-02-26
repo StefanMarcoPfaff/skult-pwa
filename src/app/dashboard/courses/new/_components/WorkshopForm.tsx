@@ -1,6 +1,7 @@
-﻿"use client";
+"use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
+import { useFormStatus } from "react-dom";
 import { createWorkshopAction } from "../actions";
 
 type SessionInput = {
@@ -17,9 +18,23 @@ function createEmptySession(): SessionInput {
   };
 }
 
+function SubmitButton() {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+    >
+      Speichern
+    </button>
+  );
+}
+
 export default function WorkshopForm() {
-  const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [priceEur, setPriceEur] = useState("");
   const [sessions, setSessions] = useState<SessionInput[]>([createEmptySession()]);
 
   const sessionErrors = useMemo(() => {
@@ -35,28 +50,47 @@ export default function WorkshopForm() {
     });
   }, [sessions]);
 
-  const submitAction = (formData: FormData) => {
+  const sessionsAsISO = useMemo(() => {
+    return sessions.map((session) => {
+      const start = session.starts_at ? new Date(session.starts_at) : null;
+      const end = session.ends_at ? new Date(session.ends_at) : null;
+
+      return {
+        starts_at:
+          start && !Number.isNaN(start.getTime()) ? start.toISOString() : "",
+        ends_at: end && !Number.isNaN(end.getTime()) ? end.toISOString() : "",
+      };
+    });
+  }, [sessions]);
+
+  const priceCentsOrEmpty = useMemo(() => {
+    const raw = priceEur.trim();
+    if (!raw) return "";
+    const parsed = Number(raw.replace(",", "."));
+    if (!Number.isFinite(parsed) || parsed < 0) return "";
+    return String(Math.round(parsed * 100));
+  }, [priceEur]);
+
+  const submitAction = async (formData: FormData) => {
     const title = String(formData.get("title") ?? "").trim();
 
     if (!title) {
       setError("Bitte gib einen Titel ein.");
       return;
     }
+
     if (sessions.length === 0) {
       setError("Bitte fuege mindestens einen Termin hinzu.");
       return;
     }
 
-    const priceEurRaw = String(formData.get("price_eur") ?? "").trim();
-    if (priceEurRaw) {
-      const parsed = Number(priceEurRaw.replace(",", "."));
+    const priceRaw = String(formData.get("price_eur") ?? "").trim();
+    if (priceRaw) {
+      const parsed = Number(priceRaw.replace(",", "."));
       if (!Number.isFinite(parsed) || parsed < 0) {
         setError("Bitte gib einen gueltigen Preis >= 0 ein.");
         return;
       }
-      formData.set("price_cents", String(Math.round(parsed * 100)));
-    } else {
-      formData.delete("price_cents");
     }
 
     for (const session of sessions) {
@@ -64,6 +98,7 @@ export default function WorkshopForm() {
         setError("Bitte fuelle Start- und Endzeit fuer alle Termine aus.");
         return;
       }
+
       const start = new Date(session.starts_at);
       const end = new Date(session.ends_at);
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
@@ -77,25 +112,22 @@ export default function WorkshopForm() {
     }
 
     setError(null);
-    startTransition(async () => {
-      formData.set(
-        "sessions_json",
-        JSON.stringify(
-          sessions.map((session) => ({
-            starts_at: session.starts_at,
-            ends_at: session.ends_at,
-          }))
-        )
-      );
-      const result = await createWorkshopAction(formData);
-      if (typeof result === "string" && result) {
-        setError(result);
-      }
-    });
+    const result = await createWorkshopAction(formData);
+    if (result?.error) {
+      setError(result.error);
+    }
   };
 
   return (
     <form action={submitAction} className="space-y-4">
+      <input
+        type="hidden"
+        name="sessions_json"
+        value={JSON.stringify(sessionsAsISO)}
+        readOnly
+      />
+      <input type="hidden" name="price_cents" value={priceCentsOrEmpty} readOnly />
+
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-1">
           <span className="text-sm font-medium">Titel *</span>
@@ -140,7 +172,7 @@ export default function WorkshopForm() {
             onClick={() => setSessions((prev) => [...prev, createEmptySession()])}
             className="rounded-lg border px-3 py-1 text-xs font-semibold"
           >
-            Termin hinzufuegen
+            Termin hinzufügen
           </button>
         </div>
 
@@ -234,24 +266,24 @@ export default function WorkshopForm() {
             min={0}
             step="0.01"
             inputMode="decimal"
+            value={priceEur}
+            onChange={(event) => setPriceEur(event.target.value)}
             className="w-full rounded-xl border px-3 py-2 text-sm"
             placeholder="49.00"
           />
-          <span className="block text-xs text-muted-foreground">
-            Wird intern in Cent gespeichert.
-          </span>
         </label>
 
         <label className="space-y-1">
-          <span className="text-sm font-medium">Waehrung *</span>
+          <span className="text-sm font-medium">Waehrung</span>
           <input
             name="currency"
-            required
             defaultValue="EUR"
             className="w-full rounded-xl border px-3 py-2 text-sm uppercase"
           />
         </label>
       </div>
+
+      <p className="text-xs text-muted-foreground">Wird intern in Cent gespeichert.</p>
 
       {error ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -259,13 +291,7 @@ export default function WorkshopForm() {
         </p>
       ) : null}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-      >
-        {pending ? "Speichert..." : "Workshop erstellen"}
-      </button>
+      <SubmitButton />
     </form>
   );
 }

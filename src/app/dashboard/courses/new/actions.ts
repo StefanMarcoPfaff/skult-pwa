@@ -1,287 +1,188 @@
 "use server";
 
-/*
-Manual test checklist (dashboard only)
-1. Open /dashboard/courses/new?kind=workshop while logged in.
-2. Fill required workshop fields and submit.
-3. Confirm redirect to /dashboard/courses/[id] and detail page shows the new draft.
-4. Open /dashboard/courses/new?kind=course while logged in.
-5. Fill course recurrence fields and submit.
-6. Confirm redirect to /dashboard/courses/[id] and detail page shows the new draft.
-7. Confirm public routes (/courses, /courses/[id]) and courses_lite-based flows are unchanged.
-*/
-
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-type ActionResult = string | null | void;
-type RecurrenceType = "weekly" | "biweekly" | "monthly";
+type ActionResult = { error?: string };
 
-function getString(formData: FormData, key: string) {
-  return String(formData.get(key) ?? "").trim();
+function parseOptionalInt(value: FormDataEntryValue | null): number | null {
+  if (value === null) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
 }
 
-function parseOptionalInt(raw: string) {
+function parseOptionalString(value: FormDataEntryValue | null): string | null {
+  if (value === null) return null;
+  const s = String(value).trim();
+  return s ? s : null;
+}
+
+function parseDatetimeLocalToISO(value: FormDataEntryValue | null): string | null {
+  const s = value ? String(value).trim() : "";
+  if (!s) return null;
+  // datetime-local: "YYYY-MM-DDTHH:mm" (no timezone). JS Date interprets it as local time.
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function parseSessionsJson(formData: FormData): Array<{ starts_at: string; ends_at: string }> | null {
+  const raw = String(formData.get("sessions_json") || "").trim();
   if (!raw) return null;
-  const value = Number.parseInt(raw, 10);
-  return Number.isFinite(value) ? value : null;
-}
-
-function parseRequiredInt(raw: string) {
-  const value = Number.parseInt(raw, 10);
-  return Number.isFinite(value) ? value : null;
-}
-
-function parseDateTimeLocalToIso(raw: string) {
-  if (!raw) return null;
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString();
-}
-
-function summarizeSupabaseError(error: unknown) {
-  if (!error || typeof error !== "object") return null;
-  const message = "message" in error ? String((error as { message?: unknown }).message ?? "") : "";
-  const code = "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
-  const details = "details" in error ? String((error as { details?: unknown }).details ?? "") : "";
-  const reason = message || details || code;
-  if (!reason) return null;
-
-  const normalized = reason.toLowerCase();
-  if (
-    code === "42501" ||
-    normalized.includes("row-level security") ||
-    normalized.includes("permission denied") ||
-    normalized.includes("rls")
-  ) {
-    return "RLS/permission denied";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
   }
+  if (!Array.isArray(parsed) || parsed.length === 0) return null;
 
-  return reason.length > 120 ? `${reason.slice(0, 117)}...` : reason;
+  const out: Array<{ starts_at: string; ends_at: string }> = [];
+  for (const item of parsed) {
+    if (!item || typeof item !== "object") return null;
+    const starts_at = (item as any).starts_at;
+    const ends_at = (item as any).ends_at;
+    if (typeof starts_at !== "string" || typeof ends_at !== "string") return null;
+
+    const s = new Date(starts_at);
+    const e = new Date(ends_at);
+    if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return null;
+    if (e.getTime() <= s.getTime()) return null;
+
+    out.push({ starts_at, ends_at });
+  }
+  return out;
 }
 
-function logSupabaseError(context: string, error: unknown) {
-  if (!error || typeof error !== "object") {
-    console.error({ context, error });
-    return;
-  }
-
-  const err = error as {
-    message?: unknown;
-    code?: unknown;
-    details?: unknown;
-    hint?: unknown;
-  };
-
-  console.error({
+function logSupabaseError(context: string, error: any) {
+  console.error("[SupabaseError]", {
     context,
-    message: err.message ?? null,
-    code: err.code ?? null,
-    details: err.details ?? null,
-    hint: err.hint ?? null,
+    message: error?.message,
+    code: error?.code,
+    details: error?.details,
+    hint: error?.hint,
   });
 }
 
-function formatUserSupabaseError(error: unknown) {
-  if (!error || typeof error !== "object") return "Unbekannter Fehler.";
-  const err = error as { message?: unknown; code?: unknown; hint?: unknown };
-  const message = String(err.message ?? "Unbekannter Fehler.");
-  const truncated = message.length > 160 ? `${message.slice(0, 157)}...` : message;
-  const debug = process.env.NODE_ENV !== "production";
-  if (!debug) return truncated;
-
-  const code = err.code ? ` code=${String(err.code)}` : "";
-  const hint = err.hint ? ` hint=${String(err.hint)}` : "";
-  return `${truncated}${code}${hint}`;
+function formatUserSupabaseError(error: any): string {
+  const msg = String(error?.message || "Unbekannter Fehler").slice(0, 160);
+  if (process.env.NODE_ENV !== "production") {
+    const code = error?.code ? ` code=${error.code}` : "";
+    const hint = error?.hint ? ` hint=${String(error.hint).slice(0, 80)}` : "";
+    return `${msg}${code}${hint}`;
+  }
+  return msg;
 }
 
-function computeNextOccurrenceIso(weekday: number, startTime: string) {
-  const match = /^(\d{2}):(\d{2})$/.exec(startTime);
-  if (!match) return null;
-
-  const hours = Number.parseInt(match[1], 10);
-  const minutes = Number.parseInt(match[2], 10);
-
-  if (
-    !Number.isInteger(weekday) ||
-    weekday < 0 ||
-    weekday > 6 ||
-    hours < 0 ||
-    hours > 23 ||
-    minutes < 0 ||
-    minutes > 59
-  ) {
-    return null;
-  }
-
-  const now = new Date();
-  const candidate = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    hours,
-    minutes,
-    0,
-    0
-  );
-
-  let deltaDays = (weekday - candidate.getDay() + 7) % 7;
-  if (deltaDays === 0 && candidate <= now) {
-    deltaDays = 7;
-  }
-
-  candidate.setDate(candidate.getDate() + deltaDays);
-  return candidate.toISOString();
-}
-
-async function requireUserId() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  return { supabase, userId: user.id };
-}
-
+// WORKSHOP (multi-session)  calls DB RPC public.create_workshop_with_sessions
 export async function createWorkshopAction(formData: FormData): Promise<ActionResult> {
-  const { supabase, userId } = await requireUserId();
+  const supabase = await createSupabaseServerClient();
+  const { data: userData, error: userErr } = await supabase.auth.getUser();
 
-  const title = getString(formData, "title");
-  const description = getString(formData, "description");
-  const location = getString(formData, "location");
-  const capacity = parseOptionalInt(getString(formData, "capacity"));
-  const price_cents = parseOptionalInt(getString(formData, "price_cents"));
-  const currency = (getString(formData, "currency") || "EUR").toUpperCase();
-  const sessionsRaw = getString(formData, "sessions_json");
+  if (userErr) {
+    logSupabaseError("auth.getUser", userErr);
+    return { error: formatUserSupabaseError(userErr) };
+  }
+  if (!userData.user) redirect("/login");
 
-  if (!title) return "Bitte gib einen Titel ein.";
-  if (capacity !== null && capacity < 1) return "Kapazitaet muss mindestens 1 sein.";
-  if (price_cents !== null && price_cents < 0) return "Preis darf nicht negativ sein.";
-  if (!currency) return "Bitte gib eine Waehrung an.";
+  const title = String(formData.get("title") || "").trim();
+  if (!title) return { error: "Bitte gib einen Titel an." };
 
-  if (!sessionsRaw) return "Bitte fuege mindestens einen Termin hinzu.";
+  const description = parseOptionalString(formData.get("description"));
+  const location = parseOptionalString(formData.get("location"));
+  const capacity = parseOptionalInt(formData.get("capacity"));
 
-  let sessions: Array<{ starts_at: string; ends_at: string }> = [];
-  try {
-    const parsed = JSON.parse(sessionsRaw);
-    if (Array.isArray(parsed)) {
-      sessions = parsed.map((item) => ({
-        starts_at: String(item?.starts_at ?? "").trim(),
-        ends_at: String(item?.ends_at ?? "").trim(),
-      }));
-    }
-  } catch {
-    return "Termine konnten nicht gelesen werden.";
+  // price_cents should already be sent as integer by the form (EUR input -> cents conversion in client)
+  const price_cents = parseOptionalInt(formData.get("price_cents"));
+  const currency = String(formData.get("currency") || "EUR").trim() || "EUR";
+
+  const sessions = parseSessionsJson(formData);
+  if (!sessions) return { error: "Bitte füge mindestens einen gültigen Termin hinzu (Ende nach Start)." };
+
+  // IMPORTANT: This RPC must exist in Supabase SQL Editor (or applied migration), otherwise you'll get PGRST202.
+  const { data, error } = await supabase.rpc("create_workshop_with_sessions", {
+    p_title: title,
+    p_description: description,
+    p_location: location,
+    p_capacity: capacity,
+    p_price_cents: price_cents,
+    p_currency: currency,
+    p_sessions: sessions,
+  });
+
+  if (error) {
+    logSupabaseError("rpc.create_workshop_with_sessions", error);
+    return { error: formatUserSupabaseError(error) };
   }
 
-  if (sessions.length === 0) return "Bitte fuege mindestens einen Termin hinzu.";
+  const newId = String(data || "").trim();
+  if (!newId) return { error: "Workshop wurde erstellt, aber keine ID zurückgegeben." };
 
-  const normalizedSessions: Array<{ starts_at: string; ends_at: string }> = [];
-  for (const session of sessions) {
-    const starts_at = parseDateTimeLocalToIso(session.starts_at);
-    const ends_at = parseDateTimeLocalToIso(session.ends_at);
-    if (!starts_at || !ends_at) {
-      return "Bitte pruefe die Start- und Endzeiten der Termine.";
-    }
-    const startDate = new Date(starts_at);
-    const endDate = new Date(ends_at);
-    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-      return "Bitte pruefe die Start- und Endzeiten der Termine.";
-    }
-    if (endDate <= startDate) {
-      return "Jeder Termin benoetigt ein Ende nach dem Start.";
-    }
-    normalizedSessions.push({ starts_at, ends_at });
-  }
-
-  if (normalizedSessions.length === 0) return "Bitte fuege mindestens einen Termin hinzu.";
-
-  const { data: rpcData, error: rpcError } = await supabase.rpc(
-    "create_workshop_with_sessions",
-    {
-      p_title: title,
-      p_description: description || null,
-      p_location: location || null,
-      p_capacity: capacity,
-      p_price_cents: price_cents,
-      p_currency: currency,
-      p_sessions: normalizedSessions,
-    }
-  );
-
-  if (rpcError || !rpcData) {
-    logSupabaseError("createWorkshopAction.rpc", rpcError);
-    return formatUserSupabaseError(rpcError);
-  }
-
-  const courseId = String(rpcData);
-  if (!courseId) {
-    return "Workshop konnte nicht gespeichert werden. Bitte versuche es erneut.";
-  }
-
-  redirect(`/dashboard/courses/${courseId}`);
+  redirect(`/dashboard/courses/${newId}`);
 }
 
+// COURSE (single-row insert for now)
 export async function createCourseAction(formData: FormData): Promise<ActionResult> {
-  const { supabase, userId } = await requireUserId();
+  const supabase = await createSupabaseServerClient();
+  const { data: userData, error: userErr } = await supabase.auth.getUser();
 
-  const title = getString(formData, "title");
-  const description = getString(formData, "description");
-  const location = getString(formData, "location");
-  const capacity = parseOptionalInt(getString(formData, "capacity"));
-  const weekday = parseRequiredInt(getString(formData, "weekday"));
-  const start_time = getString(formData, "start_time");
-  const duration_minutes = parseRequiredInt(getString(formData, "duration_minutes"));
-  const recurrence_type = getString(formData, "recurrence_type") as RecurrenceType;
-  const price_cents = parseOptionalInt(getString(formData, "price_cents"));
-  const currency = (getString(formData, "currency") || "EUR").toUpperCase();
-
-  if (!title) return "Bitte gib einen Titel ein.";
-  if (weekday === null || weekday < 0 || weekday > 6) return "Bitte waehle einen Wochentag.";
-  if (!/^\d{2}:\d{2}$/.test(start_time)) return "Bitte gib eine gueltige Startzeit an.";
-  if (duration_minutes === null || duration_minutes < 1) {
-    return "Bitte gib eine gueltige Dauer in Minuten an.";
+  if (userErr) {
+    logSupabaseError("auth.getUser", userErr);
+    return { error: formatUserSupabaseError(userErr) };
   }
-  if (!["weekly", "biweekly", "monthly"].includes(recurrence_type)) {
-    return "Bitte waehle einen gueltigen Rhythmus.";
-  }
-  if (capacity !== null && capacity < 1) return "Kapazitaet muss mindestens 1 sein.";
-  if (price_cents !== null && price_cents < 0) return "Preis darf nicht negativ sein.";
-  if (!currency) return "Bitte gib eine Waehrung an.";
+  if (!userData.user) redirect("/login");
 
-  // Simple local-time computation on the server: next occurrence for weekday + HH:MM.
-  const starts_at = computeNextOccurrenceIso(weekday, start_time);
-  if (!starts_at) return "Der erste Termin konnte nicht berechnet werden.";
+  const title = String(formData.get("title") || "").trim();
+  if (!title) return { error: "Bitte gib einen Titel an." };
 
-  const { data, error } = await supabase
+  const description = parseOptionalString(formData.get("description"));
+  const location = parseOptionalString(formData.get("location"));
+  const capacity = parseOptionalInt(formData.get("capacity"));
+
+  const weekday = parseOptionalInt(formData.get("weekday"));
+  const start_time = String(formData.get("start_time") || "").trim();
+  const duration_minutes = parseOptionalInt(formData.get("duration_minutes"));
+  const recurrence_type = String(formData.get("recurrence_type") || "").trim();
+
+  if (weekday === null || weekday < 0 || weekday > 6) return { error: "Bitte wähle einen gültigen Wochentag (0-6)." };
+  if (!start_time) return { error: "Bitte gib eine Startzeit an." };
+  if (duration_minutes === null || duration_minutes <= 0) return { error: "Bitte gib eine gültige Dauer in Minuten an." };
+  if (!recurrence_type) return { error: "Bitte wähle eine Wiederholung." };
+
+  // starts_at is computed elsewhere in your current implementation OR can be posted from the form.
+  // If your form still sends starts_at, we accept it; otherwise, keep null.
+  const starts_at = parseDatetimeLocalToISO(formData.get("starts_at"));
+
+  const price_cents = parseOptionalInt(formData.get("price_cents"));
+  const currency = String(formData.get("currency") || "EUR").trim() || "EUR";
+
+  const { data: inserted, error } = await supabase
     .from("courses")
     .insert({
-      teacher_id: userId,
+      teacher_id: userData.user.id,
       kind: "course",
-      is_published: false,
       title,
-      description: description || null,
-      location: location || null,
+      description,
+      location,
       capacity,
-      starts_at,
       weekday,
       start_time,
       duration_minutes,
       recurrence_type,
+      starts_at,
       price_cents,
       currency,
+      is_published: false,
     })
     .select("id")
-    .single<{ id: string }>();
+    .single();
 
-  if (error || !data) {
-    logSupabaseError("createCourseAction.insertCourse", error);
-    return formatUserSupabaseError(error);
+  if (error) {
+    logSupabaseError("insert.courses(course)", error);
+    return { error: formatUserSupabaseError(error) };
   }
 
-  redirect(`/dashboard/courses/${data.id}`);
+  redirect(`/dashboard/courses/${inserted.id}`);
 }
