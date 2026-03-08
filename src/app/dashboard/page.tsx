@@ -2,7 +2,15 @@ import Link from "next/link";
 import LogoutButton from "./logout-button";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const profileSavedParam = Array.isArray(sp.profileSaved) ? sp.profileSaved[0] : sp.profileSaved;
+  const profileSaved = profileSavedParam === "1";
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -13,50 +21,114 @@ export default async function DashboardPage() {
     return <div>Bitte einloggen.</div>;
   }
 
+  const [{ count: totalOffersCount }, { count: publishedOffersCount }, { data: profile }] =
+    await Promise.all([
+      supabase
+        .from("courses")
+        .select("id", { count: "exact", head: true })
+        .eq("teacher_id", user.id),
+      supabase
+        .from("courses")
+        .select("id", { count: "exact", head: true })
+        .eq("teacher_id", user.id)
+        .eq("is_published", true),
+      supabase
+        .from("profiles")
+        .select("first_name,last_name")
+        .eq("id", user.id)
+        .maybeSingle<{ first_name: string | null; last_name: string | null }>(),
+    ]);
+
+  const profileComplete = Boolean(profile?.first_name && profile?.last_name);
+
   return (
-    <main style={{ padding: 24 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}>
-        <div>
-          <h1 style={{ margin: 0 }}>Dashboard</h1>
-          <p>
-            Eingeloggt als: <b>{user.email}</b>
+    <main className="mx-auto max-w-6xl space-y-6 p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-semibold">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Hier verwaltest du dein Profil, deine Angebote und später deine
+            Teilnehmer*innen.
           </p>
-
-          {/* Öffentliche Kundenansicht */}
-          <p>
-            <Link href="/" style={{ fontWeight: 700 }}>
-              Öffentliche Kundenansicht öffnen
-            </Link>
+          <p className="text-sm text-muted-foreground">
+            Eingeloggt als <span className="font-medium text-foreground">{user.email}</span>
           </p>
         </div>
-
-        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-          {/* ✅ WICHTIG: Erstellen-Seite */}
-          <Link
-            href="/dashboard/courses/new"
-            style={{
-              padding: "14px 18px",
-              borderRadius: 14,
-              border: "1px solid #ddd",
-              fontWeight: 700,
-              textDecoration: "none",
-              color: "inherit",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              whiteSpace: "nowrap",
-            }}
-          >
-            + Kurs/Workshop anlegen
-          </Link>
-
-          <LogoutButton />
-        </div>
+        <LogoutButton />
       </div>
 
-      <hr style={{ margin: "24px 0" }} />
+      {profileSaved ? (
+        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Profil gespeichert.
+        </p>
+      ) : null}
 
-      {/* ... dein Rest (Meine Angebote etc.) bleibt wie gehabt ... */}
+      <section className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border p-4">
+          <p className="text-sm text-muted-foreground">Angebote gesamt</p>
+          <p className="mt-1 text-2xl font-semibold">{totalOffersCount ?? 0}</p>
+        </div>
+        <div className="rounded-2xl border p-4">
+          <p className="text-sm text-muted-foreground">Veröffentlichte Angebote</p>
+          <p className="mt-1 text-2xl font-semibold">{publishedOffersCount ?? 0}</p>
+        </div>
+        <div className="rounded-2xl border p-4">
+          <p className="text-sm text-muted-foreground">Profilstatus</p>
+          <p className="mt-1 text-base font-semibold">
+            {profileComplete ? "Profil vollständig" : "Profil unvollständig"}
+          </p>
+        </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        <article className="rounded-2xl border p-5">
+          <h2 className="text-lg font-semibold">Mein Profil</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Bearbeite deine persönlichen Angaben, Selbstbeschreibung und
+            Auszahlungsdaten.
+          </p>
+          <Link
+            href="/dashboard/profile"
+            className="mt-4 inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
+          >
+            Zum Profil
+          </Link>
+        </article>
+
+        <article className="rounded-2xl border p-5">
+          <h2 className="text-lg font-semibold">Meine Angebote</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Verwalte deine Kurse und Workshops und lege neue Angebote an.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href="/dashboard/courses"
+              className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
+            >
+              Zu meinen Angeboten
+            </Link>
+            <Link
+              href="/dashboard/courses/new"
+              className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
+            >
+              Neues Angebot
+            </Link>
+          </div>
+        </article>
+
+        <article className="rounded-2xl border p-5">
+          <h2 className="text-lg font-semibold">Teilnehmer*innen</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Hier siehst du später, wer sich für deine Kurse und Workshops angemeldet hat.
+          </p>
+          <Link
+            href="/dashboard/participants"
+            className="mt-4 inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
+          >
+            Zu Teilnehmer*innen
+          </Link>
+        </article>
+      </section>
     </main>
   );
 }

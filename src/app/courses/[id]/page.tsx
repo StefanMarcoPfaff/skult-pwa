@@ -1,77 +1,185 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-
-// Workshop Flow (Stripe)
 import { PayButton } from "./PayButton";
-
-// Kurs Flow (kostenlose Probestunde)
 import ReserveTrialButton from "./ReserveTrialButton";
 
-type CourseRow = {
+type Row = Record<string, unknown>;
+type SessionRow = {
   id: string;
-  title: string;
-  subtitle: string | null;
-  location: string | null;
+  course_id: string;
   starts_at: string | null;
-  capacity: number | null;
-  seats_taken: number | null;
-  kind: string | null; // "workshop" | "course"
+  ends_at: string | null;
 };
 
-function formatDateTime(dt: string | null) {
-  if (!dt) return "";
-  const d = new Date(dt);
-  const date = d.toLocaleDateString("de-DE");
-  const time = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-  return `${date}, ${time}`;
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function getKind(row: Row): "workshop" | "course" | null {
+  const raw = (asString(row.offer_type) ?? asString(row.kind) ?? "").toLowerCase();
+  if (raw === "workshop" || raw === "course") return raw;
+  return null;
+}
+
+function formatPrice(row: Row): string | null {
+  const priceType = (asString(row.price_type) ?? "").toLowerCase();
+  const currency = asString(row.currency) ?? "EUR";
+  const cents = asNumber(row.price_cents);
+
+  if (priceType === "free") return "Kostenlos";
+  if (cents !== null && cents >= 0) {
+    return new Intl.NumberFormat("de-DE", { style: "currency", currency }).format(cents / 100);
+  }
+  return null;
+}
+
+const weekdayLabels: Record<number, string> = {
+  0: "Sonntag",
+  1: "Montag",
+  2: "Dienstag",
+  3: "Mittwoch",
+  4: "Donnerstag",
+  5: "Freitag",
+  6: "Samstag",
+};
+
+function recurrenceLabel(value: string | null): string | null {
+  if (!value) return null;
+  const v = value.toLowerCase();
+  if (v === "weekly") return "woechentlich";
+  if (v === "biweekly") return "14-taegig";
+  if (v === "monthly") return "monatlich";
+  return value;
+}
+
+function formatSessionLine(startsAt: string | null, endsAt: string | null): string {
+  if (!startsAt) return "-";
+  const start = new Date(startsAt);
+  const date = start.toLocaleDateString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+  const startTime = start.toLocaleTimeString("de-DE", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const endTime = endsAt
+    ? new Date(endsAt).toLocaleTimeString("de-DE", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "-";
+
+  return `${date} | ${startTime}-${endTime}`;
 }
 
 export default async function CourseDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const supabase = await createSupabaseServerClient();
 
-  const { data, error } = await supabase
+  let response = await supabase
     .from("courses_lite")
-    .select("id,title,subtitle,location,starts_at,capacity,seats_taken,kind")
-    .eq("id", params.id)
-    .single<CourseRow>();
+    .select("*")
+    .eq("id", id)
+    .eq("is_published", true)
+    .maybeSingle<Row>();
 
-  if (error || !data) return notFound();
+  if (response.error) {
+    response = await supabase.from("courses_lite").select("*").eq("id", id).maybeSingle<Row>();
+  }
 
-  const kind = (data.kind ?? "workshop").toLowerCase();
-  const capacity = typeof data.capacity === "number" ? data.capacity : null;
-  const taken = typeof data.seats_taken === "number" ? data.seats_taken : 0;
-  const free = capacity === null ? null : Math.max(0, capacity - taken);
+  if (response.error || !response.data) return notFound();
+
+  const data = response.data;
+  if (typeof data.is_published === "boolean" && !data.is_published) {
+    return notFound();
+  }
+
+  const kind = getKind(data) ?? "workshop";
+  const title = asString(data.title) ?? "Ohne Titel";
+  const description = asString(data.description) ?? asString(data.subtitle);
+  const location = asString(data.location);
+  const price = formatPrice(data);
+
+  const weekday = asNumber(data.weekday);
+  const startTime = asString(data.start_time);
+  const recurrence = recurrenceLabel(asString(data.recurrence_type));
+
+  let sessions: SessionRow[] = [];
+  if (kind === "workshop") {
+    const { data: sessionData } = await supabase
+      .from("course_sessions")
+      .select("id,course_id,starts_at,ends_at")
+      .eq("course_id", id)
+      .order("starts_at", { ascending: true })
+      .returns<SessionRow[]>();
+    sessions = sessionData ?? [];
+  }
 
   return (
-    <main style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
+    <main className="mx-auto max-w-3xl space-y-6 p-6">
       <p>
-        <Link href="/">← Zurück</Link>
+        <Link href="/courses" className="text-sm font-semibold underline underline-offset-4">
+          ← Zurueck
+        </Link>
       </p>
 
-      <h1 style={{ marginTop: 8 }}>{data.title}</h1>
+      <header className="space-y-2">
+        <h1 className="text-3xl font-black">{title}</h1>
+        <p className="text-sm text-muted-foreground">{kind === "workshop" ? "Workshop" : "Kurs"}</p>
+      </header>
 
-      <p style={{ color: "#444", marginTop: 6 }}>
-        {data.location ? <span>{data.location}</span> : null}
-        {data.location && data.starts_at ? " · " : null}
-        {data.starts_at ? <span>{formatDateTime(data.starts_at)}</span> : null}
-        {capacity !== null ? ` · Plätze: ${capacity}` : null}
-        {free !== null ? ` · Frei: ${free}` : null}
-      </p>
+      <section className="rounded-2xl border p-4 text-sm text-muted-foreground">
+        {location ? <p>Ort: {location}</p> : null}
+        {price ? <p>Preis: {price}</p> : null}
+        {kind === "course" && weekday !== null && weekdayLabels[weekday] ? (
+          <p>Wochentag: {weekdayLabels[weekday]}</p>
+        ) : null}
+        {kind === "course" && startTime ? <p>Startzeit: {startTime}</p> : null}
+        {kind === "course" && recurrence ? <p>Rhythmus: {recurrence}</p> : null}
+      </section>
 
-      {data.subtitle ? <p style={{ marginTop: 14 }}>{data.subtitle}</p> : null}
+      {description ? <p className="leading-7">{description}</p> : null}
 
-      <div style={{ marginTop: 24 }}>
-        {kind === "workshop" ? (
-          <PayButton courseId={data.id} />
-        ) : (
-          <ReserveTrialButton courseId={data.id} />
-        )}
-      </div>
+      {kind === "workshop" ? (
+        <section className="space-y-3">
+          <h2 className="text-xl font-semibold">Termine</h2>
+          <div className="rounded-2xl border p-4 text-sm text-muted-foreground">
+            {sessions.length > 0 ? (
+              <ul className="space-y-2">
+                {sessions.map((session) => (
+                  <li key={session.id}>{formatSessionLine(session.starts_at, session.ends_at)}</li>
+                ))}
+              </ul>
+            ) : asString(data.starts_at) ? (
+              <p>{formatSessionLine(asString(data.starts_at), null)}</p>
+            ) : (
+              <p>Termine folgen in Kürze.</p>
+            )}
+          </div>
+
+          <div className="space-y-2 rounded-2xl border p-4">
+            <h3 className="text-base font-semibold">Jetzt buchen</h3>
+            <PayButton courseId={id} />
+          </div>
+        </section>
+      ) : (
+        <section className="space-y-2 rounded-2xl border p-4">
+          <h3 className="text-base font-semibold">Kostenlose Probestunde reservieren</h3>
+          <ReserveTrialButton courseId={id} />
+        </section>
+      )}
     </main>
   );
 }
+
