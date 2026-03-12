@@ -36,7 +36,7 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
     setFileError(null);
     const introVideoUrl = String(formData.get("intro_video_url") || "").trim();
     if (introVideoUrl && !/^https?:\/\//i.test(introVideoUrl)) {
-      setVideoUrlError("Bitte gib einen gueltigen Link mit http:// oder https:// an.");
+      setVideoUrlError("Bitte gib einen gültigen Link mit http:// oder https:// an.");
       return;
     }
     setVideoUrlError(null);
@@ -172,7 +172,7 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
             rel="noreferrer"
             className="inline-flex text-sm font-medium underline underline-offset-4"
           >
-            Video-Link oeffnen
+            Video-Link öffnen
           </a>
         ) : null}
       </label>

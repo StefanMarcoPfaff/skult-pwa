@@ -8,6 +8,8 @@ type PublishMode = "published" | "draft";
 export async function setCoursePublishStateAction(formData: FormData) {
   const courseId = String(formData.get("course_id") || "").trim();
   const mode = String(formData.get("mode") || "").trim() as PublishMode;
+  const redirectTo = String(formData.get("redirect_to") || "").trim();
+  const targetPath = redirectTo || `/dashboard/courses/${courseId}`;
 
   if (!courseId || (mode !== "published" && mode !== "draft")) {
     redirect("/dashboard");
@@ -30,7 +32,7 @@ export async function setCoursePublishStateAction(formData: FormData) {
       .eq("course_id", courseId);
 
     if ((count ?? 0) > 0) {
-      redirect(`/dashboard/courses/${courseId}`);
+      redirect(targetPath);
     }
   }
 
@@ -41,8 +43,8 @@ export async function setCoursePublishStateAction(formData: FormData) {
     .eq("teacher_id", user.id);
 
   if (error) {
-    redirect(`/dashboard/courses/${courseId}`);
+    redirect(targetPath);
   }
 
-  redirect(`/dashboard/courses/${courseId}?saved=${publish ? "published" : "draft"}`);
+  redirect(`${targetPath}${targetPath.includes("?") ? "&" : "?"}saved=${publish ? "published" : "draft"}`);
 }

@@ -53,9 +53,9 @@ function formatCourseSchedule(row: Row): string | null {
   const recurrence = (asString(row.recurrence_type) ?? "").toLowerCase();
   const recurrenceLabel =
     recurrence === "weekly"
-      ? "woechentlich"
+      ? "wöchentlich"
       : recurrence === "biweekly"
-      ? "14-taegig"
+      ? "14-tägig"
       : recurrence === "monthly"
       ? "monatlich"
       : asString(row.recurrence_type);

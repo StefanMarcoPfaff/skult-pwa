@@ -37,7 +37,7 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
   if (!first_name) return { error: "Vorname ist erforderlich." };
   if (!last_name) return { error: "Nachname ist erforderlich." };
   if (intro_video_url && !/^https?:\/\//i.test(intro_video_url)) {
-    return { error: "Bitte gib einen gueltigen Video-Link mit http:// oder https:// an." };
+    return { error: "Bitte gib einen gültigen Video-Link mit http:// oder https:// an." };
   }
 
   let photo_url = existing_photo_url;

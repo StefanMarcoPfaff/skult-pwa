@@ -39,7 +39,7 @@ export default async function DashboardProfilePage() {
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold">Mein Profil</h1>
         <p className="text-sm text-muted-foreground">
-          Diese Angaben bilden die Grundlage fuer dein Dozent*innen-Profil und spaetere
+          Diese Angaben bilden die Grundlage für dein Dozent*innen-Profil und spätere
           Auszahlungen.
         </p>
       </header>

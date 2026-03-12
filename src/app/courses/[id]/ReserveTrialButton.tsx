@@ -21,7 +21,7 @@ export default function ReserveTrialButton({
       {state.error ? <p className="text-sm text-red-700">{state.error}</p> : null}
 
       <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">Verfuegbare Probestunden-Termine *</legend>
+        <legend className="text-sm font-medium">Verfügbare Probestunden-Termine *</legend>
         <div className="space-y-2">
           {trialSlots.map((slot) => (
             <label key={slot.startsAt} className="flex items-center gap-2 rounded-lg border px-3 py-2">

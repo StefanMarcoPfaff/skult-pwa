@@ -10,15 +10,37 @@ type SessionInput = {
   ends_at: string;
 };
 
+export type WorkshopFormValues = {
+  title?: string;
+  location?: string;
+  description?: string;
+  capacity?: string;
+  price_eur?: string;
+  currency?: string;
+  sessions?: Array<{ starts_at: string; ends_at: string }>;
+};
+
 function createEmptySession(): SessionInput {
   return {
-    id: Math.random().toString(36).slice(2, 10),
+    id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     starts_at: "",
     ends_at: "",
   };
 }
 
-function SubmitButton() {
+function toDatetimeLocalValue(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function SubmitButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
 
   return (
@@ -27,15 +49,31 @@ function SubmitButton() {
       disabled={pending}
       className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
     >
-      Speichern
+      {pending ? "Speichert..." : label}
     </button>
   );
 }
 
-export default function WorkshopForm() {
+export default function WorkshopForm({
+  initialValues,
+  submitActionOverride,
+  submitLabel = "Workshop erstellen",
+}: {
+  initialValues?: WorkshopFormValues;
+  submitActionOverride?: (formData: FormData) => Promise<{ error?: string } | void>;
+  submitLabel?: string;
+}) {
   const [error, setError] = useState<string | null>(null);
-  const [priceEur, setPriceEur] = useState("");
-  const [sessions, setSessions] = useState<SessionInput[]>([createEmptySession()]);
+  const [priceEur, setPriceEur] = useState(initialValues?.price_eur ?? "");
+  const [sessions, setSessions] = useState<SessionInput[]>(() =>
+    initialValues?.sessions && initialValues.sessions.length > 0
+      ? initialValues.sessions.map((session, index) => ({
+          id: `session-${index + 1}`,
+          starts_at: toDatetimeLocalValue(session.starts_at),
+          ends_at: toDatetimeLocalValue(session.ends_at),
+        }))
+      : [createEmptySession()]
+  );
 
   const sessionErrors = useMemo(() => {
     return sessions.map((session) => {
@@ -43,7 +81,7 @@ export default function WorkshopForm() {
       const start = new Date(session.starts_at);
       const end = new Date(session.ends_at);
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        return "Ungueltiges Datum";
+        return "Ungültiges Datum";
       }
       if (end <= start) return "Ende muss nach dem Start liegen";
       return null;
@@ -56,8 +94,7 @@ export default function WorkshopForm() {
       const end = session.ends_at ? new Date(session.ends_at) : null;
 
       return {
-        starts_at:
-          start && !Number.isNaN(start.getTime()) ? start.toISOString() : "",
+        starts_at: start && !Number.isNaN(start.getTime()) ? start.toISOString() : "",
         ends_at: end && !Number.isNaN(end.getTime()) ? end.toISOString() : "",
       };
     });
@@ -80,7 +117,7 @@ export default function WorkshopForm() {
     }
 
     if (sessions.length === 0) {
-      setError("Bitte fuege mindestens einen Termin hinzu.");
+      setError("Bitte füge mindestens einen Termin hinzu.");
       return;
     }
 
@@ -88,21 +125,21 @@ export default function WorkshopForm() {
     if (priceRaw) {
       const parsed = Number(priceRaw.replace(",", "."));
       if (!Number.isFinite(parsed) || parsed < 0) {
-        setError("Bitte gib einen gueltigen Preis >= 0 ein.");
+        setError("Bitte gib einen gültigen Preis >= 0 ein.");
         return;
       }
     }
 
     for (const session of sessions) {
       if (!session.starts_at || !session.ends_at) {
-        setError("Bitte fuelle Start- und Endzeit fuer alle Termine aus.");
+        setError("Bitte fülle Start- und Endzeit für alle Termine aus.");
         return;
       }
 
       const start = new Date(session.starts_at);
       const end = new Date(session.ends_at);
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        setError("Ein Termin hat ein ungueltiges Datum.");
+        setError("Ein Termin hat ein ungültiges Datum.");
         return;
       }
       if (end <= start) {
@@ -112,7 +149,8 @@ export default function WorkshopForm() {
     }
 
     setError(null);
-    const result = await createWorkshopAction(formData);
+    const action = submitActionOverride ?? createWorkshopAction;
+    const result = await action(formData);
     if (result?.error) {
       setError(result.error);
     }
@@ -120,12 +158,7 @@ export default function WorkshopForm() {
 
   return (
     <form action={submitAction} className="space-y-4">
-      <input
-        type="hidden"
-        name="sessions_json"
-        value={JSON.stringify(sessionsAsISO)}
-        readOnly
-      />
+      <input type="hidden" name="sessions_json" value={JSON.stringify(sessionsAsISO)} readOnly />
       <input type="hidden" name="price_cents" value={priceCentsOrEmpty} readOnly />
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -134,6 +167,7 @@ export default function WorkshopForm() {
           <input
             name="title"
             required
+            defaultValue={initialValues?.title ?? ""}
             className="w-full rounded-xl border px-3 py-2 text-sm"
             placeholder="z. B. Keramik-Weekend"
           />
@@ -143,6 +177,7 @@ export default function WorkshopForm() {
           <span className="text-sm font-medium">Ort</span>
           <input
             name="location"
+            defaultValue={initialValues?.location ?? ""}
             className="w-full rounded-xl border px-3 py-2 text-sm"
             placeholder="z. B. Studio Mitte"
           />
@@ -154,8 +189,9 @@ export default function WorkshopForm() {
         <textarea
           name="description"
           rows={4}
+          defaultValue={initialValues?.description ?? ""}
           className="w-full rounded-xl border px-3 py-2 text-sm"
-          placeholder="Kurzbeschreibung fuer die Angebotsseite."
+          placeholder="Kurzbeschreibung für die Angebotsseite."
         />
       </label>
 
@@ -163,9 +199,7 @@ export default function WorkshopForm() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <span className="text-sm font-medium">Termine *</span>
-            <p className="text-xs text-muted-foreground">
-              Jeder Termin benoetigt Start- und Endzeit.
-            </p>
+            <p className="text-xs text-muted-foreground">Jeder Termin benötigt Start- und Endzeit.</p>
           </div>
           <button
             type="button"
@@ -180,11 +214,9 @@ export default function WorkshopForm() {
           {sessions.map((session, index) => {
             const sessionError = sessionErrors[index];
             return (
-              <div key={session.id} className="rounded-xl border p-3 space-y-2">
+              <div key={session.id} className="space-y-2 rounded-xl border p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs font-semibold text-muted-foreground">
-                    Termin {index + 1}
-                  </p>
+                  <p className="text-xs font-semibold text-muted-foreground">Termin {index + 1}</p>
                   <button
                     type="button"
                     onClick={() =>
@@ -206,9 +238,7 @@ export default function WorkshopForm() {
                       onChange={(event) =>
                         setSessions((prev) =>
                           prev.map((item) =>
-                            item.id === session.id
-                              ? { ...item, starts_at: event.target.value }
-                              : item
+                            item.id === session.id ? { ...item, starts_at: event.target.value } : item
                           )
                         )
                       }
@@ -225,9 +255,7 @@ export default function WorkshopForm() {
                       onChange={(event) =>
                         setSessions((prev) =>
                           prev.map((item) =>
-                            item.id === session.id
-                              ? { ...item, ends_at: event.target.value }
-                              : item
+                            item.id === session.id ? { ...item, ends_at: event.target.value } : item
                           )
                         )
                       }
@@ -237,9 +265,7 @@ export default function WorkshopForm() {
                   </label>
                 </div>
 
-                {sessionError ? (
-                  <p className="text-xs text-red-600">{sessionError}</p>
-                ) : null}
+                {sessionError ? <p className="text-xs text-red-600">{sessionError}</p> : null}
               </div>
             );
           })}
@@ -247,11 +273,12 @@ export default function WorkshopForm() {
       </div>
 
       <label className="space-y-1">
-        <span className="text-sm font-medium">Kapazitaet</span>
+        <span className="text-sm font-medium">Kapazität</span>
         <input
           type="number"
           name="capacity"
           min={1}
+          defaultValue={initialValues?.capacity ?? ""}
           className="w-full rounded-xl border px-3 py-2 text-sm"
           placeholder="10"
         />
@@ -274,10 +301,10 @@ export default function WorkshopForm() {
         </label>
 
         <label className="space-y-1">
-          <span className="text-sm font-medium">Waehrung</span>
+          <span className="text-sm font-medium">Währung</span>
           <input
             name="currency"
-            defaultValue="EUR"
+            defaultValue={initialValues?.currency ?? "EUR"}
             className="w-full rounded-xl border px-3 py-2 text-sm uppercase"
           />
         </label>
@@ -291,7 +318,7 @@ export default function WorkshopForm() {
         </p>
       ) : null}
 
-      <SubmitButton />
+      <SubmitButton label={submitLabel} />
     </form>
   );
 }

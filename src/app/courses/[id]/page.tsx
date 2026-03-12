@@ -1,9 +1,10 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PayButton } from "./PayButton";
 import ReserveTrialButton from "./ReserveTrialButton";
-import { computeUpcomingTrialSlots } from "./trial-slots";
+import { computeUpcomingTrialSlots, type TrialSlot } from "./trial-slots";
 
 type Row = Record<string, unknown>;
 type SessionRow = {
@@ -18,7 +19,12 @@ function asString(value: unknown): string | null {
 }
 
 function asNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
 }
 
 function getKind(row: Row): "workshop" | "course" | null {
@@ -52,8 +58,8 @@ const weekdayLabels: Record<number, string> = {
 function recurrenceLabel(value: string | null): string | null {
   if (!value) return null;
   const v = value.toLowerCase();
-  if (v === "weekly") return "woechentlich";
-  if (v === "biweekly") return "14-taegig";
+  if (v === "weekly") return "wöchentlich";
+  if (v === "biweekly") return "14-tägig";
   if (v === "monthly") return "monatlich";
   return value;
 }
@@ -121,18 +127,47 @@ export default async function CourseDetailPage({
   const recurrenceRaw = asString(data.recurrence_type);
   const recurrence = recurrenceLabel(recurrenceRaw);
   const trialMode = (asString(data.trial_mode) ?? "all_sessions").toLowerCase();
+  const startsAt = asString(data.starts_at);
+  const capacity = asNumber(data.capacity);
 
-  const trialSlots =
-    kind === "course" && trialMode === "all_sessions"
+  const trialSlots: TrialSlot[] =
+    kind === "course" && trialMode === "all_sessions" && startsAt
       ? computeUpcomingTrialSlots({
           weekday,
           startTime,
           durationMinutes,
           recurrenceType: recurrenceRaw,
           trialMode,
-          startsAt: asString(data.starts_at),
+          startsAt,
         })
       : [];
+
+  if (process.env.NODE_ENV !== "production" && kind === "course") {
+    console.log("[courses/[id]] recurrence fields", {
+      id: asString(data.id),
+      starts_at: startsAt,
+      weekday,
+      start_time: startTime,
+      duration_minutes: durationMinutes,
+      recurrence_type: recurrenceRaw,
+      trial_mode: trialMode,
+    });
+    console.log("[courses/[id]] generated occurrences", {
+      id: asString(data.id),
+      count: trialSlots.length,
+    });
+  }
+
+  let remainingPlaces: number | null = null;
+  if (kind === "course" && capacity !== null) {
+    const admin = createSupabaseAdmin();
+    const { count } = await admin
+      .from("trial_reservations")
+      .select("id", { count: "exact", head: true })
+      .eq("course_id", id);
+
+    remainingPlaces = Math.max(0, capacity - (count ?? 0));
+  }
 
   let sessions: SessionRow[] = [];
   if (kind === "workshop") {
@@ -149,7 +184,7 @@ export default async function CourseDetailPage({
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       <p>
         <Link href="/courses" className="text-sm font-semibold underline underline-offset-4">
-          ← Zurueck
+          ← Zurück
         </Link>
       </p>
 
@@ -180,8 +215,8 @@ export default async function CourseDetailPage({
                   <li key={session.id}>{formatSessionLine(session.starts_at, session.ends_at)}</li>
                 ))}
               </ul>
-            ) : asString(data.starts_at) ? (
-              <p>{formatSessionLine(asString(data.starts_at), null)}</p>
+            ) : startsAt ? (
+              <p>{formatSessionLine(startsAt, null)}</p>
             ) : (
               <p>Termine folgen in Kürze.</p>
             )}
@@ -195,6 +230,9 @@ export default async function CourseDetailPage({
       ) : (
         <section className="space-y-3 rounded-2xl border p-4">
           <h3 className="text-base font-semibold">Kostenlose Probestunde reservieren</h3>
+          {remainingPlaces !== null && remainingPlaces > 0 && remainingPlaces <= 3 ? (
+            <p className="text-sm font-medium text-amber-700">Nur noch {remainingPlaces} Plätze verfügbar</p>
+          ) : null}
           {reserved === "1" ? (
             <p className="text-sm text-green-700">
               Herzlichen Glückwunsch! Du hast dich erfolgreich zur Probestunde angemeldet. Wir melden uns in Kürze mit allen weiteren Informationen bei dir.

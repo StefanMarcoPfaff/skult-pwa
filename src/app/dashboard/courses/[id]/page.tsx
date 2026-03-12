@@ -13,6 +13,7 @@ type Row = {
   kind: string | null;
   is_published: boolean | null;
   trial_mode: string | null;
+  teacher_id: string;
 };
 
 type SessionRow = {
@@ -27,15 +28,7 @@ function formatDateTime(dt: string | null) {
   const d = new Date(dt);
   const date = d.toLocaleDateString("de-DE");
   const time = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-  return `${date}, ${time}`;
-}
-
-function formatSessionDateTime(dt: string | null) {
-  if (!dt) return "-";
-  return new Date(dt).toLocaleString("de-DE", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  return `${date} | ${time}`;
 }
 
 function formatTrialMode(value: string | null): string {
@@ -65,8 +58,9 @@ export default async function DashboardCourseDetailPage({
 
   const { data, error } = await supabase
     .from("courses")
-    .select("id,title,description,location,starts_at,capacity,kind,is_published,trial_mode")
+    .select("id,title,description,location,starts_at,capacity,kind,is_published,trial_mode,teacher_id")
     .eq("id", id)
+    .eq("teacher_id", user.id)
     .single<Row>();
 
   const { data: sessions } = await supabase
@@ -85,8 +79,8 @@ export default async function DashboardCourseDetailPage({
   if (error || !data) {
     return (
       <main style={{ padding: 24 }}>
-        <Link href="/dashboard" style={{ fontWeight: 700 }}>
-          Zurueck
+        <Link href="/dashboard/courses" style={{ fontWeight: 700 }}>
+          Zurück
         </Link>
         <p style={{ marginTop: 16, fontSize: 18, fontWeight: 800 }}>Nicht gefunden</p>
       </main>
@@ -95,12 +89,20 @@ export default async function DashboardCourseDetailPage({
 
   return (
     <main style={{ padding: 24, maxWidth: 820 }}>
-      <Link href="/dashboard" style={{ fontWeight: 700 }}>
-        Zurueck
+      <Link href="/dashboard/courses" style={{ fontWeight: 700 }}>
+        Zurück
       </Link>
 
       <h1 style={{ marginTop: 16, fontSize: 32, fontWeight: 900 }}>{data.title}</h1>
+      <p className="mt-3 text-sm text-muted-foreground">
+        Dies ist deine interne Vorschau. Prüfe die Angaben, passe sie bei Bedarf an und veröffentliche das Angebot erst danach.
+      </p>
 
+      {savedParam === "1" ? (
+        <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Angebot wurde aktualisiert.
+        </p>
+      ) : null}
       {savedParam === "published" ? (
         <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
           Angebot wurde veröffentlicht.
@@ -112,20 +114,36 @@ export default async function DashboardCourseDetailPage({
         </p>
       ) : null}
 
-      <div style={{ marginTop: 10, opacity: 0.8 }}>
-        <div>Art: {data.kind ?? "-"}</div>
-        <div>Veroeffentlicht: {data.is_published ? "Ja" : "Nein"}</div>
-        {data.kind === "course" ? (
-          <div>Probestunden-Regel: {formatTrialMode(data.trial_mode)}</div>
-        ) : null}
-        {data.location ? <div>Ort: {data.location}</div> : null}
-        {data.starts_at ? <div>Start: {formatDateTime(data.starts_at)}</div> : null}
-        {data.capacity !== null ? <div>Plaetze: {data.capacity}</div> : null}
+      <div className="mt-6 flex flex-wrap gap-3">
+        <Link
+          href={`/dashboard/courses/${data.id}/edit`}
+          className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
+        >
+          Ändern
+        </Link>
+
+        {data.is_published && hasRegistrations ? null : (
+          <form action={setCoursePublishStateAction}>
+            <input type="hidden" name="course_id" value={data.id} />
+            <input type="hidden" name="mode" value={data.is_published ? "draft" : "published"} />
+            <button type="submit" className="rounded-xl border px-4 py-2 text-sm font-semibold">
+              {data.is_published ? "Veröffentlichung zurückziehen" : "Jetzt veröffentlichen"}
+            </button>
+          </form>
+        )}
       </div>
 
-      {data.description ? (
-        <p style={{ marginTop: 16, lineHeight: 1.6 }}>{data.description}</p>
-      ) : null}
+      <div style={{ marginTop: 10, opacity: 0.8 }}>
+        <div>Art: {data.kind ?? "-"}</div>
+        <div>Veröffentlicht: {data.is_published ? "Ja" : "Nein"}</div>
+        {data.kind === "course" ? <div>Probestunden-Regel: {formatTrialMode(data.trial_mode)}</div> : null}
+        {data.location ? <div>Ort: {data.location}</div> : null}
+        {data.kind === "course" && data.starts_at ? <div>Kursstart: {formatDateTime(data.starts_at)}</div> : null}
+        {data.kind !== "course" && data.starts_at ? <div>Start: {formatDateTime(data.starts_at)}</div> : null}
+        {data.capacity !== null ? <div>Plätze: {data.capacity}</div> : null}
+      </div>
+
+      {data.description ? <p style={{ marginTop: 16, lineHeight: 1.6 }}>{data.description}</p> : null}
 
       {data.kind === "workshop" ? (
         <section style={{ marginTop: 24 }}>
@@ -166,32 +184,13 @@ export default async function DashboardCourseDetailPage({
         </section>
       ) : null}
 
-      <section className="mt-8 rounded-2xl border p-4">
-        <p className="text-sm font-medium">
-          {data.is_published
-            ? "Dieses Angebot ist veröffentlicht."
-            : "Dieses Angebot ist noch nicht veröffentlicht."}
-        </p>
-
-        {data.is_published && hasRegistrations ? (
-          <p className="mt-2 text-sm text-muted-foreground">
-            Die Veröffentlichung kann nicht zurückgezogen werden, weil bereits
-            Anmeldungen vorliegen.
+      {data.is_published && hasRegistrations ? (
+        <section className="mt-8 rounded-2xl border p-4">
+          <p className="text-sm text-muted-foreground">
+            Die Veröffentlichung kann nicht zurückgezogen werden, weil bereits Anmeldungen vorliegen.
           </p>
-        ) : (
-          <form action={setCoursePublishStateAction} className="mt-3">
-            <input type="hidden" name="course_id" value={data.id} />
-            <input
-              type="hidden"
-              name="mode"
-              value={data.is_published ? "draft" : "published"}
-            />
-            <button type="submit" className="rounded-xl border px-4 py-2 text-sm font-semibold">
-              {data.is_published ? "Veröffentlichung zurückziehen" : "Jetzt veröffentlichen"}
-            </button>
-          </form>
-        )}
-      </section>
+        </section>
+      ) : null}
     </main>
   );
 }

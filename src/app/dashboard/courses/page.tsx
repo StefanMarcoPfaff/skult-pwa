@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { setCoursePublishStateAction } from "./[id]/actions";
 
 type OfferRow = {
   id: string;
@@ -59,9 +60,7 @@ export default async function DashboardCoursesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const sp = await searchParams;
-  const createdParam = Array.isArray(sp.created) ? sp.created[0] : sp.created;
-  const created = createdParam === "1";
+  await searchParams;
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -82,7 +81,6 @@ export default async function DashboardCoursesPage({
     .order("created_at", { ascending: false })
     .returns<OfferRow[]>();
 
-  // Fallback for schemas/environments without created_at.
   if (offersResult.error) {
     offersResult = await supabase
       .from("courses")
@@ -132,12 +130,6 @@ export default async function DashboardCoursesPage({
         </Link>
       </header>
 
-      {created ? (
-        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Kurs wurde angelegt.
-        </p>
-      ) : null}
-
       <section className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border p-4">
           <p className="text-sm text-muted-foreground">Angebote gesamt</p>
@@ -184,18 +176,35 @@ export default async function DashboardCoursesPage({
                       {kind === "course" ? "Kurs" : kind === "workshop" ? "Workshop" : "-"} • {statusLabel}
                     </p>
                   </div>
-                  <Link
-                    href={`/dashboard/courses/${offer.id}`}
-                    className="inline-flex rounded-lg border px-3 py-1.5 text-sm font-semibold"
-                  >
-                    Ansehen
-                  </Link>
                 </div>
 
                 <div className="mt-3 space-y-1 text-sm text-muted-foreground">
                   {offer.location ? <p>Ort: {offer.location}</p> : null}
                   {kind === "workshop" && workshopTiming ? <p>{workshopTiming}</p> : null}
                   {kind === "course" && courseTiming ? <p>{courseTiming}</p> : null}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Link
+                    href={`/dashboard/courses/${offer.id}`}
+                    className="inline-flex rounded-lg border px-3 py-1.5 text-sm font-semibold"
+                  >
+                    Ansehen
+                  </Link>
+                  <Link
+                    href={`/dashboard/courses/${offer.id}/edit`}
+                    className="inline-flex rounded-lg border px-3 py-1.5 text-sm font-semibold"
+                  >
+                    Ändern
+                  </Link>
+                  <form action={setCoursePublishStateAction}>
+                    <input type="hidden" name="course_id" value={offer.id} />
+                    <input type="hidden" name="mode" value={offer.is_published ? "draft" : "published"} />
+                    <input type="hidden" name="redirect_to" value="/dashboard/courses" />
+                    <button type="submit" className="rounded-lg border px-3 py-1.5 text-sm font-semibold">
+                      {offer.is_published ? "Veröffentlichung zurückziehen" : "Jetzt veröffentlichen"}
+                    </button>
+                  </form>
                 </div>
               </article>
             );
