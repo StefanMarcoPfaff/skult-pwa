@@ -12,6 +12,7 @@ type Row = {
   capacity: number | null;
   kind: string | null;
   is_published: boolean | null;
+  trial_mode: string | null;
 };
 
 type SessionRow = {
@@ -37,6 +38,11 @@ function formatSessionDateTime(dt: string | null) {
   });
 }
 
+function formatTrialMode(value: string | null): string {
+  if (value === "manual") return "Nur an ausgewählten Terminen";
+  return "An jedem Termin möglich";
+}
+
 export default async function DashboardCourseDetailPage({
   params,
   searchParams,
@@ -59,7 +65,7 @@ export default async function DashboardCourseDetailPage({
 
   const { data, error } = await supabase
     .from("courses")
-    .select("id,title,description,location,starts_at,capacity,kind,is_published")
+    .select("id,title,description,location,starts_at,capacity,kind,is_published,trial_mode")
     .eq("id", id)
     .single<Row>();
 
@@ -109,6 +115,9 @@ export default async function DashboardCourseDetailPage({
       <div style={{ marginTop: 10, opacity: 0.8 }}>
         <div>Art: {data.kind ?? "-"}</div>
         <div>Veroeffentlicht: {data.is_published ? "Ja" : "Nein"}</div>
+        {data.kind === "course" ? (
+          <div>Probestunden-Regel: {formatTrialMode(data.trial_mode)}</div>
+        ) : null}
         {data.location ? <div>Ort: {data.location}</div> : null}
         {data.starts_at ? <div>Start: {formatDateTime(data.starts_at)}</div> : null}
         {data.capacity !== null ? <div>Plaetze: {data.capacity}</div> : null}

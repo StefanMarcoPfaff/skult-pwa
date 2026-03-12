@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PayButton } from "./PayButton";
 import ReserveTrialButton from "./ReserveTrialButton";
+import { computeUpcomingTrialSlots } from "./trial-slots";
 
 type Row = Record<string, unknown>;
 type SessionRow = {
@@ -81,10 +82,13 @@ function formatSessionLine(startsAt: string | null, endsAt: string | null): stri
 
 export default async function CourseDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ reserved?: string }>;
 }) {
   const { id } = await params;
+  const { reserved } = await searchParams;
   const supabase = await createSupabaseServerClient();
 
   let response = await supabase
@@ -113,7 +117,22 @@ export default async function CourseDetailPage({
 
   const weekday = asNumber(data.weekday);
   const startTime = asString(data.start_time);
-  const recurrence = recurrenceLabel(asString(data.recurrence_type));
+  const durationMinutes = asNumber(data.duration_minutes);
+  const recurrenceRaw = asString(data.recurrence_type);
+  const recurrence = recurrenceLabel(recurrenceRaw);
+  const trialMode = (asString(data.trial_mode) ?? "all_sessions").toLowerCase();
+
+  const trialSlots =
+    kind === "course" && trialMode === "all_sessions"
+      ? computeUpcomingTrialSlots({
+          weekday,
+          startTime,
+          durationMinutes,
+          recurrenceType: recurrenceRaw,
+          trialMode,
+          startsAt: asString(data.starts_at),
+        })
+      : [];
 
   let sessions: SessionRow[] = [];
   if (kind === "workshop") {
@@ -174,12 +193,25 @@ export default async function CourseDetailPage({
           </div>
         </section>
       ) : (
-        <section className="space-y-2 rounded-2xl border p-4">
+        <section className="space-y-3 rounded-2xl border p-4">
           <h3 className="text-base font-semibold">Kostenlose Probestunde reservieren</h3>
-          <ReserveTrialButton courseId={id} />
+          {reserved === "1" ? (
+            <p className="text-sm text-green-700">
+              Herzlichen Glückwunsch! Du hast dich erfolgreich zur Probestunde angemeldet. Wir melden uns in Kürze mit allen weiteren Informationen bei dir.
+            </p>
+          ) : trialMode === "manual" ? (
+            <p className="text-sm text-muted-foreground">
+              Probestunden-Termine werden in Kürze verfügbar sein.
+            </p>
+          ) : trialSlots.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Aktuell sind keine Probestunden-Termine verfügbar.
+            </p>
+          ) : (
+            <ReserveTrialButton courseId={id} trialSlots={trialSlots} />
+          )}
         </section>
       )}
     </main>
   );
 }
-

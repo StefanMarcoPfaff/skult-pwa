@@ -23,6 +23,7 @@ export default function CourseForm() {
     const startTime = String(formData.get("start_time") ?? "").trim();
     const duration = String(formData.get("duration_minutes") ?? "").trim();
     const recurrence = String(formData.get("recurrence_type") ?? "").trim();
+    const trialMode = String(formData.get("trial_mode") ?? "all_sessions").trim();
 
     if (!title) {
       setError("Bitte gib einen Titel ein.");
@@ -44,6 +45,10 @@ export default function CourseForm() {
       setError("Bitte waehle einen Rhythmus.");
       return;
     }
+    if (trialMode !== "all_sessions" && trialMode !== "manual") {
+      setError("Bitte waehle eine gueltige Probestunden-Regel.");
+      return;
+    }
 
     const priceEurRaw = String(formData.get("price_eur") ?? "").trim();
     if (priceEurRaw) {
@@ -60,8 +65,8 @@ export default function CourseForm() {
     setError(null);
     startTransition(async () => {
       const result = await createCourseAction(formData);
-      if (typeof result === "string" && result) {
-        setError(result);
+      if (result?.error) {
+        setError(result.error);
       }
     });
   };
@@ -158,6 +163,23 @@ export default function CourseForm() {
           </span>
         </label>
       </div>
+
+      <label className="space-y-1 block">
+        <span className="text-sm font-medium">Probestunden-Regel *</span>
+        <select
+          name="trial_mode"
+          required
+          defaultValue="all_sessions"
+          className="w-full rounded-xl border px-3 py-2 text-sm"
+        >
+          <option value="all_sessions">
+            Probeschueler*innen koennen an jedem Termin teilnehmen
+          </option>
+          <option value="manual">
+            Probeschueler*innen koennen nur an ausgewaehlten Terminen teilnehmen
+          </option>
+        </select>
+      </label>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <label className="space-y-1 sm:col-span-1">

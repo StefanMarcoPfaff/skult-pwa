@@ -28,6 +28,40 @@ function parseDatetimeLocalToISO(value: FormDataEntryValue | null): string | nul
   return d.toISOString();
 }
 
+function parseTimeParts(value: string): { hour: number; minute: number } | null {
+  const match = value.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+  if (!Number.isInteger(minute) || minute < 0 || minute > 59) return null;
+  return { hour, minute };
+}
+
+function computeNextCourseStartsAtISO(weekday: number, startTime: string): string | null {
+  const time = parseTimeParts(startTime);
+  if (!time) return null;
+
+  const now = new Date();
+  const candidate = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    time.hour,
+    time.minute,
+    0,
+    0
+  );
+
+  const dayDelta = (weekday - candidate.getDay() + 7) % 7;
+  candidate.setDate(candidate.getDate() + dayDelta);
+  if (candidate <= now) {
+    candidate.setDate(candidate.getDate() + 7);
+  }
+
+  return candidate.toISOString();
+}
+
 function parseSessionsJson(formData: FormData): Array<{ starts_at: string; ends_at: string }> | null {
   const raw = String(formData.get("sessions_json") || "").trim();
   if (!raw) return null;
@@ -145,15 +179,22 @@ export async function createCourseAction(formData: FormData): Promise<ActionResu
   const start_time = String(formData.get("start_time") || "").trim();
   const duration_minutes = parseOptionalInt(formData.get("duration_minutes"));
   const recurrence_type = String(formData.get("recurrence_type") || "").trim();
+  const trial_mode = String(formData.get("trial_mode") || "all_sessions")
+    .trim()
+    .toLowerCase();
 
   if (weekday === null || weekday < 0 || weekday > 6) return { error: "Bitte wähle einen gültigen Wochentag (0-6)." };
   if (!start_time) return { error: "Bitte gib eine Startzeit an." };
   if (duration_minutes === null || duration_minutes <= 0) return { error: "Bitte gib eine gültige Dauer in Minuten an." };
   if (!recurrence_type) return { error: "Bitte wähle eine Wiederholung." };
+  if (trial_mode !== "all_sessions" && trial_mode !== "manual") {
+    return { error: "Bitte wähle eine gültige Probestunden-Regel." };
+  }
 
-  // starts_at is computed elsewhere in your current implementation OR can be posted from the form.
-  // If your form still sends starts_at, we accept it; otherwise, keep null.
-  const starts_at = parseDatetimeLocalToISO(formData.get("starts_at"));
+  const starts_at =
+    parseDatetimeLocalToISO(formData.get("starts_at")) ??
+    computeNextCourseStartsAtISO(weekday, start_time);
+  if (!starts_at) return { error: "Startdatum konnte nicht berechnet werden. Bitte pruefe den Wochentag und die Startzeit." };
 
   const price_cents = parseOptionalInt(formData.get("price_cents"));
   const currency = String(formData.get("currency") || "EUR").trim() || "EUR";
@@ -171,6 +212,7 @@ export async function createCourseAction(formData: FormData): Promise<ActionResu
       start_time,
       duration_minutes,
       recurrence_type,
+      trial_mode,
       starts_at,
       price_cents,
       currency,
@@ -184,5 +226,5 @@ export async function createCourseAction(formData: FormData): Promise<ActionResu
     return { error: formatUserSupabaseError(error) };
   }
 
-  redirect(`/dashboard/courses/${inserted.id}`);
+  redirect("/dashboard/courses?created=1");
 }

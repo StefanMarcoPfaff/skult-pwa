@@ -54,7 +54,15 @@ function formatCourseSchedule(weekday: number | null, startTime: string | null, 
   return parts.length ? parts.join(" • ") : null;
 }
 
-export default async function DashboardCoursesPage() {
+export default async function DashboardCoursesPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const createdParam = Array.isArray(sp.created) ? sp.created[0] : sp.created;
+  const created = createdParam === "1";
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -124,6 +132,12 @@ export default async function DashboardCoursesPage() {
         </Link>
       </header>
 
+      {created ? (
+        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Kurs wurde angelegt.
+        </p>
+      ) : null}
+
       <section className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border p-4">
           <p className="text-sm text-muted-foreground">Angebote gesamt</p>
@@ -191,4 +205,3 @@ export default async function DashboardCoursesPage() {
     </main>
   );
 }
-
