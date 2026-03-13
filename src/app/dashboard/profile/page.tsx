@@ -12,9 +12,24 @@ type ProfileRow = {
   iban: string | null;
   photo_url: string | null;
   intro_video_url: string | null;
+  stripe_account_id: string | null;
 };
 
-export default async function DashboardProfilePage() {
+export default async function DashboardProfilePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const stripeConnectedParam = Array.isArray(sp.stripe_connected) ? sp.stripe_connected[0] : sp.stripe_connected;
+  const stripeErrorParam = Array.isArray(sp.stripe_error) ? sp.stripe_error[0] : sp.stripe_error;
+  const stripeErrorDetailParam = Array.isArray(sp.stripe_error_detail)
+    ? sp.stripe_error_detail[0]
+    : sp.stripe_error_detail;
+  const stripeConnected = stripeConnectedParam === "1";
+  const stripeError = stripeErrorParam === "1";
+  const stripeErrorDetail = process.env.NODE_ENV !== "production" ? stripeErrorDetailParam : undefined;
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -26,23 +41,56 @@ export default async function DashboardProfilePage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id,first_name,last_name,bio,account_holder_name,iban,photo_url,intro_video_url")
+    .select("id,first_name,last_name,bio,account_holder_name,iban,photo_url,intro_video_url,stripe_account_id")
     .eq("id", user.id)
     .maybeSingle<ProfileRow>();
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       <Link href="/dashboard" className="inline-flex text-sm font-medium underline underline-offset-4">
-        Zurück zum Dashboard
+        Zurueck zum Dashboard
       </Link>
 
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold">Mein Profil</h1>
         <p className="text-sm text-muted-foreground">
-          Diese Angaben bilden die Grundlage für dein Dozent*innen-Profil und spätere
+          Diese Angaben bilden die Grundlage fuer dein Dozent*innen-Profil und spaetere
           Auszahlungen.
         </p>
       </header>
+
+      {stripeConnected ? (
+        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Stripe-Konto verbunden.
+        </p>
+      ) : null}
+
+      {stripeError ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p>Stripe-Onboarding konnte nicht gestartet werden.</p>
+          {stripeErrorDetail ? <p className="mt-1 text-xs">{stripeErrorDetail}</p> : null}
+        </div>
+      ) : null}
+
+      <section className="rounded-2xl border p-6">
+        <h2 className="text-lg font-semibold">Zahlungen</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Richte dein Stripe-Konto ein, damit Zahlungen fuer Workshops und spaeter auch fuer
+          Kurs-Abos automatisch zwischen Plattform und Dozent*in aufgeteilt werden koennen.
+        </p>
+        {profile?.stripe_account_id ? (
+          <p className="mt-4 inline-flex rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
+            Stripe-Konto verbunden
+          </p>
+        ) : (
+          <Link
+            href="/api/stripe/connect"
+            className="mt-4 inline-flex rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
+          >
+            Zahlungsdaten einrichten
+          </Link>
+        )}
+      </section>
 
       <div className="rounded-2xl border p-6">
         <ProfileForm
