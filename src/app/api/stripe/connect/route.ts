@@ -139,10 +139,14 @@ export async function GET(req: Request) {
     }
 
     if (!isStripeDestinationChargeReady(account)) {
-      logConnectError("account.not-ready", new Error("Connected account is not transfer-enabled yet"), {
-        stripeAccountId: account.id,
-        account: summarizeStripeAccount(account),
-      });
+      logConnectError(
+        "account.not-ready",
+        new Error("Connected account is not fully enabled for destination charges yet"),
+        {
+          stripeAccountId: account.id,
+          account: summarizeStripeAccount(account),
+        }
+      );
     }
 
     const returnUrl = new URL("/dashboard/profile?stripe_connected=1", siteUrl).toString();

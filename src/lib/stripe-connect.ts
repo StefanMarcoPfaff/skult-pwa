@@ -1,14 +1,18 @@
 import type Stripe from "stripe";
 
 export const STRIPE_PLATFORM_FEE_PERCENT = 10;
-export const STRIPE_CONNECT_CAPABILITIES: Stripe.AccountCreateParams.Capabilities = {
-  card_payments: {
-    requested: true,
-  },
-  transfers: {
-    requested: true,
-  },
-};
+export function getRequestedStripeConnectCapabilities():
+  | Stripe.AccountCreateParams.Capabilities
+  | Stripe.AccountUpdateParams.Capabilities {
+  return {
+    card_payments: {
+      requested: true,
+    },
+    transfers: {
+      requested: true,
+    },
+  };
+}
 
 function isAbsoluteHttpUrl(value: string): boolean {
   try {
@@ -73,7 +77,7 @@ export function getStripeConnectAccountParams(input: {
     country: process.env.STRIPE_CONNECT_COUNTRY || "DE",
     email: input.email ?? undefined,
     business_type: "individual",
-    capabilities: STRIPE_CONNECT_CAPABILITIES,
+    capabilities: getRequestedStripeConnectCapabilities(),
     controller: {
       fees: {
         payer: "application",
@@ -99,7 +103,7 @@ export function getStripeConnectAccountParams(input: {
 
 export function getStripeConnectAccountUpdateParams(): Stripe.AccountUpdateParams {
   return {
-    capabilities: STRIPE_CONNECT_CAPABILITIES,
+    capabilities: getRequestedStripeConnectCapabilities(),
   };
 }
 
@@ -140,6 +144,19 @@ export function summarizeStripeAccount(account: Stripe.Account) {
   };
 }
 
+export function summarizeDestinationChargeStatus(account: Stripe.Account) {
+  const cardPayments = account.capabilities?.card_payments ?? null;
+  const transfers = account.capabilities?.transfers ?? null;
+
+  return {
+    capabilities: {
+      card_payments: cardPayments,
+      transfers,
+    },
+    destinationChargeReady: cardPayments === "active" && transfers === "active",
+  };
+}
+
 export function isStripeDestinationChargeReady(account: Stripe.Account): boolean {
-  return account.capabilities?.transfers === "active";
+  return summarizeDestinationChargeStatus(account).destinationChargeReady;
 }

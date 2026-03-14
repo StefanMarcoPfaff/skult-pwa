@@ -28,8 +28,6 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
   const first_name = optionalText(formData.get("first_name"));
   const last_name = optionalText(formData.get("last_name"));
   const bio = optionalText(formData.get("bio"));
-  const account_holder_name = optionalText(formData.get("account_holder_name"));
-  const iban = optionalText(formData.get("iban"));
   const intro_video_url = optionalText(formData.get("intro_video_url"));
   const existing_photo_url = optionalText(formData.get("existing_photo_url"));
   const photo_file = formData.get("photo_file");
@@ -82,8 +80,6 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       first_name,
       last_name,
       bio,
-      account_holder_name,
-      iban,
       photo_url,
       intro_video_url,
     },

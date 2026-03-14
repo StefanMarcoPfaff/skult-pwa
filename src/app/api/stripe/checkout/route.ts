@@ -89,7 +89,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error:
-            "Das verbundene Stripe-Konto des Dozenten ist noch nicht fuer Destination Charges freigeschaltet.",
+            "Das verbundene Stripe-Konto des Dozenten ist noch nicht fuer Destination Charges mit card_payments und transfers freigeschaltet.",
         },
         { status: 400 }
       );

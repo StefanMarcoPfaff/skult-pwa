@@ -8,8 +8,6 @@ type ProfileRow = {
   first_name: string | null;
   last_name: string | null;
   bio: string | null;
-  account_holder_name: string | null;
-  iban: string | null;
   photo_url: string | null;
   intro_video_url: string | null;
   stripe_account_id: string | null;
@@ -41,7 +39,7 @@ export default async function DashboardProfilePage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id,first_name,last_name,bio,account_holder_name,iban,photo_url,intro_video_url,stripe_account_id")
+    .select("id,first_name,last_name,bio,photo_url,intro_video_url,stripe_account_id")
     .eq("id", user.id)
     .maybeSingle<ProfileRow>();
 
@@ -54,8 +52,7 @@ export default async function DashboardProfilePage({
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold">Mein Profil</h1>
         <p className="text-sm text-muted-foreground">
-          Diese Angaben bilden die Grundlage fuer dein Dozent*innen-Profil und spaetere
-          Auszahlungen.
+          Diese Angaben bilden die Grundlage fuer dein Dozent*innen-Profil.
         </p>
       </header>
 
@@ -75,13 +72,22 @@ export default async function DashboardProfilePage({
       <section className="rounded-2xl border p-6">
         <h2 className="text-lg font-semibold">Zahlungen</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Richte dein Stripe-Konto ein, damit Zahlungen fuer Workshops und spaeter auch fuer
-          Kurs-Abos automatisch zwischen Plattform und Dozent*in aufgeteilt werden koennen.
+          {profile?.stripe_account_id
+            ? "Dein Stripe-Konto ist verbunden. Ueber Stripe verwaltest du deine Auszahlungsdaten und Bankverbindung."
+            : "Richte dein Stripe-Konto ein, damit Einnahmen aus Workshops und Kurs-Abos automatisch auf dein Konto ausgezahlt werden koennen."}
         </p>
         {profile?.stripe_account_id ? (
-          <p className="mt-4 inline-flex rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
-            Stripe-Konto verbunden
-          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <p className="inline-flex rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
+              Stripe-Konto verbunden
+            </p>
+            <Link
+              href="/api/stripe/connect/login"
+              className="inline-flex rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
+            >
+              Auszahlungsdaten verwalten
+            </Link>
+          </div>
         ) : (
           <Link
             href="/api/stripe/connect"
@@ -98,8 +104,6 @@ export default async function DashboardProfilePage({
             first_name: profile?.first_name ?? "",
             last_name: profile?.last_name ?? "",
             bio: profile?.bio ?? "",
-            account_holder_name: profile?.account_holder_name ?? "",
-            iban: profile?.iban ?? "",
             photo_url: profile?.photo_url ?? "",
             intro_video_url: profile?.intro_video_url ?? "",
           }}

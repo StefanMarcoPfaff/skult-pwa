@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
-import { isStripeDestinationChargeReady, summarizeStripeAccount } from "@/lib/stripe-connect";
+import { summarizeDestinationChargeStatus, summarizeStripeAccount } from "@/lib/stripe-connect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -52,10 +52,12 @@ export async function GET(req: Request) {
   }
 
   const account = await stripe.accounts.retrieve(stripeAccountId);
+  const destinationChargeStatus = summarizeDestinationChargeStatus(account);
 
   return NextResponse.json({
     stripeAccountId,
-    destinationChargeReady: isStripeDestinationChargeReady(account),
+    capabilities: destinationChargeStatus.capabilities,
+    destinationChargeReady: destinationChargeStatus.destinationChargeReady,
     ...summarizeStripeAccount(account),
   });
 }

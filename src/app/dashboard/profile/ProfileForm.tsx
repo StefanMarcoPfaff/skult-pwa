@@ -8,8 +8,6 @@ type ProfileFormProps = {
     first_name: string;
     last_name: string;
     bio: string;
-    account_holder_name: string;
-    iban: string;
     photo_url: string;
     intro_video_url: string;
   };
@@ -80,27 +78,6 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
           className="w-full rounded-xl border px-3 py-2 text-sm"
         />
       </label>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="space-y-1">
-          <span className="text-sm font-medium">Kontoinhaber*in</span>
-          <input
-            name="account_holder_name"
-            defaultValue={initialValues.account_holder_name}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-          />
-        </label>
-
-        <label className="space-y-1">
-          <span className="text-sm font-medium">IBAN</span>
-          <input
-            name="iban"
-            defaultValue={initialValues.iban}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-          />
-        </label>
-      </div>
-
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-1 sm:col-span-2">
           <span className="text-sm font-medium">Profilfoto</span>
