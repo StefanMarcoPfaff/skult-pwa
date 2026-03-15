@@ -5,18 +5,54 @@ import { loadTicketByQrToken } from "@/lib/tickets";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
+type CheckInState =
+  | "workshop_checked_in"
+  | "trial_checked_in"
+  | "already_used"
+  | "cancelled"
+  | "expired"
+  | "invalid";
+
 type CheckInResult = {
+  state: CheckInState;
   message: string;
   tone: "neutral" | "success" | "warning" | "danger";
   ticketType: string | null;
   customerName: string | null;
   courseTitle: string | null;
-  status: string | null;
+  checkedInAt: string | null;
 };
+
+/*
+ * MVP verification checklist:
+ * 1. Open /dashboard/check-in?token=<qr_token> from a trial or workshop email.
+ * 2. Confirm the first load checks the ticket in successfully.
+ * 3. Refresh the page and confirm the result is clearly "already used".
+ * 4. Confirm invalid, cancelled, and expired tokens return distinct states.
+ */
+
+function isDev(): boolean {
+  return process.env.NODE_ENV !== "production";
+}
+
+function logCheckInEvent(message: string, payload: Record<string, unknown>) {
+  if (!isDev()) return;
+  console.log("[ticket-check-in]", message, payload);
+}
 
 function getParam(sp: SearchParams, key: string): string {
   const value = sp[key];
   return Array.isArray(value) ? String(value[0] ?? "").trim() : String(value ?? "").trim();
+}
+
+function formatDateTime(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString("de-DE", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 }
 
 async function requireTeacher() {
@@ -35,63 +71,73 @@ async function requireTeacher() {
 async function processTicketCheckIn(token: string, teacherId: string): Promise<CheckInResult> {
   const lookup = await loadTicketByQrToken(token);
   if (!lookup) {
+    logCheckInEvent("invalid", { token });
     return {
+      state: "invalid",
       message: "invalid token",
       tone: "danger",
       ticketType: null,
       customerName: null,
       courseTitle: null,
-      status: null,
+      checkedInAt: null,
     };
   }
 
   if (lookup.teacherId && lookup.teacherId !== teacherId) {
+    logCheckInEvent("invalid", { ticketId: lookup.ticket.id, teacherId });
     return {
+      state: "invalid",
       message: "invalid token",
       tone: "danger",
       ticketType: lookup.ticket.type,
       customerName: lookup.ticket.customer_name,
       courseTitle: lookup.courseTitle,
-      status: lookup.ticket.status,
+      checkedInAt: lookup.ticket.checked_in_at,
     };
   }
 
   if (lookup.ticket.status === "checked_in") {
+    logCheckInEvent("already used", { ticketId: lookup.ticket.id });
     return {
+      state: "already_used",
       message: "already used",
       tone: "warning",
       ticketType: lookup.ticket.type,
       customerName: lookup.ticket.customer_name,
       courseTitle: lookup.courseTitle,
-      status: lookup.ticket.status,
+      checkedInAt: lookup.ticket.checked_in_at,
     };
   }
 
   if (lookup.ticket.status === "cancelled") {
+    logCheckInEvent("cancelled", { ticketId: lookup.ticket.id });
     return {
+      state: "cancelled",
       message: "cancelled",
       tone: "warning",
       ticketType: lookup.ticket.type,
       customerName: lookup.ticket.customer_name,
       courseTitle: lookup.courseTitle,
-      status: lookup.ticket.status,
+      checkedInAt: lookup.ticket.checked_in_at,
     };
   }
 
   if (lookup.ticket.status === "expired") {
+    logCheckInEvent("expired", { ticketId: lookup.ticket.id });
     return {
-      message: "invalid token",
-      tone: "danger",
+      state: "expired",
+      message: "expired",
+      tone: "warning",
       ticketType: lookup.ticket.type,
       customerName: lookup.ticket.customer_name,
       courseTitle: lookup.courseTitle,
-      status: lookup.ticket.status,
+      checkedInAt: lookup.ticket.checked_in_at,
     };
   }
 
   const admin = createSupabaseAdmin();
   const now = new Date().toISOString();
-  const { error } = await admin
+  const { data: updated, error } = await admin
     .from("tickets")
     .update({
       status: "checked_in",
@@ -99,26 +145,35 @@ async function processTicketCheckIn(token: string, teacherId: string): Promise<C
       checked_in_by: teacherId,
     })
     .eq("id", lookup.ticket.id)
-    .eq("status", "issued");
+    .eq("status", "issued")
+    .select("checked_in_at")
+    .maybeSingle<{ checked_in_at: string | null }>();
 
-  if (error) {
+  if (error || !updated) {
+    logCheckInEvent("invalid", { ticketId: lookup.ticket.id, reason: "update_failed" });
     return {
+      state: "invalid",
       message: "invalid token",
       tone: "danger",
       ticketType: lookup.ticket.type,
       customerName: lookup.ticket.customer_name,
       courseTitle: lookup.courseTitle,
-      status: lookup.ticket.status,
+      checkedInAt: lookup.ticket.checked_in_at,
     };
   }
 
+  const state = lookup.ticket.type === "trial" ? "trial_checked_in" : "workshop_checked_in";
+  const message = state === "trial_checked_in" ? "trial lesson attendance confirmed" : "workshop ticket checked in";
+  logCheckInEvent("success", { ticketId: lookup.ticket.id, state });
+
   return {
-    message: lookup.ticket.type === "trial" ? "trial lesson attendance confirmed" : "workshop ticket checked in",
+    state,
+    message,
     tone: "success",
     ticketType: lookup.ticket.type,
     customerName: lookup.ticket.customer_name,
     courseTitle: lookup.courseTitle,
-    status: "checked_in",
+    checkedInAt: updated.checked_in_at,
   };
 }
 
@@ -127,6 +182,20 @@ function resultClasses(tone: CheckInResult["tone"]): string {
   if (tone === "warning") return "border-amber-200 bg-amber-50 text-amber-800";
   if (tone === "danger") return "border-red-200 bg-red-50 text-red-800";
   return "border-border bg-background text-foreground";
+}
+
+function getResultHint(result: CheckInResult): string | null {
+  if (result.state === "already_used") {
+    return result.checkedInAt
+      ? `Dieses Ticket wurde bereits am ${formatDateTime(result.checkedInAt)} eingecheckt.`
+      : "Dieses Ticket wurde bereits eingecheckt.";
+  }
+
+  if (result.state === "cancelled") return "Dieses Ticket wurde storniert und kann nicht mehr verwendet werden.";
+  if (result.state === "expired") return "Dieses Ticket ist abgelaufen und kann nicht mehr verwendet werden.";
+  if (result.state === "invalid") return "Kein gueltiges Ticket fuer diesen Token gefunden.";
+  if (result.checkedInAt) return `Check-in gespeichert am ${formatDateTime(result.checkedInAt)}.`;
+  return null;
 }
 
 export default async function DashboardCheckInPage({
@@ -138,6 +207,7 @@ export default async function DashboardCheckInPage({
   const sp = await searchParams;
   const token = getParam(sp, "token");
   const result = token ? await processTicketCheckIn(token, user.id) : null;
+  const resultHint = result ? getResultHint(result) : null;
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
@@ -166,6 +236,7 @@ export default async function DashboardCheckInPage({
       {result ? (
         <section className={`rounded-2xl border p-5 ${resultClasses(result.tone)}`}>
           <p className="text-lg font-semibold">{result.message}</p>
+          {resultHint ? <p className="mt-2 text-sm">{resultHint}</p> : null}
           {result.courseTitle ? (
             <p className="mt-2 text-sm">
               Angebot: <span className="font-medium">{result.courseTitle}</span>

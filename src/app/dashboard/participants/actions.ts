@@ -16,6 +16,8 @@ type ReservationMailRow = {
   last_name: string | null;
   email: string | null;
   status: string | null;
+  decision_status: string | null;
+  trial_ends_at: string | null;
 };
 
 type CourseMailRow = {
@@ -63,7 +65,7 @@ async function requireTeacher() {
 async function loadReservationContext(admin: ReturnType<typeof createSupabaseAdmin>, reservationId: string) {
   const { data: reservation, error: reservationError } = await admin
     .from("trial_reservations")
-    .select("id,course_id,first_name,last_name,email,status")
+    .select("id,course_id,first_name,last_name,email,status,decision_status,trial_ends_at")
     .eq("id", reservationId)
     .maybeSingle<ReservationMailRow>();
 
@@ -117,6 +119,10 @@ function getCustomerName(reservation: ReservationMailRow): string {
   return [reservation.first_name, reservation.last_name].filter(Boolean).join(" ").trim() || "dein Kind";
 }
 
+function canTakeDecision(reservation: ReservationMailRow): boolean {
+  return (reservation.decision_status ?? "pending") === "pending";
+}
+
 export async function approveTrialReservationAction(formData: FormData) {
   const reservationId = String(formData.get("reservationId") ?? "").trim();
   if (!reservationId) {
@@ -126,7 +132,7 @@ export async function approveTrialReservationAction(formData: FormData) {
   const user = await requireTeacher();
   const { ok, admin, context } = await assertTeacherOwnsReservation(user.id, reservationId);
 
-  if (!ok || !context || context.reservation.status !== "pending") {
+  if (!ok || !context || !canTakeDecision(context.reservation)) {
     redirect("/dashboard/participants");
   }
 
@@ -143,12 +149,22 @@ export async function approveTrialReservationAction(formData: FormData) {
     .from("trial_reservations")
     .update({
       status: "approved",
+      decision_status: "approved",
+      decision_taken_at: approvedAt,
+      decided_by: user.id,
       approved_at: approvedAt,
       rejected_at: null,
       registration_token: registrationToken,
       registration_expires_at: registrationExpiresAt,
+      registration_reminder_24h_sent_at: null,
+      registration_reminder_48h_sent_at: null,
+      registration_reminder_72h_sent_at: null,
+      registration_expired_email_sent_at: null,
+      teacher_decision_reminder_sent_at: null,
+      rejection_email_sent_at: null,
     })
-    .eq("id", reservationId);
+    .eq("id", reservationId)
+    .eq("decision_status", "pending");
 
   if (error) {
     logDecisionError("approve-reservation", error);
@@ -168,6 +184,12 @@ export async function approveTrialReservationAction(formData: FormData) {
         registrationUrl,
         registrationExpiresAt,
       });
+
+      await admin
+        .from("trial_reservations")
+        .update({ approval_email_sent_at: new Date().toISOString() })
+        .eq("id", reservationId)
+        .eq("decision_status", "approved");
     } catch (sendError) {
       logDecisionError("send-approval-email", sendError);
     }
@@ -185,8 +207,13 @@ export async function rejectTrialReservationAction(formData: FormData) {
   const user = await requireTeacher();
   const { ok, admin, context } = await assertTeacherOwnsReservation(user.id, reservationId);
 
-  if (!ok || !context || context.reservation.status !== "pending") {
+  if (!ok || !context || !canTakeDecision(context.reservation)) {
     redirect("/dashboard/participants");
+  }
+
+  const checkedIn = await hasCheckedInTrialTicket(admin, reservationId);
+  if (!checkedIn) {
+    redirect("/dashboard/participants?attendanceRequired=1");
   }
 
   const rejectedAt = new Date().toISOString();
@@ -194,12 +221,17 @@ export async function rejectTrialReservationAction(formData: FormData) {
     .from("trial_reservations")
     .update({
       status: "rejected",
+      decision_status: "rejected",
+      decision_taken_at: rejectedAt,
+      decided_by: user.id,
       approved_at: null,
       rejected_at: rejectedAt,
       registration_token: null,
       registration_expires_at: null,
+      approval_email_sent_at: null,
     })
-    .eq("id", reservationId);
+    .eq("id", reservationId)
+    .eq("decision_status", "pending");
 
   if (error) {
     logDecisionError("reject-reservation", error);
@@ -214,6 +246,12 @@ export async function rejectTrialReservationAction(formData: FormData) {
         customerName: getCustomerName(context.reservation),
         customerEmail: context.reservation.email,
       });
+
+      await admin
+        .from("trial_reservations")
+        .update({ rejection_email_sent_at: new Date().toISOString() })
+        .eq("id", reservationId)
+        .eq("decision_status", "rejected");
     } catch (sendError) {
       logDecisionError("send-rejection-email", sendError);
     }

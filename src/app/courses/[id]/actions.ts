@@ -9,7 +9,7 @@ import {
   sendTrialReservationConfirmationEmail,
   type TrialReservationEmailData,
 } from "@/lib/trial-reservation-emails";
-import { createTicketRecord } from "@/lib/tickets";
+import { issueTrialTicketForReservation } from "@/lib/tickets";
 import { computeUpcomingTrialSlots } from "./trial-slots";
 
 export type TrialReservationState = {
@@ -84,6 +84,11 @@ function logReservationError(context: string, error: unknown) {
   });
 }
 
+function logReservationEvent(message: string, payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === "production") return;
+  console.log("[trial reservation]", message, payload);
+}
+
 function formatReservationError(error: unknown): string {
   const supabaseError = (error ?? {}) as SupabaseLikeError;
   const base = "Reservierung fehlgeschlagen. Bitte versuche es erneut.";
@@ -149,16 +154,24 @@ async function triggerReservationEmails(
   let teacherNotificationSent = false;
 
   try {
+    logReservationEvent("customer email attempt", { reservationId: input.reservationId });
     await sendTrialReservationConfirmationEmail(input);
     confirmationSent = true;
+    logReservationEvent("customer email sent", { reservationId: input.reservationId });
   } catch (error) {
+    logReservationEvent("customer email failed", { reservationId: input.reservationId });
     logReservationError("send-customer-confirmation", error);
   }
 
   try {
+    logReservationEvent("teacher email attempt", { reservationId: input.reservationId });
     const result = await sendTeacherTrialReservationNotificationEmail(input);
     teacherNotificationSent = result !== null;
+    logReservationEvent(teacherNotificationSent ? "teacher email sent" : "teacher email skipped", {
+      reservationId: input.reservationId,
+    });
   } catch (error) {
+    logReservationEvent("teacher email failed", { reservationId: input.reservationId });
     logReservationError("send-teacher-notification", error);
   }
 
@@ -260,6 +273,7 @@ export async function reserveTrialAction(
       last_name: lastName,
       email,
       status: "pending",
+      decision_status: "pending",
       user_id: null,
       trial_starts_at: selectedSlot.startsAt,
       trial_ends_at: selectedSlot.endsAt,
@@ -279,12 +293,22 @@ export async function reserveTrialAction(
     return { error: formatReservationError(insertError) };
   }
 
-  const { ticket } = await createTicketRecord({
-    type: "trial",
+  logReservationEvent("reservation inserted", {
+    reservationId: inserted.id,
+    courseId,
+    email,
+  });
+
+  const { ticket, created } = await issueTrialTicketForReservation({
     trialReservationId: inserted.id,
     courseId,
     customerName: `${firstName} ${lastName}`.trim(),
     customerEmail: email,
+  });
+
+  logReservationEvent(created ? "trial ticket created" : "trial ticket reused", {
+    reservationId: inserted.id,
+    ticketId: ticket.id,
   });
 
   const mailContext = await loadMailContext(admin, courseId);

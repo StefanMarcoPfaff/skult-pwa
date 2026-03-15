@@ -1,6 +1,15 @@
 import { getResend } from "@/lib/resend";
 import { buildTicketCheckInUrl, buildTicketQrCodeDataUrl } from "@/lib/ticket-qr";
 
+/*
+ * MVP verification checklist:
+ * 1. Reserve a trial lesson.
+ * 2. Confirm the customer HTML email contains an embedded QR image.
+ * 3. Confirm the plain text email still includes the check-in URL.
+ * 4. Open /dashboard/check-in?token=<qr_token>.
+ * 5. Confirm the ticket status changes to checked_in.
+ */
+
 export type TrialReservationEmailData = {
   reservationId: string;
   courseTitle: string;
@@ -24,6 +33,22 @@ export type TrialRegistrationDecisionEmailData = {
   registrationExpiresAt?: string;
 };
 
+export type TrialRegistrationExpiredEmailData = TrialRegistrationDecisionEmailData & {
+  coursesOverviewUrl: string;
+};
+
+export type TeacherTrialDecisionReminderEmailData = {
+  reservationId: string;
+  courseTitle: string;
+  teacherName: string | null;
+  teacherEmail: string | null;
+  customerName: string;
+  customerEmail: string | null;
+  trialStartsAt: string;
+  trialEndsAt: string;
+  dashboardUrl: string;
+};
+
 function formatDateTimeRange(startsAt: string, endsAt: string): string {
   const start = new Date(startsAt);
   const end = new Date(endsAt);
@@ -43,7 +68,7 @@ function formatDateTimeRange(startsAt: string, endsAt: string): string {
   return `${date} | ${startTime}-${endTime}`;
 }
 
-function getQrLines(qrToken?: string | null) {
+async function getQrLines(qrToken?: string | null) {
   if (!qrToken) {
     return {
       html: "",
@@ -52,10 +77,11 @@ function getQrLines(qrToken?: string | null) {
   }
 
   const checkInUrl = buildTicketCheckInUrl(qrToken);
+  const qrDataUrl = await buildTicketQrCodeDataUrl(qrToken);
   return {
     html: `
       <p>Bitte bring dieses QR-Ticket mit. Es wird bei deiner Ankunft gescannt.</p>
-      <p><img src="${buildTicketQrCodeDataUrl(qrToken)}" alt="QR-Ticket fuer deine Probestunde" width="180" height="180" /></p>
+      <p><img src="${qrDataUrl}" alt="QR-Ticket fuer deine Probestunde" width="180" height="180" /></p>
       <p><a href="${checkInUrl}">${checkInUrl}</a></p>
     `,
     text: [
@@ -65,11 +91,11 @@ function getQrLines(qrToken?: string | null) {
   };
 }
 
-export function prepareCustomerTrialReservationConfirmation(data: TrialReservationEmailData) {
+export async function prepareCustomerTrialReservationConfirmation(data: TrialReservationEmailData) {
   const teacherLine = data.teacherName ? `<p><b>Dozent*in:</b> ${data.teacherName}</p>` : "";
   const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
   const dateLine = `<p><b>Termin:</b> ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}</p>`;
-  const qrLines = getQrLines(data.qrToken);
+  const qrLines = await getQrLines(data.qrToken);
 
   return {
     to: data.customerEmail,
@@ -254,33 +280,149 @@ export function prepareTrialRegistrationApprovedEmail(data: TrialRegistrationDec
   };
 }
 
-export function prepareTrialRegistrationRejectedEmail(data: TrialRegistrationDecisionEmailData) {
+function prepareTrialRegistrationReminderEmail(
+  data: TrialRegistrationDecisionEmailData,
+  input: { subject: string; heading: string; lead: string; remainingTime: string }
+) {
+  const expiresAtLine = data.registrationExpiresAt
+    ? `<p><b>Reserviert bis:</b> ${formatExpirationDateTime(data.registrationExpiresAt)}</p>`
+    : "";
+
   return {
     to: data.customerEmail,
-    subject: `Keine Anmeldung moeglich: ${data.courseTitle}`,
+    subject: input.subject,
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2>Aktuell ist keine Anmeldung moeglich</h2>
+        <h2>${input.heading}</h2>
         <p>Hallo ${data.customerName},</p>
-        <p>nach der Probestunde wurde entschieden, dass aktuell keine verbindliche Anmeldung fuer <b>${data.courseTitle}</b> moeglich ist.</p>
-        <p>Vielen Dank fuer dein Interesse und deine Teilnahme an der Probestunde.</p>
+        <p>${input.lead} fuer <b>${data.courseTitle}</b>.</p>
+        <p>Du hast noch ${input.remainingTime} Zeit, deine verbindliche Anmeldung abzuschliessen.</p>
+        <p><a href="${data.registrationUrl}">${data.registrationUrl}</a></p>
+        ${expiresAtLine}
         <p>Herzliche Gruesse<br />SKULT</p>
       </div>
     `,
     text: [
-      `Keine Anmeldung moeglich: ${data.courseTitle}`,
+      input.subject,
       `Hallo ${data.customerName},`,
-      `nach der Probestunde wurde entschieden, dass aktuell keine verbindliche Anmeldung fuer ${data.courseTitle} moeglich ist.`,
-      "Vielen Dank fuer dein Interesse und deine Teilnahme an der Probestunde.",
+      `${input.lead} fuer ${data.courseTitle}.`,
+      `Du hast noch ${input.remainingTime} Zeit, deine verbindliche Anmeldung abzuschliessen.`,
+      data.registrationUrl ? `Anmeldelink: ${data.registrationUrl}` : null,
+      data.registrationExpiresAt
+        ? `Reserviert bis: ${formatExpirationDateTime(data.registrationExpiresAt)}`
+        : null,
+      "Herzliche Gruesse",
+      "SKULT",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  };
+}
+
+export function prepareTrialRegistrationReminder24hEmail(data: TrialRegistrationDecisionEmailData) {
+  return prepareTrialRegistrationReminderEmail(data, {
+    subject: `Du hast noch 3 Tage Zeit: ${data.courseTitle}`,
+    heading: "Deine Anmeldung ist weiter fuer dich reserviert",
+    lead: "deine Freigabe ist weiterhin aktiv",
+    remainingTime: "3 Tage",
+  });
+}
+
+export function prepareTrialRegistrationReminder48hEmail(data: TrialRegistrationDecisionEmailData) {
+  return prepareTrialRegistrationReminderEmail(data, {
+    subject: `Du hast noch 2 Tage Zeit: ${data.courseTitle}`,
+    heading: "Erinnerung an deine Anmeldung",
+    lead: "dein Platz ist noch fuer dich reserviert",
+    remainingTime: "2 Tage",
+  });
+}
+
+export function prepareTrialRegistrationReminder72hEmail(data: TrialRegistrationDecisionEmailData) {
+  return prepareTrialRegistrationReminderEmail(data, {
+    subject: `Du hast noch 1 Tag Zeit: ${data.courseTitle}`,
+    heading: "Letzte Erinnerung fuer deine Anmeldung",
+    lead: "deine Freigabe laeuft bald ab",
+    remainingTime: "1 Tag",
+  });
+}
+
+export function prepareTrialRegistrationExpiredEmail(data: TrialRegistrationExpiredEmailData) {
+  return {
+    to: data.customerEmail,
+    subject: `Dein Anmeldelink ist abgelaufen: ${data.courseTitle}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+        <h2>Dein Anmeldelink ist abgelaufen</h2>
+        <p>Hallo ${data.customerName},</p>
+        <p>die Reservierung fuer deine verbindliche Anmeldung zu <b>${data.courseTitle}</b> ist inzwischen abgelaufen.</p>
+        <p>Wenn du weiterhin Interesse hast, schau dir gern unsere aktuellen Kurse an:</p>
+        <p><a href="${data.coursesOverviewUrl}">${data.coursesOverviewUrl}</a></p>
+        <p>Herzliche Gruesse<br />SKULT</p>
+      </div>
+    `,
+    text: [
+      `Dein Anmeldelink ist abgelaufen: ${data.courseTitle}`,
+      `Hallo ${data.customerName},`,
+      `die Reservierung fuer deine verbindliche Anmeldung zu ${data.courseTitle} ist inzwischen abgelaufen.`,
+      `Kursuebersicht: ${data.coursesOverviewUrl}`,
       "Herzliche Gruesse",
       "SKULT",
     ].join("\n"),
   };
 }
 
+export function prepareTrialRegistrationRejectedEmail(data: TrialRegistrationDecisionEmailData) {
+  return {
+    to: data.customerEmail,
+    subject: `Danke fuer deine Probestunde: ${data.courseTitle}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+        <h2>Vielen Dank fuer deine Probestunde</h2>
+        <p>Hallo ${data.customerName},</p>
+        <p>vielen Dank, dass du an der Probestunde fuer <b>${data.courseTitle}</b> teilgenommen hast.</p>
+        <p>Nach dem Termin wurde entschieden, dass die aktuelle Kursgruppe im Moment leider nicht der richtige Rahmen fuer dich ist.</p>
+        <p>Wir schaetzen dein Interesse sehr und wuerden uns freuen, wenn es zu einem spaeteren Zeitpunkt in einem anderen Format oder Kurs doch noch passt.</p>
+        <p>Herzliche Gruesse<br />SKULT</p>
+      </div>
+    `,
+    text: [
+      `Danke fuer deine Probestunde: ${data.courseTitle}`,
+      `Hallo ${data.customerName},`,
+      `vielen Dank, dass du an der Probestunde fuer ${data.courseTitle} teilgenommen hast.`,
+      "Die aktuelle Kursgruppe ist im Moment leider nicht der richtige Rahmen.",
+      "Wir wuerden uns freuen, wenn es spaeter in einem anderen Format oder Kurs doch noch passt.",
+      "Herzliche Gruesse",
+      "SKULT",
+    ].join("\n"),
+  };
+}
+
+export function prepareTeacherTrialDecisionReminderEmail(data: TeacherTrialDecisionReminderEmailData) {
+  return {
+    to: data.teacherEmail ?? "",
+    subject: `Bitte Entscheidung treffen: ${data.customerName} | ${data.courseTitle}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+        <h2>Probestunde besucht - Entscheidung offen</h2>
+        <p>${data.customerName} hat die Probestunde fuer <b>${data.courseTitle}</b> besucht.</p>
+        <p><b>Termin:</b> ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}</p>
+        <p>Bitte entscheide jetzt, ob du die Anmeldung freigeben oder absagen moechtest.</p>
+        <p><a href="${data.dashboardUrl}">${data.dashboardUrl}</a></p>
+      </div>
+    `,
+    text: [
+      `Bitte Entscheidung treffen: ${data.customerName} | ${data.courseTitle}`,
+      `${data.customerName} hat die Probestunde besucht.`,
+      `Termin: ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}`,
+      "Bitte entscheide jetzt, ob du die Anmeldung freigeben oder absagen moechtest.",
+      `Dashboard: ${data.dashboardUrl}`,
+    ].join("\n"),
+  };
+}
+
 export async function sendTrialReservationConfirmationEmail(data: TrialReservationEmailData) {
   const resend = getResend();
-  const email = prepareCustomerTrialReservationConfirmation(data);
+  const email = await prepareCustomerTrialReservationConfirmation(data);
   return resend.emails.send({
     from: "onboarding@resend.dev",
     to: email.to,
@@ -357,6 +499,74 @@ export async function sendTrialRegistrationApprovedEmail(data: TrialRegistration
 export async function sendTrialRegistrationRejectedEmail(data: TrialRegistrationDecisionEmailData) {
   const resend = getResend();
   const email = prepareTrialRegistrationRejectedEmail(data);
+  return resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: email.to,
+    subject: email.subject,
+    html: email.html,
+    text: email.text,
+  });
+}
+
+export async function sendTrialRegistrationReminder24hEmail(data: TrialRegistrationDecisionEmailData) {
+  const resend = getResend();
+  const email = prepareTrialRegistrationReminder24hEmail(data);
+  return resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: email.to,
+    subject: email.subject,
+    html: email.html,
+    text: email.text,
+  });
+}
+
+export async function sendTrialRegistrationReminder48hEmail(data: TrialRegistrationDecisionEmailData) {
+  const resend = getResend();
+  const email = prepareTrialRegistrationReminder48hEmail(data);
+  return resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: email.to,
+    subject: email.subject,
+    html: email.html,
+    text: email.text,
+  });
+}
+
+export async function sendTrialRegistrationReminder72hEmail(data: TrialRegistrationDecisionEmailData) {
+  const resend = getResend();
+  const email = prepareTrialRegistrationReminder72hEmail(data);
+  return resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: email.to,
+    subject: email.subject,
+    html: email.html,
+    text: email.text,
+  });
+}
+
+export async function sendTrialRegistrationExpiredEmail(data: TrialRegistrationExpiredEmailData) {
+  const resend = getResend();
+  const email = prepareTrialRegistrationExpiredEmail(data);
+  return resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: email.to,
+    subject: email.subject,
+    html: email.html,
+    text: email.text,
+  });
+}
+
+export async function sendTeacherTrialDecisionReminderEmail(data: TeacherTrialDecisionReminderEmailData) {
+  if (!data.teacherEmail) {
+    console.log("[trial-decision-reminder-email] missing teacher email", {
+      reservationId: data.reservationId,
+      courseTitle: data.courseTitle,
+    });
+    return null;
+  }
+
+  const resend = getResend();
+  const email = prepareTeacherTrialDecisionReminderEmail(data);
   return resend.emails.send({
     from: "onboarding@resend.dev",
     to: email.to,

@@ -1,6 +1,14 @@
 import { getResend } from "@/lib/resend";
 import { buildTicketCheckInUrl, buildTicketQrCodeDataUrl } from "@/lib/ticket-qr";
 
+/*
+ * MVP verification checklist:
+ * 1. Complete a paid workshop booking.
+ * 2. Confirm exactly one public.tickets row exists for the booking.
+ * 3. Confirm the customer HTML email contains an embedded QR image.
+ * 4. Open /dashboard/check-in?token=<qr_token> and check in once.
+ */
+
 export type WorkshopBookingEmailData = {
   bookingId: string;
   workshopTitle: string;
@@ -39,11 +47,11 @@ function formatDateTimeRange(startsAt: string | null, endsAt: string | null): st
   return `${date} | ${startTime}-${endTime}`;
 }
 
-export function prepareWorkshopCustomerBookingConfirmation(data: WorkshopBookingEmailData) {
+export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopBookingEmailData) {
   const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
   const teacherLine = data.teacherName ? `<p><b>Dozent*in:</b> ${data.teacherName}</p>` : "";
   const qrUrl = buildTicketCheckInUrl(data.qrToken);
-  const qrDataUrl = buildTicketQrCodeDataUrl(data.qrToken);
+  const qrDataUrl = await buildTicketQrCodeDataUrl(data.qrToken);
 
   return {
     to: data.customerEmail,
@@ -106,7 +114,7 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
 
 export async function sendWorkshopCustomerBookingConfirmationEmail(data: WorkshopBookingEmailData) {
   const resend = getResend();
-  const email = prepareWorkshopCustomerBookingConfirmation(data);
+  const email = await prepareWorkshopCustomerBookingConfirmation(data);
   return resend.emails.send({
     from: "onboarding@resend.dev",
     to: email.to,

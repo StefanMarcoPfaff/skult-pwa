@@ -14,9 +14,12 @@ type TrialReservationRow = {
   last_name: string | null;
   email: string | null;
   status: string | null;
+  decision_status: string | null;
   created_at: string | null;
   approved_at: string | null;
   rejected_at: string | null;
+  decision_taken_at: string | null;
+  trial_ends_at: string | null;
   registration_expires_at: string | null;
   ticket_status?: string | null;
   ticket_checked_in_at?: string | null;
@@ -32,11 +35,16 @@ function formatRequestedAt(value: string | null): string {
   });
 }
 
-function formatStatus(status: string | null): string {
-  if (status === "pending") return "Ausstehend";
-  if (status === "approved") return "Freigegeben";
-  if (status === "rejected") return "Abgelehnt";
-  return status ?? "-";
+function formatStatus(status: string | null, ticketStatus: string | null): string {
+  const decisionStatus = status ?? "pending";
+  if (decisionStatus === "approved") return "Freigegeben";
+  if (decisionStatus === "rejected") return "Abgesagt";
+  if (ticketStatus === "checked_in") return "Entscheidung offen";
+  return "Ausstehend";
+}
+
+function needsTeacherDecision(reservation: TrialReservationRow): boolean {
+  return (reservation.decision_status ?? "pending") === "pending" && reservation.ticket_status === "checked_in";
 }
 
 export default async function DashboardParticipantsPage({
@@ -78,10 +86,10 @@ export default async function DashboardParticipantsPage({
     const { data } = await supabase
       .from("trial_reservations")
       .select(
-        "id,course_id,first_name,last_name,email,status,created_at,approved_at,rejected_at,registration_expires_at"
+        "id,course_id,first_name,last_name,email,status,decision_status,created_at,approved_at,rejected_at,decision_taken_at,trial_ends_at,registration_expires_at"
       )
       .in("course_id", courseIds)
-      .order("created_at", { ascending: false })
+      .order("trial_starts_at", { ascending: false })
       .returns<TrialReservationRow[]>();
 
     reservations = data ?? [];
@@ -113,6 +121,13 @@ export default async function DashboardParticipantsPage({
           ticket_checked_in_at: ticket?.checkedInAt ?? null,
         };
       });
+
+      reservations.sort((left, right) => {
+        const leftPriority = needsTeacherDecision(left) ? 0 : 1;
+        const rightPriority = needsTeacherDecision(right) ? 0 : 1;
+        if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+        return String(right.trial_ends_at ?? "").localeCompare(String(left.trial_ends_at ?? ""));
+      });
     }
   }
 
@@ -121,7 +136,7 @@ export default async function DashboardParticipantsPage({
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold">Teilnehmer*innen</h1>
         <p className="text-sm text-muted-foreground">
-          Hier siehst du aktuelle Probestunden-Anfragen fuer deine Kurse.
+          Hier siehst du Probestunden, Check-ins und offene Entscheidungen fuer deine Kurse.
         </p>
       </header>
 
@@ -133,13 +148,13 @@ export default async function DashboardParticipantsPage({
 
       {rejected ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Der Probeschueler kann sich nicht fuer den Kurs anmelden.
+          Der Probeschueler wurde freundlich abgesagt.
         </p>
       ) : null}
 
       {attendanceRequired ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Eine Freigabe ist erst moeglich, nachdem das Probestunden-Ticket eingecheckt wurde.
+          Eine Entscheidung ist erst moeglich, nachdem das Probestunden-Ticket eingecheckt wurde.
         </p>
       ) : null}
 
@@ -160,20 +175,20 @@ export default async function DashboardParticipantsPage({
                 <th className="px-4 py-3 font-semibold">Kurs</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
                 <th className="px-4 py-3 font-semibold">Check-in</th>
-                <th className="px-4 py-3 font-semibold">Angefragt am</th>
+                <th className="px-4 py-3 font-semibold">Probestunde beendet</th>
                 <th className="px-4 py-3 font-semibold">Aktionen</th>
               </tr>
             </thead>
             <tbody className="divide-y text-sm">
               {reservations.map((reservation) => (
-                <tr key={reservation.id}>
+                <tr key={reservation.id} className={needsTeacherDecision(reservation) ? "bg-amber-50/40" : undefined}>
                   <td className="px-4 py-3">{reservation.first_name ?? "-"}</td>
                   <td className="px-4 py-3">{reservation.last_name ?? "-"}</td>
                   <td className="px-4 py-3">{reservation.email ?? "-"}</td>
                   <td className="px-4 py-3">{courseTitleById.get(reservation.course_id) ?? "-"}</td>
                   <td className="px-4 py-3">
                     <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-medium">
-                      {formatStatus(reservation.status)}
+                      {formatStatus(reservation.decision_status, reservation.ticket_status ?? null)}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -183,46 +198,40 @@ export default async function DashboardParticipantsPage({
                         ? "Noch nicht eingecheckt"
                         : reservation.ticket_status ?? "-"}
                   </td>
-                  <td className="px-4 py-3">{formatRequestedAt(reservation.created_at)}</td>
+                  <td className="px-4 py-3">{formatRequestedAt(reservation.trial_ends_at)}</td>
                   <td className="px-4 py-3">
-                    {reservation.status === "pending" ? (
+                    {needsTeacherDecision(reservation) ? (
                       <div className="flex flex-wrap gap-2">
-                        {reservation.ticket_status === "checked_in" ? (
-                          <form action={approveTrialReservationAction}>
-                            <input type="hidden" name="reservationId" value={reservation.id} />
-                            <button
-                              type="submit"
-                              className="inline-flex rounded-xl border border-green-300 bg-green-50 px-3 py-2 text-xs font-semibold text-green-800"
-                            >
-                              Zur Anmeldung freigeben
-                            </button>
-                          </form>
-                        ) : (
-                          <span className="inline-flex items-center rounded-xl border px-3 py-2 text-xs text-muted-foreground">
-                            Freigabe erst nach Check-in moeglich
-                          </span>
-                        )}
+                        <form action={approveTrialReservationAction}>
+                          <input type="hidden" name="reservationId" value={reservation.id} />
+                          <button
+                            type="submit"
+                            className="inline-flex rounded-xl border border-green-300 bg-green-50 px-3 py-2 text-xs font-semibold text-green-800"
+                          >
+                            Zur Anmeldung freigeben
+                          </button>
+                        </form>
                         <form action={rejectTrialReservationAction}>
                           <input type="hidden" name="reservationId" value={reservation.id} />
                           <button
                             type="submit"
                             className="inline-flex rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"
                           >
-                            Anmeldung ablehnen
+                            Absagen
                           </button>
                         </form>
                       </div>
-                    ) : reservation.status === "approved" && reservation.registration_expires_at ? (
+                    ) : (reservation.decision_status ?? "pending") === "pending" ? (
                       <span className="text-xs text-muted-foreground">
-                        Reserviert bis {formatRequestedAt(reservation.registration_expires_at)}
+                        Entscheidung nach Check-in moeglich
                       </span>
-                    ) : reservation.status === "rejected" && reservation.rejected_at ? (
+                    ) : reservation.decision_status === "approved" && reservation.registration_expires_at ? (
                       <span className="text-xs text-muted-foreground">
-                        Abgelehnt am {formatRequestedAt(reservation.rejected_at)}
+                        Freigegeben am {formatRequestedAt(reservation.decision_taken_at ?? reservation.approved_at)}
                       </span>
-                    ) : reservation.status === "approved" && reservation.approved_at ? (
+                    ) : reservation.decision_status === "rejected" ? (
                       <span className="text-xs text-muted-foreground">
-                        Freigegeben am {formatRequestedAt(reservation.approved_at)}
+                        Abgesagt am {formatRequestedAt(reservation.decision_taken_at ?? reservation.rejected_at)}
                       </span>
                     ) : (
                       <span className="text-xs text-muted-foreground">-</span>

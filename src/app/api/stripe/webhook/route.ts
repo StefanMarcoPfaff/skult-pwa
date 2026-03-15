@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { createTicketRecord } from "@/lib/tickets";
+import { issueWorkshopTicketForBooking } from "@/lib/tickets";
 import {
   sendWorkshopCustomerBookingConfirmationEmail,
   sendWorkshopTeacherBookingNotificationEmail,
@@ -34,6 +34,11 @@ type ProfileRow = {
   first_name: string | null;
   last_name: string | null;
 };
+
+function logWebhookEvent(message: string, payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === "production") return;
+  console.log("[stripe-webhook]", message, payload);
+}
 
 export async function POST(req: Request) {
   const sig = req.headers.get("stripe-signature");
@@ -98,12 +103,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Booking update failed" }, { status: 500 });
     }
 
-    const { ticket, created } = await createTicketRecord({
-      type: "workshop",
+    const { ticket, created } = await issueWorkshopTicketForBooking({
       bookingId,
       courseId: courseId ?? booking.course_id,
       customerName,
       customerEmail,
+    });
+
+    logWebhookEvent(created ? "workshop ticket created" : "workshop ticket reused", {
+      bookingId,
+      ticketId: ticket.id,
     });
 
     if (created) {
@@ -157,14 +166,22 @@ export async function POST(req: Request) {
         };
 
         try {
+          logWebhookEvent("workshop customer email attempt", { bookingId });
           await sendWorkshopCustomerBookingConfirmationEmail(emailData);
+          logWebhookEvent("workshop customer email sent", { bookingId });
         } catch (error) {
+          logWebhookEvent("workshop customer email failed", { bookingId });
           console.error("[stripe-webhook] workshop customer email failed", error);
         }
 
         try {
-          await sendWorkshopTeacherBookingNotificationEmail(emailData);
+          logWebhookEvent("workshop teacher email attempt", { bookingId });
+          const result = await sendWorkshopTeacherBookingNotificationEmail(emailData);
+          logWebhookEvent(result ? "workshop teacher email sent" : "workshop teacher email skipped", {
+            bookingId,
+          });
         } catch (error) {
+          logWebhookEvent("workshop teacher email failed", { bookingId });
           console.error("[stripe-webhook] workshop teacher email failed", error);
         }
       }

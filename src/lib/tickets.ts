@@ -43,6 +43,30 @@ type SupabaseErrorLike = {
   message?: string;
 };
 
+type TicketIssueResult = {
+  ticket: TicketRow;
+  created: boolean;
+};
+
+/*
+ * MVP verification checklist:
+ * 1. Reserve a trial lesson or complete a paid workshop booking.
+ * 2. Confirm exactly one row exists in public.tickets for the reservation/booking.
+ * 3. Confirm the customer email HTML contains an embedded QR image.
+ * 4. Open /dashboard/check-in?token=<qr_token>.
+ * 5. Confirm the ticket status changes from issued to checked_in.
+ * 6. Confirm trial approval is blocked until the ticket is checked in.
+ */
+
+function isDev(): boolean {
+  return process.env.NODE_ENV !== "production";
+}
+
+function logTicketEvent(message: string, payload: Record<string, unknown>) {
+  if (!isDev()) return;
+  console.log("[tickets]", message, payload);
+}
+
 function isDuplicateError(error: unknown): boolean {
   const supabaseError = (error ?? {}) as SupabaseErrorLike;
   return supabaseError.code === "23505" || /duplicate key|unique/i.test(String(supabaseError.message ?? ""));
@@ -76,9 +100,7 @@ async function loadExistingTicketForInput(input: TicketCreateInput): Promise<Tic
   return null;
 }
 
-export async function createTicketRecord(
-  input: TicketCreateInput
-): Promise<{ ticket: TicketRow; created: boolean }> {
+async function createTicketRecordInternal(input: TicketCreateInput): Promise<TicketIssueResult> {
   const existing = await loadExistingTicketForInput(input);
   if (existing) {
     return { ticket: existing, created: false };
@@ -110,6 +132,54 @@ export async function createTicketRecord(
   }
 
   throw error;
+}
+
+export async function createTicketRecord(input: TicketCreateInput): Promise<TicketIssueResult> {
+  return createTicketRecordInternal(input);
+}
+
+export async function issueTrialTicketForReservation(input: {
+  trialReservationId: string;
+  courseId: string | null;
+  customerName: string;
+  customerEmail: string;
+}): Promise<TicketIssueResult> {
+  const result = await createTicketRecordInternal({
+    type: "trial",
+    trialReservationId: input.trialReservationId,
+    courseId: input.courseId,
+    customerName: input.customerName,
+    customerEmail: input.customerEmail,
+  });
+
+  logTicketEvent(result.created ? "trial ticket created" : "trial ticket reused", {
+    reservationId: input.trialReservationId,
+    ticketId: result.ticket.id,
+  });
+
+  return result;
+}
+
+export async function issueWorkshopTicketForBooking(input: {
+  bookingId: string;
+  courseId: string | null;
+  customerName: string;
+  customerEmail: string;
+}): Promise<TicketIssueResult> {
+  const result = await createTicketRecordInternal({
+    type: "workshop",
+    bookingId: input.bookingId,
+    courseId: input.courseId,
+    customerName: input.customerName,
+    customerEmail: input.customerEmail,
+  });
+
+  logTicketEvent(result.created ? "workshop ticket created" : "workshop ticket reused", {
+    bookingId: input.bookingId,
+    ticketId: result.ticket.id,
+  });
+
+  return result;
 }
 
 export async function loadTicketByQrToken(qrToken: string): Promise<TicketLookup | null> {

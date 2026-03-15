@@ -1,6 +1,4 @@
-import QRCode from "react-qr-code";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import QRCode from "qrcode";
 
 const DEFAULT_SITE_URL = "http://localhost:3000";
 
@@ -14,16 +12,11 @@ export function buildTicketCheckInUrl(qrToken: string): string {
   return url.toString();
 }
 
-export function buildTicketQrCodeDataUrl(qrToken: string): string {
-  const svg = renderToStaticMarkup(
-    createElement(QRCode, {
-      value: buildTicketCheckInUrl(qrToken),
-      size: 180,
-      bgColor: "#ffffff",
-      fgColor: "#111111",
-      level: "M",
-    })
-  );
-
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+export async function buildTicketQrCodeDataUrl(qrToken: string): Promise<string> {
+  return QRCode.toDataURL(buildTicketCheckInUrl(qrToken), {
+    errorCorrectionLevel: "M",
+    margin: 1,
+    width: 360,
+    type: "image/png",
+  });
 }
