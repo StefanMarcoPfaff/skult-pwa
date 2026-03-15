@@ -86,6 +86,19 @@ async function loadReservationContext(admin: ReturnType<typeof createSupabaseAdm
   return { reservation, course };
 }
 
+async function hasCheckedInTrialTicket(
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  reservationId: string
+): Promise<boolean> {
+  const { data } = await admin
+    .from("tickets")
+    .select("id,status")
+    .eq("trial_reservation_id", reservationId)
+    .maybeSingle<{ id: string; status: string | null }>();
+
+  return data?.status === "checked_in";
+}
+
 async function assertTeacherOwnsReservation(teacherId: string, reservationId: string) {
   const admin = createSupabaseAdmin();
   const context = await loadReservationContext(admin, reservationId);
@@ -115,6 +128,11 @@ export async function approveTrialReservationAction(formData: FormData) {
 
   if (!ok || !context || context.reservation.status !== "pending") {
     redirect("/dashboard/participants");
+  }
+
+  const checkedIn = await hasCheckedInTrialTicket(admin, reservationId);
+  if (!checkedIn) {
+    redirect("/dashboard/participants?attendanceRequired=1");
   }
 
   const registrationToken = generateRegistrationToken();

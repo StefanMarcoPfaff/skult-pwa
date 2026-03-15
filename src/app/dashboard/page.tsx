@@ -17,7 +17,6 @@ export default async function DashboardPage({
   } = await supabase.auth.getUser();
 
   if (!user) {
-    // optional: redirect("/login");
     return <div>Bitte einloggen.</div>;
   }
 
@@ -47,8 +46,7 @@ export default async function DashboardPage({
         <div className="space-y-2">
           <h1 className="text-3xl font-semibold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">
-            Hier verwaltest du dein Profil, deine Angebote und später deine
-            Teilnehmer*innen.
+            Hier verwaltest du dein Profil, deine Angebote und spaeter deine Teilnehmer*innen.
           </p>
           <p className="text-sm text-muted-foreground">
             Eingeloggt als <span className="font-medium text-foreground">{user.email}</span>
@@ -69,13 +67,13 @@ export default async function DashboardPage({
           <p className="mt-1 text-2xl font-semibold">{totalOffersCount ?? 0}</p>
         </div>
         <div className="rounded-2xl border p-4">
-          <p className="text-sm text-muted-foreground">Veröffentlichte Angebote</p>
+          <p className="text-sm text-muted-foreground">Veroeffentlichte Angebote</p>
           <p className="mt-1 text-2xl font-semibold">{publishedOffersCount ?? 0}</p>
         </div>
         <div className="rounded-2xl border p-4">
           <p className="text-sm text-muted-foreground">Profilstatus</p>
           <p className="mt-1 text-base font-semibold">
-            {profileComplete ? "Profil vollständig" : "Profil unvollständig"}
+            {profileComplete ? "Profil vollstaendig" : "Profil unvollstaendig"}
           </p>
         </div>
       </section>
@@ -84,8 +82,7 @@ export default async function DashboardPage({
         <article className="rounded-2xl border p-5">
           <h2 className="text-lg font-semibold">Mein Profil</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Bearbeite deine persönlichen Angaben, Selbstbeschreibung und
-            Auszahlungsdaten.
+            Bearbeite deine persoenlichen Angaben, Selbstbeschreibung und Auszahlungsdaten.
           </p>
           <Link
             href="/dashboard/profile"
@@ -119,14 +116,22 @@ export default async function DashboardPage({
         <article className="rounded-2xl border p-5">
           <h2 className="text-lg font-semibold">Teilnehmer*innen</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Hier siehst du später, wer sich für deine Kurse und Workshops angemeldet hat.
+            Hier siehst du spaeter, wer sich fuer deine Kurse und Workshops angemeldet hat.
           </p>
-          <Link
-            href="/dashboard/participants"
-            className="mt-4 inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
-          >
-            Zu Teilnehmer*innen
-          </Link>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href="/dashboard/participants"
+              className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
+            >
+              Zu Teilnehmer*innen
+            </Link>
+            <Link
+              href="/dashboard/check-in"
+              className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
+            >
+              Ticket-Check-in
+            </Link>
+          </div>
         </article>
       </section>
     </main>

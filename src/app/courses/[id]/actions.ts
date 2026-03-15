@@ -9,6 +9,7 @@ import {
   sendTrialReservationConfirmationEmail,
   type TrialReservationEmailData,
 } from "@/lib/trial-reservation-emails";
+import { createTicketRecord } from "@/lib/tickets";
 import { computeUpcomingTrialSlots } from "./trial-slots";
 
 export type TrialReservationState = {
@@ -278,6 +279,14 @@ export async function reserveTrialAction(
     return { error: formatReservationError(insertError) };
   }
 
+  const { ticket } = await createTicketRecord({
+    type: "trial",
+    trialReservationId: inserted.id,
+    courseId,
+    customerName: `${firstName} ${lastName}`.trim(),
+    customerEmail: email,
+  });
+
   const mailContext = await loadMailContext(admin, courseId);
   if (mailContext) {
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -293,6 +302,7 @@ export async function reserveTrialAction(
       trialStartsAt: selectedSlot.startsAt,
       trialEndsAt: selectedSlot.endsAt,
       cancelUrl,
+      qrToken: ticket.qr_token,
     });
   }
 

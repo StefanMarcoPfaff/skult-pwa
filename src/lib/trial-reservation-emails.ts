@@ -1,4 +1,5 @@
 import { getResend } from "@/lib/resend";
+import { buildTicketCheckInUrl, buildTicketQrCodeDataUrl } from "@/lib/ticket-qr";
 
 export type TrialReservationEmailData = {
   reservationId: string;
@@ -11,6 +12,7 @@ export type TrialReservationEmailData = {
   trialStartsAt: string;
   trialEndsAt: string;
   cancelUrl: string;
+  qrToken?: string | null;
 };
 
 export type TrialRegistrationDecisionEmailData = {
@@ -41,10 +43,33 @@ function formatDateTimeRange(startsAt: string, endsAt: string): string {
   return `${date} | ${startTime}-${endTime}`;
 }
 
+function getQrLines(qrToken?: string | null) {
+  if (!qrToken) {
+    return {
+      html: "",
+      text: [] as string[],
+    };
+  }
+
+  const checkInUrl = buildTicketCheckInUrl(qrToken);
+  return {
+    html: `
+      <p>Bitte bring dieses QR-Ticket mit. Es wird bei deiner Ankunft gescannt.</p>
+      <p><img src="${buildTicketQrCodeDataUrl(qrToken)}" alt="QR-Ticket fuer deine Probestunde" width="180" height="180" /></p>
+      <p><a href="${checkInUrl}">${checkInUrl}</a></p>
+    `,
+    text: [
+      "Bitte bring dieses QR-Ticket mit. Es wird bei deiner Ankunft gescannt.",
+      `Check-in-Link: ${checkInUrl}`,
+    ],
+  };
+}
+
 export function prepareCustomerTrialReservationConfirmation(data: TrialReservationEmailData) {
   const teacherLine = data.teacherName ? `<p><b>Dozent*in:</b> ${data.teacherName}</p>` : "";
   const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
   const dateLine = `<p><b>Termin:</b> ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}</p>`;
+  const qrLines = getQrLines(data.qrToken);
 
   return {
     to: data.customerEmail,
@@ -53,15 +78,16 @@ export function prepareCustomerTrialReservationConfirmation(data: TrialReservati
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
         <h2>Deine Probestunden-Reservierung war erfolgreich</h2>
         <p>Hallo ${data.customerName},</p>
-        <p>vielen Dank für deine Anfrage. Deine Probestunde für <b>${data.courseTitle}</b> wurde erfolgreich reserviert.</p>
+        <p>vielen Dank fuer deine Anfrage. Deine Probestunde fuer <b>${data.courseTitle}</b> wurde erfolgreich reserviert.</p>
         ${teacherLine}
         ${locationLine}
         ${dateLine}
-        <p>Wenn du den Termin doch nicht wahrnehmen kannst, sage bitte möglichst frühzeitig ab, damit der Platz wieder frei wird.</p>
-        <p>Über diesen Link kannst du deine Reservierung stornieren:</p>
+        ${qrLines.html}
+        <p>Wenn du den Termin doch nicht wahrnehmen kannst, sage bitte moeglichst fruehzeitig ab, damit der Platz wieder frei wird.</p>
+        <p>Ueber diesen Link kannst du deine Reservierung stornieren:</p>
         <p><a href="${data.cancelUrl}">${data.cancelUrl}</a></p>
         <p>Wir freuen uns auf dich.</p>
-        <p>Herzliche Grüße<br />SKULT</p>
+        <p>Herzliche Gruesse<br />SKULT</p>
       </div>
     `,
     text: [
@@ -71,9 +97,10 @@ export function prepareCustomerTrialReservationConfirmation(data: TrialReservati
       data.teacherName ? `Dozent*in: ${data.teacherName}` : null,
       data.location ? `Ort: ${data.location}` : null,
       `Termin: ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}`,
+      ...qrLines.text,
       `Falls du nicht teilnehmen kannst, storniere bitte rechtzeitig: ${data.cancelUrl}`,
       "Wir freuen uns auf dich.",
-      "Herzliche Grüße",
+      "Herzliche Gruesse",
       "SKULT",
     ]
       .filter(Boolean)
@@ -93,26 +120,26 @@ export function prepareCustomerTrialReservationReminder(data: TrialReservationEm
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
         <h2>Erinnerung an deine Probestunde morgen</h2>
         <p>Hallo ${data.customerName},</p>
-        <p>morgen ist deine reservierte Probestunde für <b>${data.courseTitle}</b>.</p>
+        <p>morgen ist deine reservierte Probestunde fuer <b>${data.courseTitle}</b>.</p>
         ${teacherLine}
         ${locationLine}
         ${dateLine}
-        <p>Falls du den Termin doch nicht wahrnehmen kannst, storniere bitte rechtzeitig über diesen Link:</p>
+        <p>Falls du den Termin doch nicht wahrnehmen kannst, storniere bitte rechtzeitig ueber diesen Link:</p>
         <p><a href="${data.cancelUrl}">${data.cancelUrl}</a></p>
-        <p>Wir wünschen dir viel Freude bei deiner Probestunde.</p>
-        <p>Herzliche Grüße<br />SKULT</p>
+        <p>Wir wuenschen dir viel Freude bei deiner Probestunde.</p>
+        <p>Herzliche Gruesse<br />SKULT</p>
       </div>
     `,
     text: [
       "Erinnerung an deine Probestunde morgen",
       `Hallo ${data.customerName},`,
-      `morgen ist deine reservierte Probestunde für ${data.courseTitle}.`,
+      `morgen ist deine reservierte Probestunde fuer ${data.courseTitle}.`,
       data.teacherName ? `Dozent*in: ${data.teacherName}` : null,
       data.location ? `Ort: ${data.location}` : null,
       `Termin: ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}`,
       `Falls du nicht teilnehmen kannst, storniere bitte rechtzeitig: ${data.cancelUrl}`,
-      "Wir wünschen dir viel Freude bei deiner Probestunde.",
-      "Herzliche Grüße",
+      "Wir wuenschen dir viel Freude bei deiner Probestunde.",
+      "Herzliche Gruesse",
       "SKULT",
     ]
       .filter(Boolean)
@@ -131,21 +158,21 @@ export function prepareTeacherTrialReservationNotification(data: TrialReservatio
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
         <h2>Neue Probestunden-Reservierung</h2>
-        <p>Für deinen Kurs <b>${data.courseTitle}</b> wurde eine neue Probestunde reserviert.</p>
+        <p>Fuer deinen Kurs <b>${data.courseTitle}</b> wurde eine neue Probestunde reserviert.</p>
         <p><b>Name:</b> ${data.customerName}</p>
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
         ${locationLine}
         ${dateLine}
-        <p>Eine erfolgreiche Probestunde kann später in eine reguläre Anmeldung übergehen.</p>
+        <p>Eine erfolgreiche Probestunde kann spaeter in eine regulaere Anmeldung uebergehen.</p>
       </div>
     `,
     text: [
-      `Neue Probestunden-Reservierung für ${data.courseTitle}`,
+      `Neue Probestunden-Reservierung fuer ${data.courseTitle}`,
       `Name: ${data.customerName}`,
       `E-Mail: ${data.customerEmail}`,
       data.location ? `Ort: ${data.location}` : null,
       `Termin: ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}`,
-      "Hinweis: Diese Probestunde kann später in eine reguläre Anmeldung übergehen.",
+      "Hinweis: Diese Probestunde kann spaeter in eine regulaere Anmeldung uebergehen.",
     ]
       .filter(Boolean)
       .join("\n"),
@@ -163,7 +190,7 @@ export function prepareTeacherTrialReservationCancellation(data: TrialReservatio
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
         <h2>Probestunden-Reservierung wurde storniert</h2>
-        <p>Eine Probestunden-Reservierung für deinen Kurs <b>${data.courseTitle}</b> wurde storniert.</p>
+        <p>Eine Probestunden-Reservierung fuer deinen Kurs <b>${data.courseTitle}</b> wurde storniert.</p>
         <p><b>Name:</b> ${data.customerName}</p>
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
         ${locationLine}
@@ -171,7 +198,7 @@ export function prepareTeacherTrialReservationCancellation(data: TrialReservatio
       </div>
     `,
     text: [
-      `Eine Probestunden-Reservierung für ${data.courseTitle} wurde storniert.`,
+      `Eine Probestunden-Reservierung fuer ${data.courseTitle} wurde storniert.`,
       `Name: ${data.customerName}`,
       `E-Mail: ${data.customerEmail}`,
       data.location ? `Ort: ${data.location}` : null,

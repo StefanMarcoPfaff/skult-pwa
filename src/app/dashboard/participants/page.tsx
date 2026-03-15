@@ -18,6 +18,8 @@ type TrialReservationRow = {
   approved_at: string | null;
   rejected_at: string | null;
   registration_expires_at: string | null;
+  ticket_status?: string | null;
+  ticket_checked_in_at?: string | null;
 };
 
 function formatRequestedAt(value: string | null): string {
@@ -45,8 +47,12 @@ export default async function DashboardParticipantsPage({
   const sp = await searchParams;
   const approvedParam = Array.isArray(sp.approved) ? sp.approved[0] : sp.approved;
   const rejectedParam = Array.isArray(sp.rejected) ? sp.rejected[0] : sp.rejected;
+  const attendanceRequiredParam = Array.isArray(sp.attendanceRequired)
+    ? sp.attendanceRequired[0]
+    : sp.attendanceRequired;
   const approved = approvedParam === "1";
   const rejected = rejectedParam === "1";
+  const attendanceRequired = attendanceRequiredParam === "1";
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -77,7 +83,37 @@ export default async function DashboardParticipantsPage({
       .in("course_id", courseIds)
       .order("created_at", { ascending: false })
       .returns<TrialReservationRow[]>();
+
     reservations = data ?? [];
+
+    if (reservations.length > 0) {
+      const { data: tickets } = await supabase
+        .from("tickets")
+        .select("trial_reservation_id,status,checked_in_at")
+        .in(
+          "trial_reservation_id",
+          reservations.map((reservation) => reservation.id)
+        )
+        .returns<Array<{ trial_reservation_id: string | null; status: string | null; checked_in_at: string | null }>>();
+
+      const ticketByReservationId = new Map(
+        (tickets ?? [])
+          .filter((ticket) => ticket.trial_reservation_id)
+          .map((ticket) => [
+            ticket.trial_reservation_id as string,
+            { status: ticket.status, checkedInAt: ticket.checked_in_at },
+          ])
+      );
+
+      reservations = reservations.map((reservation) => {
+        const ticket = ticketByReservationId.get(reservation.id);
+        return {
+          ...reservation,
+          ticket_status: ticket?.status ?? null,
+          ticket_checked_in_at: ticket?.checkedInAt ?? null,
+        };
+      });
+    }
   }
 
   return (
@@ -85,19 +121,25 @@ export default async function DashboardParticipantsPage({
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold">Teilnehmer*innen</h1>
         <p className="text-sm text-muted-foreground">
-          Hier siehst du aktuelle Probestunden-Anfragen für deine Kurse.
+          Hier siehst du aktuelle Probestunden-Anfragen fuer deine Kurse.
         </p>
       </header>
 
       {approved ? (
         <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Der Probeschüler wurde für die Anmeldung freigegeben.
+          Der Probeschueler wurde fuer die Anmeldung freigegeben.
         </p>
       ) : null}
 
       {rejected ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Der Probeschüler kann sich nicht für den Kurs anmelden.
+          Der Probeschueler kann sich nicht fuer den Kurs anmelden.
+        </p>
+      ) : null}
+
+      {attendanceRequired ? (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Eine Freigabe ist erst moeglich, nachdem das Probestunden-Ticket eingecheckt wurde.
         </p>
       ) : null}
 
@@ -117,6 +159,7 @@ export default async function DashboardParticipantsPage({
                 <th className="px-4 py-3 font-semibold">E-Mail</th>
                 <th className="px-4 py-3 font-semibold">Kurs</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
+                <th className="px-4 py-3 font-semibold">Check-in</th>
                 <th className="px-4 py-3 font-semibold">Angefragt am</th>
                 <th className="px-4 py-3 font-semibold">Aktionen</th>
               </tr>
@@ -133,19 +176,32 @@ export default async function DashboardParticipantsPage({
                       {formatStatus(reservation.status)}
                     </span>
                   </td>
+                  <td className="px-4 py-3">
+                    {reservation.ticket_status === "checked_in"
+                      ? `Eingecheckt am ${formatRequestedAt(reservation.ticket_checked_in_at ?? null)}`
+                      : reservation.ticket_status === "issued"
+                        ? "Noch nicht eingecheckt"
+                        : reservation.ticket_status ?? "-"}
+                  </td>
                   <td className="px-4 py-3">{formatRequestedAt(reservation.created_at)}</td>
                   <td className="px-4 py-3">
                     {reservation.status === "pending" ? (
                       <div className="flex flex-wrap gap-2">
-                        <form action={approveTrialReservationAction}>
-                          <input type="hidden" name="reservationId" value={reservation.id} />
-                          <button
-                            type="submit"
-                            className="inline-flex rounded-xl border border-green-300 bg-green-50 px-3 py-2 text-xs font-semibold text-green-800"
-                          >
-                            Zur Anmeldung freigeben
-                          </button>
-                        </form>
+                        {reservation.ticket_status === "checked_in" ? (
+                          <form action={approveTrialReservationAction}>
+                            <input type="hidden" name="reservationId" value={reservation.id} />
+                            <button
+                              type="submit"
+                              className="inline-flex rounded-xl border border-green-300 bg-green-50 px-3 py-2 text-xs font-semibold text-green-800"
+                            >
+                              Zur Anmeldung freigeben
+                            </button>
+                          </form>
+                        ) : (
+                          <span className="inline-flex items-center rounded-xl border px-3 py-2 text-xs text-muted-foreground">
+                            Freigabe erst nach Check-in moeglich
+                          </span>
+                        )}
                         <form action={rejectTrialReservationAction}>
                           <input type="hidden" name="reservationId" value={reservation.id} />
                           <button
