@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isProviderType } from "@/lib/provider-profiles";
 
 export type SaveProfileState = {
   success?: string;
@@ -31,9 +32,18 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
   const intro_video_url = optionalText(formData.get("intro_video_url"));
   const existing_photo_url = optionalText(formData.get("existing_photo_url"));
   const photo_file = formData.get("photo_file");
+  const provider_type_raw = optionalText(formData.get("provider_type")) ?? "independent_teacher";
+  const organization_name = optionalText(formData.get("organization_name"));
+
+  if (!isProviderType(provider_type_raw)) {
+    return { error: "Bitte waehle einen gueltigen Anbietertyp." };
+  }
 
   if (!first_name) return { error: "Vorname ist erforderlich." };
   if (!last_name) return { error: "Nachname ist erforderlich." };
+  if (provider_type_raw === "studio_provider" && !organization_name) {
+    return { error: "Anbietername ist fuer Studios/Anbieter erforderlich." };
+  }
   if (intro_video_url && !/^https?:\/\//i.test(intro_video_url)) {
     return { error: "Bitte gib einen gültigen Video-Link mit http:// oder https:// an." };
   }
@@ -82,6 +92,8 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       bio,
       photo_url,
       intro_video_url,
+      provider_type: provider_type_raw,
+      organization_name: provider_type_raw === "studio_provider" ? organization_name : null,
     },
     { onConflict: "id" }
   );

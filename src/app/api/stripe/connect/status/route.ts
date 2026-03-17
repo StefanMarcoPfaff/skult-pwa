@@ -53,11 +53,12 @@ export async function GET(req: Request) {
 
   const account = await stripe.accounts.retrieve(stripeAccountId);
   const destinationChargeStatus = summarizeDestinationChargeStatus(account);
+  const { capabilities: _accountCapabilities, ...accountSummary } = summarizeStripeAccount(account);
 
   return NextResponse.json({
     stripeAccountId,
+    ...accountSummary,
     capabilities: destinationChargeStatus.capabilities,
     destinationChargeReady: destinationChargeStatus.destinationChargeReady,
-    ...summarizeStripeAccount(account),
   });
 }

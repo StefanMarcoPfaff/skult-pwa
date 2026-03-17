@@ -1,7 +1,39 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getProviderDisplayName, type ProviderType } from "@/lib/provider-profiles";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import WorkshopForm from "./WorkshopForm";
 
-export default function WorkshopFormShell() {
+type ProfileRow = {
+  first_name: string | null;
+  last_name: string | null;
+  provider_type: ProviderType | null;
+  organization_name: string | null;
+};
+
+export default async function WorkshopFormShell() {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("first_name,last_name,provider_type,organization_name")
+    .eq("id", user.id)
+    .maybeSingle<ProfileRow>();
+
+  const providerType = profile?.provider_type ?? "independent_teacher";
+  const providerDisplayName = getProviderDisplayName(providerType, {
+    first_name: profile?.first_name,
+    last_name: profile?.last_name,
+    organization_name: profile?.organization_name,
+  });
+
   return (
     <div className="space-y-4 rounded-2xl border p-6">
       <div className="flex items-start justify-between gap-4">
@@ -16,7 +48,7 @@ export default function WorkshopFormShell() {
         </Link>
       </div>
 
-      <WorkshopForm />
+      <WorkshopForm providerType={providerType} providerDisplayName={providerDisplayName} />
     </div>
   );
 }

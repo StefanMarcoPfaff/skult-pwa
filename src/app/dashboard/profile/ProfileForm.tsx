@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { saveProfileAction, type SaveProfileState } from "./actions";
+import type { ProviderType } from "@/lib/provider-profiles";
 
 type ProfileFormProps = {
   initialValues: {
@@ -10,6 +11,8 @@ type ProfileFormProps = {
     bio: string;
     photo_url: string;
     intro_video_url: string;
+    provider_type: ProviderType;
+    organization_name: string;
   };
 };
 
@@ -21,6 +24,7 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
   const [fileError, setFileError] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState(initialValues.intro_video_url);
   const [videoUrlError, setVideoUrlError] = useState<string | null>(null);
+  const [providerType, setProviderType] = useState<ProviderType>(initialValues.provider_type);
 
   useEffect(() => {
     return () => {
@@ -48,6 +52,19 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
   return (
     <form action={submitAction} className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2">
+        <label className="space-y-1 sm:col-span-2">
+          <span className="text-sm font-medium">Anbietertyp *</span>
+          <select
+            name="provider_type"
+            value={providerType}
+            onChange={(event) => setProviderType(event.target.value as ProviderType)}
+            className="w-full rounded-xl border px-3 py-2 text-sm"
+          >
+            <option value="independent_teacher">Selbstaendige Lehrkraft</option>
+            <option value="studio_provider">Studio / Anbieter</option>
+          </select>
+        </label>
+
         <label className="space-y-1">
           <span className="text-sm font-medium">Vorname *</span>
           <input
@@ -68,6 +85,21 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
           />
         </label>
       </div>
+
+      {providerType === "studio_provider" ? (
+        <label className="block space-y-1">
+          <span className="text-sm font-medium">Anbietername *</span>
+          <input
+            name="organization_name"
+            required
+            defaultValue={initialValues.organization_name}
+            className="w-full rounded-xl border px-3 py-2 text-sm"
+            placeholder="z. B. Studio Keramik Nord"
+          />
+        </label>
+      ) : (
+        <input type="hidden" name="organization_name" value={initialValues.organization_name} />
+      )}
 
       <label className="block space-y-1">
         <span className="text-sm font-medium">Selbstbeschreibung</span>

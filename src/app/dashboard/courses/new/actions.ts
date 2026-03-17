@@ -1,6 +1,12 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import {
+  getProviderDisplayName,
+  isCancellationModel,
+  isWorkshopStornoPolicy,
+  type ProviderType,
+} from "@/lib/provider-profiles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type ActionResult = { error?: string };
@@ -145,10 +151,37 @@ async function requireTeacher() {
     redirect("/login");
   }
 
-  return { supabase, user, error: null as string | null };
+  return { supabase, user: user!, error: null as string | null };
 }
 
-async function assertTeacherOwnsCourse(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, teacherId: string, courseId: string) {
+async function loadProviderProfile(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  userId: string
+) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("first_name,last_name,provider_type,organization_name")
+    .eq("id", userId)
+    .maybeSingle<{
+      first_name: string | null;
+      last_name: string | null;
+      provider_type: ProviderType | null;
+      organization_name: string | null;
+    }>();
+
+  if (error) {
+    logSupabaseError("select.profiles(provider-profile)", error);
+    return { profile: null, error: formatUserSupabaseError(error) };
+  }
+
+  return { profile: data, error: null as string | null };
+}
+
+async function assertTeacherOwnsCourse(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  teacherId: string,
+  courseId: string
+) {
   const { data, error } = await supabase
     .from("courses")
     .select("id")
@@ -171,23 +204,47 @@ async function createOrUpdateWorkshop(
 ): Promise<ActionResult> {
   const { supabase, user, error: authError } = await requireTeacher();
   if (authError) return { error: authError };
+  if (!user) redirect("/login");
 
   const title = String(formData.get("title") || "").trim();
   if (!title) return { error: "Bitte gib einen Titel an." };
 
   const description = parseOptionalString(formData.get("description"));
   const location = parseOptionalString(formData.get("location"));
+  const location_details = parseOptionalString(formData.get("location_details"));
   const capacity = parseOptionalInt(formData.get("capacity"));
   const price_cents = parseOptionalInt(formData.get("price_cents"));
   const currency = String(formData.get("currency") || "EUR").trim() || "EUR";
+  const workshop_storno_policy = String(formData.get("workshop_storno_policy") || "").trim();
   const sessions = parseSessionsJson(formData);
-  if (!sessions) return { error: "Bitte füge mindestens einen gültigen Termin hinzu (Ende nach Start)." };
+  if (!sessions) return { error: "Bitte fuege mindestens einen gueltigen Termin hinzu (Ende nach Start)." };
+  if (!isWorkshopStornoPolicy(workshop_storno_policy)) {
+    return { error: "Bitte waehle eine gueltige Storno-Regel." };
+  }
+
+  const providerProfileResult = await loadProviderProfile(supabase, user.id);
+  if (providerProfileResult.error) return { error: providerProfileResult.error };
+
+  const providerType = providerProfileResult.profile?.provider_type ?? "independent_teacher";
+  const providerDisplayName = getProviderDisplayName(providerType, providerProfileResult.profile ?? {});
+  if (!providerDisplayName) {
+    return { error: "Bitte vervollstaendige zuerst dein Profil, damit der Anbietername verfuegbar ist." };
+  }
+
+  const instructorInput = parseOptionalString(formData.get("instructor_name"));
+  const instructor_name = providerType === "studio_provider" ? instructorInput : providerDisplayName;
+  if (!instructor_name) {
+    return { error: "Bitte gib einen Dozenten fuer diesen Workshop an." };
+  }
 
   if (options.mode === "create") {
     const { data, error } = await supabase.rpc("create_workshop_with_sessions", {
       p_title: title,
       p_description: description,
       p_location: location,
+      p_location_details: location_details,
+      p_instructor_name: instructor_name,
+      p_workshop_storno_policy: workshop_storno_policy,
       p_capacity: capacity,
       p_price_cents: price_cents,
       p_currency: currency,
@@ -200,7 +257,7 @@ async function createOrUpdateWorkshop(
     }
 
     const newId = String(data || "").trim();
-    if (!newId) return { error: "Workshop wurde erstellt, aber keine ID zurückgegeben." };
+    if (!newId) return { error: "Workshop wurde erstellt, aber keine ID zurueckgegeben." };
     redirect(`/dashboard/courses/${newId}`);
   }
 
@@ -214,6 +271,9 @@ async function createOrUpdateWorkshop(
       title,
       description,
       location,
+      location_details,
+      instructor_name,
+      workshop_storno_policy,
       capacity,
       price_cents,
       currency,
@@ -260,12 +320,14 @@ async function createOrUpdateCourse(
 ): Promise<ActionResult> {
   const { supabase, user, error: authError } = await requireTeacher();
   if (authError) return { error: authError };
+  if (!user) redirect("/login");
 
   const title = String(formData.get("title") || "").trim();
   if (!title) return { error: "Bitte gib einen Titel an." };
 
   const description = parseOptionalString(formData.get("description"));
   const location = parseOptionalString(formData.get("location"));
+  const location_details = parseOptionalString(formData.get("location_details"));
   const capacity = parseOptionalInt(formData.get("capacity"));
 
   const weekday = parseOptionalInt(formData.get("weekday"));
@@ -274,35 +336,55 @@ async function createOrUpdateCourse(
   const duration_minutes = parseOptionalInt(formData.get("duration_minutes"));
   const recurrence_type = String(formData.get("recurrence_type") || "").trim();
   const trial_mode = String(formData.get("trial_mode") || "all_sessions").trim().toLowerCase();
+  const cancellation_model = String(formData.get("cancellation_model") || "").trim();
 
   if (weekday === null || weekday < 0 || weekday > 6) {
-    return { error: "Bitte wähle einen gültigen Wochentag (0-6)." };
+    return { error: "Bitte waehle einen gueltigen Wochentag (0-6)." };
   }
-  if (!start_date) return { error: "Bitte wähle ein Startdatum für den Kurs." };
+  if (!start_date) return { error: "Bitte waehle ein Startdatum fuer den Kurs." };
   if (!start_time) return { error: "Bitte gib eine Startzeit an." };
   if (duration_minutes === null || duration_minutes <= 0) {
-    return { error: "Bitte gib eine gültige Dauer in Minuten an." };
+    return { error: "Bitte gib eine gueltige Dauer in Minuten an." };
   }
-  if (!recurrence_type) return { error: "Bitte wähle eine Wiederholung." };
+  if (!recurrence_type) return { error: "Bitte waehle eine Wiederholung." };
   if (trial_mode !== "all_sessions" && trial_mode !== "manual") {
-    return { error: "Bitte wähle eine gültige Probestunden-Regel." };
+    return { error: "Bitte waehle eine gueltige Probestunden-Regel." };
+  }
+  if (!isCancellationModel(cancellation_model)) {
+    return { error: "Bitte waehle ein gueltiges Kuendigungsmodell." };
   }
 
   const startDateWeekday = getWeekdayForDate(start_date);
   if (startDateWeekday === null) {
-    return { error: "Bitte wähle ein gültiges Startdatum für den Kurs." };
+    return { error: "Bitte waehle ein gueltiges Startdatum fuer den Kurs." };
   }
   if (startDateWeekday !== weekday) {
-    return { error: "Das Startdatum muss zum gewählten Wochentag passen." };
+    return { error: "Das Startdatum muss zum gewaehlten Wochentag passen." };
   }
 
   const starts_at = combineCourseStartsAtISO(start_date, start_time);
   if (!starts_at) {
-    return { error: "Startdatum konnte nicht berechnet werden. Bitte prüfe Startdatum und Startzeit." };
+    return { error: "Startdatum konnte nicht berechnet werden. Bitte pruefe Startdatum und Startzeit." };
   }
 
   const price_cents = parseOptionalInt(formData.get("price_cents"));
   const currency = String(formData.get("currency") || "EUR").trim() || "EUR";
+
+  const providerProfileResult = await loadProviderProfile(supabase, user.id);
+  if (providerProfileResult.error) return { error: providerProfileResult.error };
+
+  const providerType = providerProfileResult.profile?.provider_type ?? "independent_teacher";
+  const providerDisplayName = getProviderDisplayName(providerType, providerProfileResult.profile ?? {});
+  if (!providerDisplayName) {
+    return { error: "Bitte vervollstaendige zuerst dein Profil, damit der Anbietername verfuegbar ist." };
+  }
+
+  const instructorInput = parseOptionalString(formData.get("instructor_name"));
+  const instructor_name = providerType === "studio_provider" ? instructorInput : providerDisplayName;
+
+  if (!instructor_name) {
+    return { error: "Bitte gib einen Dozenten fuer diesen Kurs an." };
+  }
 
   if (options.mode === "create") {
     const { data: inserted, error } = await supabase
@@ -313,12 +395,15 @@ async function createOrUpdateCourse(
         title,
         description,
         location,
+        location_details,
         capacity,
         weekday,
         start_time,
         duration_minutes,
         recurrence_type,
         trial_mode,
+        instructor_name,
+        cancellation_model,
         starts_at,
         price_cents,
         currency,
@@ -344,12 +429,15 @@ async function createOrUpdateCourse(
       title,
       description,
       location,
+      location_details,
       capacity,
       weekday,
       start_time,
       duration_minutes,
       recurrence_type,
       trial_mode,
+      instructor_name,
+      cancellation_model,
       starts_at,
       price_cents,
       currency,

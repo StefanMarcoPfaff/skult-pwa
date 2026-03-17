@@ -2,6 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { calculateCoursePriceBreakdown, STRIPE_ESTIMATE_FIXED_FEE_CENTS, STRIPE_ESTIMATE_PERCENT } from "@/lib/course-pricing";
+import type { ProviderType, WorkshopStornoPolicy } from "@/lib/provider-profiles";
+import { STRIPE_PLATFORM_FEE_PERCENT } from "@/lib/stripe-connect";
 import { createWorkshopAction } from "../actions";
 
 type SessionInput = {
@@ -10,13 +13,23 @@ type SessionInput = {
   ends_at: string;
 };
 
+const stornoOptions: Array<{ value: WorkshopStornoPolicy; label: string }> = [
+  { value: "no_refund", label: "Keine Stornierung / keine Erstattung" },
+  { value: "free_until_14_days_then_100", label: "Bis 14 Tage vorher kostenfrei, danach 100 %" },
+  { value: "free_until_7_days_then_100", label: "Bis 7 Tage vorher kostenfrei, danach 100 %" },
+  { value: "fifty_until_14_days_then_100", label: "Bis 14 Tage vorher 50 %, danach 100 %" },
+];
+
 export type WorkshopFormValues = {
   title?: string;
   location?: string;
+  location_details?: string;
   description?: string;
   capacity?: string;
   price_eur?: string;
   currency?: string;
+  instructor_name?: string;
+  workshop_storno_policy?: WorkshopStornoPolicy;
   sessions?: Array<{ starts_at: string; ends_at: string }>;
 };
 
@@ -40,6 +53,13 @@ function toDatetimeLocalValue(value: string): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+function formatCurrency(cents: number, currency: string): string {
+  return new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: currency || "EUR",
+  }).format(cents / 100);
+}
+
 function SubmitButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
 
@@ -58,13 +78,18 @@ export default function WorkshopForm({
   initialValues,
   submitActionOverride,
   submitLabel = "Workshop erstellen",
+  providerType,
+  providerDisplayName,
 }: {
   initialValues?: WorkshopFormValues;
   submitActionOverride?: (formData: FormData) => Promise<{ error?: string } | void>;
   submitLabel?: string;
+  providerType: ProviderType;
+  providerDisplayName: string;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [priceEur, setPriceEur] = useState(initialValues?.price_eur ?? "");
+  const [currency, setCurrency] = useState(initialValues?.currency ?? "EUR");
   const [sessions, setSessions] = useState<SessionInput[]>(() =>
     initialValues?.sessions && initialValues.sessions.length > 0
       ? initialValues.sessions.map((session, index) => ({
@@ -81,7 +106,7 @@ export default function WorkshopForm({
       const start = new Date(session.starts_at);
       const end = new Date(session.ends_at);
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        return "Ungültiges Datum";
+        return "Ungueltiges Datum";
       }
       if (end <= start) return "Ende muss nach dem Start liegen";
       return null;
@@ -108,16 +133,30 @@ export default function WorkshopForm({
     return String(Math.round(parsed * 100));
   }, [priceEur]);
 
+  const priceBreakdown = calculateCoursePriceBreakdown(priceCentsOrEmpty ? Number(priceCentsOrEmpty) : 0);
+
   const submitAction = async (formData: FormData) => {
     const title = String(formData.get("title") ?? "").trim();
+    const stornoPolicy = String(formData.get("workshop_storno_policy") ?? "").trim();
+    const instructorName = String(formData.get("instructor_name") ?? "").trim();
 
     if (!title) {
       setError("Bitte gib einen Titel ein.");
       return;
     }
 
+    if (providerType === "studio_provider" && !instructorName) {
+      setError("Bitte gib den Dozenten fuer diesen Workshop an.");
+      return;
+    }
+
+    if (!stornoPolicy) {
+      setError("Bitte waehle eine Storno-Regel.");
+      return;
+    }
+
     if (sessions.length === 0) {
-      setError("Bitte füge mindestens einen Termin hinzu.");
+      setError("Bitte fuege mindestens einen Termin hinzu.");
       return;
     }
 
@@ -125,21 +164,21 @@ export default function WorkshopForm({
     if (priceRaw) {
       const parsed = Number(priceRaw.replace(",", "."));
       if (!Number.isFinite(parsed) || parsed < 0) {
-        setError("Bitte gib einen gültigen Preis >= 0 ein.");
+        setError("Bitte gib einen gueltigen Preis >= 0 ein.");
         return;
       }
     }
 
     for (const session of sessions) {
       if (!session.starts_at || !session.ends_at) {
-        setError("Bitte fülle Start- und Endzeit für alle Termine aus.");
+        setError("Bitte fuelle Start- und Endzeit fuer alle Termine aus.");
         return;
       }
 
       const start = new Date(session.starts_at);
       const end = new Date(session.ends_at);
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        setError("Ein Termin hat ein ungültiges Datum.");
+        setError("Ein Termin hat ein ungueltiges Datum.");
         return;
       }
       if (end <= start) {
@@ -184,29 +223,92 @@ export default function WorkshopForm({
         </label>
       </div>
 
-      <label className="space-y-1 block">
+      <label className="block space-y-1">
+        <span className="text-sm font-medium">Raum / Zusatzinfo zum Ort</span>
+        <input
+          name="location_details"
+          defaultValue={initialValues?.location_details ?? ""}
+          className="w-full rounded-xl border px-3 py-2 text-sm"
+          placeholder="z. B. Raumname, Stockwerk, Klingelhinweis oder Treffpunkt"
+        />
+      </label>
+
+      <label className="block space-y-1">
         <span className="text-sm font-medium">Beschreibung</span>
         <textarea
           name="description"
           rows={4}
           defaultValue={initialValues?.description ?? ""}
           className="w-full rounded-xl border px-3 py-2 text-sm"
-          placeholder="Kurzbeschreibung für die Angebotsseite."
+          placeholder="Kurzbeschreibung fuer die Angebotsseite."
         />
+      </label>
+
+      {providerType === "studio_provider" ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Anbieter:</span>
+            <input
+              value={providerDisplayName}
+              readOnly
+              className="w-full rounded-xl border bg-gray-50 px-3 py-2 text-sm text-gray-700"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Dozent: *</span>
+            <input
+              name="instructor_name"
+              required
+              defaultValue={initialValues?.instructor_name ?? ""}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Name der Workshopleitung"
+            />
+          </label>
+        </div>
+      ) : (
+        <label className="block space-y-1">
+          <span className="text-sm font-medium">Dozent:</span>
+          <input
+            name="instructor_name"
+            value={providerDisplayName}
+            readOnly
+            className="w-full rounded-xl border bg-gray-50 px-3 py-2 text-sm text-gray-700"
+          />
+        </label>
+      )}
+
+      <label className="block space-y-1">
+        <span className="text-sm font-medium">Storno-Regel *</span>
+        <select
+          name="workshop_storno_policy"
+          required
+          defaultValue={initialValues?.workshop_storno_policy ?? "no_refund"}
+          className="w-full rounded-xl border px-3 py-2 text-sm"
+        >
+          {stornoOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <span className="block text-xs text-muted-foreground">
+          Klare und flexible Storno-Regeln schaffen Vertrauen und fuehren oft zu mehr Buchungen.
+        </span>
       </label>
 
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
             <span className="text-sm font-medium">Termine *</span>
-            <p className="text-xs text-muted-foreground">Jeder Termin benötigt Start- und Endzeit.</p>
+            <p className="text-xs text-muted-foreground">Jeder Termin benoetigt Start- und Endzeit.</p>
           </div>
           <button
             type="button"
             onClick={() => setSessions((prev) => [...prev, createEmptySession()])}
             className="rounded-lg border px-3 py-1 text-xs font-semibold"
           >
-            Termin hinzufügen
+            Termin hinzufuegen
           </button>
         </div>
 
@@ -273,7 +375,7 @@ export default function WorkshopForm({
       </div>
 
       <label className="space-y-1">
-        <span className="text-sm font-medium">Kapazität</span>
+        <span className="text-sm font-medium">Kapazitaet</span>
         <input
           type="number"
           name="capacity"
@@ -301,13 +403,41 @@ export default function WorkshopForm({
         </label>
 
         <label className="space-y-1">
-          <span className="text-sm font-medium">Währung</span>
+          <span className="text-sm font-medium">Waehrung</span>
           <input
             name="currency"
-            defaultValue={initialValues?.currency ?? "EUR"}
+            value={currency}
+            onChange={(event) => setCurrency(event.target.value)}
             className="w-full rounded-xl border px-3 py-2 text-sm uppercase"
           />
         </label>
+      </div>
+
+      <div className="rounded-2xl border bg-gray-50 p-4 text-sm">
+        <p className="font-medium">Preisaufteilung</p>
+        <div className="mt-3 space-y-1 text-muted-foreground">
+          <div className="flex items-center justify-between gap-4">
+            <span>Workshoppreis</span>
+            <span>{formatCurrency(priceBreakdown.grossCents, currency)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span>Plattformgebuehr ({STRIPE_PLATFORM_FEE_PERCENT} %)</span>
+            <span>{formatCurrency(priceBreakdown.platformFeeCents, currency)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span>Geschaetzte Stripe-Gebuehren</span>
+            <span>{formatCurrency(priceBreakdown.stripeFeeEstimateCents, currency)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4 font-medium text-foreground">
+            <span>Voraussichtliche Auszahlung pro Kund*in</span>
+            <span>{formatCurrency(priceBreakdown.payoutCents, currency)}</span>
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Stripe ist nur eine Schaetzung ({STRIPE_ESTIMATE_PERCENT.toFixed(1)} % +{" "}
+          {formatCurrency(STRIPE_ESTIMATE_FIXED_FEE_CENTS, currency)} pro Zahlung) und kann je
+          nach Zahlungsmethode abweichen.
+        </p>
       </div>
 
       <p className="text-xs text-muted-foreground">Wird intern in Cent gespeichert.</p>

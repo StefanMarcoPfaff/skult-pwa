@@ -1,5 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import {
+  getCancellationModelLabel,
+  getProviderDisplayName,
+  getWorkshopStornoPolicyLabel,
+  type ProviderType,
+} from "@/lib/provider-profiles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { setCoursePublishStateAction } from "./actions";
 
@@ -8,11 +14,15 @@ type Row = {
   title: string;
   description: string | null;
   location: string | null;
+  location_details: string | null;
   starts_at: string | null;
   capacity: number | null;
   kind: string | null;
   is_published: boolean | null;
   trial_mode: string | null;
+  instructor_name: string | null;
+  cancellation_model: string | null;
+  workshop_storno_policy: string | null;
   teacher_id: string;
 };
 
@@ -21,6 +31,13 @@ type SessionRow = {
   course_id: string;
   starts_at: string | null;
   ends_at: string | null;
+};
+
+type ProfileRow = {
+  first_name: string | null;
+  last_name: string | null;
+  provider_type: ProviderType | null;
+  organization_name: string | null;
 };
 
 function formatDateTime(dt: string | null) {
@@ -32,8 +49,8 @@ function formatDateTime(dt: string | null) {
 }
 
 function formatTrialMode(value: string | null): string {
-  if (value === "manual") return "Nur an ausgewählten Terminen";
-  return "An jedem Termin möglich";
+  if (value === "manual") return "Nur an ausgewaehlten Terminen";
+  return "An jedem Termin moeglich";
 }
 
 export default async function DashboardCourseDetailPage({
@@ -58,10 +75,16 @@ export default async function DashboardCourseDetailPage({
 
   const { data, error } = await supabase
     .from("courses")
-    .select("id,title,description,location,starts_at,capacity,kind,is_published,trial_mode,teacher_id")
+    .select("id,title,description,location,location_details,starts_at,capacity,kind,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id")
     .eq("id", id)
     .eq("teacher_id", user.id)
     .single<Row>();
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("first_name,last_name,provider_type,organization_name")
+    .eq("id", user.id)
+    .maybeSingle<ProfileRow>();
 
   const { data: sessions } = await supabase
     .from("course_sessions")
@@ -80,22 +103,32 @@ export default async function DashboardCourseDetailPage({
     return (
       <main style={{ padding: 24 }}>
         <Link href="/dashboard/courses" style={{ fontWeight: 700 }}>
-          Zurück
+          Zurueck
         </Link>
         <p style={{ marginTop: 16, fontSize: 18, fontWeight: 800 }}>Nicht gefunden</p>
       </main>
     );
   }
 
+  const providerLabel =
+    profile?.provider_type === "studio_provider"
+      ? getProviderDisplayName("studio_provider", {
+          first_name: profile.first_name,
+          last_name: profile.last_name,
+          organization_name: profile.organization_name,
+        })
+      : null;
+
   return (
     <main style={{ padding: 24, maxWidth: 820 }}>
       <Link href="/dashboard/courses" style={{ fontWeight: 700 }}>
-        Zurück
+        Zurueck
       </Link>
 
       <h1 style={{ marginTop: 16, fontSize: 32, fontWeight: 900 }}>{data.title}</h1>
       <p className="mt-3 text-sm text-muted-foreground">
-        Dies ist deine interne Vorschau. Prüfe die Angaben, passe sie bei Bedarf an und veröffentliche das Angebot erst danach.
+        Dies ist deine interne Vorschau. Pruefe die Angaben, passe sie bei Bedarf an und
+        veroeffentliche das Angebot erst danach.
       </p>
 
       {savedParam === "1" ? (
@@ -105,7 +138,7 @@ export default async function DashboardCourseDetailPage({
       ) : null}
       {savedParam === "published" ? (
         <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Angebot wurde veröffentlicht.
+          Angebot wurde veroeffentlicht.
         </p>
       ) : null}
       {savedParam === "draft" ? (
@@ -119,7 +152,7 @@ export default async function DashboardCourseDetailPage({
           href={`/dashboard/courses/${data.id}/edit`}
           className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
         >
-          Ändern
+          Aendern
         </Link>
 
         {data.is_published && hasRegistrations ? null : (
@@ -127,7 +160,7 @@ export default async function DashboardCourseDetailPage({
             <input type="hidden" name="course_id" value={data.id} />
             <input type="hidden" name="mode" value={data.is_published ? "draft" : "published"} />
             <button type="submit" className="rounded-xl border px-4 py-2 text-sm font-semibold">
-              {data.is_published ? "Veröffentlichung zurückziehen" : "Jetzt veröffentlichen"}
+              {data.is_published ? "Veroeffentlichung zurueckziehen" : "Jetzt veroeffentlichen"}
             </button>
           </form>
         )}
@@ -135,12 +168,23 @@ export default async function DashboardCourseDetailPage({
 
       <div style={{ marginTop: 10, opacity: 0.8 }}>
         <div>Art: {data.kind ?? "-"}</div>
-        <div>Veröffentlicht: {data.is_published ? "Ja" : "Nein"}</div>
+        <div>Veroeffentlicht: {data.is_published ? "Ja" : "Nein"}</div>
         {data.kind === "course" ? <div>Probestunden-Regel: {formatTrialMode(data.trial_mode)}</div> : null}
+        {providerLabel ? <div>Anbieter: {providerLabel}</div> : null}
+        {data.instructor_name ? <div>Dozent: {data.instructor_name}</div> : null}
+        {data.kind === "course" ? (
+          <div>Kuendigungsmodell: {getCancellationModelLabel(data.cancellation_model)}</div>
+        ) : null}
+        {data.kind === "workshop" ? (
+          <div>Storno-Regel: {getWorkshopStornoPolicyLabel(data.workshop_storno_policy)}</div>
+        ) : null}
         {data.location ? <div>Ort: {data.location}</div> : null}
+        {data.location_details ? (
+          <div>Raum / Zusatzinfo: {data.location_details}</div>
+        ) : null}
         {data.kind === "course" && data.starts_at ? <div>Kursstart: {formatDateTime(data.starts_at)}</div> : null}
         {data.kind !== "course" && data.starts_at ? <div>Start: {formatDateTime(data.starts_at)}</div> : null}
-        {data.capacity !== null ? <div>Plätze: {data.capacity}</div> : null}
+        {data.capacity !== null ? <div>Plaetze: {data.capacity}</div> : null}
       </div>
 
       {data.description ? <p style={{ marginTop: 16, lineHeight: 1.6 }}>{data.description}</p> : null}
@@ -187,7 +231,7 @@ export default async function DashboardCourseDetailPage({
       {data.is_published && hasRegistrations ? (
         <section className="mt-8 rounded-2xl border p-4">
           <p className="text-sm text-muted-foreground">
-            Die Veröffentlichung kann nicht zurückgezogen werden, weil bereits Anmeldungen vorliegen.
+            Die Veroeffentlichung kann nicht zurueckgezogen werden, weil bereits Anmeldungen vorliegen.
           </p>
         </section>
       ) : null}

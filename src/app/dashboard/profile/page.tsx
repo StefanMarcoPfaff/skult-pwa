@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import ProfileForm from "./ProfileForm";
+import type { ProviderType } from "@/lib/provider-profiles";
 
 type ProfileRow = {
   id: string;
@@ -11,6 +12,8 @@ type ProfileRow = {
   photo_url: string | null;
   intro_video_url: string | null;
   stripe_account_id: string | null;
+  provider_type: ProviderType | null;
+  organization_name: string | null;
 };
 
 export default async function DashboardProfilePage({
@@ -39,7 +42,7 @@ export default async function DashboardProfilePage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id,first_name,last_name,bio,photo_url,intro_video_url,stripe_account_id")
+    .select("id,first_name,last_name,bio,photo_url,intro_video_url,stripe_account_id,provider_type,organization_name")
     .eq("id", user.id)
     .maybeSingle<ProfileRow>();
 
@@ -85,7 +88,7 @@ export default async function DashboardProfilePage({
               href="/api/stripe/connect/login"
               className="inline-flex rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
             >
-              Auszahlungsdaten verwalten
+              Zahlungsdaten aendern
             </Link>
           </div>
         ) : (
@@ -106,6 +109,8 @@ export default async function DashboardProfilePage({
             bio: profile?.bio ?? "",
             photo_url: profile?.photo_url ?? "",
             intro_video_url: profile?.intro_video_url ?? "",
+            provider_type: profile?.provider_type ?? "independent_teacher",
+            organization_name: profile?.organization_name ?? "",
           }}
         />
       </div>

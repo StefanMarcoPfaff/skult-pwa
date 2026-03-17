@@ -1,5 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import {
+  getProviderDisplayName,
+  normalizeCancellationModel,
+  type WorkshopStornoPolicy,
+  type ProviderType,
+} from "@/lib/provider-profiles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import CourseForm, { type CourseFormValues } from "../../new/_components/CourseForm";
 import WorkshopForm, { type WorkshopFormValues } from "../../new/_components/WorkshopForm";
@@ -11,6 +17,7 @@ type OfferRow = {
   title: string;
   description: string | null;
   location: string | null;
+  location_details: string | null;
   capacity: number | null;
   kind: string | null;
   starts_at: string | null;
@@ -19,6 +26,9 @@ type OfferRow = {
   duration_minutes: number | null;
   recurrence_type: string | null;
   trial_mode: string | null;
+  instructor_name: string | null;
+  cancellation_model: string | null;
+  workshop_storno_policy: string | null;
   price_cents: number | null;
   currency: string | null;
 };
@@ -28,6 +38,13 @@ type SessionRow = {
   course_id: string;
   starts_at: string | null;
   ends_at: string | null;
+};
+
+type ProfileRow = {
+  first_name: string | null;
+  last_name: string | null;
+  provider_type: ProviderType | null;
+  organization_name: string | null;
 };
 
 function toDateInputValue(value: string | null): string {
@@ -63,7 +80,8 @@ export default async function EditOfferPage({
   const { data, error } = await supabase
     .from("courses")
     .select(
-      "id,teacher_id,title,description,location,capacity,kind,starts_at,weekday,start_time,duration_minutes,recurrence_type,trial_mode,price_cents,currency"
+      "id,teacher_id,title,description,location,location_details,capacity,kind,starts_at,weekday,start_time,duration_minutes,recurrence_type,trial_mode,instructor_name,cancellation_model,price_cents,currency"
+        .replace("cancellation_model,price_cents", "cancellation_model,workshop_storno_policy,price_cents")
     )
     .eq("id", id)
     .eq("teacher_id", user.id)
@@ -72,6 +90,19 @@ export default async function EditOfferPage({
   if (error || !data) {
     redirect("/dashboard/courses");
   }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("first_name,last_name,provider_type,organization_name")
+    .eq("id", user.id)
+    .maybeSingle<ProfileRow>();
+
+  const providerType = profile?.provider_type ?? "independent_teacher";
+  const providerDisplayName = getProviderDisplayName(providerType, {
+    first_name: profile?.first_name,
+    last_name: profile?.last_name,
+    organization_name: profile?.organization_name,
+  });
 
   const { data: sessions } = await supabase
     .from("course_sessions")
@@ -83,6 +114,7 @@ export default async function EditOfferPage({
   const courseInitialValues: CourseFormValues = {
     title: data.title,
     location: data.location ?? "",
+    location_details: data.location_details ?? "",
     description: data.description ?? "",
     weekday: data.weekday !== null ? String(data.weekday) : "1",
     start_date: toDateInputValue(data.starts_at),
@@ -90,6 +122,8 @@ export default async function EditOfferPage({
     duration_minutes: data.duration_minutes !== null ? String(data.duration_minutes) : "90",
     recurrence_type: data.recurrence_type ?? "weekly",
     trial_mode: data.trial_mode ?? "all_sessions",
+    instructor_name: data.instructor_name ?? "",
+    cancellation_model: normalizeCancellationModel(data.cancellation_model),
     capacity: data.capacity !== null ? String(data.capacity) : "",
     price_eur: toPriceEur(data.price_cents),
     currency: data.currency ?? "EUR",
@@ -98,10 +132,13 @@ export default async function EditOfferPage({
   const workshopInitialValues: WorkshopFormValues = {
     title: data.title,
     location: data.location ?? "",
+    location_details: data.location_details ?? "",
     description: data.description ?? "",
     capacity: data.capacity !== null ? String(data.capacity) : "",
     price_eur: toPriceEur(data.price_cents),
     currency: data.currency ?? "EUR",
+    instructor_name: data.instructor_name ?? "",
+    workshop_storno_policy: (data.workshop_storno_policy ?? "no_refund") as WorkshopStornoPolicy,
     sessions: (sessions ?? [])
       .filter((session) => session.starts_at && session.ends_at)
       .map((session) => ({
@@ -114,9 +151,9 @@ export default async function EditOfferPage({
     <div className="space-y-6">
       <header className="space-y-2">
         <Link href={`/dashboard/courses/${id}`} className="text-sm font-semibold underline underline-offset-4">
-          Zurück zur Vorschau
+          Zurueck zur Vorschau
         </Link>
-        <h1 className="text-2xl font-semibold">Angebot ändern</h1>
+        <h1 className="text-2xl font-semibold">Angebot aendern</h1>
         <p className="text-sm text-muted-foreground">
           Bearbeite dein Angebot und speichere es wieder in die interne Vorschau.
         </p>
@@ -126,14 +163,18 @@ export default async function EditOfferPage({
         {data.kind === "course" ? (
           <CourseForm
             initialValues={courseInitialValues}
-            submitLabel="Änderungen speichern"
+            submitLabel="Aenderungen speichern"
             submitActionOverride={updateCourseAction.bind(null, id)}
+            providerType={providerType}
+            providerDisplayName={providerDisplayName}
           />
         ) : (
           <WorkshopForm
             initialValues={workshopInitialValues}
-            submitLabel="Änderungen speichern"
+            submitLabel="Aenderungen speichern"
             submitActionOverride={updateWorkshopAction.bind(null, id)}
+            providerType={providerType}
+            providerDisplayName={providerDisplayName}
           />
         )}
       </div>
