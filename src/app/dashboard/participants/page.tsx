@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { approveTrialReservationAction, rejectTrialReservationAction } from "./actions";
 
@@ -25,6 +26,60 @@ type TrialReservationRow = {
   ticket_checked_in_at?: string | null;
 };
 
+type TicketLookupRow = {
+  trial_reservation_id: string | null;
+  status: string | null;
+  checked_in_at: string | null;
+};
+
+type SupabaseLikeError = {
+  name?: string;
+  message?: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+  stack?: string;
+};
+
+type QueryClient =
+  | Pick<Awaited<ReturnType<typeof createSupabaseServerClient>>, "from">
+  | Pick<ReturnType<typeof createSupabaseAdmin>, "from">;
+
+type ParticipantsPageData = {
+  approved: boolean;
+  rejected: boolean;
+  attendanceRequired: boolean;
+  reservations: TrialReservationRow[];
+  courseTitleById: Map<string, string>;
+};
+
+function logParticipantsError(context: string, error: unknown) {
+  if (process.env.NODE_ENV === "production") return;
+  const fallback =
+    typeof error === "object" && error !== null ? (error as Record<string, unknown>) : undefined;
+  const supabaseError = (error ?? {}) as SupabaseLikeError;
+  console.error("[participants dashboard]", {
+    context,
+    name:
+      supabaseError.name ??
+      (error instanceof Error ? error.name : undefined) ??
+      (typeof fallback?.name === "string" ? fallback.name : undefined),
+    message:
+      supabaseError.message ??
+      (error instanceof Error ? error.message : undefined) ??
+      (typeof fallback?.message === "string" ? fallback.message : undefined),
+    code: supabaseError.code ?? (typeof fallback?.code === "string" ? fallback.code : undefined),
+    details:
+      supabaseError.details ?? (typeof fallback?.details === "string" ? fallback.details : undefined),
+    hint: supabaseError.hint ?? (typeof fallback?.hint === "string" ? fallback.hint : undefined),
+    stack:
+      supabaseError.stack ??
+      (error instanceof Error ? error.stack : undefined) ??
+      (typeof fallback?.stack === "string" ? fallback.stack : undefined),
+    raw: fallback,
+  });
+}
+
 function formatRequestedAt(value: string | null): string {
   if (!value) return "-";
   const date = new Date(value);
@@ -47,89 +102,133 @@ function needsTeacherDecision(reservation: TrialReservationRow): boolean {
   return (reservation.decision_status ?? "pending") === "pending" && reservation.ticket_status === "checked_in";
 }
 
+async function loadParticipantsPageData(
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+): Promise<ParticipantsPageData> {
+  try {
+    const sp = await searchParams;
+    const approvedParam = Array.isArray(sp.approved) ? sp.approved[0] : sp.approved;
+    const rejectedParam = Array.isArray(sp.rejected) ? sp.rejected[0] : sp.rejected;
+    const attendanceRequiredParam = Array.isArray(sp.attendanceRequired)
+      ? sp.attendanceRequired[0]
+      : sp.attendanceRequired;
+    const approved = approvedParam === "1";
+    const rejected = rejectedParam === "1";
+    const attendanceRequired = attendanceRequiredParam === "1";
+
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError) {
+      logParticipantsError("auth.getUser", userError);
+    }
+
+    if (!user) {
+      redirect("/login");
+    }
+
+    let dataClient: QueryClient = supabase;
+    try {
+      dataClient = createSupabaseAdmin();
+    } catch (adminError) {
+      logParticipantsError("create-admin-client", adminError);
+    }
+
+    const { data: ownCourses, error: ownCoursesError } = await dataClient
+      .from("courses")
+      .select("id,title")
+      .eq("teacher_id", user.id)
+      .returns<CourseRow[]>();
+
+    if (ownCoursesError) {
+      logParticipantsError("load-own-courses", ownCoursesError);
+    }
+
+    const courses = ownCourses ?? [];
+    const courseIds = courses.map((course) => course.id);
+    const courseTitleById = new Map(courses.map((course) => [course.id, course.title]));
+
+    let reservations: TrialReservationRow[] = [];
+    if (courseIds.length > 0) {
+      const { data, error: reservationsError } = await dataClient
+        .from("trial_reservations")
+        .select(
+          "id,course_id,first_name,last_name,email,status,decision_status,created_at,approved_at,rejected_at,decision_taken_at,trial_ends_at,registration_expires_at"
+        )
+        .in("course_id", courseIds)
+        .order("trial_starts_at", { ascending: false })
+        .returns<TrialReservationRow[]>();
+
+      if (reservationsError) {
+        logParticipantsError("load-trial-reservations", reservationsError);
+      }
+
+      reservations = data ?? [];
+
+      if (reservations.length > 0) {
+        const { data: tickets, error: ticketsError } = await dataClient
+          .from("tickets")
+          .select("trial_reservation_id,status,checked_in_at")
+          .in(
+            "trial_reservation_id",
+            reservations.map((reservation) => reservation.id)
+          )
+          .returns<TicketLookupRow[]>();
+
+        if (ticketsError) {
+          logParticipantsError("load-linked-tickets", ticketsError);
+        }
+
+        const ticketByReservationId = new Map(
+          (tickets ?? [])
+            .filter((ticket) => ticket.trial_reservation_id)
+            .map((ticket) => [
+              ticket.trial_reservation_id as string,
+              { status: ticket.status, checkedInAt: ticket.checked_in_at },
+            ])
+        );
+
+        reservations = reservations.map((reservation) => {
+          const ticket = ticketByReservationId.get(reservation.id);
+          return {
+            ...reservation,
+            ticket_status: ticket?.status ?? null,
+            ticket_checked_in_at: ticket?.checkedInAt ?? null,
+          };
+        });
+
+        reservations.sort((left, right) => {
+          const leftPriority = needsTeacherDecision(left) ? 0 : 1;
+          const rightPriority = needsTeacherDecision(right) ? 0 : 1;
+          if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+          return String(right.trial_ends_at ?? "").localeCompare(String(left.trial_ends_at ?? ""));
+        });
+      }
+    }
+
+    return {
+      approved,
+      rejected,
+      attendanceRequired,
+      reservations,
+      courseTitleById,
+    };
+  } catch (error) {
+    logParticipantsError("load-page-data", error);
+    throw error;
+  }
+}
+
 export default async function DashboardParticipantsPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const sp = await searchParams;
-  const approvedParam = Array.isArray(sp.approved) ? sp.approved[0] : sp.approved;
-  const rejectedParam = Array.isArray(sp.rejected) ? sp.rejected[0] : sp.rejected;
-  const attendanceRequiredParam = Array.isArray(sp.attendanceRequired)
-    ? sp.attendanceRequired[0]
-    : sp.attendanceRequired;
-  const approved = approvedParam === "1";
-  const rejected = rejectedParam === "1";
-  const attendanceRequired = attendanceRequiredParam === "1";
-
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  const { data: ownCourses } = await supabase
-    .from("courses")
-    .select("id,title")
-    .eq("teacher_id", user.id)
-    .returns<CourseRow[]>();
-
-  const courses = ownCourses ?? [];
-  const courseIds = courses.map((course) => course.id);
-  const courseTitleById = new Map(courses.map((course) => [course.id, course.title]));
-
-  let reservations: TrialReservationRow[] = [];
-  if (courseIds.length > 0) {
-    const { data } = await supabase
-      .from("trial_reservations")
-      .select(
-        "id,course_id,first_name,last_name,email,status,decision_status,created_at,approved_at,rejected_at,decision_taken_at,trial_ends_at,registration_expires_at"
-      )
-      .in("course_id", courseIds)
-      .order("trial_starts_at", { ascending: false })
-      .returns<TrialReservationRow[]>();
-
-    reservations = data ?? [];
-
-    if (reservations.length > 0) {
-      const { data: tickets } = await supabase
-        .from("tickets")
-        .select("trial_reservation_id,status,checked_in_at")
-        .in(
-          "trial_reservation_id",
-          reservations.map((reservation) => reservation.id)
-        )
-        .returns<Array<{ trial_reservation_id: string | null; status: string | null; checked_in_at: string | null }>>();
-
-      const ticketByReservationId = new Map(
-        (tickets ?? [])
-          .filter((ticket) => ticket.trial_reservation_id)
-          .map((ticket) => [
-            ticket.trial_reservation_id as string,
-            { status: ticket.status, checkedInAt: ticket.checked_in_at },
-          ])
-      );
-
-      reservations = reservations.map((reservation) => {
-        const ticket = ticketByReservationId.get(reservation.id);
-        return {
-          ...reservation,
-          ticket_status: ticket?.status ?? null,
-          ticket_checked_in_at: ticket?.checkedInAt ?? null,
-        };
-      });
-
-      reservations.sort((left, right) => {
-        const leftPriority = needsTeacherDecision(left) ? 0 : 1;
-        const rightPriority = needsTeacherDecision(right) ? 0 : 1;
-        if (leftPriority !== rightPriority) return leftPriority - rightPriority;
-        return String(right.trial_ends_at ?? "").localeCompare(String(left.trial_ends_at ?? ""));
-      });
-    }
-  }
+  const { approved, rejected, attendanceRequired, reservations, courseTitleById } =
+    await loadParticipantsPageData(searchParams);
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-6">
@@ -181,7 +280,10 @@ export default async function DashboardParticipantsPage({
             </thead>
             <tbody className="divide-y text-sm">
               {reservations.map((reservation) => (
-                <tr key={reservation.id} className={needsTeacherDecision(reservation) ? "bg-amber-50/40" : undefined}>
+                <tr
+                  key={reservation.id}
+                  className={needsTeacherDecision(reservation) ? "bg-amber-50/40" : undefined}
+                >
                   <td className="px-4 py-3">{reservation.first_name ?? "-"}</td>
                   <td className="px-4 py-3">{reservation.last_name ?? "-"}</td>
                   <td className="px-4 py-3">{reservation.email ?? "-"}</td>

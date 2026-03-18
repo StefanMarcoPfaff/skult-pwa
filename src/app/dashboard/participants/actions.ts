@@ -27,22 +27,44 @@ type CourseMailRow = {
 };
 
 type SupabaseLikeError = {
+  name?: string;
   message?: string;
   code?: string;
   details?: string;
   hint?: string;
+  stack?: string;
 };
 
 function logDecisionError(context: string, error: unknown) {
   if (process.env.NODE_ENV === "production") return;
+  const fallback =
+    typeof error === "object" && error !== null ? (error as Record<string, unknown>) : undefined;
   const supabaseError = (error ?? {}) as SupabaseLikeError;
   console.error("[trial decision]", {
     context,
-    message: supabaseError.message,
-    code: supabaseError.code,
-    details: supabaseError.details,
-    hint: supabaseError.hint,
+    name:
+      supabaseError.name ??
+      (error instanceof Error ? error.name : undefined) ??
+      (typeof fallback?.name === "string" ? fallback.name : undefined),
+    message:
+      supabaseError.message ??
+      (error instanceof Error ? error.message : undefined) ??
+      (typeof fallback?.message === "string" ? fallback.message : undefined),
+    code: supabaseError.code ?? (typeof fallback?.code === "string" ? fallback.code : undefined),
+    details:
+      supabaseError.details ?? (typeof fallback?.details === "string" ? fallback.details : undefined),
+    hint: supabaseError.hint ?? (typeof fallback?.hint === "string" ? fallback.hint : undefined),
+    stack:
+      supabaseError.stack ??
+      (error instanceof Error ? error.stack : undefined) ??
+      (typeof fallback?.stack === "string" ? fallback.stack : undefined),
+    raw: fallback,
   });
+}
+
+function logDecisionInfo(message: string, payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === "production") return;
+  console.log("[trial decision]", message, payload);
 }
 
 function generateRegistrationToken(): string {
@@ -145,6 +167,13 @@ export async function approveTrialReservationAction(formData: FormData) {
   const approvedAt = new Date().toISOString();
   const registrationExpiresAt = new Date(Date.now() + 96 * 60 * 60 * 1000).toISOString();
 
+  logDecisionInfo("approval token generated", {
+    reservationId,
+    customerEmail: context.reservation.email,
+    registrationToken,
+    registrationExpiresAt,
+  });
+
   const { error } = await admin
     .from("trial_reservations")
     .update({
@@ -176,7 +205,13 @@ export async function approveTrialReservationAction(formData: FormData) {
     const registrationUrl = `${siteUrl}/trial/register/${registrationToken}`;
 
     try {
-      await sendTrialRegistrationApprovedEmail({
+      logDecisionInfo("approval email attempt", {
+        reservationId: context.reservation.id,
+        recipient: context.reservation.email,
+        registrationUrl,
+      });
+
+      const result = await sendTrialRegistrationApprovedEmail({
         reservationId: context.reservation.id,
         courseTitle: context.course.title ?? "Kurs",
         customerName: getCustomerName(context.reservation),
@@ -185,14 +220,34 @@ export async function approveTrialReservationAction(formData: FormData) {
         registrationExpiresAt,
       });
 
+      if (result?.error) {
+        throw result.error;
+      }
+
+      logDecisionInfo("approval email sent", {
+        reservationId: context.reservation.id,
+        recipient: context.reservation.email,
+        messageId: result?.data?.id ?? null,
+      });
+
       await admin
         .from("trial_reservations")
         .update({ approval_email_sent_at: new Date().toISOString() })
         .eq("id", reservationId)
         .eq("decision_status", "approved");
     } catch (sendError) {
+      logDecisionInfo("approval email failed", {
+        reservationId: context.reservation.id,
+        recipient: context.reservation.email,
+        registrationUrl,
+      });
       logDecisionError("send-approval-email", sendError);
     }
+  } else {
+    logDecisionInfo("approval email skipped", {
+      reservationId: context.reservation.id,
+      reason: "missing customer email",
+    });
   }
 
   redirect("/dashboard/participants?approved=1");
