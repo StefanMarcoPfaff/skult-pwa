@@ -12,44 +12,45 @@ import { buildTicketCheckInUrl, buildTicketQrCodeDataUrl } from "@/lib/ticket-qr
 export type WorkshopBookingEmailData = {
   bookingId: string;
   workshopTitle: string;
+  providerName: string | null;
   teacherName: string | null;
   teacherEmail: string | null;
   customerName: string;
   customerEmail: string;
   location: string | null;
-  startsAt: string | null;
-  endsAt: string | null;
+  locationDetails: string | null;
+  sessionLines: string[];
+  stornoPolicyLabel: string | null;
+  priceLabel: string | null;
   qrToken: string;
 };
 
-function formatDateTimeRange(startsAt: string | null, endsAt: string | null): string {
-  if (!startsAt) return "Termin folgt";
+function renderSessionListHtml(sessionLines: string[]): string {
+  if (sessionLines.length === 0) {
+    return "<p><b>Termin:</b> Termin folgt</p>";
+  }
 
-  const start = new Date(startsAt);
-  const date = start.toLocaleDateString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-  const startTime = start.toLocaleTimeString("de-DE", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  if (!endsAt) return `${date} | ${startTime}`;
-
-  const end = new Date(endsAt);
-  const endTime = end.toLocaleTimeString("de-DE", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  return `${date} | ${startTime}-${endTime}`;
+  return `
+    <div>
+      <p><b>Termine:</b></p>
+      <ul>
+        ${sessionLines.map((line) => `<li>${line}</li>`).join("")}
+      </ul>
+    </div>
+  `;
 }
 
 export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopBookingEmailData) {
   const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
+  const locationDetailsLine = data.locationDetails
+    ? `<p><b>Ort / Zusatzinfo:</b> ${data.locationDetails}</p>`
+    : "";
+  const providerLine = data.providerName ? `<p><b>Anbieter:</b> ${data.providerName}</p>` : "";
   const teacherLine = data.teacherName ? `<p><b>Dozent*in:</b> ${data.teacherName}</p>` : "";
+  const stornoLine = data.stornoPolicyLabel
+    ? `<p><b>Storno-Regel:</b> ${data.stornoPolicyLabel}</p>`
+    : "";
+  const priceLine = data.priceLabel ? `<p><b>Preis:</b> ${data.priceLabel}</p>` : "";
   const qrUrl = buildTicketCheckInUrl(data.qrToken);
   const qrDataUrl = await buildTicketQrCodeDataUrl(data.qrToken);
 
@@ -61,9 +62,13 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
         <h2>Deine Workshop-Buchung ist bestaetigt</h2>
         <p>Hallo ${data.customerName},</p>
         <p>deine Zahlung fuer <b>${data.workshopTitle}</b> ist eingegangen.</p>
+        ${providerLine}
         ${teacherLine}
+        ${priceLine}
         ${locationLine}
-        <p><b>Termin:</b> ${formatDateTimeRange(data.startsAt, data.endsAt)}</p>
+        ${locationDetailsLine}
+        ${renderSessionListHtml(data.sessionLines)}
+        ${stornoLine}
         <p>Bitte zeige dieses QR-Ticket beim Einlass vor. Es wird vor Ort gescannt.</p>
         <p><img src="${qrDataUrl}" alt="QR-Ticket fuer den Workshop" width="180" height="180" /></p>
         <p><a href="${qrUrl}">${qrUrl}</a></p>
@@ -74,9 +79,14 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
       `Workshop gebucht: ${data.workshopTitle}`,
       `Hallo ${data.customerName},`,
       `deine Zahlung fuer ${data.workshopTitle} ist eingegangen.`,
+      data.providerName ? `Anbieter: ${data.providerName}` : null,
       data.teacherName ? `Dozent*in: ${data.teacherName}` : null,
+      data.priceLabel ? `Preis: ${data.priceLabel}` : null,
       data.location ? `Ort: ${data.location}` : null,
-      `Termin: ${formatDateTimeRange(data.startsAt, data.endsAt)}`,
+      data.locationDetails ? `Ort / Zusatzinfo: ${data.locationDetails}` : null,
+      data.sessionLines.length > 0 ? "Termine:" : "Termin: Termin folgt",
+      ...data.sessionLines,
+      data.stornoPolicyLabel ? `Storno-Regel: ${data.stornoPolicyLabel}` : null,
       "Bitte zeige dieses QR-Ticket beim Einlass vor. Es wird vor Ort gescannt.",
       `Check-in-Link: ${qrUrl}`,
       "Herzliche Gruesse",
@@ -96,16 +106,27 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
         <h2>Neue bezahlte Workshop-Buchung</h2>
         <p><b>${data.customerName}</b> hat den Workshop <b>${data.workshopTitle}</b> gebucht und bezahlt.</p>
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
+        ${data.providerName ? `<p><b>Anbieter:</b> ${data.providerName}</p>` : ""}
         ${data.location ? `<p><b>Ort:</b> ${data.location}</p>` : ""}
-        <p><b>Termin:</b> ${formatDateTimeRange(data.startsAt, data.endsAt)}</p>
+        ${data.locationDetails ? `<p><b>Ort / Zusatzinfo:</b> ${data.locationDetails}</p>` : ""}
+        ${data.priceLabel ? `<p><b>Preis:</b> ${data.priceLabel}</p>` : ""}
+        ${
+          data.sessionLines.length > 0
+            ? `<div><p><b>Termine:</b></p><ul>${data.sessionLines.map((line) => `<li>${line}</li>`).join("")}</ul></div>`
+            : "<p><b>Termin:</b> Termin folgt</p>"
+        }
       </div>
     `,
     text: [
       `Neue Workshop-Buchung: ${data.workshopTitle}`,
       `${data.customerName} hat den Workshop gebucht und bezahlt.`,
       `E-Mail: ${data.customerEmail}`,
+      data.providerName ? `Anbieter: ${data.providerName}` : null,
       data.location ? `Ort: ${data.location}` : null,
-      `Termin: ${formatDateTimeRange(data.startsAt, data.endsAt)}`,
+      data.locationDetails ? `Ort / Zusatzinfo: ${data.locationDetails}` : null,
+      data.priceLabel ? `Preis: ${data.priceLabel}` : null,
+      data.sessionLines.length > 0 ? "Termine:" : "Termin: Termin folgt",
+      ...data.sessionLines,
     ]
       .filter(Boolean)
       .join("\n"),

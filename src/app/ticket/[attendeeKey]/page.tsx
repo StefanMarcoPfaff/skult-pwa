@@ -1,6 +1,7 @@
 import Link from "next/link";
 import QRCode from "react-qr-code";
 import { createClient } from "@supabase/supabase-js";
+import { buildTicketCheckInUrl } from "@/lib/ticket-qr";
 
 export const runtime = "nodejs";
 
@@ -9,8 +10,8 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY!
 );
 
-function shortKey(k: string) {
-  return k.length > 10 ? `${k.slice(0, 6)}…${k.slice(-4)}` : k;
+function shortKey(key: string) {
+  return key.length > 10 ? `${key.slice(0, 6)}...${key.slice(-4)}` : key;
 }
 
 export default async function TicketPage({
@@ -20,15 +21,21 @@ export default async function TicketPage({
 }) {
   const { attendeeKey } = await params;
 
-  // Booking holen
   const { data: booking } = await supabase
     .from("bookings")
     .select("*")
     .eq("attendee_key", attendeeKey)
     .maybeSingle();
 
-  // Kursinfos optional dazuladen
-  let course: any = null;
+  const { data: ticket } = booking?.id
+    ? await supabase
+        .from("tickets")
+        .select("qr_token,customer_name,customer_email,status,checked_in_at")
+        .eq("booking_id", booking.id)
+        .maybeSingle()
+    : { data: null };
+
+  let course: Record<string, unknown> | null = null;
   if (booking?.course_id) {
     const { data } = await supabase
       .from("courses_lite")
@@ -40,9 +47,9 @@ export default async function TicketPage({
 
   const status = booking?.status ?? null;
   const paid = status === "paid";
-
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-  const verifyUrl = `${baseUrl}/scan/${attendeeKey}`;
+  const verifyUrl = ticket?.qr_token
+    ? buildTicketCheckInUrl(ticket.qr_token)
+    : `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/scan/${attendeeKey}`;
 
   return (
     <main style={{ padding: 24, maxWidth: 820, margin: "0 auto" }}>
@@ -52,7 +59,7 @@ export default async function TicketPage({
           <p style={{ marginTop: 10, fontSize: 18 }}>
             Status:{" "}
             <b style={{ color: paid ? "green" : "crimson" }}>
-              {paid ? "paid ✅" : status ?? "—"}
+              {paid ? "paid" : status ?? "-"}
             </b>
           </p>
         </div>
@@ -72,14 +79,14 @@ export default async function TicketPage({
       >
         <div style={{ fontSize: 14, letterSpacing: 0.3, color: "#666" }}>Workshop</div>
         <div style={{ fontSize: 24, fontWeight: 800, marginTop: 6 }}>
-          {course?.title ?? "Workshop"}
+          {typeof course?.title === "string" ? course.title : "Workshop"}
         </div>
 
-        {/* Optional: zeig ein paar Felder, falls vorhanden */}
         <div style={{ marginTop: 10, color: "#444", lineHeight: 1.5 }}>
-          {course?.location ? <div>📍 {course.location}</div> : null}
-          {course?.city ? <div>🏙️ {course.city}</div> : null}
-          {course?.starts_at ? <div>🗓️ {String(course.starts_at)}</div> : null}
+          {ticket?.customer_name ? <div>Name: {ticket.customer_name}</div> : null}
+          {ticket?.customer_email ? <div>E-Mail: {ticket.customer_email}</div> : null}
+          {typeof course?.location === "string" ? <div>Ort: {course.location}</div> : null}
+          {typeof course?.starts_at === "string" ? <div>Start: {String(course.starts_at)}</div> : null}
         </div>
       </div>
 
@@ -101,7 +108,7 @@ export default async function TicketPage({
         </div>
 
         <div style={{ marginTop: 14, fontFamily: "monospace", color: "#333" }}>
-          Code: <b>{shortKey(attendeeKey)}</b>
+          Code: <b>{shortKey(ticket?.qr_token ?? attendeeKey)}</b>
         </div>
 
         <div style={{ marginTop: 18, display: "flex", gap: 14, flexWrap: "wrap" }}>
@@ -115,7 +122,7 @@ export default async function TicketPage({
               fontWeight: 700,
             }}
           >
-            Scan-Link (Dozent*in)
+            Check-in-Link
           </Link>
 
           <Link href="/courses">Alle Kurse</Link>

@@ -23,11 +23,35 @@ function logCheckoutConnectState(context: string, payload: Record<string, unknow
   });
 }
 
+function requiredText(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
 export async function POST(req: Request) {
   try {
-    const { courseId } = (await req.json()) as { courseId?: string };
+    const {
+      courseId,
+      firstName,
+      lastName,
+      email,
+      phone,
+    } = (await req.json()) as {
+      courseId?: string;
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      phone?: string;
+    };
     if (!courseId) {
       return NextResponse.json({ error: "courseId fehlt" }, { status: 400 });
+    }
+    const customerFirstName = requiredText(firstName);
+    const customerLastName = requiredText(lastName);
+    const customerEmail = requiredText(email).toLowerCase();
+    const customerPhone = requiredText(phone);
+
+    if (!customerFirstName || !customerLastName || !customerEmail || !customerPhone) {
+      return NextResponse.json({ error: "Bitte fuelle alle Pflichtfelder aus." }, { status: 400 });
     }
 
     const supabase = await createClient();
@@ -104,6 +128,10 @@ export async function POST(req: Request) {
         attendee_key: attendeeKey,
         status: "pending",
         payment_provider: "stripe",
+        customer_first_name: customerFirstName,
+        customer_last_name: customerLastName,
+        customer_email: customerEmail,
+        customer_phone: customerPhone,
       })
       .select("id, attendee_key")
       .single();
@@ -120,6 +148,7 @@ export async function POST(req: Request) {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
+      customer_email: customerEmail,
       line_items: [
         {
           price_data: {
@@ -141,6 +170,10 @@ export async function POST(req: Request) {
         courseId: course.id,
         attendeeKey: booking.attendee_key,
         teacherStripeAccountId: teacherProfile.stripe_account_id,
+        customerFirstName,
+        customerLastName,
+        customerEmail,
+        customerPhone,
       },
       client_reference_id: booking.id,
     });

@@ -1,34 +1,14 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { issueWorkshopTicketForBooking } from "@/lib/tickets";
+import { finalizeWorkshopBookingBySession } from "@/lib/workshop-booking-finalization";
 import {
-  sendWorkshopCustomerBookingConfirmationEmail,
   sendWorkshopTeacherBookingNotificationEmail,
 } from "@/lib/workshop-booking-emails";
 
 export const runtime = "nodejs";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
-
-type BookingRow = {
-  id: string;
-  status: string | null;
-  course_id: string | null;
-};
-
-type CourseRow = {
-  id: string;
-  title: string | null;
-  location: string | null;
-  teacher_id: string | null;
-  starts_at: string | null;
-};
-
-type SessionRow = {
-  starts_at: string | null;
-  ends_at: string | null;
-};
 
 type ProfileRow = {
   first_name: string | null;
@@ -67,123 +47,65 @@ export async function POST(req: Request) {
       return NextResponse.json({ received: true });
     }
 
-    const bookingId = session.metadata?.bookingId || session.client_reference_id;
-    const courseId = session.metadata?.courseId ?? null;
-    const customerEmail = session.customer_details?.email ?? session.customer_email ?? null;
-    const customerName = session.customer_details?.name?.trim() || "Workshop-Gast";
-
-    if (!bookingId) {
-      return NextResponse.json({ error: "No bookingId found" }, { status: 400 });
-    }
-
-    if (!customerEmail) {
-      return NextResponse.json({ error: "No customer email found" }, { status: 400 });
-    }
-
     const admin = createSupabaseAdmin();
-    const { data: booking, error: bookingError } = await admin
-      .from("bookings")
-      .select("id,status,course_id")
-      .eq("id", bookingId)
-      .maybeSingle<BookingRow>();
-
-    if (bookingError || !booking) {
-      console.error("[stripe-webhook] booking load failed", bookingError);
-      return NextResponse.json({ error: "Booking load failed" }, { status: 500 });
+    const finalized = await finalizeWorkshopBookingBySession(session.id);
+    if (!finalized) {
+      return NextResponse.json({ received: true });
     }
 
-    const { error: bookingUpdateError } = await admin
-      .from("bookings")
-      .update({ status: "paid" })
-      .eq("id", bookingId)
-      .neq("status", "paid");
-
-    if (bookingUpdateError) {
-      console.error("[stripe-webhook] booking update failed", bookingUpdateError);
-      return NextResponse.json({ error: "Booking update failed" }, { status: 500 });
-    }
-
-    const { ticket, created } = await issueWorkshopTicketForBooking({
-      bookingId,
-      courseId: courseId ?? booking.course_id,
-      customerName,
-      customerEmail,
+    logWebhookEvent("workshop booking finalized", {
+      bookingId: finalized.bookingId,
+      ticketId: finalized.ticket?.id ?? null,
     });
 
-    logWebhookEvent(created ? "workshop ticket created" : "workshop ticket reused", {
-      bookingId,
-      ticketId: ticket.id,
-    });
+    if (finalized.courseId && finalized.ticket) {
+      const { data: course } = await admin
+        .from("courses")
+        .select("teacher_id")
+        .eq("id", finalized.courseId)
+        .maybeSingle<{ teacher_id: string | null }>();
 
-    if (created) {
-      const resolvedCourseId = courseId ?? booking.course_id;
+      let teacherName: string | null = null;
+      let teacherEmail: string | null = null;
 
-      if (resolvedCourseId) {
-        const [{ data: course }, { data: firstSession }] = await Promise.all([
+      if (course?.teacher_id) {
+        const [{ data: profile }, authResult] = await Promise.all([
           admin
-            .from("courses")
-            .select("id,title,location,teacher_id,starts_at")
-            .eq("id", resolvedCourseId)
-            .maybeSingle<CourseRow>(),
-          admin
-            .from("course_sessions")
-            .select("starts_at,ends_at")
-            .eq("course_id", resolvedCourseId)
-            .order("starts_at", { ascending: true })
-            .limit(1)
-            .maybeSingle<SessionRow>(),
+            .from("profiles")
+            .select("first_name,last_name")
+            .eq("id", course.teacher_id)
+            .maybeSingle<ProfileRow>(),
+          admin.auth.admin.getUserById(course.teacher_id),
         ]);
 
-        let teacherName: string | null = null;
-        let teacherEmail: string | null = null;
+        const nameParts = [profile?.first_name, profile?.last_name].filter(Boolean);
+        teacherName = nameParts.length > 0 ? nameParts.join(" ") : null;
+        teacherEmail = authResult.data.user?.email ?? null;
+      }
 
-        if (course?.teacher_id) {
-          const [{ data: profile }, authResult] = await Promise.all([
-            admin
-              .from("profiles")
-              .select("first_name,last_name")
-              .eq("id", course.teacher_id)
-              .maybeSingle<ProfileRow>(),
-            admin.auth.admin.getUserById(course.teacher_id),
-          ]);
-
-          const nameParts = [profile?.first_name, profile?.last_name].filter(Boolean);
-          teacherName = nameParts.length > 0 ? nameParts.join(" ") : null;
-          teacherEmail = authResult.data.user?.email ?? null;
-        }
-
-        const emailData = {
-          bookingId,
-          workshopTitle: course?.title ?? "Workshop",
+      try {
+        logWebhookEvent("workshop teacher email attempt", { bookingId: finalized.bookingId });
+        const result = await sendWorkshopTeacherBookingNotificationEmail({
+          bookingId: finalized.bookingId,
+          workshopTitle: finalized.workshopTitle ?? "Workshop",
+          providerName: finalized.providerName,
           teacherName,
           teacherEmail,
-          customerName,
-          customerEmail,
-          location: course?.location ?? null,
-          startsAt: firstSession?.starts_at ?? course?.starts_at ?? null,
-          endsAt: firstSession?.ends_at ?? null,
-          qrToken: ticket.qr_token,
-        };
-
-        try {
-          logWebhookEvent("workshop customer email attempt", { bookingId });
-          await sendWorkshopCustomerBookingConfirmationEmail(emailData);
-          logWebhookEvent("workshop customer email sent", { bookingId });
-        } catch (error) {
-          logWebhookEvent("workshop customer email failed", { bookingId });
-          console.error("[stripe-webhook] workshop customer email failed", error);
-        }
-
-        try {
-          logWebhookEvent("workshop teacher email attempt", { bookingId });
-          const result = await sendWorkshopTeacherBookingNotificationEmail(emailData);
-          logWebhookEvent(result ? "workshop teacher email sent" : "workshop teacher email skipped", {
-            bookingId,
-          });
-        } catch (error) {
-          logWebhookEvent("workshop teacher email failed", { bookingId });
-          console.error("[stripe-webhook] workshop teacher email failed", error);
-        }
+          customerName: finalized.customerName,
+          customerEmail: finalized.customerEmail ?? "",
+          location: finalized.location,
+          locationDetails: finalized.locationDetails,
+          sessionLines: finalized.sessionLines,
+          stornoPolicyLabel: finalized.stornoPolicyLabel,
+          priceLabel: finalized.priceLabel,
+          qrToken: finalized.ticket.qr_token,
+        });
+        logWebhookEvent(result ? "workshop teacher email sent" : "workshop teacher email skipped", {
+          bookingId: finalized.bookingId,
+        });
+      } catch (error) {
+        logWebhookEvent("workshop teacher email failed", { bookingId: finalized.bookingId });
+        console.error("[stripe-webhook] workshop teacher email failed", error);
       }
     }
 

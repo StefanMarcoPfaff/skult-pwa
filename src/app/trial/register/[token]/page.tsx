@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getCancellationModelLabel, getProviderDisplayName } from "@/lib/provider-profiles";
+import { loadTicketBySubscriptionId } from "@/lib/tickets";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import RegistrationForm from "./RegistrationForm";
 
@@ -11,6 +12,21 @@ type TrialRegistrationRow = {
   email: string | null;
   status: string | null;
   registration_expires_at: string | null;
+};
+
+type RegistrationIntentRow = {
+  id: string;
+  status: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  street_and_number: string | null;
+  postal_code: string | null;
+  city: string | null;
+  country: string | null;
+  notes: string | null;
+  stripe_subscription_id: string | null;
 };
 
 type CourseRow = {
@@ -61,10 +77,10 @@ export default async function TrialRegistrationTokenPage({
   searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; edit?: string }>;
 }) {
   const { token } = await params;
-  const { error } = await searchParams;
+  const { error, edit } = await searchParams;
   const admin = createSupabaseAdmin();
 
   const { data: reservation } = await admin
@@ -109,6 +125,19 @@ export default async function TrialRegistrationTokenPage({
       ? getProviderDisplayName(profile.provider_type, profile)
       : null;
 
+  const { data: intent } = await admin
+    .from("course_registration_intents")
+    .select(
+      "id,status,first_name,last_name,email,phone,street_and_number,postal_code,city,country,notes,stripe_subscription_id"
+    )
+    .eq("trial_reservation_id", reservation.id)
+    .maybeSingle<RegistrationIntentRow>();
+
+  const ticket =
+    intent?.status === "checkout_completed" && intent.stripe_subscription_id
+      ? await loadTicketBySubscriptionId(intent.stripe_subscription_id)
+      : null;
+
   const checkoutError =
     error === "course_unavailable"
       ? "Dieser Kurs ist aktuell nicht fuer die Online-Anmeldung verfuegbar."
@@ -117,14 +146,18 @@ export default async function TrialRegistrationTokenPage({
         : error === "provider_payment_incomplete"
           ? "Das verknuepfte Stripe-Konto ist noch nicht vollstaendig eingerichtet."
           : null;
+  const isCompletedRegistration = intent?.status === "checkout_completed";
+  const isEditMode = isCompletedRegistration && edit === "1";
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
-      <section className="rounded-2xl border p-6">
-        <p className="text-sm text-muted-foreground">
-          Dein Platz ist bis <span className="font-medium text-foreground">{formatDateTime(reservation.registration_expires_at)}</span> fuer dich reserviert.
-        </p>
-      </section>
+      {!isCompletedRegistration ? (
+        <section className="rounded-2xl border p-6">
+          <p className="text-sm text-muted-foreground">
+            Dein Platz ist bis <span className="font-medium text-foreground">{formatDateTime(reservation.registration_expires_at)}</span> fuer dich reserviert.
+          </p>
+        </section>
+      ) : null}
 
       <RegistrationForm
         token={token}
@@ -138,11 +171,20 @@ export default async function TrialRegistrationTokenPage({
           locationDetails: course?.location_details ?? null,
         }}
         prefill={{
-          first_name: reservation.first_name ?? "",
-          last_name: reservation.last_name ?? "",
-          email: reservation.email ?? "",
+          first_name: intent?.first_name ?? reservation.first_name ?? "",
+          last_name: intent?.last_name ?? reservation.last_name ?? "",
+          email: intent?.email ?? reservation.email ?? "",
+          phone: intent?.phone ?? "",
+          street_and_number: intent?.street_and_number ?? "",
+          postal_code: intent?.postal_code ?? "",
+          city: intent?.city ?? "",
+          country: intent?.country ?? "Deutschland",
+          notes: intent?.notes ?? "",
         }}
         initialError={checkoutError}
+        completedRegistration={isCompletedRegistration}
+        editMode={isEditMode}
+        ticketQrToken={ticket?.qr_token ?? null}
       />
     </main>
   );

@@ -17,6 +17,8 @@ type TrialRegistrationFollowupRow = {
   registration_token: string | null;
   registration_expires_at: string | null;
   decision_taken_at: string | null;
+  converted_at: string | null;
+  converted_registration_intent_id: string | null;
   registration_reminder_24h_sent_at: string | null;
   registration_reminder_48h_sent_at: string | null;
   registration_reminder_72h_sent_at: string | null;
@@ -41,6 +43,11 @@ type FollowupSkippedReasons = {
   missing_course: number;
 };
 
+type CompletedIntentRow = {
+  trial_reservation_id: string;
+  status: string | null;
+};
+
 export type TrialRegistrationFollowupRunResult = {
   eligibleCount: number;
   reminder24hSentCount: number;
@@ -54,12 +61,6 @@ export type TrialRegistrationFollowupRunResult = {
   updatedReservationCount: number;
   now: string;
 };
-
-/*
- * MVP note:
- * The final binding registration completion flow is not implemented yet.
- * For now an approved trial counts as "unconverted" until a future real registration step clears/replaces the token flow.
- */
 
 function isDev(): boolean {
   return process.env.NODE_ENV !== "production";
@@ -128,8 +129,29 @@ function isExpired(value: string | null, now: Date): boolean {
   return expiresAt.getTime() <= now.getTime();
 }
 
-function isApprovedTrialReservationConverted(): boolean {
-  return false;
+async function loadCompletedIntentReservationIds(
+  admin: ReturnType<typeof createSupabaseAdmin>
+): Promise<Set<string>> {
+  const { data, error } = await admin
+    .from("course_registration_intents")
+    .select("trial_reservation_id,status")
+    .eq("status", "checkout_completed")
+    .returns<CompletedIntentRow[]>();
+
+  if (error) {
+    logFollowupError("load-completed-registration-intents", error);
+    return new Set<string>();
+  }
+
+  return new Set((data ?? []).map((row) => row.trial_reservation_id));
+}
+
+function isApprovedTrialReservationConverted(
+  reservation: TrialRegistrationFollowupRow,
+  completedIntentReservationIds: Set<string>
+): boolean {
+  if (reservation.converted_at) return true;
+  return completedIntentReservationIds.has(reservation.id);
 }
 
 function buildDecisionEmailData(
@@ -175,6 +197,8 @@ export async function runTrialRegistrationFollowupJob(
 
   logFollowupInfo("started", { now: nowIso });
 
+  const completedIntentReservationIds = await loadCompletedIntentReservationIds(admin);
+
   const { data: reservations, error } = await admin
     .from("trial_reservations")
     .select(
@@ -188,6 +212,8 @@ export async function runTrialRegistrationFollowupJob(
       registration_token,
       registration_expires_at,
       decision_taken_at,
+      converted_at,
+      converted_registration_intent_id,
       registration_reminder_24h_sent_at,
       registration_reminder_48h_sent_at,
       registration_reminder_72h_sent_at,
@@ -225,9 +251,15 @@ export async function runTrialRegistrationFollowupJob(
   logFollowupInfo("candidates loaded", { scannedCandidateCount: summary.scannedCandidateCount });
 
   for (const reservation of reservations ?? []) {
-    if (isApprovedTrialReservationConverted()) {
+    if (isApprovedTrialReservationConverted(reservation, completedIntentReservationIds)) {
       summary.skippedAlreadyConvertedCount += 1;
       summary.skippedReasons.already_converted += 1;
+      logFollowupInfo("reminder skipped due to conversion", {
+        reservationId: reservation.id,
+        convertedAt: reservation.converted_at,
+        convertedRegistrationIntentId: reservation.converted_registration_intent_id,
+        hasCompletedIntent: completedIntentReservationIds.has(reservation.id),
+      });
       continue;
     }
 

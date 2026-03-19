@@ -37,6 +37,21 @@ export type TrialRegistrationExpiredEmailData = TrialRegistrationDecisionEmailDa
   coursesOverviewUrl: string;
 };
 
+export type CourseSubscriptionConfirmationEmailData = {
+  registrationIntentId: string;
+  courseTitle: string;
+  providerName: string | null;
+  instructorName: string | null;
+  customerName: string;
+  customerEmail: string;
+  priceLabel: string | null;
+  currency: string | null;
+  cancellationLabel: string | null;
+  location: string | null;
+  locationDetails: string | null;
+  qrToken?: string | null;
+};
+
 export type TeacherTrialDecisionReminderEmailData = {
   reservationId: string;
   courseTitle: string;
@@ -68,7 +83,14 @@ function formatDateTimeRange(startsAt: string, endsAt: string): string {
   return `${date} | ${startTime}-${endTime}`;
 }
 
-async function getQrLines(qrToken?: string | null) {
+async function getQrLines(
+  qrToken?: string | null,
+  options?: {
+    htmlLead?: string;
+    textLead?: string;
+    imageAlt?: string;
+  }
+) {
   if (!qrToken) {
     return {
       html: "",
@@ -80,12 +102,12 @@ async function getQrLines(qrToken?: string | null) {
   const qrDataUrl = await buildTicketQrCodeDataUrl(qrToken);
   return {
     html: `
-      <p>Bitte bring dieses QR-Ticket mit. Es wird bei deiner Ankunft gescannt.</p>
-      <p><img src="${qrDataUrl}" alt="QR-Ticket fuer deine Probestunde" width="180" height="180" /></p>
+      <p>${options?.htmlLead ?? "Bitte bring dieses QR-Ticket mit. Es wird bei deiner Ankunft gescannt."}</p>
+      <p><img src="${qrDataUrl}" alt="${options?.imageAlt ?? "QR-Ticket"}" width="180" height="180" /></p>
       <p><a href="${checkInUrl}">${checkInUrl}</a></p>
     `,
     text: [
-      "Bitte bring dieses QR-Ticket mit. Es wird bei deiner Ankunft gescannt.",
+      options?.textLead ?? "Bitte bring dieses QR-Ticket mit. Es wird bei deiner Ankunft gescannt.",
       `Check-in-Link: ${checkInUrl}`,
     ],
   };
@@ -371,6 +393,73 @@ export function prepareTrialRegistrationExpiredEmail(data: TrialRegistrationExpi
   };
 }
 
+export async function prepareCourseSubscriptionConfirmationEmail(
+  data: CourseSubscriptionConfirmationEmailData
+) {
+  const providerLine = data.providerName ? `<p><b>Anbieter:</b> ${data.providerName}</p>` : "";
+  const instructorLine = data.instructorName
+    ? `<p><b>Dozent*in:</b> ${data.instructorName}</p>`
+    : "";
+  const priceLine = data.priceLabel ? `<p><b>Preis:</b> ${data.priceLabel}</p>` : "";
+  const currencyLine = data.currency ? `<p><b>Waehrung:</b> ${data.currency}</p>` : "";
+  const cancellationLine = data.cancellationLabel
+    ? `<p><b>Kuendigungsmodell:</b> ${data.cancellationLabel}</p>`
+    : "";
+  const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
+  const locationDetailsLine = data.locationDetails
+    ? `<p><b>Ort / Zusatzinfo:</b> ${data.locationDetails}</p>`
+    : "";
+  const qrLines = await getQrLines(data.qrToken, {
+    htmlLead:
+      "Dieses Kursticket kannst du kuenftig fuer Anwesenheit und Check-in im Kurs verwenden.",
+    textLead:
+      "Dieses Kursticket kannst du kuenftig fuer Anwesenheit und Check-in im Kurs verwenden.",
+    imageAlt: "QR-Ticket fuer deine Kursanmeldung",
+  });
+
+  return {
+    to: data.customerEmail,
+    subject: `Deine Kursanmeldung ist bestaetigt: ${data.courseTitle}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+        <h2>Deine Kursanmeldung ist bestaetigt</h2>
+        <p>Hallo ${data.customerName},</p>
+        <p>vielen Dank. Deine verbindliche Anmeldung fuer <b>${data.courseTitle}</b> war erfolgreich und deine Zahlung wurde bestaetigt.</p>
+        ${providerLine}
+        ${instructorLine}
+        ${priceLine}
+        ${currencyLine}
+        ${cancellationLine}
+        ${locationLine}
+        ${locationDetailsLine}
+        ${qrLines.html}
+        <p>Wir freuen uns, dich bald im Kurs begruessen zu duerfen.</p>
+        <p>Weitere Kurs- oder Zugangsinformationen koennen dir bei Bedarf spaeter noch separat zugeschickt werden.</p>
+        <p>Herzliche Gruesse<br />SKULT</p>
+      </div>
+    `,
+    text: [
+      `Deine Kursanmeldung ist bestaetigt: ${data.courseTitle}`,
+      `Hallo ${data.customerName},`,
+      `deine verbindliche Anmeldung fuer ${data.courseTitle} war erfolgreich und deine Zahlung wurde bestaetigt.`,
+      data.providerName ? `Anbieter: ${data.providerName}` : null,
+      data.instructorName ? `Dozent*in: ${data.instructorName}` : null,
+      data.priceLabel ? `Preis: ${data.priceLabel}` : null,
+      data.currency ? `Waehrung: ${data.currency}` : null,
+      data.cancellationLabel ? `Kuendigungsmodell: ${data.cancellationLabel}` : null,
+      data.location ? `Ort: ${data.location}` : null,
+      data.locationDetails ? `Ort / Zusatzinfo: ${data.locationDetails}` : null,
+      ...qrLines.text,
+      "Wir freuen uns, dich bald im Kurs begruessen zu duerfen.",
+      "Weitere Kurs- oder Zugangsinformationen koennen dir bei Bedarf spaeter noch separat zugeschickt werden.",
+      "Herzliche Gruesse",
+      "SKULT",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  };
+}
+
 export function prepareTrialRegistrationRejectedEmail(data: TrialRegistrationDecisionEmailData) {
   return {
     to: data.customerEmail,
@@ -547,6 +636,20 @@ export async function sendTrialRegistrationReminder72hEmail(data: TrialRegistrat
 export async function sendTrialRegistrationExpiredEmail(data: TrialRegistrationExpiredEmailData) {
   const resend = getResend();
   const email = prepareTrialRegistrationExpiredEmail(data);
+  return resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: email.to,
+    subject: email.subject,
+    html: email.html,
+    text: email.text,
+  });
+}
+
+export async function sendCourseSubscriptionConfirmationEmail(
+  data: CourseSubscriptionConfirmationEmailData
+) {
+  const resend = getResend();
+  const email = await prepareCourseSubscriptionConfirmationEmail(data);
   return resend.emails.send({
     from: "onboarding@resend.dev",
     to: email.to,

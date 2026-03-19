@@ -6,6 +6,7 @@ import {
   getWorkshopStornoPolicyLabel,
   type ProviderType,
 } from "@/lib/provider-profiles";
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { setCoursePublishStateAction } from "./actions";
 
@@ -40,6 +41,71 @@ type ProfileRow = {
   organization_name: string | null;
 };
 
+type TrialParticipantRow = {
+  id: string;
+  course_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  decision_status: string | null;
+  approved_at: string | null;
+  trial_starts_at: string | null;
+  trial_ends_at: string | null;
+  registration_expires_at: string | null;
+  converted_at: string | null;
+  converted_registration_intent_id: string | null;
+};
+
+type TrialTicketRow = {
+  trial_reservation_id: string | null;
+  status: string | null;
+  checked_in_at: string | null;
+};
+
+type RegistrationIntentRow = {
+  id: string;
+  trial_reservation_id: string;
+  status: string | null;
+};
+
+type WorkshopBookingRow = {
+  id: string;
+  course_id: string | null;
+  status: string | null;
+  attendee_key: string | null;
+  checked_in_at: string | null;
+  created_at: string | null;
+  customer_first_name: string | null;
+  customer_last_name: string | null;
+  customer_email: string | null;
+  customer_phone: string | null;
+};
+
+type WorkshopTicketRow = {
+  booking_id: string | null;
+  customer_name: string;
+  customer_email: string;
+  status: string | null;
+  checked_in_at: string | null;
+};
+
+type CourseParticipantEntry = {
+  id: string;
+  name: string;
+  email: string | null;
+  trialTiming: string | null;
+  note: string | null;
+};
+
+type WorkshopParticipantEntry = {
+  id: string;
+  name: string;
+  email: string | null;
+  status: string | null;
+  checkedInAt: string | null;
+  createdAt: string | null;
+};
+
 function formatDateTime(dt: string | null) {
   if (!dt) return "";
   const d = new Date(dt);
@@ -51,6 +117,81 @@ function formatDateTime(dt: string | null) {
 function formatTrialMode(value: string | null): string {
   if (value === "manual") return "Nur an ausgewaehlten Terminen";
   return "An jedem Termin moeglich";
+}
+
+function formatName(firstName: string | null, lastName: string | null, fallback: string): string {
+  return [firstName, lastName].filter(Boolean).join(" ").trim() || fallback;
+}
+
+function formatDateTimeRange(start: string | null, end: string | null): string | null {
+  if (!start) return null;
+  const startDate = new Date(start);
+  if (Number.isNaN(startDate.getTime())) return null;
+
+  const date = startDate.toLocaleDateString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+  const startTime = startDate.toLocaleTimeString("de-DE", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  if (!end) return `${date} | ${startTime}`;
+
+  const endDate = new Date(end);
+  if (Number.isNaN(endDate.getTime())) return `${date} | ${startTime}`;
+
+  const endTime = endDate.toLocaleTimeString("de-DE", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return `${date} | ${startTime}-${endTime}`;
+}
+
+function renderParticipantGroup(
+  title: string,
+  description: string,
+  entries: CourseParticipantEntry[]
+) {
+  return (
+    <section className="rounded-2xl border p-5" key={title}>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-semibold">{title}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        </div>
+        <div className="rounded-full border px-3 py-1 text-sm font-semibold">{entries.length}</div>
+      </div>
+
+      {entries.length === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">Aktuell keine Eintraege.</p>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {entries.map((entry) => (
+            <div key={entry.id} className="rounded-xl border p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-1 text-sm">
+                  <p className="font-semibold text-foreground">{entry.name}</p>
+                  {entry.email ? <p>{entry.email}</p> : null}
+                  {entry.trialTiming ? <p>{entry.trialTiming}</p> : null}
+                  {entry.note ? <p>{entry.note}</p> : null}
+                </div>
+                <Link
+                  href={`/dashboard/participants/${entry.id}?source=trial`}
+                  className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
+                >
+                  Details
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 export default async function DashboardCourseDetailPage({
@@ -65,6 +206,7 @@ export default async function DashboardCourseDetailPage({
   const savedParam = Array.isArray(sp.saved) ? sp.saved[0] : sp.saved;
 
   const supabase = await createSupabaseServerClient();
+  const admin = createSupabaseAdmin();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -99,6 +241,54 @@ export default async function DashboardCourseDetailPage({
     .eq("course_id", id);
   const hasRegistrations = (registrationsCount ?? 0) > 0;
 
+  const { data: trialParticipants } = data?.kind === "course"
+    ? await admin
+        .from("trial_reservations")
+        .select(
+          "id,course_id,first_name,last_name,email,decision_status,approved_at,trial_starts_at,trial_ends_at,registration_expires_at,converted_at,converted_registration_intent_id"
+        )
+        .eq("course_id", id)
+        .order("trial_starts_at", { ascending: false })
+        .returns<TrialParticipantRow[]>()
+    : { data: [] as TrialParticipantRow[] };
+
+  const trialReservationIds = (trialParticipants ?? []).map((participant) => participant.id);
+  const [{ data: trialTickets }, { data: registrationIntents }] =
+    data?.kind === "course" && trialReservationIds.length > 0
+      ? await Promise.all([
+          admin
+            .from("tickets")
+            .select("trial_reservation_id,status,checked_in_at")
+            .in("trial_reservation_id", trialReservationIds)
+            .returns<TrialTicketRow[]>(),
+          admin
+            .from("course_registration_intents")
+            .select("id,trial_reservation_id,status")
+            .in("trial_reservation_id", trialReservationIds)
+            .returns<RegistrationIntentRow[]>(),
+        ])
+      : [{ data: [] as TrialTicketRow[] }, { data: [] as RegistrationIntentRow[] }];
+
+  const { data: workshopBookings } = data?.kind === "workshop"
+      ? await admin
+        .from("bookings")
+        .select("id,course_id,status,attendee_key,checked_in_at,created_at,customer_first_name,customer_last_name,customer_email,customer_phone")
+        .eq("course_id", id)
+        .eq("status", "paid")
+        .order("created_at", { ascending: false })
+        .returns<WorkshopBookingRow[]>()
+    : { data: [] as WorkshopBookingRow[] };
+
+  const workshopBookingIds = (workshopBookings ?? []).map((booking) => booking.id);
+  const { data: workshopTickets } =
+    data?.kind === "workshop" && workshopBookingIds.length > 0
+      ? await admin
+          .from("tickets")
+          .select("booking_id,customer_name,customer_email,status,checked_in_at")
+          .in("booking_id", workshopBookingIds)
+          .returns<WorkshopTicketRow[]>()
+      : { data: [] as WorkshopTicketRow[] };
+
   if (error || !data) {
     return (
       <main style={{ padding: 24 }}>
@@ -118,6 +308,101 @@ export default async function DashboardCourseDetailPage({
           organization_name: profile.organization_name,
         })
       : null;
+
+  const ticketByTrialReservationId = new Map(
+    (trialTickets ?? [])
+      .filter((ticket) => ticket.trial_reservation_id)
+      .map((ticket) => [ticket.trial_reservation_id as string, ticket])
+  );
+  const intentByTrialReservationId = new Map(
+    (registrationIntents ?? []).map((intent) => [intent.trial_reservation_id, intent])
+  );
+
+  const groupedCourseParticipants =
+    data.kind === "course"
+      ? {
+          firmlyRegistered: (trialParticipants ?? [])
+            .filter((participant) => {
+              const intent = intentByTrialReservationId.get(participant.id);
+              return participant.converted_at || intent?.status === "checkout_completed";
+            })
+            .map<CourseParticipantEntry>((participant) => ({
+              id: participant.id,
+              name: formatName(participant.first_name, participant.last_name, "Teilnehmer*in"),
+              email: participant.email,
+              trialTiming: formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
+              note: participant.converted_at
+                ? `Verbindlich angemeldet am ${formatDateTime(participant.converted_at)}`
+                : "Verbindlich angemeldet",
+            })),
+          attendedApproved: (trialParticipants ?? [])
+            .filter((participant) => {
+              const ticket = ticketByTrialReservationId.get(participant.id);
+              const intent = intentByTrialReservationId.get(participant.id);
+              const isConverted = participant.converted_at || intent?.status === "checkout_completed";
+              return !isConverted && participant.decision_status === "approved" && ticket?.status === "checked_in";
+            })
+            .map<CourseParticipantEntry>((participant) => ({
+              id: participant.id,
+              name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
+              email: participant.email,
+              trialTiming: formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
+              note: participant.registration_expires_at
+                ? `Freigegeben bis ${formatDateTime(participant.registration_expires_at)}`
+                : "Freigegeben, Anmeldung noch offen",
+            })),
+          attendedPending: (trialParticipants ?? [])
+            .filter((participant) => {
+              const ticket = ticketByTrialReservationId.get(participant.id);
+              return participant.decision_status === "pending" && ticket?.status === "checked_in";
+            })
+            .map<CourseParticipantEntry>((participant) => ({
+              id: participant.id,
+              name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
+              email: participant.email,
+              trialTiming: formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
+              note: "Probestunde besucht, Entscheidung noch offen",
+            })),
+          notYetAttended: (trialParticipants ?? [])
+            .filter((participant) => {
+              const ticket = ticketByTrialReservationId.get(participant.id);
+              const intent = intentByTrialReservationId.get(participant.id);
+              const isConverted = participant.converted_at || intent?.status === "checkout_completed";
+              return !isConverted && ticket?.status !== "checked_in";
+            })
+            .map<CourseParticipantEntry>((participant) => ({
+              id: participant.id,
+              name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
+              email: participant.email,
+              trialTiming: formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
+              note:
+                ticketByTrialReservationId.get(participant.id)?.status === "issued"
+                  ? "Ticket ausgestellt, Check-in steht noch aus"
+                  : "Noch nicht eingecheckt",
+            })),
+        }
+      : null;
+
+  const workshopTicketByBookingId = new Map(
+    (workshopTickets ?? [])
+      .filter((ticket) => ticket.booking_id)
+      .map((ticket) => [ticket.booking_id as string, ticket])
+  );
+  const workshopParticipants =
+    data.kind === "workshop"
+      ? (workshopBookings ?? []).map<WorkshopParticipantEntry>((booking) => {
+          const ticket = workshopTicketByBookingId.get(booking.id);
+          return {
+            id: booking.id,
+            name:
+              formatName(booking.customer_first_name, booking.customer_last_name, ticket?.customer_name || "Workshop-Gast"),
+            email: booking.customer_email ?? ticket?.customer_email ?? null,
+            status: ticket?.status ?? booking.status,
+            checkedInAt: ticket?.checked_in_at ?? booking.checked_in_at,
+            createdAt: booking.created_at,
+          };
+        })
+      : [];
 
   return (
     <main style={{ padding: 24, maxWidth: 820 }}>
@@ -225,6 +510,86 @@ export default async function DashboardCourseDetailPage({
               <div>Keine Termine vorhanden.</div>
             )}
           </div>
+        </section>
+      ) : null}
+
+      {data.kind === "course" && groupedCourseParticipants ? (
+        <section className="mt-8 space-y-4">
+          <div>
+            <h2 className="text-2xl font-semibold">Teilnehmeruebersicht</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Hier siehst du den aktuellen Stand der Probestunden und verbindlichen Anmeldungen fuer diesen Kurs.
+            </p>
+          </div>
+
+          {renderParticipantGroup(
+            "Verbindlich angemeldete Teilnehmer*innen",
+            "Diese Personen haben die verbindliche Kursanmeldung erfolgreich abgeschlossen.",
+            groupedCourseParticipants.firmlyRegistered
+          )}
+          {renderParticipantGroup(
+            "Probestunde besucht und freigegeben, aber noch nicht verbindlich angemeldet",
+            "Diese Personen wurden freigegeben, haben die verbindliche Anmeldung aber noch nicht abgeschlossen.",
+            groupedCourseParticipants.attendedApproved
+          )}
+          {renderParticipantGroup(
+            "Probestunde besucht, Entscheidung noch offen",
+            "Diese Personen haben bereits teilgenommen, warten aber noch auf deine Entscheidung.",
+            groupedCourseParticipants.attendedPending
+          )}
+          {renderParticipantGroup(
+            "Probestunde noch nicht besucht",
+            "Diese Personen sind angefragt oder eingeplant, aber noch nicht eingecheckt.",
+            groupedCourseParticipants.notYetAttended
+          )}
+        </section>
+      ) : null}
+
+      {data.kind === "workshop" ? (
+        <section className="mt-8 rounded-2xl border p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-semibold">Aktuelle Teilnehmer*innen</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Alle aktuell vorliegenden Workshop-Buchungen mit Check-in-Status.
+              </p>
+            </div>
+            <div className="rounded-full border px-3 py-1 text-sm font-semibold">
+              {workshopParticipants.length}
+            </div>
+          </div>
+
+          {workshopParticipants.length === 0 ? (
+            <p className="mt-4 text-sm text-muted-foreground">Bisher liegen noch keine Workshop-Buchungen vor.</p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {workshopParticipants.map((participant) => (
+                <div key={participant.id} className="rounded-xl border p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1 text-sm">
+                      <p className="font-semibold text-foreground">{participant.name}</p>
+                      {participant.email ? <p>{participant.email}</p> : null}
+                      {participant.createdAt ? <p>Gebucht am {formatDateTime(participant.createdAt)}</p> : null}
+                      <p>
+                        Status:{" "}
+                        <span className="font-medium text-foreground">
+                          {participant.checkedInAt
+                            ? `Eingecheckt am ${formatDateTime(participant.checkedInAt)}`
+                            : participant.status ?? "-"}
+                        </span>
+                      </p>
+                    </div>
+                    <Link
+                      href={`/dashboard/participants/${participant.id}?source=workshop`}
+                      className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
+                    >
+                      Details
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       ) : null}
 

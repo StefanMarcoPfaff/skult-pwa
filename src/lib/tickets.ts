@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
-export type TicketType = "workshop" | "trial" | "course_session";
+export type TicketType = "workshop" | "trial" | "course_session" | "course_participant";
 export type TicketStatus = "issued" | "checked_in" | "cancelled" | "expired";
 
 export type TicketRow = {
@@ -78,6 +78,15 @@ export function generateSecureQrToken(): string {
 
 async function loadExistingTicketForInput(input: TicketCreateInput): Promise<TicketRow | null> {
   const admin = createSupabaseAdmin();
+
+  if (input.subscriptionId) {
+    const { data } = await admin
+      .from("tickets")
+      .select("*")
+      .eq("subscription_id", input.subscriptionId)
+      .maybeSingle<TicketRow>();
+    if (data) return data;
+  }
 
   if (input.bookingId) {
     const { data } = await admin
@@ -180,6 +189,42 @@ export async function issueWorkshopTicketForBooking(input: {
   });
 
   return result;
+}
+
+export async function issueCourseParticipantTicketForSubscription(input: {
+  subscriptionId: string;
+  courseId: string | null;
+  customerName: string;
+  customerEmail: string;
+}): Promise<TicketIssueResult> {
+  const result = await createTicketRecordInternal({
+    type: "course_participant",
+    subscriptionId: input.subscriptionId,
+    courseId: input.courseId,
+    customerName: input.customerName,
+    customerEmail: input.customerEmail,
+  });
+
+  logTicketEvent(result.created ? "course participant ticket created" : "course participant ticket reused", {
+    subscriptionId: input.subscriptionId,
+    ticketId: result.ticket.id,
+  });
+
+  return result;
+}
+
+export async function loadTicketBySubscriptionId(subscriptionId: string): Promise<TicketRow | null> {
+  const normalizedId = subscriptionId.trim();
+  if (!normalizedId) return null;
+
+  const admin = createSupabaseAdmin();
+  const { data } = await admin
+    .from("tickets")
+    .select("*")
+    .eq("subscription_id", normalizedId)
+    .maybeSingle<TicketRow>();
+
+  return data ?? null;
 }
 
 export async function loadTicketByQrToken(qrToken: string): Promise<TicketLookup | null> {

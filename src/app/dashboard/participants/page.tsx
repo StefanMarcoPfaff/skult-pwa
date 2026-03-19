@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -304,6 +305,12 @@ export default async function DashboardParticipantsPage({
                   <td className="px-4 py-3">
                     {needsTeacherDecision(reservation) ? (
                       <div className="flex flex-wrap gap-2">
+                        <Link
+                          href={`/dashboard/participants/${reservation.id}?source=trial`}
+                          className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
+                        >
+                          Details
+                        </Link>
                         <form action={approveTrialReservationAction}>
                           <input type="hidden" name="reservationId" value={reservation.id} />
                           <button
@@ -324,19 +331,48 @@ export default async function DashboardParticipantsPage({
                         </form>
                       </div>
                     ) : (reservation.decision_status ?? "pending") === "pending" ? (
-                      <span className="text-xs text-muted-foreground">
-                        Entscheidung nach Check-in moeglich
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/dashboard/participants/${reservation.id}?source=trial`}
+                          className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
+                        >
+                          Details
+                        </Link>
+                        <span className="text-xs text-muted-foreground">
+                          Entscheidung nach Check-in moeglich
+                        </span>
+                      </div>
                     ) : reservation.decision_status === "approved" && reservation.registration_expires_at ? (
-                      <span className="text-xs text-muted-foreground">
-                        Freigegeben am {formatRequestedAt(reservation.decision_taken_at ?? reservation.approved_at)}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/dashboard/participants/${reservation.id}?source=trial`}
+                          className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
+                        >
+                          Details
+                        </Link>
+                        <span className="text-xs text-muted-foreground">
+                          Freigegeben am {formatRequestedAt(reservation.decision_taken_at ?? reservation.approved_at)}
+                        </span>
+                      </div>
                     ) : reservation.decision_status === "rejected" ? (
-                      <span className="text-xs text-muted-foreground">
-                        Abgesagt am {formatRequestedAt(reservation.decision_taken_at ?? reservation.rejected_at)}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/dashboard/participants/${reservation.id}?source=trial`}
+                          className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
+                        >
+                          Details
+                        </Link>
+                        <span className="text-xs text-muted-foreground">
+                          Abgesagt am {formatRequestedAt(reservation.decision_taken_at ?? reservation.rejected_at)}
+                        </span>
+                      </div>
                     ) : (
-                      <span className="text-xs text-muted-foreground">-</span>
+                      <Link
+                        href={`/dashboard/participants/${reservation.id}?source=trial`}
+                        className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
+                      >
+                        Details
+                      </Link>
                     )}
                   </td>
                 </tr>

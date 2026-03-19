@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { getStripe } from "@/lib/stripe";
+import { finalizeWorkshopBookingBySession } from "@/lib/workshop-booking-finalization";
 
 export const runtime = "nodejs";
 
@@ -10,39 +10,55 @@ const supabase = createClient(
 );
 
 export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const sessionId = url.searchParams.get("session_id");
+  try {
+    const url = new URL(req.url);
+    const sessionId = url.searchParams.get("session_id");
 
-  if (!sessionId) {
-    return NextResponse.json({ error: "missing session_id" }, { status: 400 });
+    if (!sessionId) {
+      return NextResponse.json({ error: "missing session_id" }, { status: 400 });
+    }
+
+    const finalized = await finalizeWorkshopBookingBySession(sessionId);
+
+    if (finalized) {
+      return NextResponse.json({
+        bookingId: finalized.bookingId,
+        status: finalized.status,
+        attendeeKey: finalized.attendeeKey,
+        courseId: finalized.courseId,
+        workshopTitle: finalized.workshopTitle,
+        customerName: finalized.customerName,
+        customerEmail: finalized.customerEmail,
+        location: finalized.location,
+        locationDetails: finalized.locationDetails,
+        sessionLines: finalized.sessionLines,
+        providerName: finalized.providerName,
+        instructorName: finalized.instructorName,
+        stornoPolicyLabel: finalized.stornoPolicyLabel,
+        priceLabel: finalized.priceLabel,
+        qrToken: finalized.ticket?.qr_token ?? null,
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("bookings")
+      .select("id,status,attendee_key,course_id,customer_email")
+      .eq("payment_session_id", sessionId)
+      .maybeSingle();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      bookingId: data?.id ?? null,
+      status: data?.status ?? null,
+      attendeeKey: data?.attendee_key ?? null,
+      courseId: data?.course_id ?? null,
+      customerEmail: data?.customer_email ?? null,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "failed to load booking";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  const stripe = getStripe();
-  const session = await stripe.checkout.sessions.retrieve(sessionId);
-
-  const bookingId =
-    session.metadata?.bookingId ??
-    session.client_reference_id ??
-    null;
-
-  if (!bookingId) {
-    return NextResponse.json({ error: "bookingId not found" }, { status: 400 });
-  }
-
-  const { data, error } = await supabase
-    .from("bookings")
-    .select("id,status,attendee_key,course_id")
-    .eq("id", bookingId)
-    .maybeSingle();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({
-    bookingId: data?.id ?? bookingId,
-    status: data?.status ?? null,
-    attendeeKey: data?.attendee_key ?? null,
-    courseId: data?.course_id ?? null,
-  });
 }

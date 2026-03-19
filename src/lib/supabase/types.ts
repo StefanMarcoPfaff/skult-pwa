@@ -20,7 +20,7 @@ export type Database = {
       tickets: {
         Row: {
           id: string;
-          type: "workshop" | "trial" | "course_session";
+          type: "workshop" | "trial" | "course_session" | "course_participant";
           booking_id: string | null;
           trial_reservation_id: string | null;
           subscription_id: string | null;
@@ -35,7 +35,7 @@ export type Database = {
         };
         Insert: {
           id?: string;
-          type: "workshop" | "trial" | "course_session";
+          type: "workshop" | "trial" | "course_session" | "course_participant";
           booking_id?: string | null;
           trial_reservation_id?: string | null;
           subscription_id?: string | null;
@@ -49,7 +49,7 @@ export type Database = {
           created_at?: string;
         };
         Update: Partial<{
-          type: "workshop" | "trial" | "course_session";
+          type: "workshop" | "trial" | "course_session" | "course_participant";
           booking_id: string | null;
           trial_reservation_id: string | null;
           subscription_id: string | null;

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import QRCode from "react-qr-code";
+import { buildTicketCheckInUrl } from "@/lib/ticket-qr";
 
 type Props = {
   sessionId: string;
@@ -12,6 +14,17 @@ type ApiResponse = {
   status?: string | null;
   attendeeKey?: string | null;
   courseId?: string | null;
+  workshopTitle?: string | null;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  location?: string | null;
+  locationDetails?: string | null;
+  sessionLines?: string[];
+  providerName?: string | null;
+  instructorName?: string | null;
+  stornoPolicyLabel?: string | null;
+  priceLabel?: string | null;
+  qrToken?: string | null;
   error?: string;
 };
 
@@ -33,6 +46,8 @@ function addTicketKeyToLocalStorage(attendeeKey: string) {
 export default function SuccessClient({ sessionId }: Props) {
   const [status, setStatus] = useState<string | null>(null);
   const [attendeeKey, setAttendeeKey] = useState<string | null>(null);
+  const [qrToken, setQrToken] = useState<string | null>(null);
+  const [bookingData, setBookingData] = useState<ApiResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,22 +68,23 @@ export default function SuccessClient({ sessionId }: Props) {
           return;
         }
 
+        setBookingData(json);
         setStatus(json.status ?? null);
         setAttendeeKey(json.attendeeKey ?? null);
+        setQrToken(json.qrToken ?? null);
 
         if (json.status === "paid" && json.attendeeKey) {
           addTicketKeyToLocalStorage(json.attendeeKey);
         }
-      } catch (e: any) {
+      } catch (error) {
         if (!active) return;
-        setError(e?.message ?? "fetch failed");
+        const message = error instanceof Error ? error.message : "fetch failed";
+        setError(message);
       }
     }
 
-    // sofort
     fetchStatus();
 
-    // poll alle 2s bis paid
     const id = setInterval(() => {
       if (status !== "paid") fetchStatus();
     }, 2000);
@@ -77,74 +93,92 @@ export default function SuccessClient({ sessionId }: Props) {
       active = false;
       clearInterval(id);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, status]);
 
   const paid = status === "paid";
+  const checkInUrl = qrToken ? buildTicketCheckInUrl(qrToken) : null;
 
   return (
-    <main style={{ padding: 24, maxWidth: 720, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 44, fontWeight: 800, marginBottom: 8 }}>
-        Zahlung erfolgreich ✅
-      </h1>
+    <main className="mx-auto max-w-3xl space-y-6 p-6">
+      <section className="rounded-2xl border p-6">
+        <h1 className="text-4xl font-extrabold">Deine Workshop-Buchung war erfolgreich.</h1>
 
-      {error ? (
-        <p style={{ fontSize: 18, marginTop: 12 }}>
-          Hinweis: Wir konnten den Status gerade nicht laden. Bitte aktualisiere die Seite.
-        </p>
-      ) : paid ? (
-        <p style={{ fontSize: 20, marginTop: 12 }}>
-          Danke! Deine Buchung ist als bezahlt gespeichert. 🎟️
-        </p>
-      ) : (
-        <p style={{ fontSize: 20, marginTop: 12 }}>
-          Danke! Wir bestätigen deine Zahlung gerade noch – diese Seite aktualisiert sich automatisch…
-        </p>
-      )}
+        {error ? (
+          <p className="mt-3 text-base text-muted-foreground">
+            Hinweis: Wir konnten den Status gerade nicht vollstaendig laden. Bitte aktualisiere die Seite.
+          </p>
+        ) : paid ? (
+          <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+            <p>Deine Zahlung wurde bestaetigt und dein Workshop-Ticket ist bereit.</p>
+            <p>Alle weiteren Informationen erhaeltst du per E-Mail.</p>
+          </div>
+        ) : (
+          <p className="mt-3 text-base text-muted-foreground">
+            Wir bestaetigen deine Zahlung gerade noch. Diese Seite aktualisiert sich automatisch.
+          </p>
+        )}
+      </section>
 
-      <div style={{ marginTop: 28, display: "flex", gap: 14, flexWrap: "wrap" }}>
+      {paid && bookingData ? (
+        <section className="rounded-2xl border p-6">
+          <h2 className="text-xl font-semibold">{bookingData.workshopTitle ?? "Workshop"}</h2>
+          <div className="mt-4 space-y-2 text-sm text-muted-foreground">
+            {bookingData.providerName ? <p>Anbieter: <span className="font-medium text-foreground">{bookingData.providerName}</span></p> : null}
+            {bookingData.instructorName ? <p>Dozent*in: <span className="font-medium text-foreground">{bookingData.instructorName}</span></p> : null}
+            {bookingData.priceLabel ? <p>Preis: <span className="font-medium text-foreground">{bookingData.priceLabel}</span></p> : null}
+            {bookingData.location ? <p>Ort: <span className="font-medium text-foreground">{bookingData.location}</span></p> : null}
+            {bookingData.locationDetails ? <p>Ort / Zusatzinfo: <span className="font-medium text-foreground">{bookingData.locationDetails}</span></p> : null}
+            {bookingData.stornoPolicyLabel ? <p>Storno-Regel: <span className="font-medium text-foreground">{bookingData.stornoPolicyLabel}</span></p> : null}
+            {bookingData.sessionLines && bookingData.sessionLines.length > 0 ? (
+              <div>
+                <p>Termine:</p>
+                <ul className="ml-5 list-disc">
+                  {bookingData.sessionLines.map((line) => (
+                    <li key={line}>
+                      <span className="font-medium text-foreground">{line}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      {paid && qrToken && checkInUrl ? (
+        <section className="rounded-2xl border p-6">
+          <h2 className="text-xl font-semibold">Dein Workshop-Ticket</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Bitte zeige diesen QR-Code beim Einlass vor.
+          </p>
+          <div className="mt-4 inline-block rounded-2xl border bg-white p-4">
+            <QRCode value={checkInUrl} size={220} />
+          </div>
+        </section>
+      ) : null}
+
+      <div className="flex flex-wrap gap-3">
         {paid && attendeeKey ? (
           <Link
             href={`/ticket/${attendeeKey}`}
-            style={{
-              padding: "14px 18px",
-              borderRadius: 12,
-              background: "black",
-              color: "white",
-              textDecoration: "none",
-              fontWeight: 700,
-            }}
+            className="inline-flex rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white"
           >
             Ticket anzeigen
           </Link>
         ) : (
-          <span
-            style={{
-              padding: "14px 18px",
-              borderRadius: 12,
-              background: "#eee",
-              color: "#555",
-              fontWeight: 700,
-            }}
-          >
-            Ticket wird vorbereitet…
+          <span className="inline-flex rounded-xl bg-muted px-4 py-3 text-sm font-semibold text-muted-foreground">
+            Ticket wird vorbereitet...
           </span>
         )}
 
         <Link
           href="/tickets"
-          style={{
-            padding: "14px 18px",
-            borderRadius: 12,
-            border: "1px solid #ddd",
-            textDecoration: "none",
-            fontWeight: 700,
-          }}
+          className="inline-flex rounded-xl border px-4 py-3 text-sm font-semibold"
         >
           Meine Tickets
         </Link>
 
-        <Link href="/courses" style={{ alignSelf: "center" }}>
+        <Link href="/courses" className="inline-flex rounded-xl border px-4 py-3 text-sm font-semibold">
           Alle Kurse
         </Link>
       </div>

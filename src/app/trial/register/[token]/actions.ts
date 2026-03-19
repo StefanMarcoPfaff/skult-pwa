@@ -5,6 +5,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 type RegistrationActionState = {
   error?: string;
+  saved?: boolean;
 };
 
 type ReservationRow = {
@@ -13,6 +14,11 @@ type ReservationRow = {
   status: string | null;
   registration_token: string | null;
   registration_expires_at: string | null;
+};
+
+type RegistrationIntentRow = {
+  id: string;
+  status: string | null;
 };
 
 function isExpired(value: string | null): boolean {
@@ -42,6 +48,19 @@ async function loadApprovedReservation(token: string) {
   }
 
   return { admin, reservation };
+}
+
+async function loadRegistrationIntent(
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  reservationId: string
+) {
+  const { data: intent } = await admin
+    .from("course_registration_intents")
+    .select("id,status")
+    .eq("trial_reservation_id", reservationId)
+    .maybeSingle<RegistrationIntentRow>();
+
+  return intent ?? null;
 }
 
 export async function submitTrialRegistrationAction(
@@ -91,6 +110,32 @@ export async function submitTrialRegistrationAction(
   }
 
   const now = new Date().toISOString();
+  const existingIntent = await loadRegistrationIntent(admin, reservation.id);
+
+  if (existingIntent?.status === "checkout_completed") {
+    const { error: updateError } = await admin
+      .from("course_registration_intents")
+      .update({
+        first_name,
+        last_name,
+        email,
+        phone,
+        street_and_number,
+        postal_code,
+        city,
+        country,
+        notes,
+        updated_at: now,
+      })
+      .eq("id", existingIntent.id)
+      .eq("status", "checkout_completed");
+
+    if (updateError) {
+      return { error: updateError.message || "Anmeldedaten konnten nicht gespeichert werden." };
+    }
+
+    return { saved: true };
+  }
 
   const { data: intent, error } = await admin
     .from("course_registration_intents")
