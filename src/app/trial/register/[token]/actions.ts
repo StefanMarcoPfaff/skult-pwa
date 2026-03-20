@@ -8,6 +8,13 @@ type RegistrationActionState = {
   saved?: boolean;
 };
 
+type RegistrationIntentByTokenRow = {
+  id: string;
+  trial_reservation_id: string;
+  course_id: string;
+  status: string | null;
+};
+
 type ReservationRow = {
   id: string;
   course_id: string;
@@ -33,6 +40,25 @@ function requiredText(formData: FormData, name: string): string {
 
 async function loadApprovedReservation(token: string) {
   const admin = createSupabaseAdmin();
+  const { data: intentByToken } = await admin
+    .from("course_registration_intents")
+    .select("id,trial_reservation_id,course_id,status")
+    .eq("registration_token", token)
+    .maybeSingle<RegistrationIntentByTokenRow>();
+
+  if (intentByToken?.status === "checkout_completed") {
+    return {
+      admin,
+      reservation: {
+        id: intentByToken.trial_reservation_id,
+        course_id: intentByToken.course_id,
+        status: "approved",
+        registration_token: token,
+        registration_expires_at: null,
+      } satisfies ReservationRow,
+    };
+  }
+
   const { data: reservation, error } = await admin
     .from("trial_reservations")
     .select("id,course_id,status,registration_token,registration_expires_at")

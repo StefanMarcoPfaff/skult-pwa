@@ -110,6 +110,10 @@ function participantName(firstName: string | null, lastName: string | null, fall
   return [firstName, lastName].filter(Boolean).join(" ").trim() || fallback;
 }
 
+function formatAddress(parts: Array<string | null | undefined>): string {
+  return parts.filter(Boolean).join(", ") || "-";
+}
+
 async function requireTeacherId() {
   const supabase = await createSupabaseServerClient();
   const {
@@ -187,12 +191,14 @@ export default async function DashboardParticipantDetailPage({
           <p className="mt-2 text-sm text-muted-foreground">
             Workshop-Teilnehmerdetail fuer {course.title ?? "Workshop"}.
           </p>
-          <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-            {(booking.customer_email ?? ticket?.customer_email) ? <p>E-Mail: <span className="font-medium text-foreground">{booking.customer_email ?? ticket?.customer_email}</span></p> : null}
-            {booking.customer_phone ? <p>Telefon: <span className="font-medium text-foreground">{booking.customer_phone}</span></p> : null}
+          <div className="mt-4 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2">
+            <p>Name: <span className="font-medium text-foreground">{participantName(booking.customer_first_name, booking.customer_last_name, ticket?.customer_name ?? "Workshop-Teilnehmer*in")}</span></p>
+            <p>E-Mail: <span className="font-medium text-foreground">{booking.customer_email ?? ticket?.customer_email ?? "-"}</span></p>
+            <p>Telefon: <span className="font-medium text-foreground">{booking.customer_phone ?? "-"}</span></p>
             <p>Status: <span className="font-medium text-foreground">{ticket?.status ?? booking.status ?? "-"}</span></p>
             <p>Gebucht am: <span className="font-medium text-foreground">{formatDateTime(booking.created_at)}</span></p>
             <p>Check-in: <span className="font-medium text-foreground">{formatDateTime(ticket?.checked_in_at ?? booking.checked_in_at)}</span></p>
+            <p className="sm:col-span-2">Adresse: <span className="font-medium text-foreground">-</span></p>
             {booking.payment_provider ? <p>Zahlungsanbieter: <span className="font-medium text-foreground">{booking.payment_provider}</span></p> : null}
           </div>
         </section>
@@ -208,6 +214,18 @@ export default async function DashboardParticipantDetailPage({
             ) : null}
             {course.location ? <p>Ort: <span className="font-medium text-foreground">{course.location}</span></p> : null}
             {course.location_details ? <p>Raum / Zusatzinfo: <span className="font-medium text-foreground">{course.location_details}</span></p> : null}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border p-6">
+          <h2 className="text-xl font-semibold">Interne Vermerke</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+              Notizen folgen später
+            </div>
+            <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+              Chat-Funktion folgt später
+            </div>
           </div>
         </section>
       </main>
@@ -277,12 +295,14 @@ export default async function DashboardParticipantDetailPage({
         <p className="mt-2 text-sm text-muted-foreground">
           Teilnehmerdetail fuer {course.title ?? "Kurs"}.
         </p>
-        <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-          {(intent?.email ?? reservation.email) ? (
-            <p>E-Mail: <span className="font-medium text-foreground">{intent?.email ?? reservation.email}</span></p>
-          ) : null}
-          <p>Probestundenstatus: <span className="font-medium text-foreground">{reservation.decision_status ?? reservation.status ?? "-"}</span></p>
+        <div className="mt-4 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2">
+          <p>Name: <span className="font-medium text-foreground">{participantName(intent?.first_name ?? reservation.first_name, intent?.last_name ?? reservation.last_name, "Teilnehmer*in")}</span></p>
+          <p>E-Mail: <span className="font-medium text-foreground">{intent?.email ?? reservation.email ?? "-"}</span></p>
+          <p>Telefon: <span className="font-medium text-foreground">{intent?.phone ?? reservation.phone ?? "-"}</span></p>
+          <p>Probestatus: <span className="font-medium text-foreground">{reservation.decision_status ?? reservation.status ?? "-"}</span></p>
           <p>Check-in: <span className="font-medium text-foreground">{formatDateTime(ticket?.checked_in_at ?? null)}</span></p>
+          <p>Ticketstatus: <span className="font-medium text-foreground">{ticket?.status ?? "-"}</span></p>
+          <p className="sm:col-span-2">Adresse: <span className="font-medium text-foreground">{formatAddress([intent?.street_and_number, intent?.postal_code, intent?.city, intent?.country])}</span></p>
           {reservation.registration_expires_at ? (
             <p>Registrierungsfrist: <span className="font-medium text-foreground">{formatDateTime(reservation.registration_expires_at)}</span></p>
           ) : null}
@@ -318,7 +338,7 @@ export default async function DashboardParticipantDetailPage({
             <p>Nachname: <span className="font-medium text-foreground">{intent.last_name ?? "-"}</span></p>
             <p>E-Mail: <span className="font-medium text-foreground">{intent.email ?? "-"}</span></p>
             <p>Telefon: <span className="font-medium text-foreground">{intent.phone ?? "-"}</span></p>
-            <p className="sm:col-span-2">Adresse: <span className="font-medium text-foreground">{[intent.street_and_number, intent.postal_code, intent.city, intent.country].filter(Boolean).join(", ") || "-"}</span></p>
+            <p className="sm:col-span-2">Adresse: <span className="font-medium text-foreground">{formatAddress([intent.street_and_number, intent.postal_code, intent.city, intent.country])}</span></p>
             <p className="sm:col-span-2">Notizen: <span className="font-medium text-foreground">{intent.notes ?? "-"}</span></p>
             <p>Status: <span className="font-medium text-foreground">{intent.status ?? "-"}</span></p>
             <p>Checkout abgeschlossen: <span className="font-medium text-foreground">{formatDateTime(intent.completed_at)}</span></p>
@@ -328,6 +348,18 @@ export default async function DashboardParticipantDetailPage({
             Fuer diese Person liegt noch keine verbindliche Registrierung im System vor.
           </p>
         )}
+      </section>
+
+      <section className="rounded-2xl border p-6">
+        <h2 className="text-xl font-semibold">Interne Vermerke</h2>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+            Notizen folgen später
+          </div>
+          <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+            Chat-Funktion folgt später
+          </div>
+        </div>
       </section>
     </main>
   );

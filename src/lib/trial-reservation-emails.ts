@@ -1,5 +1,6 @@
 import { getResend } from "@/lib/resend";
-import { buildTicketCheckInUrl, buildTicketQrCodeDataUrl } from "@/lib/ticket-qr";
+import { shouldShowStudioLabel } from "@/lib/provider-profiles";
+import { buildTicketCheckInUrl, buildTicketQrCodeDataUrl, buildTicketViewUrl } from "@/lib/ticket-qr";
 
 /*
  * MVP verification checklist:
@@ -40,6 +41,7 @@ export type TrialRegistrationExpiredEmailData = TrialRegistrationDecisionEmailDa
 export type CourseSubscriptionConfirmationEmailData = {
   registrationIntentId: string;
   courseTitle: string;
+  providerType?: "independent_teacher" | "studio_provider" | null;
   providerName: string | null;
   instructorName: string | null;
   customerName: string;
@@ -50,6 +52,19 @@ export type CourseSubscriptionConfirmationEmailData = {
   location: string | null;
   locationDetails: string | null;
   qrToken?: string | null;
+};
+
+export type CourseSubscriptionProviderNotificationEmailData = {
+  registrationIntentId: string;
+  teacherEmail: string | null;
+  participantName: string;
+  participantEmail: string;
+  participantPhone?: string | null;
+  courseTitle: string;
+  providerName: string | null;
+  instructorName: string | null;
+  priceLabel: string | null;
+  cancellationLabel: string | null;
 };
 
 export type TeacherTrialDecisionReminderEmailData = {
@@ -83,6 +98,159 @@ function formatDateTimeRange(startsAt: string, endsAt: string): string {
   return `${date} | ${startTime}-${endTime}`;
 }
 
+type EmailAction = {
+  label: string;
+  href: string;
+};
+
+type InfoItem = {
+  label: string;
+  value: string | null | undefined;
+};
+
+function getSiteUrl(): string {
+  return process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+}
+
+function buildAbsoluteUrl(path: string): string {
+  return new URL(path, getSiteUrl()).toString();
+}
+
+function renderInfoBlockHtml(items: InfoItem[]): string {
+  const rows = items.filter((item) => item.value).map(
+    (item) => `
+      <tr>
+        <td style="padding: 6px 0; vertical-align: top; color: #5b6470; width: 150px;"><b>${item.label}</b></td>
+        <td style="padding: 6px 0; color: #111827;">${item.value}</td>
+      </tr>
+    `
+  );
+
+  if (rows.length === 0) return "";
+
+  return `
+    <div style="margin: 24px 0; padding: 18px 20px; border: 1px solid #e5e7eb; border-radius: 14px; background: #f8fafc;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse;">
+        ${rows.join("")}
+      </table>
+    </div>
+  `;
+}
+
+function renderActionsHtml(actions: EmailAction[]): string {
+  if (actions.length === 0) return "";
+
+  return `
+    <div style="margin: 24px 0 8px;">
+      ${actions
+        .map(
+          (action) => `
+            <p style="margin: 0 0 12px;">
+              <a href="${action.href}" style="display: inline-block; padding: 12px 18px; border-radius: 10px; background: #111827; color: #ffffff; text-decoration: none; font-weight: 600;">
+                ${action.label}
+              </a>
+            </p>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderSupportHtml() {
+  return `<p style="margin: 24px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>`;
+}
+
+function renderFooterHtml() {
+  return `<p style="margin: 24px 0 0;">Herzliche Grüße<br />SKULT</p>`;
+}
+
+function buildProviderInfoItems(input: {
+  providerType?: "independent_teacher" | "studio_provider" | null;
+  providerName: string | null;
+  instructorName: string | null;
+}): InfoItem[] {
+  return [
+    ...(shouldShowStudioLabel(input.providerType)
+      ? [{ label: "Anbieter / Studio", value: input.providerName }]
+      : []),
+    { label: "Dozent", value: input.instructorName },
+  ];
+}
+
+function createHtmlEmail(input: {
+  title: string;
+  greeting?: string;
+  intro: string;
+  infoItems?: InfoItem[];
+  nextSteps?: string[];
+  actions?: EmailAction[];
+  support?: string;
+}) {
+  const greeting = input.greeting ? `<p style="margin: 0 0 16px;">Hallo ${input.greeting},</p>` : "";
+  const infoBlock = renderInfoBlockHtml(input.infoItems ?? []);
+  const nextSteps =
+    input.nextSteps && input.nextSteps.length > 0
+      ? `
+        <div style="margin: 24px 0 0;">
+          <p style="margin: 0 0 10px;"><b>Was jetzt wichtig ist</b></p>
+          <ul style="margin: 0; padding-left: 20px; color: #111827;">
+            ${input.nextSteps.map((step) => `<li style="margin: 0 0 8px;">${step}</li>`).join("")}
+          </ul>
+        </div>
+      `
+      : "";
+
+  return `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827; max-width: 640px;">
+      <h2 style="margin: 0 0 18px; font-size: 26px; line-height: 1.25;">${input.title}</h2>
+      ${greeting}
+      <p style="margin: 0;">${input.intro}</p>
+      ${infoBlock}
+      ${nextSteps}
+      ${renderActionsHtml(input.actions ?? [])}
+      ${input.support ?? renderSupportHtml()}
+      ${renderFooterHtml()}
+    </div>
+  `;
+}
+
+function createTextEmail(input: {
+  title: string;
+  greeting?: string;
+  intro: string;
+  infoItems?: InfoItem[];
+  nextSteps?: string[];
+  actions?: EmailAction[];
+  support?: string;
+}) {
+  const infoLines = (input.infoItems ?? [])
+    .filter((item) => item.value)
+    .map((item) => `${item.label}: ${item.value}`);
+  const actionLines = (input.actions ?? []).map((action) => `${action.label}: ${action.href}`);
+
+  return [
+    input.title,
+    input.greeting ? `Hallo ${input.greeting},` : null,
+    input.intro,
+    infoLines.length > 0 ? "" : null,
+    infoLines.length > 0 ? "Wichtige Informationen" : null,
+    ...infoLines,
+    input.nextSteps && input.nextSteps.length > 0 ? "" : null,
+    input.nextSteps && input.nextSteps.length > 0 ? "Was jetzt wichtig ist" : null,
+    ...(input.nextSteps ?? []).map((step) => `- ${step}`),
+    actionLines.length > 0 ? "" : null,
+    ...actionLines,
+    "",
+    input.support ?? "Wenn du Fragen hast, helfen wir dir gerne weiter.",
+    "",
+    "Herzliche Grüße",
+    "SKULT",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 async function getQrLines(
   qrToken?: string | null,
   options?: {
@@ -114,84 +282,94 @@ async function getQrLines(
 }
 
 export async function prepareCustomerTrialReservationConfirmation(data: TrialReservationEmailData) {
-  const teacherLine = data.teacherName ? `<p><b>Dozent*in:</b> ${data.teacherName}</p>` : "";
-  const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
-  const dateLine = `<p><b>Termin:</b> ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}</p>`;
   const qrLines = await getQrLines(data.qrToken);
+  const ticketUrl = data.qrToken ? buildTicketViewUrl(data.qrToken) : null;
 
   return {
     to: data.customerEmail,
-    subject: `Deine Probestunde ist reserviert: ${data.courseTitle}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2>Deine Probestunden-Reservierung war erfolgreich</h2>
-        <p>Hallo ${data.customerName},</p>
-        <p>vielen Dank fuer deine Anfrage. Deine Probestunde fuer <b>${data.courseTitle}</b> wurde erfolgreich reserviert.</p>
-        ${teacherLine}
-        ${locationLine}
-        ${dateLine}
-        ${qrLines.html}
-        <p>Wenn du den Termin doch nicht wahrnehmen kannst, sage bitte moeglichst fruehzeitig ab, damit der Platz wieder frei wird.</p>
-        <p>Ueber diesen Link kannst du deine Reservierung stornieren:</p>
-        <p><a href="${data.cancelUrl}">${data.cancelUrl}</a></p>
-        <p>Wir freuen uns auf dich.</p>
-        <p>Herzliche Gruesse<br />SKULT</p>
-      </div>
-    `,
-    text: [
-      `Deine Probestunden-Reservierung war erfolgreich: ${data.courseTitle}`,
-      `Hallo ${data.customerName},`,
-      "deine Probestunde wurde erfolgreich reserviert.",
-      data.teacherName ? `Dozent*in: ${data.teacherName}` : null,
-      data.location ? `Ort: ${data.location}` : null,
-      `Termin: ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}`,
-      ...qrLines.text,
-      `Falls du nicht teilnehmen kannst, storniere bitte rechtzeitig: ${data.cancelUrl}`,
-      "Wir freuen uns auf dich.",
-      "Herzliche Gruesse",
-      "SKULT",
-    ]
-      .filter(Boolean)
-      .join("\n"),
+    subject: `Deine Probestunde ist reserviert 🎉 ${data.courseTitle}`,
+    html:
+      createHtmlEmail({
+        title: "Deine Probestunde ist reserviert 🎉",
+        greeting: data.customerName,
+        intro: `Deine Reservierung für <b>${data.courseTitle}</b> war erfolgreich. Alle wichtigen Informationen findest du hier auf einen Blick.`,
+        infoItems: [
+          { label: "Kurs", value: data.courseTitle },
+          { label: "Dozent", value: data.teacherName },
+          { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
+          { label: "Ort", value: data.location },
+        ],
+        nextSteps: [
+          "Bitte bring dein Ticket zum Termin mit.",
+          "Falls du doch nicht teilnehmen kannst, storniere bitte möglichst frühzeitig, damit der Platz wieder frei wird.",
+        ],
+        actions: [
+          ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
+          { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
+          { label: "Reservierung stornieren", href: data.cancelUrl },
+        ],
+        support: `${qrLines.html}<p style="margin: 18px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>`,
+      }),
+    text: createTextEmail({
+      title: "Deine Probestunde ist reserviert 🎉",
+      greeting: data.customerName,
+      intro: `Deine Reservierung für ${data.courseTitle} war erfolgreich. Alle wichtigen Informationen findest du hier auf einen Blick.`,
+      infoItems: [
+        { label: "Kurs", value: data.courseTitle },
+        { label: "Dozent", value: data.teacherName },
+        { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
+        { label: "Ort", value: data.location },
+      ],
+      nextSteps: [
+        "Bitte bring dein Ticket zum Termin mit.",
+        "Falls du doch nicht teilnehmen kannst, storniere bitte möglichst frühzeitig, damit der Platz wieder frei wird.",
+        ...qrLines.text,
+      ],
+      actions: [
+        ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
+        { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
+        { label: "Reservierung stornieren", href: data.cancelUrl },
+      ],
+    }),
   };
 }
 
 export function prepareCustomerTrialReservationReminder(data: TrialReservationEmailData) {
-  const teacherLine = data.teacherName ? `<p><b>Dozent*in:</b> ${data.teacherName}</p>` : "";
-  const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
-  const dateLine = `<p><b>Termin:</b> ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}</p>`;
-
   return {
     to: data.customerEmail,
     subject: "Erinnerung an deine Probestunde morgen",
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2>Erinnerung an deine Probestunde morgen</h2>
-        <p>Hallo ${data.customerName},</p>
-        <p>morgen ist deine reservierte Probestunde fuer <b>${data.courseTitle}</b>.</p>
-        ${teacherLine}
-        ${locationLine}
-        ${dateLine}
-        <p>Falls du den Termin doch nicht wahrnehmen kannst, storniere bitte rechtzeitig ueber diesen Link:</p>
-        <p><a href="${data.cancelUrl}">${data.cancelUrl}</a></p>
-        <p>Wir wuenschen dir viel Freude bei deiner Probestunde.</p>
-        <p>Herzliche Gruesse<br />SKULT</p>
-      </div>
-    `,
-    text: [
-      "Erinnerung an deine Probestunde morgen",
-      `Hallo ${data.customerName},`,
-      `morgen ist deine reservierte Probestunde fuer ${data.courseTitle}.`,
-      data.teacherName ? `Dozent*in: ${data.teacherName}` : null,
-      data.location ? `Ort: ${data.location}` : null,
-      `Termin: ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}`,
-      `Falls du nicht teilnehmen kannst, storniere bitte rechtzeitig: ${data.cancelUrl}`,
-      "Wir wuenschen dir viel Freude bei deiner Probestunde.",
-      "Herzliche Gruesse",
-      "SKULT",
-    ]
-      .filter(Boolean)
-      .join("\n"),
+    html: createHtmlEmail({
+      title: "Erinnerung an deine Probestunde",
+      greeting: data.customerName,
+      intro: `Morgen findet deine reservierte Probestunde für <b>${data.courseTitle}</b> statt.`,
+      infoItems: [
+        { label: "Kurs", value: data.courseTitle },
+        { label: "Dozent", value: data.teacherName },
+        { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
+        { label: "Ort", value: data.location },
+      ],
+      nextSteps: [
+        "Bitte plane genug Zeit für deine Anreise ein.",
+        "Falls du doch nicht teilnehmen kannst, storniere bitte rechtzeitig.",
+      ],
+      actions: [{ label: "Reservierung stornieren", href: data.cancelUrl }],
+    }),
+    text: createTextEmail({
+      title: "Erinnerung an deine Probestunde",
+      greeting: data.customerName,
+      intro: `Morgen findet deine reservierte Probestunde für ${data.courseTitle} statt.`,
+      infoItems: [
+        { label: "Kurs", value: data.courseTitle },
+        { label: "Dozent", value: data.teacherName },
+        { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
+        { label: "Ort", value: data.location },
+      ],
+      nextSteps: [
+        "Bitte plane genug Zeit für deine Anreise ein.",
+        "Falls du doch nicht teilnehmen kannst, storniere bitte rechtzeitig.",
+      ],
+      actions: [{ label: "Reservierung stornieren", href: data.cancelUrl }],
+    }),
   };
 }
 
@@ -257,6 +435,37 @@ export function prepareTeacherTrialReservationCancellation(data: TrialReservatio
   };
 }
 
+export function prepareCustomerTrialReservationCancellation(data: TrialReservationEmailData) {
+  return {
+    to: data.customerEmail,
+    subject: `Deine Probestunde wurde storniert: ${data.courseTitle}`,
+    html: createHtmlEmail({
+      title: "Deine Probestunde wurde storniert",
+      greeting: data.customerName,
+      intro: `Deine Probestunden-Reservierung für <b>${data.courseTitle}</b> wurde erfolgreich storniert.`,
+      infoItems: [
+        { label: "Kurs", value: data.courseTitle },
+        { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
+        { label: "Ort", value: data.location },
+      ],
+      nextSteps: ["Wenn du weiterhin Interesse hast, kannst du später jederzeit erneut eine Probestunde anfragen."],
+      actions: [{ label: "Zu den Kursen", href: buildAbsoluteUrl("/courses") }],
+    }),
+    text: createTextEmail({
+      title: "Deine Probestunde wurde storniert",
+      greeting: data.customerName,
+      intro: `Deine Probestunden-Reservierung für ${data.courseTitle} wurde erfolgreich storniert.`,
+      infoItems: [
+        { label: "Kurs", value: data.courseTitle },
+        { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
+        { label: "Ort", value: data.location },
+      ],
+      nextSteps: ["Wenn du weiterhin Interesse hast, kannst du später jederzeit erneut eine Probestunde anfragen."],
+      actions: [{ label: "Zu den Kursen", href: buildAbsoluteUrl("/courses") }],
+    }),
+  };
+}
+
 function formatExpirationDateTime(value: string): string {
   const date = new Date(value);
   return date.toLocaleString("de-DE", {
@@ -266,39 +475,53 @@ function formatExpirationDateTime(value: string): string {
 }
 
 export function prepareTrialRegistrationApprovedEmail(data: TrialRegistrationDecisionEmailData) {
-  const expiresAtLine = data.registrationExpiresAt
-    ? `<p><b>Reserviert bis:</b> ${formatExpirationDateTime(data.registrationExpiresAt)}</p>`
-    : "";
-
   return {
     to: data.customerEmail,
-    subject: `Du kannst dich jetzt anmelden: ${data.courseTitle}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2>Du kannst dich jetzt verbindlich anmelden</h2>
-        <p>Hallo ${data.customerName},</p>
-        <p>nach der Probestunde kannst du dich jetzt fuer <b>${data.courseTitle}</b> verbindlich anmelden.</p>
-        <p>Nutze dazu bitte diesen Link:</p>
-        <p><a href="${data.registrationUrl}">${data.registrationUrl}</a></p>
-        <p>Dein Platz ist fuer 96 Stunden fuer dich reserviert.</p>
-        ${expiresAtLine}
-        <p>Herzliche Gruesse<br />SKULT</p>
-      </div>
-    `,
-    text: [
-      `Du kannst dich jetzt verbindlich anmelden: ${data.courseTitle}`,
-      `Hallo ${data.customerName},`,
-      `du kannst dich jetzt fuer ${data.courseTitle} verbindlich anmelden.`,
-      data.registrationUrl ? `Anmeldelink: ${data.registrationUrl}` : null,
-      "Dein Platz ist fuer 96 Stunden fuer dich reserviert.",
-      data.registrationExpiresAt
-        ? `Reserviert bis: ${formatExpirationDateTime(data.registrationExpiresAt)}`
-        : null,
-      "Herzliche Gruesse",
-      "SKULT",
-    ]
-      .filter(Boolean)
-      .join("\n"),
+    subject: `Deine Anmeldung ist jetzt möglich ✨ ${data.courseTitle}`,
+    html: createHtmlEmail({
+      title: "Deine Anmeldung ist jetzt möglich ✨",
+      greeting: data.customerName,
+      intro: `Nach deiner Probestunde kannst du dich jetzt verbindlich für <b>${data.courseTitle}</b> anmelden.`,
+      infoItems: [
+        { label: "Kurs", value: data.courseTitle },
+        {
+          label: "Reserviert bis",
+          value: data.registrationExpiresAt ? formatExpirationDateTime(data.registrationExpiresAt) : null,
+        },
+      ],
+      nextSteps: [
+        "Dein Platz ist für 96 Stunden für dich reserviert.",
+        "Schließe deine Anmeldung bitte innerhalb dieses Zeitfensters ab.",
+      ],
+      actions: data.registrationUrl
+        ? [
+            { label: "Jetzt anmelden", href: data.registrationUrl },
+            { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
+          ]
+        : [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+    }),
+    text: createTextEmail({
+      title: "Deine Anmeldung ist jetzt möglich ✨",
+      greeting: data.customerName,
+      intro: `Nach deiner Probestunde kannst du dich jetzt verbindlich für ${data.courseTitle} anmelden.`,
+      infoItems: [
+        { label: "Kurs", value: data.courseTitle },
+        {
+          label: "Reserviert bis",
+          value: data.registrationExpiresAt ? formatExpirationDateTime(data.registrationExpiresAt) : null,
+        },
+      ],
+      nextSteps: [
+        "Dein Platz ist für 96 Stunden für dich reserviert.",
+        "Schließe deine Anmeldung bitte innerhalb dieses Zeitfensters ab.",
+      ],
+      actions: data.registrationUrl
+        ? [
+            { label: "Jetzt anmelden", href: data.registrationUrl },
+            { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
+          ]
+        : [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+    }),
   };
 }
 
@@ -307,45 +530,44 @@ function prepareTrialRegistrationReminderEmail(
   input: { subject: string; heading: string; lead: string; remainingTime: string }
 ) {
   const expiresAtLine = data.registrationExpiresAt
-    ? `<p><b>Reserviert bis:</b> ${formatExpirationDateTime(data.registrationExpiresAt)}</p>`
-    : "";
+    ? formatExpirationDateTime(data.registrationExpiresAt)
+    : null;
 
   return {
     to: data.customerEmail,
     subject: input.subject,
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2>${input.heading}</h2>
-        <p>Hallo ${data.customerName},</p>
-        <p>${input.lead} fuer <b>${data.courseTitle}</b>.</p>
-        <p>Du hast noch ${input.remainingTime} Zeit, deine verbindliche Anmeldung abzuschliessen.</p>
-        <p><a href="${data.registrationUrl}">${data.registrationUrl}</a></p>
-        ${expiresAtLine}
-        <p>Herzliche Gruesse<br />SKULT</p>
-      </div>
-    `,
-    text: [
-      input.subject,
-      `Hallo ${data.customerName},`,
-      `${input.lead} fuer ${data.courseTitle}.`,
-      `Du hast noch ${input.remainingTime} Zeit, deine verbindliche Anmeldung abzuschliessen.`,
-      data.registrationUrl ? `Anmeldelink: ${data.registrationUrl}` : null,
-      data.registrationExpiresAt
-        ? `Reserviert bis: ${formatExpirationDateTime(data.registrationExpiresAt)}`
-        : null,
-      "Herzliche Gruesse",
-      "SKULT",
-    ]
-      .filter(Boolean)
-      .join("\n"),
+    html: createHtmlEmail({
+      title: input.heading,
+      greeting: data.customerName,
+      intro: `${input.lead} für <b>${data.courseTitle}</b>.`,
+      infoItems: [
+        { label: "Kurs", value: data.courseTitle },
+        { label: "Verbleibende Zeit", value: input.remainingTime },
+        { label: "Reserviert bis", value: expiresAtLine },
+      ],
+      nextSteps: ["Schließe deine verbindliche Anmeldung rechtzeitig ab, damit dein Platz gesichert bleibt."],
+      actions: data.registrationUrl ? [{ label: "Jetzt anmelden", href: data.registrationUrl }] : [],
+    }),
+    text: createTextEmail({
+      title: input.heading,
+      greeting: data.customerName,
+      intro: `${input.lead} für ${data.courseTitle}.`,
+      infoItems: [
+        { label: "Kurs", value: data.courseTitle },
+        { label: "Verbleibende Zeit", value: input.remainingTime },
+        { label: "Reserviert bis", value: expiresAtLine },
+      ],
+      nextSteps: ["Schließe deine verbindliche Anmeldung rechtzeitig ab, damit dein Platz gesichert bleibt."],
+      actions: data.registrationUrl ? [{ label: "Jetzt anmelden", href: data.registrationUrl }] : [],
+    }),
   };
 }
 
 export function prepareTrialRegistrationReminder24hEmail(data: TrialRegistrationDecisionEmailData) {
   return prepareTrialRegistrationReminderEmail(data, {
     subject: `Du hast noch 3 Tage Zeit: ${data.courseTitle}`,
-    heading: "Deine Anmeldung ist weiter fuer dich reserviert",
-    lead: "deine Freigabe ist weiterhin aktiv",
+    heading: "Deine Anmeldung ist weiterhin für dich reserviert",
+    lead: "Deine Freigabe ist weiterhin aktiv",
     remainingTime: "3 Tage",
   });
 }
@@ -354,7 +576,7 @@ export function prepareTrialRegistrationReminder48hEmail(data: TrialRegistration
   return prepareTrialRegistrationReminderEmail(data, {
     subject: `Du hast noch 2 Tage Zeit: ${data.courseTitle}`,
     heading: "Erinnerung an deine Anmeldung",
-    lead: "dein Platz ist noch fuer dich reserviert",
+    lead: "Dein Platz ist noch für dich reserviert",
     remainingTime: "2 Tage",
   });
 }
@@ -362,8 +584,8 @@ export function prepareTrialRegistrationReminder48hEmail(data: TrialRegistration
 export function prepareTrialRegistrationReminder72hEmail(data: TrialRegistrationDecisionEmailData) {
   return prepareTrialRegistrationReminderEmail(data, {
     subject: `Du hast noch 1 Tag Zeit: ${data.courseTitle}`,
-    heading: "Letzte Erinnerung fuer deine Anmeldung",
-    lead: "deine Freigabe laeuft bald ab",
+    heading: "Letzte Erinnerung für deine Anmeldung",
+    lead: "Deine Freigabe läuft bald ab",
     remainingTime: "1 Tag",
   });
 }
@@ -372,88 +594,119 @@ export function prepareTrialRegistrationExpiredEmail(data: TrialRegistrationExpi
   return {
     to: data.customerEmail,
     subject: `Dein Anmeldelink ist abgelaufen: ${data.courseTitle}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2>Dein Anmeldelink ist abgelaufen</h2>
-        <p>Hallo ${data.customerName},</p>
-        <p>die Reservierung fuer deine verbindliche Anmeldung zu <b>${data.courseTitle}</b> ist inzwischen abgelaufen.</p>
-        <p>Wenn du weiterhin Interesse hast, schau dir gern unsere aktuellen Kurse an:</p>
-        <p><a href="${data.coursesOverviewUrl}">${data.coursesOverviewUrl}</a></p>
-        <p>Herzliche Gruesse<br />SKULT</p>
-      </div>
-    `,
-    text: [
-      `Dein Anmeldelink ist abgelaufen: ${data.courseTitle}`,
-      `Hallo ${data.customerName},`,
-      `die Reservierung fuer deine verbindliche Anmeldung zu ${data.courseTitle} ist inzwischen abgelaufen.`,
-      `Kursuebersicht: ${data.coursesOverviewUrl}`,
-      "Herzliche Gruesse",
-      "SKULT",
-    ].join("\n"),
+    html: createHtmlEmail({
+      title: "Dein Anmeldelink ist abgelaufen",
+      greeting: data.customerName,
+      intro: `Die Reservierung für deine verbindliche Anmeldung zu <b>${data.courseTitle}</b> ist inzwischen abgelaufen.`,
+      infoItems: [{ label: "Kurs", value: data.courseTitle }],
+      nextSteps: ["Wenn du weiterhin Interesse hast, schau dir gerne unsere aktuellen Kurse an."],
+      actions: [{ label: "Zu meinen Kursen", href: data.coursesOverviewUrl }],
+    }),
+    text: createTextEmail({
+      title: "Dein Anmeldelink ist abgelaufen",
+      greeting: data.customerName,
+      intro: `Die Reservierung für deine verbindliche Anmeldung zu ${data.courseTitle} ist inzwischen abgelaufen.`,
+      infoItems: [{ label: "Kurs", value: data.courseTitle }],
+      nextSteps: ["Wenn du weiterhin Interesse hast, schau dir gerne unsere aktuellen Kurse an."],
+      actions: [{ label: "Zu meinen Kursen", href: data.coursesOverviewUrl }],
+    }),
   };
 }
 
 export async function prepareCourseSubscriptionConfirmationEmail(
   data: CourseSubscriptionConfirmationEmailData
 ) {
-  const providerLine = data.providerName ? `<p><b>Anbieter:</b> ${data.providerName}</p>` : "";
-  const instructorLine = data.instructorName
-    ? `<p><b>Dozent*in:</b> ${data.instructorName}</p>`
-    : "";
-  const priceLine = data.priceLabel ? `<p><b>Preis:</b> ${data.priceLabel}</p>` : "";
-  const currencyLine = data.currency ? `<p><b>Waehrung:</b> ${data.currency}</p>` : "";
-  const cancellationLine = data.cancellationLabel
-    ? `<p><b>Kuendigungsmodell:</b> ${data.cancellationLabel}</p>`
-    : "";
-  const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
-  const locationDetailsLine = data.locationDetails
-    ? `<p><b>Ort / Zusatzinfo:</b> ${data.locationDetails}</p>`
-    : "";
   const qrLines = await getQrLines(data.qrToken, {
     htmlLead:
-      "Dieses Kursticket kannst du kuenftig fuer Anwesenheit und Check-in im Kurs verwenden.",
+      "Dein Ticket ist bereits aktiv. Bitte zeige es künftig für Anwesenheit und Check-in im Kurs vor.",
     textLead:
-      "Dieses Kursticket kannst du kuenftig fuer Anwesenheit und Check-in im Kurs verwenden.",
-    imageAlt: "QR-Ticket fuer deine Kursanmeldung",
+      "Dein Ticket ist bereits aktiv. Bitte zeige es künftig für Anwesenheit und Check-in im Kurs vor.",
+    imageAlt: "QR-Ticket für deine Kursanmeldung",
   });
+  const ticketUrl = data.qrToken ? buildTicketViewUrl(data.qrToken) : null;
 
   return {
     to: data.customerEmail,
-    subject: `Deine Kursanmeldung ist bestaetigt: ${data.courseTitle}`,
+    subject: `Deine Anmeldung war erfolgreich 🎉 ${data.courseTitle}`,
+    html:
+      createHtmlEmail({
+        title: "Deine Anmeldung war erfolgreich 🎉",
+        greeting: data.customerName,
+        intro: `Deine verbindliche Anmeldung für <b>${data.courseTitle}</b> wurde erfolgreich abgeschlossen. Deine Zahlung ist bestätigt.`,
+        infoItems: [
+          { label: "Kursname", value: data.courseTitle },
+          ...buildProviderInfoItems(data),
+          { label: "Ort", value: data.location },
+          { label: "Weitere Infos", value: data.locationDetails },
+          { label: "Preis", value: data.priceLabel },
+          { label: "Währung", value: data.currency },
+          { label: "Kündigungsregelung", value: data.cancellationLabel },
+        ],
+        nextSteps: [
+          "Dein Platz ist fest für dich eingeplant.",
+          "Weitere organisatorische Informationen erhältst du bei Bedarf separat.",
+        ],
+        actions: [
+          ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
+          { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
+        ],
+        support: `${qrLines.html}<p style="margin: 18px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>`,
+      }),
+    text: createTextEmail({
+      title: "Deine Anmeldung war erfolgreich 🎉",
+      greeting: data.customerName,
+      intro: `Deine verbindliche Anmeldung für ${data.courseTitle} wurde erfolgreich abgeschlossen. Deine Zahlung ist bestätigt.`,
+      infoItems: [
+        { label: "Kursname", value: data.courseTitle },
+        ...buildProviderInfoItems(data),
+        { label: "Ort", value: data.location },
+        { label: "Weitere Infos", value: data.locationDetails },
+        { label: "Preis", value: data.priceLabel },
+        { label: "Währung", value: data.currency },
+        { label: "Kündigungsregelung", value: data.cancellationLabel },
+      ],
+      nextSteps: [
+        "Dein Platz ist fest für dich eingeplant.",
+        "Weitere organisatorische Informationen erhältst du bei Bedarf separat.",
+        ...qrLines.text,
+      ],
+      actions: [
+        ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
+        { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
+      ],
+    }),
+  };
+}
+
+export function prepareCourseSubscriptionProviderNotificationEmail(
+  data: CourseSubscriptionProviderNotificationEmailData
+) {
+  return {
+    to: data.teacherEmail ?? "",
+    subject: `Neue verbindliche Anmeldung: ${data.courseTitle}`,
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2>Deine Kursanmeldung ist bestaetigt</h2>
-        <p>Hallo ${data.customerName},</p>
-        <p>vielen Dank. Deine verbindliche Anmeldung fuer <b>${data.courseTitle}</b> war erfolgreich und deine Zahlung wurde bestaetigt.</p>
-        ${providerLine}
-        ${instructorLine}
-        ${priceLine}
-        ${currencyLine}
-        ${cancellationLine}
-        ${locationLine}
-        ${locationDetailsLine}
-        ${qrLines.html}
-        <p>Wir freuen uns, dich bald im Kurs begruessen zu duerfen.</p>
-        <p>Weitere Kurs- oder Zugangsinformationen koennen dir bei Bedarf spaeter noch separat zugeschickt werden.</p>
-        <p>Herzliche Gruesse<br />SKULT</p>
+        <h2>Neue verbindliche Anmeldung</h2>
+        <p><b>${data.participantName}</b> hat die verbindliche Anmeldung für <b>${data.courseTitle}</b> erfolgreich abgeschlossen.</p>
+        <p><b>Name:</b> ${data.participantName}</p>
+        <p><b>E-Mail:</b> ${data.participantEmail}</p>
+        ${data.participantPhone ? `<p><b>Telefon:</b> ${data.participantPhone}</p>` : ""}
+        ${data.providerName ? `<p><b>Anbieter / Studio:</b> ${data.providerName}</p>` : ""}
+        ${data.instructorName ? `<p><b>Dozent:</b> ${data.instructorName}</p>` : ""}
+        ${data.priceLabel ? `<p><b>Preis:</b> ${data.priceLabel}</p>` : ""}
+        ${data.cancellationLabel ? `<p><b>Kündigungsregelung:</b> ${data.cancellationLabel}</p>` : ""}
       </div>
     `,
     text: [
-      `Deine Kursanmeldung ist bestaetigt: ${data.courseTitle}`,
-      `Hallo ${data.customerName},`,
-      `deine verbindliche Anmeldung fuer ${data.courseTitle} war erfolgreich und deine Zahlung wurde bestaetigt.`,
-      data.providerName ? `Anbieter: ${data.providerName}` : null,
-      data.instructorName ? `Dozent*in: ${data.instructorName}` : null,
+      `Neue verbindliche Anmeldung: ${data.courseTitle}`,
+      `${data.participantName} hat die verbindliche Anmeldung erfolgreich abgeschlossen.`,
+      `Name: ${data.participantName}`,
+      `E-Mail: ${data.participantEmail}`,
+      data.participantPhone ? `Telefon: ${data.participantPhone}` : null,
+      data.providerName ? `Anbieter / Studio: ${data.providerName}` : null,
+      data.instructorName ? `Dozent: ${data.instructorName}` : null,
       data.priceLabel ? `Preis: ${data.priceLabel}` : null,
-      data.currency ? `Waehrung: ${data.currency}` : null,
-      data.cancellationLabel ? `Kuendigungsmodell: ${data.cancellationLabel}` : null,
-      data.location ? `Ort: ${data.location}` : null,
-      data.locationDetails ? `Ort / Zusatzinfo: ${data.locationDetails}` : null,
-      ...qrLines.text,
-      "Wir freuen uns, dich bald im Kurs begruessen zu duerfen.",
-      "Weitere Kurs- oder Zugangsinformationen koennen dir bei Bedarf spaeter noch separat zugeschickt werden.",
-      "Herzliche Gruesse",
-      "SKULT",
+      data.cancellationLabel ? `Kündigungsregelung: ${data.cancellationLabel}` : null,
     ]
       .filter(Boolean)
       .join("\n"),
@@ -463,26 +716,29 @@ export async function prepareCourseSubscriptionConfirmationEmail(
 export function prepareTrialRegistrationRejectedEmail(data: TrialRegistrationDecisionEmailData) {
   return {
     to: data.customerEmail,
-    subject: `Danke fuer deine Probestunde: ${data.courseTitle}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2>Vielen Dank fuer deine Probestunde</h2>
-        <p>Hallo ${data.customerName},</p>
-        <p>vielen Dank, dass du an der Probestunde fuer <b>${data.courseTitle}</b> teilgenommen hast.</p>
-        <p>Nach dem Termin wurde entschieden, dass die aktuelle Kursgruppe im Moment leider nicht der richtige Rahmen fuer dich ist.</p>
-        <p>Wir schaetzen dein Interesse sehr und wuerden uns freuen, wenn es zu einem spaeteren Zeitpunkt in einem anderen Format oder Kurs doch noch passt.</p>
-        <p>Herzliche Gruesse<br />SKULT</p>
-      </div>
-    `,
-    text: [
-      `Danke fuer deine Probestunde: ${data.courseTitle}`,
-      `Hallo ${data.customerName},`,
-      `vielen Dank, dass du an der Probestunde fuer ${data.courseTitle} teilgenommen hast.`,
-      "Die aktuelle Kursgruppe ist im Moment leider nicht der richtige Rahmen.",
-      "Wir wuerden uns freuen, wenn es spaeter in einem anderen Format oder Kurs doch noch passt.",
-      "Herzliche Gruesse",
-      "SKULT",
-    ].join("\n"),
+    subject: `Danke für deine Probestunde: ${data.courseTitle}`,
+    html: createHtmlEmail({
+      title: "Vielen Dank für deine Probestunde",
+      greeting: data.customerName,
+      intro: `Vielen Dank, dass du an der Probestunde für <b>${data.courseTitle}</b> teilgenommen hast.`,
+      infoItems: [{ label: "Kurs", value: data.courseTitle }],
+      nextSteps: [
+        "Nach dem Termin wurde entschieden, dass die aktuelle Gruppe im Moment leider nicht der richtige Rahmen ist.",
+        "Wenn es zu einem späteren Zeitpunkt besser passt, freuen wir uns sehr über ein Wiedersehen.",
+      ],
+      actions: [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+    }),
+    text: createTextEmail({
+      title: "Vielen Dank für deine Probestunde",
+      greeting: data.customerName,
+      intro: `Vielen Dank, dass du an der Probestunde für ${data.courseTitle} teilgenommen hast.`,
+      infoItems: [{ label: "Kurs", value: data.courseTitle }],
+      nextSteps: [
+        "Nach dem Termin wurde entschieden, dass die aktuelle Gruppe im Moment leider nicht der richtige Rahmen ist.",
+        "Wenn es zu einem späteren Zeitpunkt besser passt, freuen wir uns sehr über ein Wiedersehen.",
+      ],
+      actions: [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+    }),
   };
 }
 
@@ -573,6 +829,18 @@ export async function sendTeacherTrialReservationCancellationEmail(data: TrialRe
   });
 }
 
+export async function sendCustomerTrialReservationCancellationEmail(data: TrialReservationEmailData) {
+  const resend = getResend();
+  const email = prepareCustomerTrialReservationCancellation(data);
+  return resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: email.to,
+    subject: email.subject,
+    html: email.html,
+    text: email.text,
+  });
+}
+
 export async function sendTrialRegistrationApprovedEmail(data: TrialRegistrationDecisionEmailData) {
   const resend = getResend();
   const email = prepareTrialRegistrationApprovedEmail(data);
@@ -650,6 +918,28 @@ export async function sendCourseSubscriptionConfirmationEmail(
 ) {
   const resend = getResend();
   const email = await prepareCourseSubscriptionConfirmationEmail(data);
+  return resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: email.to,
+    subject: email.subject,
+    html: email.html,
+    text: email.text,
+  });
+}
+
+export async function sendCourseSubscriptionProviderNotificationEmail(
+  data: CourseSubscriptionProviderNotificationEmailData
+) {
+  if (!data.teacherEmail) {
+    console.log("[course-subscription-email] missing teacher email", {
+      registrationIntentId: data.registrationIntentId,
+      courseTitle: data.courseTitle,
+    });
+    return null;
+  }
+
+  const resend = getResend();
+  const email = prepareCourseSubscriptionProviderNotificationEmail(data);
   return resend.emails.send({
     from: "onboarding@resend.dev",
     to: email.to,

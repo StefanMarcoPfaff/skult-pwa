@@ -2,7 +2,10 @@ import { getProviderDisplayName, getWorkshopStornoPolicyLabel } from "@/lib/prov
 import { getStripe } from "@/lib/stripe";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { issueWorkshopTicketForBooking, type TicketRow } from "@/lib/tickets";
-import { sendWorkshopCustomerBookingConfirmationEmail } from "@/lib/workshop-booking-emails";
+import {
+  sendWorkshopBookingNotificationEmail,
+  sendWorkshopCustomerBookingConfirmationEmail,
+} from "@/lib/workshop-booking-emails";
 
 type BookingRow = {
   id: string;
@@ -14,6 +17,7 @@ type BookingRow = {
   customer_email: string | null;
   customer_phone: string | null;
   workshop_confirmation_email_sent_at: string | null;
+  workshop_provider_notification_email_sent_at: string | null;
 };
 
 type CourseRow = {
@@ -38,6 +42,13 @@ type ProfileRow = {
   last_name: string | null;
   provider_type: "independent_teacher" | "studio_provider" | null;
   organization_name: string | null;
+};
+
+type ProviderContact = {
+  providerType: "independent_teacher" | "studio_provider" | null;
+  providerName: string | null;
+  providerEmail: string | null;
+  providerContactName: string | null;
 };
 
 function isDev() {
@@ -82,6 +93,41 @@ function formatSessionLine(startsAt: string | null, endsAt: string | null): stri
   return `${date} | ${startTime}-${endTime}`;
 }
 
+async function resolveWorkshopProviderContact(
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  course: CourseRow | null
+): Promise<ProviderContact> {
+  if (!course?.teacher_id) {
+    return {
+      providerType: null,
+      providerName: null,
+      providerEmail: null,
+      providerContactName: null,
+    };
+  }
+
+  const [{ data: profile }, authResult] = await Promise.all([
+    admin
+      .from("profiles")
+      .select("first_name,last_name,provider_type,organization_name")
+      .eq("id", course.teacher_id)
+      .maybeSingle<ProfileRow>(),
+    admin.auth.admin.getUserById(course.teacher_id),
+  ]);
+
+  const providerName =
+    profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
+  const providerContactName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null;
+  const providerEmail = authResult.data.user?.email?.trim() || null;
+
+  return {
+    providerType: profile?.provider_type ?? null,
+    providerName,
+    providerEmail,
+    providerContactName,
+  };
+}
+
 export type FinalizedWorkshopBooking = {
   bookingId: string;
   courseId: string | null;
@@ -94,6 +140,7 @@ export type FinalizedWorkshopBooking = {
   location: string | null;
   locationDetails: string | null;
   sessionLines: string[];
+  providerType: "independent_teacher" | "studio_provider" | null;
   providerName: string | null;
   instructorName: string | null;
   stornoPolicyLabel: string | null;
@@ -116,6 +163,7 @@ export async function finalizeWorkshopBookingBySession(
     .from("bookings")
     .select(
       "id,status,course_id,attendee_key,customer_first_name,customer_last_name,customer_email,customer_phone,workshop_confirmation_email_sent_at"
+        + ",workshop_provider_notification_email_sent_at"
     )
     .eq("id", bookingId)
     .maybeSingle<BookingRow>();
@@ -173,17 +221,7 @@ export async function finalizeWorkshopBookingBySession(
       : Promise.resolve({ data: [] as SessionRow[] }),
   ]);
 
-  const { data: profile } =
-    course?.teacher_id
-      ? await admin
-          .from("profiles")
-          .select("first_name,last_name,provider_type,organization_name")
-          .eq("id", course.teacher_id)
-          .maybeSingle<ProfileRow>()
-      : { data: null };
-
-  const providerName =
-    profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
+  const providerContact = await resolveWorkshopProviderContact(admin, course ?? null);
   const sessionLines =
     (workshopSessions ?? []).length > 0
       ? (workshopSessions ?? []).map((item) => formatSessionLine(item.starts_at, item.ends_at))
@@ -199,11 +237,13 @@ export async function finalizeWorkshopBookingBySession(
       const result = await sendWorkshopCustomerBookingConfirmationEmail({
         bookingId: booking.id,
         workshopTitle: course?.title ?? "Workshop",
-        providerName,
+        providerType: providerContact.providerType,
+        providerName: providerContact.providerName,
         teacherName: course?.instructor_name ?? null,
         teacherEmail: null,
         customerName,
         customerEmail,
+        customerPhone: booking.customer_phone?.trim() || null,
         location: course?.location ?? null,
         locationDetails: course?.location_details ?? null,
         sessionLines,
@@ -244,6 +284,87 @@ export async function finalizeWorkshopBookingBySession(
     });
   }
 
+  const providerEmail = providerContact.providerEmail;
+  if (ticket && providerEmail && !booking.workshop_provider_notification_email_sent_at) {
+    const claimedAt = new Date().toISOString();
+    const { data: claimedRows, error: claimError } = await admin
+      .from("bookings")
+      .update({ workshop_provider_notification_email_sent_at: claimedAt })
+      .eq("id", booking.id)
+      .is("workshop_provider_notification_email_sent_at", null)
+      .select("id");
+
+    if (claimError) {
+      logWorkshopFinalization("provider notification email failed", {
+        bookingId: booking.id,
+        recipient: providerEmail,
+        reason: claimError.message,
+      });
+    } else if (!claimedRows || claimedRows.length === 0) {
+      logWorkshopFinalization("provider notification email skipped", {
+        bookingId: booking.id,
+        recipient: providerEmail,
+        reason: "already-sent",
+        sentAtAlreadySet: true,
+      });
+    } else {
+      try {
+        logWorkshopFinalization("provider notification email attempt", {
+          bookingId: booking.id,
+          recipient: providerEmail,
+        });
+
+        const result = await sendWorkshopBookingNotificationEmail({
+          bookingId: booking.id,
+          workshopTitle: course?.title ?? "Workshop",
+          providerType: providerContact.providerType,
+          providerName: providerContact.providerName,
+          teacherName: providerContact.providerContactName,
+          teacherEmail: providerEmail,
+          customerName,
+          customerEmail: customerEmail ?? "",
+          customerPhone: booking.customer_phone?.trim() || null,
+          location: course?.location ?? null,
+          locationDetails: course?.location_details ?? null,
+          sessionLines,
+          stornoPolicyLabel: getWorkshopStornoPolicyLabel(course?.workshop_storno_policy),
+          priceLabel: formatPrice(course?.price_cents ?? null, course?.currency ?? null),
+          qrToken: ticket.qr_token,
+        });
+
+        if (result?.error) {
+          throw result.error;
+        }
+
+        logWorkshopFinalization("provider notification email sent", {
+          bookingId: booking.id,
+          recipient: providerEmail,
+          messageId: result?.data?.id ?? null,
+        });
+      } catch (error) {
+        await admin
+          .from("bookings")
+          .update({ workshop_provider_notification_email_sent_at: null })
+          .eq("id", booking.id)
+          .eq("workshop_provider_notification_email_sent_at", claimedAt);
+
+        const message = error instanceof Error ? error.message : String(error);
+        logWorkshopFinalization("provider notification email failed", {
+          bookingId: booking.id,
+          recipient: providerEmail,
+          reason: message,
+        });
+      }
+    }
+  } else {
+    logWorkshopFinalization("provider notification email skipped", {
+      bookingId: booking.id,
+      recipient: providerEmail,
+      reason: ticket ? (providerEmail ? "already-sent" : "missing-recipient") : "missing-ticket",
+      sentAtAlreadySet: Boolean(booking.workshop_provider_notification_email_sent_at),
+    });
+  }
+
   return {
     bookingId: booking.id,
     courseId: booking.course_id,
@@ -256,7 +377,8 @@ export async function finalizeWorkshopBookingBySession(
     location: course?.location ?? null,
     locationDetails: course?.location_details ?? null,
     sessionLines,
-    providerName,
+    providerType: providerContact.providerType,
+    providerName: providerContact.providerName,
     instructorName: course?.instructor_name ?? null,
     stornoPolicyLabel: getWorkshopStornoPolicyLabel(course?.workshop_storno_policy),
     priceLabel: formatPrice(course?.price_cents ?? null, course?.currency ?? null),

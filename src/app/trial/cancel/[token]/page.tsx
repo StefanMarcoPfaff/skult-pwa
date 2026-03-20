@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { sendTeacherTrialReservationCancellationEmail } from "@/lib/trial-reservation-emails";
+import { confirmTrialCancellationAction } from "./actions";
 
 type TrialReservationRow = {
   id: string;
@@ -17,106 +17,40 @@ type CourseMailRow = {
   id: string;
   title: string | null;
   location: string | null;
-  teacher_id: string | null;
 };
 
-type ProfileRow = {
-  first_name: string | null;
-  last_name: string | null;
-};
-
-type SupabaseLikeError = {
-  message?: string;
-  code?: string;
-  details?: string;
-  hint?: string;
-};
-
-function logCancellationError(context: string, error: unknown) {
-  if (process.env.NODE_ENV === "production") return;
-  const supabaseError = (error ?? {}) as SupabaseLikeError;
-  console.error("[trial cancellation]", {
-    context,
-    message: supabaseError.message,
-    code: supabaseError.code,
-    details: supabaseError.details,
-    hint: supabaseError.hint,
+function formatDateTimeRange(start: string | null, end: string | null): string {
+  if (!start) return "-";
+  const startsAt = new Date(start);
+  const date = startsAt.toLocaleDateString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
   });
-}
+  const startTime = startsAt.toLocaleTimeString("de-DE", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
-async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, courseId: string) {
-  const { data: course, error: courseError } = await admin
-    .from("courses")
-    .select("id,title,location,teacher_id")
-    .eq("id", courseId)
-    .maybeSingle<CourseMailRow>();
+  if (!end) return `${date} | ${startTime}`;
 
-  if (courseError || !course) {
-    logCancellationError("load-mail-course", courseError);
-    return null;
-  }
-
-  let teacherName: string | null = null;
-  let teacherEmail: string | null = null;
-
-  if (course.teacher_id) {
-    const [{ data: profile }, authResult] = await Promise.all([
-      admin
-        .from("profiles")
-        .select("first_name,last_name")
-        .eq("id", course.teacher_id)
-        .maybeSingle<ProfileRow>(),
-      admin.auth.admin.getUserById(course.teacher_id),
-    ]);
-
-    const nameParts = [profile?.first_name, profile?.last_name].filter(Boolean);
-    teacherName = nameParts.length > 0 ? nameParts.join(" ") : null;
-    teacherEmail = authResult.data.user?.email ?? null;
-  }
-
-  return {
-    courseTitle: course.title ?? "Kurs",
-    location: course.location,
-    teacherName,
-    teacherEmail,
-  };
-}
-
-async function notifyTeacherAboutCancellation(
-  admin: ReturnType<typeof createSupabaseAdmin>,
-  reservation: TrialReservationRow
-) {
-  if (!reservation.email || !reservation.trial_starts_at || !reservation.trial_ends_at) {
-    return;
-  }
-
-  const mailContext = await loadMailContext(admin, reservation.course_id);
-  if (!mailContext) return;
-
-  try {
-    await sendTeacherTrialReservationCancellationEmail({
-      reservationId: reservation.id,
-      courseTitle: mailContext.courseTitle,
-      teacherName: mailContext.teacherName,
-      teacherEmail: mailContext.teacherEmail,
-      customerName: [reservation.first_name, reservation.last_name].filter(Boolean).join(" ").trim(),
-      customerEmail: reservation.email,
-      location: mailContext.location,
-      trialStartsAt: reservation.trial_starts_at,
-      trialEndsAt: reservation.trial_ends_at,
-      cancelUrl: "",
-    });
-  } catch (error) {
-    logCancellationError("send-teacher-cancellation", error);
-  }
+  const endsAt = new Date(end);
+  const endTime = endsAt.toLocaleTimeString("de-DE", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `${date} | ${startTime}-${endTime}`;
 }
 
 export default async function TrialCancelPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ done?: string; already?: string; invalid?: string; error?: string }>;
 }) {
   const { token } = await params;
+  const sp = await searchParams;
   const admin = createSupabaseAdmin();
 
   const { data: reservation, error } = await admin
@@ -125,7 +59,7 @@ export default async function TrialCancelPage({
     .eq("cancel_token", token)
     .maybeSingle<TrialReservationRow>();
 
-  if (error || !reservation) {
+  if (error || !reservation || sp.invalid === "1") {
     return (
       <main className="mx-auto max-w-2xl space-y-4 p-6">
         <h1 className="text-2xl font-semibold">Stornierung nicht möglich</h1>
@@ -139,7 +73,13 @@ export default async function TrialCancelPage({
     );
   }
 
-  if (reservation.cancelled_at) {
+  const { data: course } = await admin
+    .from("courses")
+    .select("id,title,location")
+    .eq("id", reservation.course_id)
+    .maybeSingle<CourseMailRow>();
+
+  if (reservation.cancelled_at || sp.already === "1") {
     return (
       <main className="mx-auto max-w-2xl space-y-4 p-6">
         <h1 className="text-2xl font-semibold">Reservierung bereits storniert</h1>
@@ -153,21 +93,12 @@ export default async function TrialCancelPage({
     );
   }
 
-  const { error: updateError } = await admin
-    .from("trial_reservations")
-    .update({
-      cancelled_at: new Date().toISOString(),
-      status: "cancelled",
-    })
-    .eq("id", reservation.id);
-
-  if (updateError) {
-    logCancellationError("cancel-reservation", updateError);
+  if (sp.done === "1") {
     return (
       <main className="mx-auto max-w-2xl space-y-4 p-6">
-        <h1 className="text-2xl font-semibold">Stornierung nicht möglich</h1>
+        <h1 className="text-2xl font-semibold">Reservierung storniert</h1>
         <p className="text-sm text-muted-foreground">
-          Die Probestunden-Reservierung konnte gerade nicht storniert werden. Bitte versuche es erneut.
+          Deine Probestunden-Reservierung wurde storniert. Eine Bestätigung wurde per E-Mail versendet.
         </p>
         <Link href="/courses" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
           Zu den Kursen
@@ -176,17 +107,62 @@ export default async function TrialCancelPage({
     );
   }
 
-  await notifyTeacherAboutCancellation(admin, reservation);
-
   return (
-    <main className="mx-auto max-w-2xl space-y-4 p-6">
-      <h1 className="text-2xl font-semibold">Reservierung storniert</h1>
-      <p className="text-sm text-muted-foreground">
-        Deine Probestunden-Reservierung wurde storniert.
-      </p>
-      <Link href="/courses" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
-        Zu den Kursen
-      </Link>
+    <main className="mx-auto max-w-2xl space-y-6 p-6">
+      <section className="rounded-2xl border p-6">
+        <h1 className="text-2xl font-semibold">Bist du sicher, dass du diese Probestunde stornieren möchtest?</h1>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Bitte prüfe die Zusammenfassung. Die Stornierung kann danach nicht automatisch rückgängig gemacht werden.
+        </p>
+
+        <div className="mt-5 space-y-2 rounded-2xl border bg-muted/20 p-4 text-sm text-muted-foreground">
+          <p>
+            Kurs: <span className="font-medium text-foreground">{course?.title ?? "Kurs"}</span>
+          </p>
+          <p>
+            Name:{" "}
+            <span className="font-medium text-foreground">
+              {[reservation.first_name, reservation.last_name].filter(Boolean).join(" ").trim() || "-"}
+            </span>
+          </p>
+          {reservation.email ? (
+            <p>
+              E-Mail: <span className="font-medium text-foreground">{reservation.email}</span>
+            </p>
+          ) : null}
+          <p>
+            Termin:{" "}
+            <span className="font-medium text-foreground">
+              {formatDateTimeRange(reservation.trial_starts_at, reservation.trial_ends_at)}
+            </span>
+          </p>
+          {course?.location ? (
+            <p>
+              Ort: <span className="font-medium text-foreground">{course.location}</span>
+            </p>
+          ) : null}
+        </div>
+
+        {sp.error === "1" ? (
+          <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            Die Probestunden-Reservierung konnte gerade nicht storniert werden. Bitte versuche es erneut.
+          </p>
+        ) : null}
+
+        <div className="mt-6 flex flex-wrap gap-3">
+          <form action={confirmTrialCancellationAction.bind(null, token)}>
+            <button
+              type="submit"
+              className="inline-flex rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
+            >
+              Ja, Probestunde stornieren
+            </button>
+          </form>
+          <Link href="/courses" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
+            Nein, zurück
+          </Link>
+        </div>
+      </section>
     </main>
   );
 }

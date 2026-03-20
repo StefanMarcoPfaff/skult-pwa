@@ -93,17 +93,18 @@ type CourseParticipantEntry = {
   id: string;
   name: string;
   email: string | null;
-  trialTiming: string | null;
-  note: string | null;
+  statusLabel: string;
+  checkInLabel: string;
+  meta: string | null;
 };
 
 type WorkshopParticipantEntry = {
   id: string;
   name: string;
   email: string | null;
-  status: string | null;
-  checkedInAt: string | null;
-  createdAt: string | null;
+  statusLabel: string;
+  checkInLabel: string;
+  meta: string | null;
 };
 
 function formatDateTime(dt: string | null) {
@@ -176,11 +177,64 @@ function renderParticipantGroup(
                 <div className="space-y-1 text-sm">
                   <p className="font-semibold text-foreground">{entry.name}</p>
                   {entry.email ? <p>{entry.email}</p> : null}
-                  {entry.trialTiming ? <p>{entry.trialTiming}</p> : null}
-                  {entry.note ? <p>{entry.note}</p> : null}
+                  <p>
+                    Status: <span className="font-medium text-foreground">{entry.statusLabel}</span>
+                  </p>
+                  <p>
+                    Check-in: <span className="font-medium text-foreground">{entry.checkInLabel}</span>
+                  </p>
+                  {entry.meta ? <p>{entry.meta}</p> : null}
                 </div>
                 <Link
                   href={`/dashboard/participants/${entry.id}?source=trial`}
+                  className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
+                >
+                  Details
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function renderWorkshopParticipantGroup(
+  title: string,
+  description: string,
+  entries: WorkshopParticipantEntry[]
+) {
+  return (
+    <section className="rounded-2xl border p-5">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-semibold">{title}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        </div>
+        <div className="rounded-full border px-3 py-1 text-sm font-semibold">{entries.length}</div>
+      </div>
+
+      {entries.length === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">Aktuell keine Einträge.</p>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {entries.map((entry) => (
+            <div key={entry.id} className="rounded-xl border p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-1 text-sm">
+                  <p className="font-semibold text-foreground">{entry.name}</p>
+                  {entry.email ? <p>{entry.email}</p> : null}
+                  <p>
+                    Status: <span className="font-medium text-foreground">{entry.statusLabel}</span>
+                  </p>
+                  <p>
+                    Check-in: <span className="font-medium text-foreground">{entry.checkInLabel}</span>
+                  </p>
+                  {entry.meta ? <p>{entry.meta}</p> : null}
+                </div>
+                <Link
+                  href={`/dashboard/participants/${entry.id}?source=workshop`}
                   className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
                 >
                   Details
@@ -330,10 +384,18 @@ export default async function DashboardCourseDetailPage({
               id: participant.id,
               name: formatName(participant.first_name, participant.last_name, "Teilnehmer*in"),
               email: participant.email,
-              trialTiming: formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
-              note: participant.converted_at
-                ? `Verbindlich angemeldet am ${formatDateTime(participant.converted_at)}`
-                : "Verbindlich angemeldet",
+              statusLabel: "Verbindlich angemeldet",
+              checkInLabel:
+                ticketByTrialReservationId.get(participant.id)?.status === "checked_in"
+                  ? `Eingecheckt am ${formatDateTime(
+                      ticketByTrialReservationId.get(participant.id)?.checked_in_at ?? null
+                    )}`
+                  : ticketByTrialReservationId.get(participant.id)?.status === "issued"
+                    ? "Noch nicht eingecheckt"
+                    : "-",
+              meta: participant.converted_at
+                ? `Anmeldung abgeschlossen am ${formatDateTime(participant.converted_at)}`
+                : formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
             })),
           attendedApproved: (trialParticipants ?? [])
             .filter((participant) => {
@@ -346,10 +408,13 @@ export default async function DashboardCourseDetailPage({
               id: participant.id,
               name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
               email: participant.email,
-              trialTiming: formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
-              note: participant.registration_expires_at
+              statusLabel: "Freigegeben, noch nicht angemeldet",
+              checkInLabel: `Eingecheckt am ${formatDateTime(
+                ticketByTrialReservationId.get(participant.id)?.checked_in_at ?? null
+              )}`,
+              meta: participant.registration_expires_at
                 ? `Freigegeben bis ${formatDateTime(participant.registration_expires_at)}`
-                : "Freigegeben, Anmeldung noch offen",
+                : formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
             })),
           attendedPending: (trialParticipants ?? [])
             .filter((participant) => {
@@ -360,8 +425,11 @@ export default async function DashboardCourseDetailPage({
               id: participant.id,
               name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
               email: participant.email,
-              trialTiming: formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
-              note: "Probestunde besucht, Entscheidung noch offen",
+              statusLabel: "Teilgenommen, Entscheidung offen",
+              checkInLabel: `Eingecheckt am ${formatDateTime(
+                ticketByTrialReservationId.get(participant.id)?.checked_in_at ?? null
+              )}`,
+              meta: formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
             })),
           notYetAttended: (trialParticipants ?? [])
             .filter((participant) => {
@@ -374,11 +442,12 @@ export default async function DashboardCourseDetailPage({
               id: participant.id,
               name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
               email: participant.email,
-              trialTiming: formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
-              note:
+              statusLabel: "Noch nicht teilgenommen",
+              checkInLabel:
                 ticketByTrialReservationId.get(participant.id)?.status === "issued"
-                  ? "Ticket ausgestellt, Check-in steht noch aus"
+                  ? "Ticket ausgestellt, noch nicht eingecheckt"
                   : "Noch nicht eingecheckt",
+              meta: formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
             })),
         }
       : null;
@@ -397,9 +466,11 @@ export default async function DashboardCourseDetailPage({
             name:
               formatName(booking.customer_first_name, booking.customer_last_name, ticket?.customer_name || "Workshop-Gast"),
             email: booking.customer_email ?? ticket?.customer_email ?? null,
-            status: ticket?.status ?? booking.status,
-            checkedInAt: ticket?.checked_in_at ?? booking.checked_in_at,
-            createdAt: booking.created_at,
+            statusLabel: booking.status === "paid" ? "Gebucht" : booking.status ?? "-",
+            checkInLabel: ticket?.checked_in_at ?? booking.checked_in_at
+              ? `Eingecheckt am ${formatDateTime(ticket?.checked_in_at ?? booking.checked_in_at)}`
+              : "Noch nicht eingecheckt",
+            meta: booking.created_at ? `Gebucht am ${formatDateTime(booking.created_at)}` : null,
           };
         })
       : [];
@@ -518,77 +589,56 @@ export default async function DashboardCourseDetailPage({
           <div>
             <h2 className="text-2xl font-semibold">Teilnehmeruebersicht</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Hier siehst du den aktuellen Stand der Probestunden und verbindlichen Anmeldungen fuer diesen Kurs.
+              Hier siehst du den aktuellen Stand der verbindlichen Anmeldungen und Probeschüler für diesen Kurs.
             </p>
           </div>
 
           {renderParticipantGroup(
-            "Verbindlich angemeldete Teilnehmer*innen",
+            "Fest angemeldete Teilnehmer",
             "Diese Personen haben die verbindliche Kursanmeldung erfolgreich abgeschlossen.",
             groupedCourseParticipants.firmlyRegistered
           )}
-          {renderParticipantGroup(
-            "Probestunde besucht und freigegeben, aber noch nicht verbindlich angemeldet",
-            "Diese Personen wurden freigegeben, haben die verbindliche Anmeldung aber noch nicht abgeschlossen.",
-            groupedCourseParticipants.attendedApproved
-          )}
-          {renderParticipantGroup(
-            "Probestunde besucht, Entscheidung noch offen",
-            "Diese Personen haben bereits teilgenommen, warten aber noch auf deine Entscheidung.",
-            groupedCourseParticipants.attendedPending
-          )}
-          {renderParticipantGroup(
-            "Probestunde noch nicht besucht",
-            "Diese Personen sind angefragt oder eingeplant, aber noch nicht eingecheckt.",
-            groupedCourseParticipants.notYetAttended
-          )}
+
+          <section className="rounded-2xl border p-5">
+            <div>
+              <h3 className="text-lg font-semibold">Probeschüler Status unterteilt</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Probeschüler werden nach ihrem aktuellen Fortschritt im Aufnahmeprozess gruppiert.
+              </p>
+            </div>
+            <div className="mt-5 space-y-4">
+              {renderParticipantGroup(
+                "Noch nicht teilgenommen",
+                "Diese Personen sind eingeplant, aber noch nicht eingecheckt.",
+                groupedCourseParticipants.notYetAttended
+              )}
+              {renderParticipantGroup(
+                "Teilgenommen, Entscheidung offen",
+                "Diese Personen haben bereits teilgenommen und warten noch auf deine Entscheidung.",
+                groupedCourseParticipants.attendedPending
+              )}
+              {renderParticipantGroup(
+                "Freigegeben, noch nicht angemeldet",
+                "Diese Personen wurden freigegeben, haben die verbindliche Anmeldung aber noch nicht abgeschlossen.",
+                groupedCourseParticipants.attendedApproved
+              )}
+            </div>
+          </section>
         </section>
       ) : null}
 
       {data.kind === "workshop" ? (
-        <section className="mt-8 rounded-2xl border p-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-semibold">Aktuelle Teilnehmer*innen</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Alle aktuell vorliegenden Workshop-Buchungen mit Check-in-Status.
-              </p>
-            </div>
-            <div className="rounded-full border px-3 py-1 text-sm font-semibold">
-              {workshopParticipants.length}
-            </div>
+        <section className="mt-8 space-y-4">
+          <div>
+            <h2 className="text-2xl font-semibold">Workshop-Teilnehmer</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Alle gebuchten Teilnehmer dieses Workshops mit aktuellem Status und Check-in-Stand.
+            </p>
           </div>
-
-          {workshopParticipants.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">Bisher liegen noch keine Workshop-Buchungen vor.</p>
-          ) : (
-            <div className="mt-4 space-y-3">
-              {workshopParticipants.map((participant) => (
-                <div key={participant.id} className="rounded-xl border p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="space-y-1 text-sm">
-                      <p className="font-semibold text-foreground">{participant.name}</p>
-                      {participant.email ? <p>{participant.email}</p> : null}
-                      {participant.createdAt ? <p>Gebucht am {formatDateTime(participant.createdAt)}</p> : null}
-                      <p>
-                        Status:{" "}
-                        <span className="font-medium text-foreground">
-                          {participant.checkedInAt
-                            ? `Eingecheckt am ${formatDateTime(participant.checkedInAt)}`
-                            : participant.status ?? "-"}
-                        </span>
-                      </p>
-                    </div>
-                    <Link
-                      href={`/dashboard/participants/${participant.id}?source=workshop`}
-                      className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
-                    >
-                      Details
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </div>
+          {renderWorkshopParticipantGroup(
+            "Alle gebuchten Teilnehmer",
+            "Diese Liste zeigt alle bezahlten Workshop-Buchungen.",
+            workshopParticipants
           )}
         </section>
       ) : null}

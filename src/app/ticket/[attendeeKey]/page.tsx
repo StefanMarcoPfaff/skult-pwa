@@ -112,18 +112,9 @@ export default async function TicketPage({
         </div>
 
         <div style={{ marginTop: 18, display: "flex", gap: 14, flexWrap: "wrap" }}>
-          <Link
-            href={verifyUrl}
-            style={{
-              padding: "12px 16px",
-              borderRadius: 12,
-              border: "1px solid #ddd",
-              textDecoration: "none",
-              fontWeight: 700,
-            }}
-          >
-            Check-in-Link
-          </Link>
+          <div style={{ color: "#555", maxWidth: 520 }}>
+            Dieser QR-Code ist nur zur Ansicht. Der Check-in wird ausschließlich vom Team vor Ort ausgelöst.
+          </div>
 
           <Link href="/courses">Alle Kurse</Link>
         </div>

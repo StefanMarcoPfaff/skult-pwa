@@ -1,4 +1,5 @@
 import { getResend } from "@/lib/resend";
+import { shouldShowStudioLabel } from "@/lib/provider-profiles";
 import { buildTicketCheckInUrl, buildTicketQrCodeDataUrl } from "@/lib/ticket-qr";
 
 /*
@@ -12,11 +13,13 @@ import { buildTicketCheckInUrl, buildTicketQrCodeDataUrl } from "@/lib/ticket-qr
 export type WorkshopBookingEmailData = {
   bookingId: string;
   workshopTitle: string;
+  providerType?: "independent_teacher" | "studio_provider" | null;
   providerName: string | null;
   teacherName: string | null;
   teacherEmail: string | null;
   customerName: string;
   customerEmail: string;
+  customerPhone?: string | null;
   location: string | null;
   locationDetails: string | null;
   sessionLines: string[];
@@ -24,6 +27,151 @@ export type WorkshopBookingEmailData = {
   priceLabel: string | null;
   qrToken: string;
 };
+
+type EmailAction = {
+  label: string;
+  href: string;
+};
+
+type InfoItem = {
+  label: string;
+  value: string | null | undefined;
+};
+
+function buildProviderInfoItems(input: {
+  providerType?: "independent_teacher" | "studio_provider" | null;
+  providerName: string | null;
+  teacherName: string | null;
+}): InfoItem[] {
+  return [
+    ...(shouldShowStudioLabel(input.providerType)
+      ? [{ label: "Anbieter / Studio", value: input.providerName }]
+      : []),
+    { label: "Dozent", value: input.teacherName },
+  ];
+}
+
+function getSiteUrl(): string {
+  return process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+}
+
+function buildAbsoluteUrl(path: string): string {
+  return new URL(path, getSiteUrl()).toString();
+}
+
+function renderInfoBlockHtml(items: InfoItem[]): string {
+  const rows = items.filter((item) => item.value).map(
+    (item) => `
+      <tr>
+        <td style="padding: 6px 0; vertical-align: top; color: #5b6470; width: 170px;"><b>${item.label}</b></td>
+        <td style="padding: 6px 0; color: #111827;">${item.value}</td>
+      </tr>
+    `
+  );
+
+  if (rows.length === 0) return "";
+
+  return `
+    <div style="margin: 24px 0; padding: 18px 20px; border: 1px solid #e5e7eb; border-radius: 14px; background: #f8fafc;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse;">
+        ${rows.join("")}
+      </table>
+    </div>
+  `;
+}
+
+function renderActionsHtml(actions: EmailAction[]): string {
+  if (actions.length === 0) return "";
+
+  return `
+    <div style="margin: 24px 0 8px;">
+      ${actions
+        .map(
+          (action) => `
+            <p style="margin: 0 0 12px;">
+              <a href="${action.href}" style="display: inline-block; padding: 12px 18px; border-radius: 10px; background: #111827; color: #ffffff; text-decoration: none; font-weight: 600;">
+                ${action.label}
+              </a>
+            </p>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function createHtmlEmail(input: {
+  title: string;
+  greeting?: string;
+  intro: string;
+  infoItems?: InfoItem[];
+  nextSteps?: string[];
+  actions?: EmailAction[];
+  support?: string;
+}) {
+  const infoBlock = renderInfoBlockHtml(input.infoItems ?? []);
+  const greeting = input.greeting ? `<p style="margin: 0 0 16px;">Hallo ${input.greeting},</p>` : "";
+  const nextSteps =
+    input.nextSteps && input.nextSteps.length > 0
+      ? `
+        <div style="margin: 24px 0 0;">
+          <p style="margin: 0 0 10px;"><b>Was jetzt wichtig ist</b></p>
+          <ul style="margin: 0; padding-left: 20px; color: #111827;">
+            ${input.nextSteps.map((step) => `<li style="margin: 0 0 8px;">${step}</li>`).join("")}
+          </ul>
+        </div>
+      `
+      : "";
+
+  return `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827; max-width: 640px;">
+      <h2 style="margin: 0 0 18px; font-size: 26px; line-height: 1.25;">${input.title}</h2>
+      ${greeting}
+      <p style="margin: 0;">${input.intro}</p>
+      ${infoBlock}
+      ${nextSteps}
+      ${renderActionsHtml(input.actions ?? [])}
+      ${input.support ?? `<p style="margin: 24px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>`}
+      <p style="margin: 24px 0 0;">Herzliche Grüße<br />SKULT</p>
+    </div>
+  `;
+}
+
+function createTextEmail(input: {
+  title: string;
+  greeting?: string;
+  intro: string;
+  infoItems?: InfoItem[];
+  nextSteps?: string[];
+  actions?: EmailAction[];
+  support?: string;
+}) {
+  const infoLines = (input.infoItems ?? [])
+    .filter((item) => item.value)
+    .map((item) => `${item.label}: ${item.value}`);
+  const actionLines = (input.actions ?? []).map((action) => `${action.label}: ${action.href}`);
+
+  return [
+    input.title,
+    input.greeting ? `Hallo ${input.greeting},` : null,
+    input.intro,
+    infoLines.length > 0 ? "" : null,
+    infoLines.length > 0 ? "Wichtige Informationen" : null,
+    ...infoLines,
+    input.nextSteps && input.nextSteps.length > 0 ? "" : null,
+    input.nextSteps && input.nextSteps.length > 0 ? "Was jetzt wichtig ist" : null,
+    ...(input.nextSteps ?? []).map((step) => `- ${step}`),
+    actionLines.length > 0 ? "" : null,
+    ...actionLines,
+    "",
+    input.support ?? "Wenn du Fragen hast, helfen wir dir gerne weiter.",
+    "",
+    "Herzliche Grüße",
+    "SKULT",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
 
 function renderSessionListHtml(sessionLines: string[]): string {
   if (sessionLines.length === 0) {
@@ -41,71 +189,80 @@ function renderSessionListHtml(sessionLines: string[]): string {
 }
 
 export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopBookingEmailData) {
-  const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
-  const locationDetailsLine = data.locationDetails
-    ? `<p><b>Ort / Zusatzinfo:</b> ${data.locationDetails}</p>`
-    : "";
-  const providerLine = data.providerName ? `<p><b>Anbieter:</b> ${data.providerName}</p>` : "";
-  const teacherLine = data.teacherName ? `<p><b>Dozent*in:</b> ${data.teacherName}</p>` : "";
-  const stornoLine = data.stornoPolicyLabel
-    ? `<p><b>Storno-Regel:</b> ${data.stornoPolicyLabel}</p>`
-    : "";
-  const priceLine = data.priceLabel ? `<p><b>Preis:</b> ${data.priceLabel}</p>` : "";
   const qrUrl = buildTicketCheckInUrl(data.qrToken);
   const qrDataUrl = await buildTicketQrCodeDataUrl(data.qrToken);
 
   return {
     to: data.customerEmail,
-    subject: `Workshop gebucht: ${data.workshopTitle}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2>Deine Workshop-Buchung ist bestaetigt</h2>
-        <p>Hallo ${data.customerName},</p>
-        <p>deine Zahlung fuer <b>${data.workshopTitle}</b> ist eingegangen.</p>
-        ${providerLine}
-        ${teacherLine}
-        ${priceLine}
-        ${locationLine}
-        ${locationDetailsLine}
-        ${renderSessionListHtml(data.sessionLines)}
-        ${stornoLine}
-        <p>Bitte zeige dieses QR-Ticket beim Einlass vor. Es wird vor Ort gescannt.</p>
-        <p><img src="${qrDataUrl}" alt="QR-Ticket fuer den Workshop" width="180" height="180" /></p>
-        <p><a href="${qrUrl}">${qrUrl}</a></p>
-        <p>Herzliche Gruesse<br />SKULT</p>
-      </div>
-    `,
-    text: [
-      `Workshop gebucht: ${data.workshopTitle}`,
-      `Hallo ${data.customerName},`,
-      `deine Zahlung fuer ${data.workshopTitle} ist eingegangen.`,
-      data.providerName ? `Anbieter: ${data.providerName}` : null,
-      data.teacherName ? `Dozent*in: ${data.teacherName}` : null,
-      data.priceLabel ? `Preis: ${data.priceLabel}` : null,
-      data.location ? `Ort: ${data.location}` : null,
-      data.locationDetails ? `Ort / Zusatzinfo: ${data.locationDetails}` : null,
-      data.sessionLines.length > 0 ? "Termine:" : "Termin: Termin folgt",
-      ...data.sessionLines,
-      data.stornoPolicyLabel ? `Storno-Regel: ${data.stornoPolicyLabel}` : null,
-      "Bitte zeige dieses QR-Ticket beim Einlass vor. Es wird vor Ort gescannt.",
-      `Check-in-Link: ${qrUrl}`,
-      "Herzliche Gruesse",
-      "SKULT",
-    ]
-      .filter(Boolean)
-      .join("\n"),
+    subject: `Deine Workshop-Buchung war erfolgreich 🎉 ${data.workshopTitle}`,
+    html:
+      createHtmlEmail({
+        title: "Deine Workshop-Buchung war erfolgreich 🎉",
+        greeting: data.customerName,
+        intro: `Deine Buchung für <b>${data.workshopTitle}</b> ist erfolgreich abgeschlossen. Deine Zahlung wurde bestätigt.`,
+        infoItems: [
+          { label: "Workshop", value: data.workshopTitle },
+          ...buildProviderInfoItems(data),
+          { label: "Ort", value: data.location },
+          { label: "Weitere Infos", value: data.locationDetails },
+          { label: "Preis", value: data.priceLabel },
+          { label: "Datum / Zeiten", value: data.sessionLines.length > 0 ? data.sessionLines.join("<br />") : "Termin folgt" },
+          { label: "Stornoregelung", value: data.stornoPolicyLabel },
+        ],
+        nextSteps: [
+          "Dein Platz ist fest für dich reserviert.",
+          "Bitte zeige dein Ticket beim Einlass vor.",
+        ],
+        actions: [
+          { label: "Ticket ansehen", href: qrUrl },
+          { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
+        ],
+        support: `
+          <div style="margin: 24px 0 0;">
+            <p style="margin: 0 0 10px;"><b>Dein Ticket</b></p>
+            <p style="margin: 0 0 14px;">Bitte zeige dieses Ticket beim Einlass vor.</p>
+            <p style="margin: 0 0 14px;"><img src="${qrDataUrl}" alt="QR-Ticket für den Workshop" width="180" height="180" /></p>
+            <p style="margin: 0;"><a href="${qrUrl}">${qrUrl}</a></p>
+          </div>
+          <p style="margin: 18px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>
+        `,
+      }),
+    text: createTextEmail({
+      title: "Deine Workshop-Buchung war erfolgreich 🎉",
+      greeting: data.customerName,
+      intro: `Deine Buchung für ${data.workshopTitle} ist erfolgreich abgeschlossen. Deine Zahlung wurde bestätigt.`,
+      infoItems: [
+        { label: "Workshop", value: data.workshopTitle },
+        ...buildProviderInfoItems(data),
+        { label: "Ort", value: data.location },
+        { label: "Weitere Infos", value: data.locationDetails },
+        { label: "Preis", value: data.priceLabel },
+        { label: "Datum / Zeiten", value: data.sessionLines.length > 0 ? data.sessionLines.join(" | ") : "Termin folgt" },
+        { label: "Stornoregelung", value: data.stornoPolicyLabel },
+      ],
+      nextSteps: [
+        "Dein Platz ist fest für dich reserviert.",
+        "Bitte zeige dein Ticket beim Einlass vor.",
+      ],
+      actions: [
+        { label: "Ticket ansehen", href: qrUrl },
+        { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
+      ],
+      support: `Ticket-Link: ${qrUrl}`,
+    }),
   };
 }
 
 export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingEmailData) {
   return {
     to: data.teacherEmail ?? "",
-    subject: `Neue Workshop-Buchung: ${data.workshopTitle}`,
+    subject: `Neue Workshop-Anmeldung: ${data.workshopTitle}`,
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2>Neue bezahlte Workshop-Buchung</h2>
+        <h2>Neue Workshop-Anmeldung</h2>
         <p><b>${data.customerName}</b> hat den Workshop <b>${data.workshopTitle}</b> gebucht und bezahlt.</p>
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
+        ${data.customerPhone ? `<p><b>Telefon:</b> ${data.customerPhone}</p>` : ""}
         ${data.providerName ? `<p><b>Anbieter:</b> ${data.providerName}</p>` : ""}
         ${data.location ? `<p><b>Ort:</b> ${data.location}</p>` : ""}
         ${data.locationDetails ? `<p><b>Ort / Zusatzinfo:</b> ${data.locationDetails}</p>` : ""}
@@ -118,9 +275,10 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
       </div>
     `,
     text: [
-      `Neue Workshop-Buchung: ${data.workshopTitle}`,
+      `Neue Workshop-Anmeldung: ${data.workshopTitle}`,
       `${data.customerName} hat den Workshop gebucht und bezahlt.`,
       `E-Mail: ${data.customerEmail}`,
+      data.customerPhone ? `Telefon: ${data.customerPhone}` : null,
       data.providerName ? `Anbieter: ${data.providerName}` : null,
       data.location ? `Ort: ${data.location}` : null,
       data.locationDetails ? `Ort / Zusatzinfo: ${data.locationDetails}` : null,
@@ -163,4 +321,8 @@ export async function sendWorkshopTeacherBookingNotificationEmail(data: Workshop
     html: email.html,
     text: email.text,
   });
+}
+
+export async function sendWorkshopBookingNotificationEmail(data: WorkshopBookingEmailData) {
+  return sendWorkshopTeacherBookingNotificationEmail(data);
 }

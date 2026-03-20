@@ -16,6 +16,8 @@ type TrialRegistrationRow = {
 
 type RegistrationIntentRow = {
   id: string;
+  trial_reservation_id: string;
+  course_id: string;
   status: string | null;
   first_name: string | null;
   last_name: string | null;
@@ -83,19 +85,34 @@ export default async function TrialRegistrationTokenPage({
   const { error, edit } = await searchParams;
   const admin = createSupabaseAdmin();
 
+  const { data: intentByToken } = await admin
+    .from("course_registration_intents")
+    .select(
+      "id,trial_reservation_id,course_id,status,first_name,last_name,email,phone,street_and_number,postal_code,city,country,notes,stripe_subscription_id"
+    )
+    .eq("registration_token", token)
+    .maybeSingle<RegistrationIntentRow>();
+
   const { data: reservation } = await admin
     .from("trial_reservations")
     .select("id,course_id,first_name,last_name,email,status,registration_expires_at")
     .eq("registration_token", token)
     .maybeSingle<TrialRegistrationRow>();
 
-  if (!reservation || reservation.status !== "approved" || isExpired(reservation.registration_expires_at)) {
+  const isCompletedRegistration = intentByToken?.status === "checkout_completed";
+  const activeReservation =
+    reservation && reservation.status === "approved" && !isExpired(reservation.registration_expires_at)
+      ? reservation
+      : null;
+  const fallbackCourseId = intentByToken?.course_id ?? activeReservation?.course_id ?? null;
+
+  if (!fallbackCourseId || (!isCompletedRegistration && !activeReservation)) {
     return (
       <main className="mx-auto max-w-2xl space-y-6 p-6">
         <section className="rounded-2xl border p-6">
-          <h1 className="text-2xl font-semibold">Link nicht mehr gueltig</h1>
+          <h1 className="text-2xl font-semibold">Link nicht mehr gültig</h1>
           <p className="mt-3 text-sm text-muted-foreground">
-            Dieser Anmeldelink ist ungueltig oder bereits abgelaufen.
+            Dieser Anmeldelink ist ungültig oder bereits abgelaufen.
           </p>
           <Link href="/courses" className="mt-4 inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
             Zu den Kursen
@@ -108,7 +125,7 @@ export default async function TrialRegistrationTokenPage({
   const { data: course } = await admin
     .from("courses")
     .select("id,title,teacher_id,instructor_name,price_cents,currency,cancellation_model,location,location_details")
-    .eq("id", reservation.course_id)
+    .eq("id", fallbackCourseId)
     .maybeSingle<CourseRow>();
 
   const { data: profile } =
@@ -125,45 +142,29 @@ export default async function TrialRegistrationTokenPage({
       ? getProviderDisplayName(profile.provider_type, profile)
       : null;
 
-  const { data: intent } = await admin
-    .from("course_registration_intents")
-    .select(
-      "id,status,first_name,last_name,email,phone,street_and_number,postal_code,city,country,notes,stripe_subscription_id"
-    )
-    .eq("trial_reservation_id", reservation.id)
-    .maybeSingle<RegistrationIntentRow>();
-
   const ticket =
-    intent?.status === "checkout_completed" && intent.stripe_subscription_id
-      ? await loadTicketBySubscriptionId(intent.stripe_subscription_id)
+    isCompletedRegistration && intentByToken?.stripe_subscription_id
+      ? await loadTicketBySubscriptionId(intentByToken.stripe_subscription_id)
       : null;
 
   const checkoutError =
     error === "course_unavailable"
-      ? "Dieser Kurs ist aktuell nicht fuer die Online-Anmeldung verfuegbar."
+      ? "Dieser Kurs ist aktuell nicht für die Online-Anmeldung verfügbar."
       : error === "provider_payment_missing"
-        ? "Der Anbieter hat noch keine vollstaendigen Zahlungsdaten hinterlegt."
+        ? "Der Anbieter hat noch keine vollständigen Zahlungsdaten hinterlegt."
         : error === "provider_payment_incomplete"
-          ? "Das verknuepfte Stripe-Konto ist noch nicht vollstaendig eingerichtet."
+          ? "Das verknüpfte Stripe-Konto ist noch nicht vollständig eingerichtet."
           : null;
-  const isCompletedRegistration = intent?.status === "checkout_completed";
   const isEditMode = isCompletedRegistration && edit === "1";
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
-      {!isCompletedRegistration ? (
-        <section className="rounded-2xl border p-6">
-          <p className="text-sm text-muted-foreground">
-            Dein Platz ist bis <span className="font-medium text-foreground">{formatDateTime(reservation.registration_expires_at)}</span> fuer dich reserviert.
-          </p>
-        </section>
-      ) : null}
-
       <RegistrationForm
         token={token}
         course={{
           title: course?.title ?? "Kurs",
           providerName,
+          providerType: profile?.provider_type ?? null,
           instructorName: course?.instructor_name ?? null,
           priceLabel: formatPrice(course?.price_cents ?? null, course?.currency ?? null),
           cancellationLabel: getCancellationModelLabel(course?.cancellation_model),
@@ -171,15 +172,15 @@ export default async function TrialRegistrationTokenPage({
           locationDetails: course?.location_details ?? null,
         }}
         prefill={{
-          first_name: intent?.first_name ?? reservation.first_name ?? "",
-          last_name: intent?.last_name ?? reservation.last_name ?? "",
-          email: intent?.email ?? reservation.email ?? "",
-          phone: intent?.phone ?? "",
-          street_and_number: intent?.street_and_number ?? "",
-          postal_code: intent?.postal_code ?? "",
-          city: intent?.city ?? "",
-          country: intent?.country ?? "Deutschland",
-          notes: intent?.notes ?? "",
+          first_name: intentByToken?.first_name ?? activeReservation?.first_name ?? "",
+          last_name: intentByToken?.last_name ?? activeReservation?.last_name ?? "",
+          email: intentByToken?.email ?? activeReservation?.email ?? "",
+          phone: intentByToken?.phone ?? "",
+          street_and_number: intentByToken?.street_and_number ?? "",
+          postal_code: intentByToken?.postal_code ?? "",
+          city: intentByToken?.city ?? "",
+          country: intentByToken?.country ?? "Deutschland",
+          notes: intentByToken?.notes ?? "",
         }}
         initialError={checkoutError}
         completedRegistration={isCompletedRegistration}

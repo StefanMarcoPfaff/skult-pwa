@@ -23,6 +23,7 @@ type TrialReservationRow = {
   decision_taken_at: string | null;
   trial_ends_at: string | null;
   registration_expires_at: string | null;
+  cancelled_at: string | null;
   ticket_status?: string | null;
   ticket_checked_in_at?: string | null;
 };
@@ -50,6 +51,7 @@ type ParticipantsPageData = {
   approved: boolean;
   rejected: boolean;
   attendanceRequired: boolean;
+  cancelled: boolean;
   reservations: TrialReservationRow[];
   courseTitleById: Map<string, string>;
 };
@@ -93,6 +95,7 @@ function formatRequestedAt(value: string | null): string {
 
 function formatStatus(status: string | null, ticketStatus: string | null): string {
   const decisionStatus = status ?? "pending";
+  if (decisionStatus === "cancelled") return "Storniert";
   if (decisionStatus === "approved") return "Freigegeben";
   if (decisionStatus === "rejected") return "Abgesagt";
   if (ticketStatus === "checked_in") return "Entscheidung offen";
@@ -100,7 +103,7 @@ function formatStatus(status: string | null, ticketStatus: string | null): strin
 }
 
 function needsTeacherDecision(reservation: TrialReservationRow): boolean {
-  return (reservation.decision_status ?? "pending") === "pending" && reservation.ticket_status === "checked_in";
+  return !reservation.cancelled_at && (reservation.decision_status ?? "pending") === "pending" && reservation.ticket_status === "checked_in";
 }
 
 async function loadParticipantsPageData(
@@ -113,9 +116,11 @@ async function loadParticipantsPageData(
     const attendanceRequiredParam = Array.isArray(sp.attendanceRequired)
       ? sp.attendanceRequired[0]
       : sp.attendanceRequired;
+    const cancelledParam = Array.isArray(sp.cancelled) ? sp.cancelled[0] : sp.cancelled;
     const approved = approvedParam === "1";
     const rejected = rejectedParam === "1";
     const attendanceRequired = attendanceRequiredParam === "1";
+    const cancelled = cancelledParam === "1";
 
     const supabase = await createSupabaseServerClient();
     const {
@@ -157,7 +162,7 @@ async function loadParticipantsPageData(
       const { data, error: reservationsError } = await dataClient
         .from("trial_reservations")
         .select(
-          "id,course_id,first_name,last_name,email,status,decision_status,created_at,approved_at,rejected_at,decision_taken_at,trial_ends_at,registration_expires_at"
+          "id,course_id,first_name,last_name,email,status,decision_status,created_at,approved_at,rejected_at,decision_taken_at,trial_ends_at,registration_expires_at,cancelled_at"
         )
         .in("course_id", courseIds)
         .order("trial_starts_at", { ascending: false })
@@ -214,6 +219,7 @@ async function loadParticipantsPageData(
       approved,
       rejected,
       attendanceRequired,
+      cancelled,
       reservations,
       courseTitleById,
     };
@@ -228,7 +234,7 @@ export default async function DashboardParticipantsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { approved, rejected, attendanceRequired, reservations, courseTitleById } =
+  const { approved, rejected, attendanceRequired, cancelled, reservations, courseTitleById } =
     await loadParticipantsPageData(searchParams);
 
   return (
@@ -255,6 +261,12 @@ export default async function DashboardParticipantsPage({
       {attendanceRequired ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           Eine Entscheidung ist erst moeglich, nachdem das Probestunden-Ticket eingecheckt wurde.
+        </p>
+      ) : null}
+
+      {cancelled ? (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Diese Probestunden-Reservierung wurde bereits storniert und kann nicht mehr freigegeben werden.
         </p>
       ) : null}
 
@@ -291,7 +303,7 @@ export default async function DashboardParticipantsPage({
                   <td className="px-4 py-3">{courseTitleById.get(reservation.course_id) ?? "-"}</td>
                   <td className="px-4 py-3">
                     <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-medium">
-                      {formatStatus(reservation.decision_status, reservation.ticket_status ?? null)}
+                      {formatStatus(reservation.status, reservation.ticket_status ?? null)}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -303,7 +315,17 @@ export default async function DashboardParticipantsPage({
                   </td>
                   <td className="px-4 py-3">{formatRequestedAt(reservation.trial_ends_at)}</td>
                   <td className="px-4 py-3">
-                    {needsTeacherDecision(reservation) ? (
+                    {reservation.cancelled_at || reservation.status === "cancelled" ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/dashboard/participants/${reservation.id}?source=trial`}
+                          className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
+                        >
+                          Details
+                        </Link>
+                        <span className="text-xs text-muted-foreground">Reservierung storniert</span>
+                      </div>
+                    ) : needsTeacherDecision(reservation) ? (
                       <div className="flex flex-wrap gap-2">
                         <Link
                           href={`/dashboard/participants/${reservation.id}?source=trial`}

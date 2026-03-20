@@ -71,3 +71,7 @@ export function getProviderDisplayName(
   }
   return getProfileAccountName(input);
 }
+
+export function shouldShowStudioLabel(providerType: ProviderType | null | undefined): boolean {
+  return providerType === "studio_provider";
+}

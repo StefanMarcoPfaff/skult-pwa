@@ -9,7 +9,10 @@ import {
   issueCourseParticipantTicketForSubscription,
   type TicketRow,
 } from "@/lib/tickets";
-import { sendCourseSubscriptionConfirmationEmail } from "@/lib/trial-reservation-emails";
+import {
+  sendCourseSubscriptionConfirmationEmail,
+  sendCourseSubscriptionProviderNotificationEmail,
+} from "@/lib/trial-reservation-emails";
 import { getStripe } from "@/lib/stripe";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -20,9 +23,11 @@ type CourseRegistrationIntentRow = {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  phone: string | null;
   status: string | null;
   completed_at: string | null;
   registration_confirmation_email_sent_at: string | null;
+  provider_notification_email_sent_at: string | null;
 };
 
 type TrialReservationRow = {
@@ -51,6 +56,13 @@ type ProfileRow = {
   last_name: string | null;
   provider_type: "independent_teacher" | "studio_provider" | null;
   organization_name: string | null;
+};
+
+type ProviderContact = {
+  providerType: "independent_teacher" | "studio_provider" | null;
+  providerName: string | null;
+  providerEmail: string | null;
+  providerContactName: string | null;
 };
 
 type SupabaseLikeError = {
@@ -102,6 +114,38 @@ function logRegistrationSuccessError(context: string, error: unknown) {
   });
 }
 
+async function resolveProviderContact(
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  course: CourseRow | null
+): Promise<ProviderContact> {
+  if (!course?.teacher_id) {
+    return {
+      providerType: null,
+      providerName: null,
+      providerEmail: null,
+      providerContactName: null,
+    };
+  }
+
+  const [{ data: profile }, authResult] = await Promise.all([
+    admin
+      .from("profiles")
+      .select("first_name,last_name,provider_type,organization_name")
+      .eq("id", course.teacher_id)
+      .maybeSingle<ProfileRow>(),
+    admin.auth.admin.getUserById(course.teacher_id),
+  ]);
+
+  return {
+    providerType: profile?.provider_type ?? null,
+    providerName:
+      profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null,
+    providerEmail: authResult.data.user?.email?.trim() || null,
+    providerContactName:
+      [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null,
+  };
+}
+
 export default async function TrialRegistrationSuccessPage({
   params,
   searchParams,
@@ -148,7 +192,7 @@ export default async function TrialRegistrationSuccessPage({
         .eq("id", intentId)
         .neq("status", "checkout_completed")
         .select(
-          "id,trial_reservation_id,course_id,first_name,last_name,email,status,completed_at,registration_confirmation_email_sent_at"
+          "id,trial_reservation_id,course_id,first_name,last_name,email,phone,status,completed_at,registration_confirmation_email_sent_at,provider_notification_email_sent_at"
         )
         .maybeSingle<CourseRegistrationIntentRow>();
 
@@ -159,7 +203,7 @@ export default async function TrialRegistrationSuccessPage({
       const { data: storedIntent, error: storedIntentError } = await admin
         .from("course_registration_intents")
         .select(
-          "id,trial_reservation_id,course_id,first_name,last_name,email,status,completed_at,registration_confirmation_email_sent_at"
+          "id,trial_reservation_id,course_id,first_name,last_name,email,phone,status,completed_at,registration_confirmation_email_sent_at,provider_notification_email_sent_at"
         )
         .eq("id", intentId)
         .maybeSingle<CourseRegistrationIntentRow>();
@@ -186,14 +230,7 @@ export default async function TrialRegistrationSuccessPage({
             .maybeSingle<CourseRow>(),
         ]);
 
-        const { data: profile } =
-          course?.teacher_id
-            ? await admin
-                .from("profiles")
-                .select("first_name,last_name,provider_type,organization_name")
-                .eq("id", course.teacher_id)
-                .maybeSingle<ProfileRow>()
-            : { data: null };
+        const providerContact = await resolveProviderContact(admin, course ?? null);
 
         const recipientEmail =
           finalizedIntent.email?.trim() || reservation?.email?.trim() || null;
@@ -204,8 +241,7 @@ export default async function TrialRegistrationSuccessPage({
             .trim() ||
           [reservation?.first_name, reservation?.last_name].filter(Boolean).join(" ").trim() ||
           "dein Kind";
-        const providerName =
-          profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
+        const providerName = providerContact.providerName;
         const subscriptionId =
           typeof session.subscription === "string"
             ? session.subscription
@@ -256,6 +292,7 @@ export default async function TrialRegistrationSuccessPage({
             const result = await sendCourseSubscriptionConfirmationEmail({
               registrationIntentId: finalizedIntent.id,
               courseTitle: course?.title ?? "Kurs",
+              providerType: providerContact.providerType,
               providerName,
               instructorName: course?.instructor_name ?? null,
               customerName,
@@ -310,6 +347,80 @@ export default async function TrialRegistrationSuccessPage({
           });
         }
 
+        const providerEmail = providerContact.providerEmail;
+        if (providerEmail && !finalizedIntent.provider_notification_email_sent_at) {
+          const claimedAt = new Date().toISOString();
+          const { data: claimedRows, error: claimError } = await admin
+            .from("course_registration_intents")
+            .update({ provider_notification_email_sent_at: claimedAt })
+            .eq("id", finalizedIntent.id)
+            .is("provider_notification_email_sent_at", null)
+            .select("id");
+
+          if (claimError) {
+            logRegistrationSuccessError("claim-provider-notification-email", claimError);
+          } else if (!claimedRows || claimedRows.length === 0) {
+            logRegistrationSuccessInfo("provider notification email skipped", {
+              intentId: finalizedIntent.id,
+              recipient: providerEmail,
+              reason: "already-sent",
+              sentAtAlreadySet: true,
+            });
+          } else {
+            try {
+              logRegistrationSuccessInfo("provider notification email attempt", {
+                intentId: finalizedIntent.id,
+                recipient: providerEmail,
+              });
+
+              const result = await sendCourseSubscriptionProviderNotificationEmail({
+                registrationIntentId: finalizedIntent.id,
+                teacherEmail: providerEmail,
+                participantName: customerName,
+                participantEmail: recipientEmail ?? "",
+                participantPhone: finalizedIntent.phone?.trim() || null,
+                courseTitle: course?.title ?? "Kurs",
+                providerName,
+                instructorName: course?.instructor_name ?? providerContact.providerContactName,
+                priceLabel: formatPrice(course?.price_cents ?? null, course?.currency ?? null),
+                cancellationLabel: course?.cancellation_model
+                  ? getCancellationModelLabel(course.cancellation_model)
+                  : null,
+              });
+
+              if (result?.error) {
+                throw result.error;
+              }
+
+              logRegistrationSuccessInfo("provider notification email sent", {
+                intentId: finalizedIntent.id,
+                recipient: providerEmail,
+                messageId: result?.data?.id ?? null,
+              });
+            } catch (error) {
+              await admin
+                .from("course_registration_intents")
+                .update({ provider_notification_email_sent_at: null })
+                .eq("id", finalizedIntent.id)
+                .eq("provider_notification_email_sent_at", claimedAt);
+
+              logRegistrationSuccessInfo("provider notification email failed", {
+                intentId: finalizedIntent.id,
+                recipient: providerEmail,
+              });
+              logRegistrationSuccessError("send-provider-notification-email", error);
+            }
+          }
+        } else {
+          logRegistrationSuccessInfo("provider notification email skipped", {
+            intentId: finalizedIntent.id,
+            recipient: providerEmail,
+            reason: providerEmail ? "already-sent" : "missing-recipient",
+            sentAtAlreadySet: Boolean(finalizedIntent.provider_notification_email_sent_at),
+            providerNotificationEmailSentAt: finalizedIntent.provider_notification_email_sent_at,
+          });
+        }
+
         if (
           reservation &&
           (!reservation.converted_at ||
@@ -351,9 +462,9 @@ export default async function TrialRegistrationSuccessPage({
   return (
     <main className="mx-auto max-w-2xl space-y-6 p-6">
       <section className="rounded-2xl border p-6">
-        <h1 className="text-2xl font-semibold">Deine Anmeldung war erfolgreich.</h1>
+        <h1 className="text-2xl font-semibold">Deine Anmeldung war erfolgreich! 🎉</h1>
         <p className="mt-3 text-sm text-muted-foreground">
-          Alle weiteren Informationen zu deinem Kurs erhaeltst du per E-Mail.
+          Alle weiteren Informationen zu deinem Kurs erhältst du per E-Mail.
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <Link href="/courses" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">

@@ -6,6 +6,11 @@ function getSiteUrl(): string {
   return process.env.NEXT_PUBLIC_SITE_URL || DEFAULT_SITE_URL;
 }
 
+export function buildTicketViewUrl(qrToken: string): string {
+  const url = new URL(`/ticket/qr/${qrToken}`, getSiteUrl());
+  return url.toString();
+}
+
 export function buildTicketCheckInUrl(qrToken: string): string {
   const url = new URL("/dashboard/check-in", getSiteUrl());
   url.searchParams.set("token", qrToken);

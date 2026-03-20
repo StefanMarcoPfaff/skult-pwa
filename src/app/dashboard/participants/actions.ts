@@ -18,6 +18,7 @@ type ReservationMailRow = {
   status: string | null;
   decision_status: string | null;
   trial_ends_at: string | null;
+  cancelled_at: string | null;
 };
 
 type CourseMailRow = {
@@ -87,7 +88,7 @@ async function requireTeacher() {
 async function loadReservationContext(admin: ReturnType<typeof createSupabaseAdmin>, reservationId: string) {
   const { data: reservation, error: reservationError } = await admin
     .from("trial_reservations")
-    .select("id,course_id,first_name,last_name,email,status,decision_status,trial_ends_at")
+    .select("id,course_id,first_name,last_name,email,status,decision_status,trial_ends_at,cancelled_at")
     .eq("id", reservationId)
     .maybeSingle<ReservationMailRow>();
 
@@ -142,7 +143,7 @@ function getCustomerName(reservation: ReservationMailRow): string {
 }
 
 function canTakeDecision(reservation: ReservationMailRow): boolean {
-  return (reservation.decision_status ?? "pending") === "pending";
+  return !reservation.cancelled_at && (reservation.decision_status ?? "pending") === "pending";
 }
 
 export async function approveTrialReservationAction(formData: FormData) {
@@ -155,7 +156,7 @@ export async function approveTrialReservationAction(formData: FormData) {
   const { ok, admin, context } = await assertTeacherOwnsReservation(user.id, reservationId);
 
   if (!ok || !context || !canTakeDecision(context.reservation)) {
-    redirect("/dashboard/participants");
+    redirect(context?.reservation?.cancelled_at ? "/dashboard/participants?cancelled=1" : "/dashboard/participants");
   }
 
   const checkedIn = await hasCheckedInTrialTicket(admin, reservationId);
@@ -263,7 +264,7 @@ export async function rejectTrialReservationAction(formData: FormData) {
   const { ok, admin, context } = await assertTeacherOwnsReservation(user.id, reservationId);
 
   if (!ok || !context || !canTakeDecision(context.reservation)) {
-    redirect("/dashboard/participants");
+    redirect(context?.reservation?.cancelled_at ? "/dashboard/participants?cancelled=1" : "/dashboard/participants");
   }
 
   const checkedIn = await hasCheckedInTrialTicket(admin, reservationId);

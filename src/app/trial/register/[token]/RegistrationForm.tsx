@@ -9,6 +9,7 @@ import { submitTrialRegistrationAction } from "./actions";
 type CourseInfo = {
   title: string;
   providerName: string | null;
+  providerType?: "independent_teacher" | "studio_provider" | null;
   instructorName: string | null;
   priceLabel: string | null;
   cancellationLabel: string | null;
@@ -59,16 +60,16 @@ export default function RegistrationForm({
         </h1>
         {completedRegistration ? (
           <p className="mt-3 text-sm text-muted-foreground">
-            Hier siehst du deine bereits uebermittelten Anmeldedaten fuer diesen Kurs. Weitere organisatorische Informationen folgen per E-Mail oder spaeter ueber die Plattform.
+            Hier siehst du die von dir übermittelten Anmeldedaten für diesen Kurs. Alle weiteren Informationen erhältst du per E-Mail.
           </p>
         ) : null}
         <div className="mt-4 space-y-2 text-sm text-muted-foreground">
           <p>Kurs: <span className="font-medium text-foreground">{course.title}</span></p>
-          {course.providerName ? <p>Anbieter: <span className="font-medium text-foreground">{course.providerName}</span></p> : null}
+          {course.providerType === "studio_provider" && course.providerName ? <p>Anbieter: <span className="font-medium text-foreground">{course.providerName}</span></p> : null}
           {course.instructorName ? <p>Dozent: <span className="font-medium text-foreground">{course.instructorName}</span></p> : null}
           {course.priceLabel ? <p>Preis: <span className="font-medium text-foreground">{course.priceLabel}</span></p> : null}
           {course.cancellationLabel ? (
-            <p>Kurs- und Kuendigungsregelung: <span className="font-medium text-foreground">{course.cancellationLabel}</span></p>
+            <p>Kurs- und Kündigungsregelung: <span className="font-medium text-foreground">{course.cancellationLabel}</span></p>
           ) : null}
           {course.location ? <p>Ort: <span className="font-medium text-foreground">{course.location}</span></p> : null}
           {course.locationDetails ? (
@@ -83,7 +84,7 @@ export default function RegistrationForm({
           {ticketCheckInUrl ? (
             <>
               <p className="mt-2 text-sm text-muted-foreground">
-                Dieses Ticket wird kuenftig fuer Anwesenheit und Check-in im Kurs verwendet.
+                Dieses Ticket wird künftig für Anwesenheit und Check-in im Kurs verwendet.
               </p>
               <div className="mt-4 inline-block rounded-2xl border bg-white p-4">
                 <QRCode value={ticketCheckInUrl} size={220} />
@@ -98,6 +99,27 @@ export default function RegistrationForm({
       ) : null}
 
       <section className="rounded-2xl border p-6 space-y-4">
+        {completedRegistration ? (
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold">Übermittelte Daten</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {isReadOnly
+                  ? "Die Angaben sind aktuell schreibgeschützt."
+                  : "Bearbeitungsmodus aktiv. Du kannst die Daten jetzt anpassen."}
+              </p>
+            </div>
+            {isReadOnly ? (
+              <Link
+                href={`/trial/register/${token}?edit=1`}
+                className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
+              >
+                Anmeldedaten bearbeiten
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="space-y-1">
             <span className="text-sm font-medium">Vorname *</span>
@@ -147,7 +169,7 @@ export default function RegistrationForm({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm font-medium">Strasse und Hausnummer *</span>
+            <span className="text-sm font-medium">Straße und Hausnummer *</span>
             <input
               name="street_and_number"
               required
@@ -205,7 +227,7 @@ export default function RegistrationForm({
         <section className="rounded-2xl border p-6 space-y-3 text-sm">
           <label className="flex items-start gap-3">
             <input type="checkbox" name="binding_registration_confirmed" required className="mt-1" />
-            <span>Ich melde mich hiermit verbindlich fuer den Kurs an.</span>
+            <span>Ich melde mich hiermit verbindlich für den Kurs an.</span>
           </label>
           <label className="flex items-start gap-3">
             <input type="checkbox" name="agb_accepted" required className="mt-1" />
@@ -213,11 +235,11 @@ export default function RegistrationForm({
           </label>
           <label className="flex items-start gap-3">
             <input type="checkbox" name="privacy_accepted" required className="mt-1" />
-            <span>Ich habe die Datenschutzerklaerung zur Kenntnis genommen.</span>
+            <span>Ich habe die Datenschutzerklärung zur Kenntnis genommen.</span>
           </label>
           <label className="flex items-start gap-3">
             <input type="checkbox" name="cancellation_terms_accepted" required className="mt-1" />
-            <span>Ich akzeptiere die Kurs- und Kuendigungsregelung dieses Angebots.</span>
+            <span>Ich akzeptiere die Kurs- und Kündigungsregelung dieses Angebots.</span>
           </label>
         </section>
       ) : null}
@@ -240,14 +262,7 @@ export default function RegistrationForm({
         </p>
       ) : null}
 
-      {isReadOnly ? (
-        <Link
-          href={`/trial/register/${token}?edit=1`}
-          className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
-        >
-          Anmeldedaten aendern
-        </Link>
-      ) : (
+      {!isReadOnly ? (
         <div className="flex flex-wrap gap-3">
           <button
             type="submit"
@@ -268,11 +283,11 @@ export default function RegistrationForm({
               href={`/trial/register/${token}`}
               className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
             >
-              Zurueck zur Ansicht
+              Zurück zur Ansicht
             </Link>
           ) : null}
         </div>
-      )}
+      ) : null}
     </form>
   );
 }
