@@ -40,6 +40,10 @@ type SessionRow = {
   ends_at: string | null;
 };
 
+type TrialSlotRow = {
+  starts_at: string | null;
+};
+
 type ProfileRow = {
   first_name: string | null;
   last_name: string | null;
@@ -111,6 +115,14 @@ export default async function EditOfferPage({
     .order("starts_at", { ascending: true })
     .returns<SessionRow[]>();
 
+  const { data: trialSlots } = await supabase
+    .from("trial_slots")
+    .select("starts_at")
+    .eq("course_id", id)
+    .eq("is_open", true)
+    .order("starts_at", { ascending: true })
+    .returns<TrialSlotRow[]>();
+
   const courseInitialValues: CourseFormValues = {
     title: data.title,
     location: data.location ?? "",
@@ -122,6 +134,9 @@ export default async function EditOfferPage({
     duration_minutes: data.duration_minutes !== null ? String(data.duration_minutes) : "90",
     recurrence_type: data.recurrence_type ?? "weekly",
     trial_mode: data.trial_mode ?? "all_sessions",
+    trial_slot_starts: (trialSlots ?? [])
+      .map((slot) => slot.starts_at)
+      .filter((value): value is string => typeof value === "string" && value.length > 0),
     instructor_name: data.instructor_name ?? "",
     cancellation_model: normalizeCancellationModel(data.cancellation_model),
     capacity: data.capacity !== null ? String(data.capacity) : "",

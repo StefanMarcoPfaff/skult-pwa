@@ -1,5 +1,6 @@
 import Link from "next/link";
 import QRCode from "react-qr-code";
+import { formatRecurringCoursePrice, getCancellationNotice } from "@/lib/course-display";
 import {
   getCancellationModelLabel,
   getProviderDisplayName,
@@ -73,14 +74,6 @@ type SupabaseLikeError = {
   hint?: string;
   stack?: string;
 };
-
-function formatPrice(priceCents: number | null, currency: string | null): string | null {
-  if (priceCents === null || !Number.isFinite(priceCents)) return null;
-  return new Intl.NumberFormat("de-DE", {
-    style: "currency",
-    currency: currency || "EUR",
-  }).format(priceCents / 100);
-}
 
 function logRegistrationSuccessInfo(message: string, payload: Record<string, unknown>) {
   if (process.env.NODE_ENV === "production") return;
@@ -158,6 +151,9 @@ export default async function TrialRegistrationSuccessPage({
   const admin = createSupabaseAdmin();
   let ticketForDisplay: TicketRow | null = null;
   let courseTitleForDisplay = "Kurs";
+  let priceLabelForDisplay: string | null = null;
+  let cancellationLabelForDisplay: string | null = null;
+  let cancellationNoticeForDisplay: string | null = null;
 
   if (session_id && intentId) {
     const stripe = getStripe();
@@ -231,6 +227,12 @@ export default async function TrialRegistrationSuccessPage({
         ]);
 
         const providerContact = await resolveProviderContact(admin, course ?? null);
+        courseTitleForDisplay = course?.title ?? "Kurs";
+        priceLabelForDisplay = formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null);
+        cancellationLabelForDisplay = course?.cancellation_model
+          ? getCancellationModelLabel(course.cancellation_model)
+          : null;
+        cancellationNoticeForDisplay = getCancellationNotice(course?.cancellation_model);
 
         const recipientEmail =
           finalizedIntent.email?.trim() || reservation?.email?.trim() || null;
@@ -257,7 +259,6 @@ export default async function TrialRegistrationSuccessPage({
             });
 
             ticketForDisplay = ticketResult.ticket;
-            courseTitleForDisplay = course?.title ?? "Kurs";
 
             logRegistrationSuccessInfo(
               ticketResult.created ? "course participant ticket created" : "course participant ticket reused",
@@ -297,7 +298,7 @@ export default async function TrialRegistrationSuccessPage({
               instructorName: course?.instructor_name ?? null,
               customerName,
               customerEmail: recipientEmail,
-              priceLabel: formatPrice(course?.price_cents ?? null, course?.currency ?? null),
+              priceLabel: formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null),
               currency: course?.currency ?? "EUR",
               cancellationLabel: course?.cancellation_model
                 ? getCancellationModelLabel(course.cancellation_model)
@@ -382,7 +383,7 @@ export default async function TrialRegistrationSuccessPage({
                 courseTitle: course?.title ?? "Kurs",
                 providerName,
                 instructorName: course?.instructor_name ?? providerContact.providerContactName,
-                priceLabel: formatPrice(course?.price_cents ?? null, course?.currency ?? null),
+                priceLabel: formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null),
                 cancellationLabel: course?.cancellation_model
                   ? getCancellationModelLabel(course.cancellation_model)
                   : null,
@@ -492,6 +493,26 @@ export default async function TrialRegistrationSuccessPage({
             >
               Ticket in den Anmeldedaten ansehen
             </Link>
+          </div>
+        </section>
+      ) : null}
+
+      {priceLabelForDisplay || cancellationLabelForDisplay ? (
+        <section className="rounded-2xl border p-6">
+          <h2 className="text-xl font-semibold">Deine Kurskonditionen</h2>
+          <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+            {priceLabelForDisplay ? (
+              <p>
+                Preis: <span className="font-medium text-foreground">{priceLabelForDisplay}</span>
+              </p>
+            ) : null}
+            {cancellationLabelForDisplay ? (
+              <p>
+                Kuendigungsmodell:{" "}
+                <span className="font-medium text-foreground">{cancellationLabelForDisplay}</span>
+              </p>
+            ) : null}
+            {cancellationNoticeForDisplay ? <p>{cancellationNoticeForDisplay}</p> : null}
           </div>
         </section>
       ) : null}

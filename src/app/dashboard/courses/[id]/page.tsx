@@ -6,9 +6,16 @@ import {
   getWorkshopStornoPolicyLabel,
   type ProviderType,
 } from "@/lib/provider-profiles";
+import {
+  COURSE_END_NOTICE_DAYS,
+  formatCourseEndDate,
+  getMinimumCourseEndDateInput,
+  isCourseEnded,
+  isCourseEndingScheduled,
+} from "@/lib/course-ending";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { setCoursePublishStateAction } from "./actions";
+import { scheduleCourseEndAction, setCoursePublishStateAction } from "./actions";
 
 type Row = {
   id: string;
@@ -25,6 +32,8 @@ type Row = {
   cancellation_model: string | null;
   workshop_storno_policy: string | null;
   teacher_id: string;
+  ends_at: string | null;
+  end_scheduled_at: string | null;
 };
 
 type SessionRow = {
@@ -271,7 +280,7 @@ export default async function DashboardCourseDetailPage({
 
   const { data, error } = await supabase
     .from("courses")
-    .select("id,title,description,location,location_details,starts_at,capacity,kind,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id")
+    .select("id,title,description,location,location_details,starts_at,capacity,kind,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,end_scheduled_at")
     .eq("id", id)
     .eq("teacher_id", user.id)
     .single<Row>();
@@ -362,6 +371,10 @@ export default async function DashboardCourseDetailPage({
           organization_name: profile.organization_name,
         })
       : null;
+  const courseEndLabel = formatCourseEndDate(data.ends_at);
+  const courseEndingScheduled = data.kind === "course" && isCourseEndingScheduled(data.ends_at);
+  const courseAlreadyEnded = data.kind === "course" && isCourseEnded(data.ends_at);
+  const minimumEndDateInput = getMinimumCourseEndDateInput();
 
   const ticketByTrialReservationId = new Map(
     (trialTickets ?? [])
@@ -502,6 +515,26 @@ export default async function DashboardCourseDetailPage({
           Angebot wurde als Entwurf gespeichert.
         </p>
       ) : null}
+      {savedParam === "ending_scheduled" ? (
+        <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Kursende wurde geplant. Neue Probestunden und neue verbindliche Anmeldungen sind ab jetzt geschlossen.
+        </p>
+      ) : null}
+      {savedParam === "ending_partial" ? (
+        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          Kursende wurde geplant. Mindestens ein bestehendes Abo konnte noch nicht automatisch synchronisiert werden.
+        </p>
+      ) : null}
+      {savedParam === "ending_too_soon" ? (
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Das Kursende muss mindestens {COURSE_END_NOTICE_DAYS} Tage in der Zukunft liegen.
+        </p>
+      ) : null}
+      {savedParam === "ending_invalid" || savedParam === "ending_error" ? (
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Das Kursende konnte nicht geplant werden.
+        </p>
+      ) : null}
 
       <div className="mt-6 flex flex-wrap gap-3">
         <Link
@@ -531,6 +564,11 @@ export default async function DashboardCourseDetailPage({
         {data.kind === "course" ? (
           <div>Kuendigungsmodell: {getCancellationModelLabel(data.cancellation_model)}</div>
         ) : null}
+        {data.kind === "course" && courseEndLabel ? (
+          <div>
+            Status: {courseAlreadyEnded ? "Beendet" : "Endet"} am {courseEndLabel}
+          </div>
+        ) : null}
         {data.kind === "workshop" ? (
           <div>Storno-Regel: {getWorkshopStornoPolicyLabel(data.workshop_storno_policy)}</div>
         ) : null}
@@ -544,6 +582,47 @@ export default async function DashboardCourseDetailPage({
       </div>
 
       {data.description ? <p style={{ marginTop: 16, lineHeight: 1.6 }}>{data.description}</p> : null}
+
+      {data.kind === "course" ? (
+        <section className="mt-6 rounded-2xl border p-5">
+          <h2 className="text-lg font-semibold">Kursende planen</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Wenn der Kurs auslaufen soll, kannst du hier ein Enddatum mit mindestens {COURSE_END_NOTICE_DAYS} Tagen Vorlauf festlegen.
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Danach sind keine neuen Probestunden und keine neuen verbindlichen Anmeldungen mehr moeglich. Bestehende Abos werden auf dieses Datum ausgesteuert.
+          </p>
+          {courseEndLabel ? (
+            <p className="mt-3 text-sm font-medium text-foreground">
+              {courseAlreadyEnded ? "Dieser Kurs endete am" : "Aktuell geplant:"} {courseEndLabel}
+            </p>
+          ) : null}
+          {!courseAlreadyEnded ? (
+            <form action={scheduleCourseEndAction} className="mt-4 flex flex-wrap items-end gap-3">
+              <input type="hidden" name="course_id" value={data.id} />
+              <input type="hidden" name="redirect_to" value={`/dashboard/courses/${data.id}`} />
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Letzter Kurstag</span>
+                <input
+                  type="date"
+                  name="end_date"
+                  min={minimumEndDateInput}
+                  defaultValue={
+                    courseEndingScheduled && data.ends_at
+                      ? new Date(data.ends_at).toISOString().slice(0, 10)
+                      : minimumEndDateInput
+                  }
+                  className="rounded-xl border px-3 py-2"
+                  required
+                />
+              </label>
+              <button type="submit" className="rounded-xl border px-4 py-2 text-sm font-semibold">
+                {courseEndingScheduled ? "Kursende aktualisieren" : "Kursende planen"}
+              </button>
+            </form>
+          ) : null}
+        </section>
+      ) : null}
 
       {data.kind === "workshop" ? (
         <section style={{ marginTop: 24 }}>

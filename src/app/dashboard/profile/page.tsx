@@ -27,8 +27,10 @@ export default async function DashboardProfilePage({
   const stripeErrorDetailParam = Array.isArray(sp.stripe_error_detail)
     ? sp.stripe_error_detail[0]
     : sp.stripe_error_detail;
+  const onboardingParam = Array.isArray(sp.onboarding) ? sp.onboarding[0] : sp.onboarding;
   const stripeConnected = stripeConnectedParam === "1";
   const stripeError = stripeErrorParam === "1";
+  const onboarding = onboardingParam === "1";
   const stripeErrorDetail = process.env.NODE_ENV !== "production" ? stripeErrorDetailParam : undefined;
 
   const supabase = await createSupabaseServerClient();
@@ -58,6 +60,13 @@ export default async function DashboardProfilePage({
           Diese Angaben bilden die Grundlage fuer dein Dozent*innen-Profil.
         </p>
       </header>
+
+      {onboarding ? (
+        <p className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+          Willkommen. Bitte vervollstaendige jetzt dein Profil, damit du anschliessend Angebote
+          anlegen kannst.
+        </p>
+      ) : null}
 
       {stripeConnected ? (
         <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">

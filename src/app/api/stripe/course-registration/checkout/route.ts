@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
+import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
 import { getStripe } from "@/lib/stripe";
 import {
   buildDestinationSubscriptionData,
@@ -30,6 +32,8 @@ type CourseRow = {
   price_cents: number | null;
   currency: string | null;
   teacher_id: string | null;
+  capacity: number | null;
+  ends_at: string | null;
 };
 
 function isExpired(value: string | null): boolean {
@@ -71,11 +75,20 @@ export async function GET(req: Request) {
 
   const { data: course } = await admin
     .from("courses")
-    .select("id,title,price_cents,currency,teacher_id")
+    .select("id,title,price_cents,currency,teacher_id,capacity,ends_at")
     .eq("id", intent.course_id)
     .maybeSingle<CourseRow>();
 
   if (!course?.teacher_id || !course.price_cents || course.price_cents <= 0) {
+    return NextResponse.redirect(new URL(`/trial/register/${token}?error=course_unavailable`, url));
+  }
+
+  if (isCourseClosedForNewRegistrations(course.ends_at)) {
+    return NextResponse.redirect(new URL(`/trial/register/${token}?error=course_ending`, url));
+  }
+
+  const availability = buildOfferAvailability(course.capacity, await loadOccupiedCourseSeats(intent.course_id));
+  if (availability.isSoldOut) {
     return NextResponse.redirect(new URL(`/trial/register/${token}?error=course_unavailable`, url));
   }
 
@@ -98,7 +111,7 @@ export async function GET(req: Request) {
   const siteUrl = getSiteUrl(req.url);
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
-    payment_method_types: ["card"],
+    payment_method_types: ["card", "sepa_debit"],
     customer_email: intent.email,
     line_items: [
       {

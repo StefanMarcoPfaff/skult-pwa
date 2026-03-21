@@ -67,6 +67,20 @@ export type CourseSubscriptionProviderNotificationEmailData = {
   cancellationLabel: string | null;
 };
 
+export type CourseEndingNotificationEmailData = {
+  registrationIntentId: string;
+  courseTitle: string;
+  providerType?: "independent_teacher" | "studio_provider" | null;
+  providerName: string | null;
+  instructorName: string | null;
+  customerName: string;
+  customerEmail: string;
+  courseEndsAt: string;
+  cancellationLabel: string | null;
+  location: string | null;
+  locationDetails: string | null;
+};
+
 export type TeacherTrialDecisionReminderEmailData = {
   reservationId: string;
   courseTitle: string;
@@ -713,6 +727,57 @@ export function prepareCourseSubscriptionProviderNotificationEmail(
   };
 }
 
+export function prepareCourseEndingNotificationEmail(data: CourseEndingNotificationEmailData) {
+  const endDate = new Date(data.courseEndsAt).toLocaleDateString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+
+  return {
+    to: data.customerEmail,
+    subject: `Wichtige Info: ${data.courseTitle} endet am ${endDate}`,
+    html: createHtmlEmail({
+      title: "Wichtige Aenderung zu deinem Kurs",
+      greeting: data.customerName,
+      intro: `Dein Kurs <b>${data.courseTitle}</b> wird zum <b>${endDate}</b> beendet.`,
+      infoItems: [
+        { label: "Kursname", value: data.courseTitle },
+        ...buildProviderInfoItems(data),
+        { label: "Letzter Kurstag", value: endDate },
+        { label: "Ort", value: data.location },
+        { label: "Weitere Infos", value: data.locationDetails },
+        { label: "Kuendigungsregelung", value: data.cancellationLabel },
+      ],
+      nextSteps: [
+        "Dein laufendes Abo wird automatisch zu diesem Datum beendet.",
+        "Du musst dafuer nichts weiter unternehmen.",
+        "Falls es organisatorische Rueckfragen gibt, melden wir uns separat bei dir.",
+      ],
+      actions: [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+    }),
+    text: createTextEmail({
+      title: "Wichtige Aenderung zu deinem Kurs",
+      greeting: data.customerName,
+      intro: `Dein Kurs ${data.courseTitle} wird zum ${endDate} beendet.`,
+      infoItems: [
+        { label: "Kursname", value: data.courseTitle },
+        ...buildProviderInfoItems(data),
+        { label: "Letzter Kurstag", value: endDate },
+        { label: "Ort", value: data.location },
+        { label: "Weitere Infos", value: data.locationDetails },
+        { label: "Kuendigungsregelung", value: data.cancellationLabel },
+      ],
+      nextSteps: [
+        "Dein laufendes Abo wird automatisch zu diesem Datum beendet.",
+        "Du musst dafuer nichts weiter unternehmen.",
+        "Falls es organisatorische Rueckfragen gibt, melden wir uns separat bei dir.",
+      ],
+      actions: [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+    }),
+  };
+}
+
 export function prepareTrialRegistrationRejectedEmail(data: TrialRegistrationDecisionEmailData) {
   return {
     to: data.customerEmail,
@@ -940,6 +1005,18 @@ export async function sendCourseSubscriptionProviderNotificationEmail(
 
   const resend = getResend();
   const email = prepareCourseSubscriptionProviderNotificationEmail(data);
+  return resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: email.to,
+    subject: email.subject,
+    html: email.html,
+    text: email.text,
+  });
+}
+
+export async function sendCourseEndingNotificationEmail(data: CourseEndingNotificationEmailData) {
+  const resend = getResend();
+  const email = prepareCourseEndingNotificationEmail(data);
   return resend.emails.send({
     from: "onboarding@resend.dev",
     to: email.to,

@@ -9,18 +9,7 @@ export type TrialSlot = {
   label: string;
 };
 
-type TrialSlotInput = {
-  weekday: number | null;
-  startTime: string | null;
-  durationMinutes: number | null;
-  recurrenceType: string | null;
-  trialMode: string | null;
-  startsAt: string | null;
-};
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
-function formatSlotLabel(startsAt: Date, endsAt: Date): string {
+export function formatTrialSlotLabel(startsAt: Date, endsAt: Date): string {
   const date = startsAt.toLocaleDateString("de-DE", {
     day: "2-digit",
     month: "2-digit",
@@ -38,6 +27,29 @@ function formatSlotLabel(startsAt: Date, endsAt: Date): string {
   return `${date} | ${startTime}-${endTime}`;
 }
 
+export function buildTrialSlot(startsAtIso: string, endsAtIso: string): TrialSlot | null {
+  const startsAt = new Date(startsAtIso);
+  const endsAt = new Date(endsAtIso);
+  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) return null;
+
+  return {
+    startsAt: startsAtIso,
+    endsAt: endsAtIso,
+    label: formatTrialSlotLabel(startsAt, endsAt),
+  };
+}
+
+type TrialSlotInput = {
+  weekday: number | null;
+  startTime: string | null;
+  durationMinutes: number | null;
+  recurrenceType: string | null;
+  trialMode: string | null;
+  startsAt: string | null;
+};
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 export function computeUpcomingTrialSlots(input: TrialSlotInput): TrialSlot[] {
   const mode = (input.trialMode ?? "all_sessions").toLowerCase();
   if (mode !== "all_sessions") return [];
@@ -54,14 +66,7 @@ export function computeUpcomingTrialSlots(input: TrialSlotInput): TrialSlot[] {
     fromDate: now,
     untilDate: windowEnd,
     limit: 3,
-  }).map((occurrence) => {
-    const startsAt = new Date(occurrence.starts_at);
-    const endsAt = new Date(occurrence.ends_at);
-
-    return {
-      startsAt: occurrence.starts_at,
-      endsAt: occurrence.ends_at,
-      label: formatSlotLabel(startsAt, endsAt),
-    };
-  });
+  })
+    .map((occurrence) => buildTrialSlot(occurrence.starts_at, occurrence.ends_at))
+    .filter((slot): slot is TrialSlot => slot !== null);
 }

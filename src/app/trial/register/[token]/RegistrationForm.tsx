@@ -3,6 +3,7 @@
 import Link from "next/link";
 import QRCode from "react-qr-code";
 import { useActionState } from "react";
+import { LEGAL_LINKS } from "@/lib/legal";
 import { buildTicketCheckInUrl } from "@/lib/ticket-qr";
 import { submitTrialRegistrationAction } from "./actions";
 
@@ -13,6 +14,7 @@ type CourseInfo = {
   instructorName: string | null;
   priceLabel: string | null;
   cancellationLabel: string | null;
+  cancellationNotice?: string | null;
   location: string | null;
   locationDetails: string | null;
 };
@@ -36,6 +38,7 @@ export default function RegistrationForm({
   initialError,
   completedRegistration,
   editMode,
+  registrationClosed,
   ticketQrToken,
 }: {
   token: string;
@@ -44,6 +47,7 @@ export default function RegistrationForm({
   initialError?: string | null;
   completedRegistration?: boolean;
   editMode?: boolean;
+  registrationClosed?: boolean;
   ticketQrToken?: string | null;
 }) {
   const [state, formAction, pending] = useActionState(submitTrialRegistrationAction, {});
@@ -69,8 +73,9 @@ export default function RegistrationForm({
           {course.instructorName ? <p>Dozent: <span className="font-medium text-foreground">{course.instructorName}</span></p> : null}
           {course.priceLabel ? <p>Preis: <span className="font-medium text-foreground">{course.priceLabel}</span></p> : null}
           {course.cancellationLabel ? (
-            <p>Kurs- und Kündigungsregelung: <span className="font-medium text-foreground">{course.cancellationLabel}</span></p>
+            <p>Kuendigungsmodell: <span className="font-medium text-foreground">{course.cancellationLabel}</span></p>
           ) : null}
+          {course.cancellationNotice ? <p>{course.cancellationNotice}</p> : null}
           {course.location ? <p>Ort: <span className="font-medium text-foreground">{course.location}</span></p> : null}
           {course.locationDetails ? (
             <p>Raum / Zusatzinfo: <span className="font-medium text-foreground">{course.locationDetails}</span></p>
@@ -225,22 +230,60 @@ export default function RegistrationForm({
 
       {!completedRegistration ? (
         <section className="rounded-2xl border p-6 space-y-3 text-sm">
+          <p className="text-muted-foreground">
+            Der angegebene Preis ist ein Monatsbeitrag. Die Kuendigung richtet sich nach dem oben
+            gezeigten Kuendigungsmodell.
+          </p>
+          <p className="text-muted-foreground">
+            Fuer die Zahlung stehen dir im Checkout aktuell Karte und SEPA-Lastschrift zur
+            Verfuegung.
+          </p>
           <label className="flex items-start gap-3">
             <input type="checkbox" name="binding_registration_confirmed" required className="mt-1" />
             <span>Ich melde mich hiermit verbindlich für den Kurs an.</span>
           </label>
           <label className="flex items-start gap-3">
             <input type="checkbox" name="agb_accepted" required className="mt-1" />
-            <span>Ich akzeptiere die AGB.</span>
+            <span>
+              Ich akzeptiere die{" "}
+              <Link href={LEGAL_LINKS.agb} target="_blank" className="underline underline-offset-4">
+                AGB
+              </Link>
+              .
+            </span>
           </label>
           <label className="flex items-start gap-3">
             <input type="checkbox" name="privacy_accepted" required className="mt-1" />
-            <span>Ich habe die Datenschutzerklärung zur Kenntnis genommen.</span>
+            <span>
+              Ich habe die{" "}
+              <Link
+                href={LEGAL_LINKS.privacy}
+                target="_blank"
+                className="underline underline-offset-4"
+              >
+                Datenschutzerklaerung
+              </Link>{" "}
+              zur Kenntnis genommen.
+            </span>
           </label>
           <label className="flex items-start gap-3">
             <input type="checkbox" name="cancellation_terms_accepted" required className="mt-1" />
-            <span>Ich akzeptiere die Kurs- und Kündigungsregelung dieses Angebots.</span>
+            <span>
+              Ich akzeptiere die Kurs- und Kuendigungsregelung dieses Angebots sowie den{" "}
+              <Link
+                href={LEGAL_LINKS.courseCancellation}
+                target="_blank"
+                className="underline underline-offset-4"
+              >
+                rechtlichen Hinweis zur Kurskuendigung
+              </Link>
+              .
+            </span>
           </label>
+          <p className="text-xs text-muted-foreground">
+            Die verlinkten Rechtstexte sind aktuell als MVP-Platzhalter vorbereitet und werden
+            spaeter durch finale juristische Inhalte ersetzt.
+          </p>
         </section>
       ) : null}
 
@@ -262,7 +305,7 @@ export default function RegistrationForm({
         </p>
       ) : null}
 
-      {!isReadOnly ? (
+      {!isReadOnly && !registrationClosed ? (
         <div className="flex flex-wrap gap-3">
           <button
             type="submit"

@@ -1,5 +1,7 @@
 ﻿import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { formatCoursePriceFromRow } from "@/lib/course-display";
+import { buildOfferAvailability, loadOccupiedSeatCountsForOffers } from "@/lib/public-offer-availability";
 
 type Row = Record<string, unknown>;
 
@@ -26,15 +28,12 @@ function getKind(row: Row): "workshop" | "course" | null {
 }
 
 function formatPrice(row: Row): string | null {
-  const priceType = (asString(row.price_type) ?? "").toLowerCase();
-  const currency = asString(row.currency) ?? "EUR";
-  const cents = asNumber(row.price_cents);
-
-  if (priceType === "free") return "Kostenlos";
-  if (cents !== null && cents >= 0) {
-    return new Intl.NumberFormat("de-DE", { style: "currency", currency }).format(cents / 100);
-  }
-  return null;
+  return formatCoursePriceFromRow({
+    kind: asString(row.offer_type) ?? asString(row.kind),
+    priceType: asString(row.price_type),
+    priceCents: asNumber(row.price_cents),
+    currency: asString(row.currency) ?? "EUR",
+  });
 }
 
 const weekdayLabels: Record<number, string> = {
@@ -123,6 +122,11 @@ export default async function CoursesPage() {
     }
   }
 
+  const offerIds = offers
+    .map((offer) => asString(offer.id))
+    .filter((value): value is string => Boolean(value));
+  const { courseCounts, workshopCounts } = await loadOccupiedSeatCountsForOffers(offerIds);
+
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-4">
       <header className="flex items-center justify-between">
@@ -144,25 +148,19 @@ export default async function CoursesPage() {
             const location = asString(o.location);
             const startsAt = asString(o.starts_at);
             const capacity = asNumber(o.capacity);
-            const taken = asNumber(o.seats_taken) ?? 0;
-            const free = capacity === null ? null : Math.max(0, capacity - taken);
             const kind = getKind(o);
+            const occupied =
+              kind === "course"
+                ? courseCounts.get(id) ?? 0
+                : kind === "workshop"
+                  ? workshopCounts.get(id) ?? 0
+                  : 0;
+            const availability = buildOfferAvailability(capacity, occupied);
             const price = formatPrice(o);
             const courseSchedule = kind === "course" ? formatCourseSchedule(o) : null;
             const workshopTimeHint = kind === "workshop" ? formatDateTime(startsAt) : null;
 
             const kindLabel = kind === "course" ? "Kurs" : kind === "workshop" ? "Workshop" : null;
-
-            const badge =
-              free === null
-                ? "bg-gray-100 text-gray-700"
-                : free <= 0
-                ? "bg-red-100 text-red-700"
-                : free <= 3
-                ? "bg-orange-100 text-orange-700"
-                : "bg-emerald-100 text-emerald-700";
-
-            const badgeText = free === null ? "offen" : free <= 0 ? "Ausgebucht" : `${free} frei`;
 
             return (
               <li key={id}>
@@ -173,7 +171,11 @@ export default async function CoursesPage() {
                       {kindLabel ? <span className="font-medium text-gray-400"> · {kindLabel}</span> : null}
                     </h2>
 
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${badge}`}>{badgeText}</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs ${availability.badgeClassName}`}
+                    >
+                      {availability.badgeText}
+                    </span>
                   </div>
 
                   <p className="mt-1 text-sm text-gray-600">

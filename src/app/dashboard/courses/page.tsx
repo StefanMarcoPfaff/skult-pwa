@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { formatCourseEndDate, isCourseEnded, isCourseEndingScheduled } from "@/lib/course-ending";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { setCoursePublishStateAction } from "./[id]/actions";
 
@@ -15,6 +16,7 @@ type OfferRow = {
   start_time: string | null;
   recurrence_type: string | null;
   created_at: string | null;
+  ends_at: string | null;
 };
 
 type SessionRow = {
@@ -72,7 +74,7 @@ export default async function DashboardCoursesPage({
   }
 
   const baseSelect =
-    "id,teacher_id,title,kind,is_published,location,starts_at,weekday,start_time,recurrence_type,created_at";
+    "id,teacher_id,title,kind,is_published,location,starts_at,weekday,start_time,recurrence_type,created_at,ends_at";
 
   let offersResult = await supabase
     .from("courses")
@@ -159,7 +161,15 @@ export default async function DashboardCoursesPage({
         <section className="grid gap-4 md:grid-cols-2">
           {offers.map((offer) => {
             const kind = (offer.kind ?? "").toLowerCase();
-            const statusLabel = offer.is_published ? "Veröffentlicht" : "Entwurf";
+            const courseEndLabel = formatCourseEndDate(offer.ends_at);
+            const statusLabel =
+              kind === "course" && isCourseEnded(offer.ends_at)
+                ? "Beendet"
+                : kind === "course" && isCourseEndingScheduled(offer.ends_at)
+                  ? `Endet am ${courseEndLabel}`
+                  : offer.is_published
+                    ? "Veröffentlicht"
+                    : "Entwurf";
 
             const workshopHasMultipleSessions = (sessionCountByCourseId.get(offer.id) ?? 0) > 1;
             const workshopTiming = workshopHasMultipleSessions
@@ -182,6 +192,7 @@ export default async function DashboardCoursesPage({
                   {offer.location ? <p>Ort: {offer.location}</p> : null}
                   {kind === "workshop" && workshopTiming ? <p>{workshopTiming}</p> : null}
                   {kind === "course" && courseTiming ? <p>{courseTiming}</p> : null}
+                  {kind === "course" && courseEndLabel ? <p>Letzter Kurstag: {courseEndLabel}</p> : null}
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">

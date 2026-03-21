@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildOfferAvailability, loadOccupiedWorkshopSeats } from "@/lib/public-offer-availability";
 import { getStripe } from "@/lib/stripe";
 import {
   buildDestinationPaymentIntentData,
@@ -35,12 +36,18 @@ export async function POST(req: Request) {
       lastName,
       email,
       phone,
+      agbAccepted,
+      privacyAccepted,
+      workshopStornoAccepted,
     } = (await req.json()) as {
       courseId?: string;
       firstName?: string;
       lastName?: string;
       email?: string;
       phone?: string;
+      agbAccepted?: boolean;
+      privacyAccepted?: boolean;
+      workshopStornoAccepted?: boolean;
     };
     if (!courseId) {
       return NextResponse.json({ error: "courseId fehlt" }, { status: 400 });
@@ -54,11 +61,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Bitte fuelle alle Pflichtfelder aus." }, { status: 400 });
     }
 
+    if (!agbAccepted || !privacyAccepted || !workshopStornoAccepted) {
+      return NextResponse.json(
+        { error: "Bitte bestaetige AGB, Datenschutz und die Workshop-Stornoregelung." },
+        { status: 400 }
+      );
+    }
+
     const supabase = await createClient();
 
     const { data: course, error: courseErr } = await supabase
       .from("courses_lite")
-      .select("id,title,price_type,price_cents,currency,offer_type")
+      .select("id,title,price_type,price_cents,currency,offer_type,capacity")
       .eq("id", courseId)
       .single();
 
@@ -72,6 +86,20 @@ export async function POST(req: Request) {
 
     if (course.price_type !== "paid" || !course.price_cents || course.price_cents <= 0) {
       return NextResponse.json({ error: "Workshop nicht paid konfiguriert" }, { status: 400 });
+    }
+
+    const capacity =
+      typeof course.capacity === "number"
+        ? course.capacity
+        : typeof course.capacity === "string" && course.capacity.trim()
+          ? Number(course.capacity)
+          : null;
+    const availability = buildOfferAvailability(
+      Number.isFinite(capacity) ? capacity : null,
+      await loadOccupiedWorkshopSeats(courseId)
+    );
+    if (availability.isSoldOut) {
+      return NextResponse.json({ error: "Dieser Workshop ist aktuell ausgebucht." }, { status: 400 });
     }
 
     const { data: ownerCourse, error: ownerCourseError } = await supabase
@@ -121,6 +149,8 @@ export async function POST(req: Request) {
 
     const attendeeKey = makeAttendeeKey();
 
+    const acceptedAt = new Date().toISOString();
+
     const { data: booking, error: bookingErr } = await supabase
       .from("bookings")
       .insert({
@@ -132,6 +162,9 @@ export async function POST(req: Request) {
         customer_last_name: customerLastName,
         customer_email: customerEmail,
         customer_phone: customerPhone,
+        agb_accepted_at: acceptedAt,
+        privacy_accepted_at: acceptedAt,
+        workshop_storno_terms_accepted_at: acceptedAt,
       })
       .select("id, attendee_key")
       .single();
@@ -147,7 +180,7 @@ export async function POST(req: Request) {
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      payment_method_types: ["card"],
+      payment_method_types: ["card", "sepa_debit"],
       customer_email: customerEmail,
       line_items: [
         {

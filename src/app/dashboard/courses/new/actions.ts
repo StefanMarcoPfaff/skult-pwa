@@ -7,6 +7,7 @@ import {
   isWorkshopStornoPolicy,
   type ProviderType,
 } from "@/lib/provider-profiles";
+import { generateRecurringCourseSessions } from "@/lib/course-sessions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type ActionResult = { error?: string };
@@ -22,6 +23,14 @@ type WorkshopSession = {
   ends_at: string;
 };
 
+type TrialSlotInsert = {
+  course_id: string;
+  starts_at: string;
+  ends_at: string;
+  is_open: boolean;
+  source_type: "manual";
+};
+
 function parseOptionalInt(value: FormDataEntryValue | null): number | null {
   if (value === null) return null;
   const s = String(value).trim();
@@ -34,6 +43,20 @@ function parseOptionalString(value: FormDataEntryValue | null): string | null {
   if (value === null) return null;
   const s = String(value).trim();
   return s ? s : null;
+}
+
+function parseIsoDateTimeList(values: FormDataEntryValue[]): string[] {
+  const out = new Set<string>();
+
+  for (const value of values) {
+    const raw = String(value ?? "").trim();
+    if (!raw) continue;
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) continue;
+    out.add(parsed.toISOString());
+  }
+
+  return [...out];
 }
 
 function parseDateParts(value: string): { year: number; month: number; day: number } | null {
@@ -336,6 +359,7 @@ async function createOrUpdateCourse(
   const duration_minutes = parseOptionalInt(formData.get("duration_minutes"));
   const recurrence_type = String(formData.get("recurrence_type") || "").trim();
   const trial_mode = String(formData.get("trial_mode") || "all_sessions").trim().toLowerCase();
+  const selectedTrialSlotStarts = parseIsoDateTimeList(formData.getAll("trial_slot_starts_at"));
   const cancellation_model = String(formData.get("cancellation_model") || "").trim();
 
   if (weekday === null || weekday < 0 || weekday > 6) {
@@ -365,6 +389,41 @@ async function createOrUpdateCourse(
   const starts_at = combineCourseStartsAtISO(start_date, start_time);
   if (!starts_at) {
     return { error: "Startdatum konnte nicht berechnet werden. Bitte pruefe Startdatum und Startzeit." };
+  }
+
+  const validManualTrialOccurrences =
+    trial_mode === "manual"
+      ? generateRecurringCourseSessions({
+          starts_at,
+          weekday,
+          start_time,
+          duration_minutes,
+          recurrence_type,
+          fromDate: new Date(starts_at),
+          untilDate: new Date(new Date(starts_at).setMonth(new Date(starts_at).getMonth() + 6)),
+          limit: 12,
+        })
+      : [];
+
+  if (trial_mode === "manual" && selectedTrialSlotStarts.length === 0) {
+    return { error: "Bitte waehle mindestens einen Termin fuer Probestunden aus." };
+  }
+
+  const manualTrialSlots: TrialSlotInsert[] =
+    trial_mode === "manual"
+      ? validManualTrialOccurrences
+          .filter((occurrence) => selectedTrialSlotStarts.includes(occurrence.starts_at))
+          .map((occurrence) => ({
+            course_id: "",
+            starts_at: occurrence.starts_at,
+            ends_at: occurrence.ends_at,
+            is_open: true,
+            source_type: "manual" as const,
+          }))
+      : [];
+
+  if (trial_mode === "manual" && manualTrialSlots.length !== selectedTrialSlotStarts.length) {
+    return { error: "Mindestens einer der ausgewaehlten Probestunden-Termine ist ungueltig." };
   }
 
   const price_cents = parseOptionalInt(formData.get("price_cents"));
@@ -417,6 +476,20 @@ async function createOrUpdateCourse(
       return { error: formatUserSupabaseError(error) };
     }
 
+    if (manualTrialSlots.length > 0) {
+      const { error: insertTrialSlotsError } = await supabase.from("trial_slots").insert(
+        manualTrialSlots.map((slot) => ({
+          ...slot,
+          course_id: inserted.id,
+        }))
+      );
+
+      if (insertTrialSlotsError) {
+        logSupabaseError("insert.trial_slots(course-create)", insertTrialSlotsError);
+        return { error: formatUserSupabaseError(insertTrialSlotsError) };
+      }
+    }
+
     redirect(`/dashboard/courses/${inserted.id}`);
   }
 
@@ -449,6 +522,30 @@ async function createOrUpdateCourse(
   if (error) {
     logSupabaseError("update.courses(course)", error);
     return { error: formatUserSupabaseError(error) };
+  }
+
+  const { error: deleteTrialSlotsError } = await supabase
+    .from("trial_slots")
+    .delete()
+    .eq("course_id", options.courseId);
+
+  if (deleteTrialSlotsError) {
+    logSupabaseError("delete.trial_slots(course-update)", deleteTrialSlotsError);
+    return { error: formatUserSupabaseError(deleteTrialSlotsError) };
+  }
+
+  if (manualTrialSlots.length > 0) {
+    const { error: insertTrialSlotsError } = await supabase.from("trial_slots").insert(
+      manualTrialSlots.map((slot) => ({
+        ...slot,
+        course_id: options.courseId,
+      }))
+    );
+
+    if (insertTrialSlotsError) {
+      logSupabaseError("insert.trial_slots(course-update)", insertTrialSlotsError);
+      return { error: formatUserSupabaseError(insertTrialSlotsError) };
+    }
   }
 
   redirect(`/dashboard/courses/${options.courseId}?saved=1`);

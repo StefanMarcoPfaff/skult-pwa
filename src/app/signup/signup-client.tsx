@@ -1,37 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-export default function LoginClient() {
+export default function SignupClient() {
   const [supabase] = useState(() => createSupabaseBrowserClient());
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-
-  const urlMessage = searchParams.get("message");
-  const urlError = searchParams.get("error");
-
-  const feedback =
-    msg ||
-    (urlMessage === "password_updated"
-      ? "Passwort aktualisiert. Du kannst dich jetzt einloggen."
-      : urlMessage === "signup_check_email"
-        ? "Bitte bestaetige deine E-Mail ueber den Link in deinem Postfach."
-        : null) ||
-    (urlError === "oauth_failed"
-      ? "Anmeldung konnte nicht abgeschlossen werden."
-      : urlError === "otp_failed"
-        ? "Der Link ist ungueltig oder abgelaufen."
-        : urlError === "missing_code"
-          ? "Der Rueckruf von Supabase war unvollstaendig."
-          : null);
 
   async function signInWithGoogle() {
     setBusy(true);
@@ -50,12 +31,21 @@ export default function LoginClient() {
     }
   }
 
-  async function signInWithEmail(e: React.FormEvent) {
+  async function signUpWithEmail(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setMsg(null);
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        data: {
+          account_type: "provider",
+        },
+      },
+    });
 
     if (error) {
       setMsg(error.message);
@@ -63,14 +53,20 @@ export default function LoginClient() {
       return;
     }
 
-    router.push("/auth/continue");
+    if (data.session) {
+      router.push("/auth/continue");
+      return;
+    }
+
+    router.push(`/signup/confirmation?email=${encodeURIComponent(email)}`);
   }
 
   return (
     <main style={{ maxWidth: 520, margin: "0 auto", padding: "48px 16px" }}>
-      <h1 style={{ fontSize: 48, fontWeight: 800, marginBottom: 16 }}>Login</h1>
+      <h1 style={{ fontSize: 48, fontWeight: 800, marginBottom: 16 }}>Registrieren</h1>
       <p style={{ marginBottom: 20, color: "#555", lineHeight: 1.5 }}>
-        Fuer Lehrer*innen und Anbieter. Wenn du noch keinen Zugang hast, registriere dich zuerst.
+        Lehrer*innen und Anbieter erstellen hier ihren Zugang und werden danach in das bestehende
+        Profil-Onboarding weitergeleitet.
       </p>
 
       <button
@@ -85,18 +81,16 @@ export default function LoginClient() {
           marginBottom: 16,
         }}
       >
-        Mit Google einloggen
+        Mit Google fortfahren
       </button>
 
-      <div style={{ marginBottom: 16 }}>
-        <Link href="/signup" style={{ fontWeight: 600, textDecoration: "underline" }}>
-          Neu registrieren
-        </Link>
+      <div style={{ marginBottom: 16, fontSize: 14, color: "#555" }}>
+        Apple-Login ist fuer dieses MVP bewusst noch nicht aktiviert.
       </div>
 
       <div style={{ height: 1, background: "#eee", margin: "16px 0" }} />
 
-      <form onSubmit={signInWithEmail} style={{ display: "grid", gap: 10 }}>
+      <form onSubmit={signUpWithEmail} style={{ display: "grid", gap: 10 }}>
         <input
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -110,6 +104,7 @@ export default function LoginClient() {
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Passwort"
           type="password"
+          minLength={8}
           required
           style={{ padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
         />
@@ -125,20 +120,18 @@ export default function LoginClient() {
             color: "#fff",
           }}
         >
-          Einloggen
+          Mit E-Mail registrieren
         </button>
 
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 14 }}>
-          <Link href="/reset-password" style={{ textDecoration: "underline" }}>
-            Passwort vergessen?
-          </Link>
-          <Link href="/signup" style={{ textDecoration: "underline" }}>
-            Als Lehrer*in registrieren
-          </Link>
-        </div>
-
-        {feedback ? <p style={{ marginTop: 6 }}>{feedback}</p> : null}
+        {msg ? <p style={{ marginTop: 6 }}>{msg}</p> : null}
       </form>
+
+      <p style={{ marginTop: 20, fontSize: 14 }}>
+        Bereits registriert?{" "}
+        <Link href="/login" style={{ textDecoration: "underline" }}>
+          Zum Login
+        </Link>
+      </p>
     </main>
   );
 }

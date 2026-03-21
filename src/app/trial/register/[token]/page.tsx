@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { formatCourseEndDate, isCourseClosedForNewRegistrations } from "@/lib/course-ending";
+import { formatRecurringCoursePrice, getCancellationNotice } from "@/lib/course-display";
 import { getCancellationModelLabel, getProviderDisplayName } from "@/lib/provider-profiles";
 import { loadTicketBySubscriptionId } from "@/lib/tickets";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
@@ -41,6 +43,7 @@ type CourseRow = {
   cancellation_model: string | null;
   location: string | null;
   location_details: string | null;
+  ends_at: string | null;
 };
 
 type ProfileRow = {
@@ -54,24 +57,6 @@ function isExpired(value: string | null): boolean {
   if (!value) return true;
   const expiresAt = new Date(value);
   return Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() < Date.now();
-}
-
-function formatDateTime(value: string | null): string {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("de-DE", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
-
-function formatPrice(priceCents: number | null, currency: string | null): string | null {
-  if (priceCents === null || !Number.isFinite(priceCents)) return null;
-  return new Intl.NumberFormat("de-DE", {
-    style: "currency",
-    currency: currency || "EUR",
-  }).format(priceCents / 100);
 }
 
 export default async function TrialRegistrationTokenPage({
@@ -124,7 +109,7 @@ export default async function TrialRegistrationTokenPage({
 
   const { data: course } = await admin
     .from("courses")
-    .select("id,title,teacher_id,instructor_name,price_cents,currency,cancellation_model,location,location_details")
+    .select("id,title,teacher_id,instructor_name,price_cents,currency,cancellation_model,location,location_details,ends_at")
     .eq("id", fallbackCourseId)
     .maybeSingle<CourseRow>();
 
@@ -150,12 +135,16 @@ export default async function TrialRegistrationTokenPage({
   const checkoutError =
     error === "course_unavailable"
       ? "Dieser Kurs ist aktuell nicht für die Online-Anmeldung verfügbar."
-      : error === "provider_payment_missing"
-        ? "Der Anbieter hat noch keine vollständigen Zahlungsdaten hinterlegt."
-        : error === "provider_payment_incomplete"
-          ? "Das verknüpfte Stripe-Konto ist noch nicht vollständig eingerichtet."
-          : null;
+      : error === "course_ending"
+        ? `Dieser Kurs endet am ${formatCourseEndDate(course?.ends_at ?? null) ?? "dem geplanten Termin"} und nimmt keine neuen verbindlichen Anmeldungen mehr an.`
+        : error === "provider_payment_missing"
+          ? "Der Anbieter hat noch keine vollständigen Zahlungsdaten hinterlegt."
+          : error === "provider_payment_incomplete"
+            ? "Das verknüpfte Stripe-Konto ist noch nicht vollständig eingerichtet."
+            : null;
   const isEditMode = isCompletedRegistration && edit === "1";
+  const registrationClosed =
+    !isCompletedRegistration && isCourseClosedForNewRegistrations(course?.ends_at ?? null);
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
@@ -166,8 +155,9 @@ export default async function TrialRegistrationTokenPage({
           providerName,
           providerType: profile?.provider_type ?? null,
           instructorName: course?.instructor_name ?? null,
-          priceLabel: formatPrice(course?.price_cents ?? null, course?.currency ?? null),
+          priceLabel: formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null),
           cancellationLabel: getCancellationModelLabel(course?.cancellation_model),
+          cancellationNotice: getCancellationNotice(course?.cancellation_model),
           location: course?.location ?? null,
           locationDetails: course?.location_details ?? null,
         }}
@@ -185,6 +175,7 @@ export default async function TrialRegistrationTokenPage({
         initialError={checkoutError}
         completedRegistration={isCompletedRegistration}
         editMode={isEditMode}
+        registrationClosed={registrationClosed}
         ticketQrToken={ticket?.qr_token ?? null}
       />
     </main>

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { calculateCoursePriceBreakdown, STRIPE_ESTIMATE_FIXED_FEE_CENTS, STRIPE_ESTIMATE_PERCENT } from "@/lib/course-pricing";
+import { useMemo, useState, useTransition } from "react";
+import { generateRecurringCourseSessions } from "@/lib/course-sessions";
+import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
 import type { CancellationModel, ProviderType } from "@/lib/provider-profiles";
 import { STRIPE_PLATFORM_FEE_PERCENT } from "@/lib/stripe-connect";
+import { buildTrialSlot } from "@/app/courses/[id]/trial-slots";
 import { createCourseAction } from "../actions";
 
 const weekdayOptions = [
@@ -38,6 +40,7 @@ export type CourseFormValues = {
   currency?: string;
   instructor_name?: string;
   cancellation_model?: CancellationModel;
+  trial_slot_starts?: string[];
 };
 
 function getWeekdayForDate(value: string): number | null {
@@ -74,6 +77,24 @@ function formatCurrency(cents: number, currency: string): string {
   }).format(cents / 100);
 }
 
+function combineCourseStartsAtISO(startDate: string, startTime: string): string | null {
+  if (!startDate || !startTime) return null;
+
+  const [year, month, day] = startDate.split("-").map(Number);
+  const [hour, minute] = startTime.split(":").map(Number);
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day) ||
+    !Number.isInteger(hour) ||
+    !Number.isInteger(minute)
+  ) {
+    return null;
+  }
+
+  return new Date(year, month - 1, day, hour, minute, 0, 0).toISOString();
+}
+
 export default function CourseForm({
   initialValues,
   submitActionOverride,
@@ -91,8 +112,45 @@ export default function CourseForm({
   const [error, setError] = useState<string | null>(null);
   const [priceEur, setPriceEur] = useState(initialValues?.price_eur ?? "");
   const [currency, setCurrency] = useState(initialValues?.currency ?? "EUR");
+  const [weekday, setWeekday] = useState(initialValues?.weekday ?? "1");
+  const [startDate, setStartDate] = useState(initialValues?.start_date ?? "");
+  const [startTime, setStartTime] = useState(initialValues?.start_time ?? "18:00");
+  const [durationMinutes, setDurationMinutes] = useState(initialValues?.duration_minutes ?? "90");
+  const [recurrenceType, setRecurrenceType] = useState(initialValues?.recurrence_type ?? "weekly");
+  const [trialMode, setTrialMode] = useState(initialValues?.trial_mode ?? "all_sessions");
+  const [selectedTrialStarts, setSelectedTrialStarts] = useState<string[]>(
+    initialValues?.trial_slot_starts ?? []
+  );
 
   const priceBreakdown = calculateCoursePriceBreakdown(parsePriceToCents(priceEur));
+  const availableManualTrialSlots = useMemo(() => {
+    const startsAt = combineCourseStartsAtISO(startDate, startTime);
+    const weekdayValue = Number(weekday);
+    const durationValue = Number(durationMinutes);
+
+    if (!startsAt || !Number.isInteger(weekdayValue) || !Number.isFinite(durationValue) || durationValue <= 0) {
+      return [];
+    }
+
+    const fromDate = new Date(startsAt);
+    const untilDate = new Date(fromDate);
+    untilDate.setMonth(untilDate.getMonth() + 6);
+
+    return generateRecurringCourseSessions({
+      starts_at: startsAt,
+      weekday: weekdayValue,
+      start_time: startTime,
+      duration_minutes: durationValue,
+      recurrence_type: recurrenceType,
+      fromDate,
+      untilDate,
+      limit: 12,
+    })
+      .map((occurrence) => buildTrialSlot(occurrence.starts_at, occurrence.ends_at))
+      .filter((slot): slot is NonNullable<ReturnType<typeof buildTrialSlot>> => slot !== null);
+  }, [durationMinutes, recurrenceType, startDate, startTime, weekday]);
+
+  const selectedTrialStartSet = useMemo(() => new Set(selectedTrialStarts), [selectedTrialStarts]);
 
   const submitAction = (formData: FormData) => {
     const title = String(formData.get("title") ?? "").trim();
@@ -131,6 +189,10 @@ export default function CourseForm({
     }
     if (trialMode !== "all_sessions" && trialMode !== "manual") {
       setError("Bitte waehle eine gueltige Probestunden-Regel.");
+      return;
+    }
+    if (trialMode === "manual" && selectedTrialStarts.length === 0) {
+      setError("Bitte waehle mindestens einen Termin fuer Probestunden aus.");
       return;
     }
     if (!cancellationModel) {
@@ -261,7 +323,8 @@ export default function CourseForm({
           <select
             name="weekday"
             required
-            defaultValue={initialValues?.weekday ?? "1"}
+            value={weekday}
+            onChange={(event) => setWeekday(event.target.value)}
             className="w-full rounded-xl border px-3 py-2 text-sm"
           >
             {weekdayOptions.map((opt) => (
@@ -278,7 +341,8 @@ export default function CourseForm({
             type="date"
             name="start_date"
             required
-            defaultValue={initialValues?.start_date ?? ""}
+            value={startDate}
+            onChange={(event) => setStartDate(event.target.value)}
             className="w-full rounded-xl border px-3 py-2 text-sm"
           />
         </label>
@@ -291,7 +355,8 @@ export default function CourseForm({
             type="time"
             name="start_time"
             required
-            defaultValue={initialValues?.start_time ?? "18:00"}
+            value={startTime}
+            onChange={(event) => setStartTime(event.target.value)}
             className="w-full rounded-xl border px-3 py-2 text-sm"
           />
         </label>
@@ -303,7 +368,8 @@ export default function CourseForm({
             name="duration_minutes"
             min={1}
             required
-            defaultValue={initialValues?.duration_minutes ?? "90"}
+            value={durationMinutes}
+            onChange={(event) => setDurationMinutes(event.target.value)}
             className="w-full rounded-xl border px-3 py-2 text-sm"
           />
         </label>
@@ -315,7 +381,8 @@ export default function CourseForm({
           <select
             name="recurrence_type"
             required
-            defaultValue={initialValues?.recurrence_type ?? "weekly"}
+            value={recurrenceType}
+            onChange={(event) => setRecurrenceType(event.target.value)}
             className="w-full rounded-xl border px-3 py-2 text-sm"
           >
             <option value="weekly">Woechentlich</option>
@@ -332,7 +399,8 @@ export default function CourseForm({
           <select
             name="trial_mode"
             required
-            defaultValue={initialValues?.trial_mode ?? "all_sessions"}
+            value={trialMode}
+            onChange={(event) => setTrialMode(event.target.value)}
             className="w-full rounded-xl border px-3 py-2 text-sm"
           >
             <option value="all_sessions">
@@ -344,6 +412,48 @@ export default function CourseForm({
           </select>
         </label>
       </div>
+
+      {trialMode === "manual" ? (
+        <section className="rounded-2xl border bg-gray-50 p-4 text-sm">
+          <p className="font-medium">Termine fuer Probestunden</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Waehle aus, an welchen der kommenden Kurstermine Probeschueler*innen teilnehmen duerfen.
+          </p>
+          {availableManualTrialSlots.length > 0 ? (
+            <div className="mt-3 space-y-2">
+              {availableManualTrialSlots.map((slot) => {
+                const checked = selectedTrialStartSet.has(slot.startsAt);
+                return (
+                  <label
+                    key={slot.startsAt}
+                    className="flex items-center gap-3 rounded-xl border bg-white px-3 py-2"
+                  >
+                    <input
+                      type="checkbox"
+                      name="trial_slot_starts_at"
+                      value={slot.startsAt}
+                      checked={checked}
+                      onChange={(event) =>
+                        setSelectedTrialStarts((prev) =>
+                          event.target.checked
+                            ? [...prev, slot.startsAt]
+                            : prev.filter((value) => value !== slot.startsAt)
+                        )
+                      }
+                    />
+                    <span>{slot.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Sobald Kursstart, Wochentag, Startzeit, Dauer und Rhythmus gueltig gesetzt sind,
+              erscheinen hier die auswaehlbaren Kurstermine.
+            </p>
+          )}
+        </section>
+      ) : null}
 
       <label className="block space-y-1">
         <span className="text-sm font-medium">Kuendigungsmodell *</span>
@@ -383,7 +493,7 @@ export default function CourseForm({
         </label>
 
         <label className="space-y-1 sm:col-span-1">
-          <span className="text-sm font-medium">Preis (EUR)</span>
+          <span className="text-sm font-medium">Preis pro Monat (EUR)</span>
           <input
             type="number"
             name="price_eur"
@@ -396,7 +506,7 @@ export default function CourseForm({
             placeholder="0.00"
           />
           <span className="block text-xs text-muted-foreground">
-            Wird intern in Cent gespeichert.
+            Wiederkehrender Monatsbeitrag. Wird intern in Cent gespeichert.
           </span>
         </label>
 
@@ -416,26 +526,21 @@ export default function CourseForm({
         <p className="font-medium">Preisaufteilung</p>
         <div className="mt-3 space-y-1 text-muted-foreground">
           <div className="flex items-center justify-between gap-4">
-            <span>Kurspreis</span>
+            <span>Kurspreis pro Monat</span>
             <span>{formatCurrency(priceBreakdown.grossCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
             <span>Plattformgebuehr ({STRIPE_PLATFORM_FEE_PERCENT} %)</span>
             <span>{formatCurrency(priceBreakdown.platformFeeCents, currency)}</span>
           </div>
-          <div className="flex items-center justify-between gap-4">
-            <span>Geschaetzte Stripe-Gebuehren</span>
-            <span>{formatCurrency(priceBreakdown.stripeFeeEstimateCents, currency)}</span>
-          </div>
           <div className="flex items-center justify-between gap-4 font-medium text-foreground">
-            <span>Voraussichtliche Auszahlung pro Kund*in</span>
+            <span>Voraussichtliche Auszahlung pro Kund*in / Monat</span>
             <span>{formatCurrency(priceBreakdown.payoutCents, currency)}</span>
           </div>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Stripe ist nur eine Schaetzung ({STRIPE_ESTIMATE_PERCENT.toFixed(1)} % +{" "}
-          {formatCurrency(STRIPE_ESTIMATE_FIXED_FEE_CENTS, currency)} pro Zahlung) und kann je
-          nach Zahlungsmethode abweichen.
+          Die voraussichtliche Auszahlung pro Monat berechnet sich aus dem Monatsbeitrag
+          abzueglich der Plattformgebuehr von {STRIPE_PLATFORM_FEE_PERCENT} %.
         </p>
       </div>
 

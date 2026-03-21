@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { calculateCoursePriceBreakdown, STRIPE_ESTIMATE_FIXED_FEE_CENTS, STRIPE_ESTIMATE_PERCENT } from "@/lib/course-pricing";
+import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
 import type { ProviderType, WorkshopStornoPolicy } from "@/lib/provider-profiles";
 import { STRIPE_PLATFORM_FEE_PERCENT } from "@/lib/stripe-connect";
 import { createWorkshopAction } from "../actions";
@@ -424,19 +424,14 @@ export default function WorkshopForm({
             <span>Plattformgebuehr ({STRIPE_PLATFORM_FEE_PERCENT} %)</span>
             <span>{formatCurrency(priceBreakdown.platformFeeCents, currency)}</span>
           </div>
-          <div className="flex items-center justify-between gap-4">
-            <span>Geschaetzte Stripe-Gebuehren</span>
-            <span>{formatCurrency(priceBreakdown.stripeFeeEstimateCents, currency)}</span>
-          </div>
           <div className="flex items-center justify-between gap-4 font-medium text-foreground">
             <span>Voraussichtliche Auszahlung pro Kund*in</span>
             <span>{formatCurrency(priceBreakdown.payoutCents, currency)}</span>
           </div>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Stripe ist nur eine Schaetzung ({STRIPE_ESTIMATE_PERCENT.toFixed(1)} % +{" "}
-          {formatCurrency(STRIPE_ESTIMATE_FIXED_FEE_CENTS, currency)} pro Zahlung) und kann je
-          nach Zahlungsmethode abweichen.
+          Die voraussichtliche Auszahlung berechnet sich aus dem eingegebenen Preis abzueglich
+          der Plattformgebuehr von {STRIPE_PLATFORM_FEE_PERCENT} %.
         </p>
       </div>
 

@@ -1,8 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
+import { LEGAL_LINKS } from "@/lib/legal";
 
-export function PayButton({ courseId, disabled }: { courseId: string; disabled?: boolean }) {
+export function PayButton({
+  courseId,
+  stornoPolicyLabel,
+  disabled,
+}: {
+  courseId: string;
+  stornoPolicyLabel?: string | null;
+  disabled?: boolean;
+}) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -10,6 +20,11 @@ export function PayButton({ courseId, disabled }: { courseId: string; disabled?:
     lastName: "",
     email: "",
     phone: "",
+  });
+  const [consents, setConsents] = useState({
+    agbAccepted: false,
+    privacyAccepted: false,
+    workshopStornoAccepted: false,
   });
 
   async function startCheckout() {
@@ -25,6 +40,9 @@ export function PayButton({ courseId, disabled }: { courseId: string; disabled?:
           lastName: form.lastName,
           email: form.email,
           phone: form.phone,
+          agbAccepted: consents.agbAccepted,
+          privacyAccepted: consents.privacyAccepted,
+          workshopStornoAccepted: consents.workshopStornoAccepted,
         }),
       });
 
@@ -52,7 +70,10 @@ export function PayButton({ courseId, disabled }: { courseId: string; disabled?:
     form.firstName.trim() &&
     form.lastName.trim() &&
     form.email.trim() &&
-    form.phone.trim();
+    form.phone.trim() &&
+    consents.agbAccepted &&
+    consents.privacyAccepted &&
+    consents.workshopStornoAccepted;
 
   return (
     <div className="space-y-4">
@@ -93,8 +114,78 @@ export function PayButton({ courseId, disabled }: { courseId: string; disabled?:
       </div>
 
       <p className="text-sm text-muted-foreground">
-        Nach der Zahlung erhaeltst du deine Buchungsbestaetigung und dein Workshop-Ticket per E-Mail.
+        Im Checkout stehen dir aktuell Karte und SEPA-Lastschrift zur Verfuegung. Nach der Zahlung
+        erhaeltst du deine Buchungsbestaetigung und dein Workshop-Ticket per E-Mail.
       </p>
+
+      <div className="space-y-3 rounded-xl border p-4 text-sm">
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={consents.agbAccepted}
+            onChange={(event) =>
+              setConsents((current) => ({ ...current, agbAccepted: event.target.checked }))
+            }
+            className="mt-1"
+          />
+          <span>
+            Ich akzeptiere die{" "}
+            <Link href={LEGAL_LINKS.agb} target="_blank" className="underline underline-offset-4">
+              AGB
+            </Link>
+            .
+          </span>
+        </label>
+
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={consents.privacyAccepted}
+            onChange={(event) =>
+              setConsents((current) => ({ ...current, privacyAccepted: event.target.checked }))
+            }
+            className="mt-1"
+          />
+          <span>
+            Ich habe die{" "}
+            <Link href={LEGAL_LINKS.privacy} target="_blank" className="underline underline-offset-4">
+              Datenschutzerklaerung
+            </Link>{" "}
+            zur Kenntnis genommen.
+          </span>
+        </label>
+
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={consents.workshopStornoAccepted}
+            onChange={(event) =>
+              setConsents((current) => ({
+                ...current,
+                workshopStornoAccepted: event.target.checked,
+              }))
+            }
+            className="mt-1"
+          />
+          <span>
+            Ich akzeptiere die Stornoregelung dieses Workshops
+            {stornoPolicyLabel ? ` (${stornoPolicyLabel})` : ""} sowie den{" "}
+            <Link
+              href={LEGAL_LINKS.workshopStorno}
+              target="_blank"
+              className="underline underline-offset-4"
+            >
+              rechtlichen Hinweis zur Workshop-Stornierung
+            </Link>
+            .
+          </span>
+        </label>
+
+        <p className="text-xs text-muted-foreground">
+          Die verlinkten Rechtstexte sind aktuell als MVP-Platzhalter vorbereitet und werden
+          spaeter durch finale juristische Inhalte ersetzt.
+        </p>
+      </div>
 
       <button
         onClick={startCheckout}

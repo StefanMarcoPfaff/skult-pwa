@@ -2,6 +2,8 @@
 
 import { randomBytes } from "crypto";
 import { redirect } from "next/navigation";
+import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
+import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
@@ -10,7 +12,7 @@ import {
   type TrialReservationEmailData,
 } from "@/lib/trial-reservation-emails";
 import { issueTrialTicketForReservation } from "@/lib/tickets";
-import { computeUpcomingTrialSlots } from "./trial-slots";
+import { buildTrialSlot, computeUpcomingTrialSlots } from "./trial-slots";
 
 export type TrialReservationState = {
   error?: string;
@@ -19,12 +21,19 @@ export type TrialReservationState = {
 type CourseLiteTrialRow = {
   id: string;
   kind: string | null;
+  capacity: number | null;
   weekday: number | null;
   start_time: string | null;
   duration_minutes: number | null;
   recurrence_type: string | null;
   trial_mode: string | null;
   starts_at: string | null;
+  ends_at: string | null;
+};
+
+type TrialSlotRow = {
+  starts_at: string | null;
+  ends_at: string | null;
 };
 
 type CourseMailRow = {
@@ -212,7 +221,7 @@ export async function reserveTrialAction(
 
   const { data: course, error: courseError } = await supabase
     .from("courses_lite")
-    .select("id,kind,weekday,start_time,duration_minutes,recurrence_type,trial_mode,starts_at")
+    .select("id,kind,capacity,weekday,start_time,duration_minutes,recurrence_type,trial_mode,starts_at,ends_at")
     .eq("id", courseId)
     .eq("is_published", true)
     .maybeSingle<CourseLiteTrialRow>();
@@ -222,18 +231,37 @@ export async function reserveTrialAction(
     return { error: "Kurs nicht gefunden." };
   }
 
-  if ((course.trial_mode ?? "all_sessions") !== "all_sessions") {
-    return { error: "Probestunden-Termine werden in Kürze verfügbar sein." };
+  if (isCourseClosedForNewRegistrations(course.ends_at)) {
+    return { error: "Dieser Kurs nimmt keine neuen Probestunden oder Neuanmeldungen mehr an." };
   }
 
-  const availableSlots = computeUpcomingTrialSlots({
-    weekday: course.weekday,
-    startTime: course.start_time,
-    durationMinutes: course.duration_minutes,
-    recurrenceType: course.recurrence_type,
-    trialMode: course.trial_mode,
-    startsAt: course.starts_at,
-  });
+  const availability = buildOfferAvailability(course.capacity, await loadOccupiedCourseSeats(courseId));
+  if (availability.isSoldOut) {
+    return { error: "Dieser Kurs ist aktuell ausgebucht." };
+  }
+
+  const availableSlots =
+    (course.trial_mode ?? "all_sessions") === "manual"
+      ? (
+          await admin
+            .from("trial_slots")
+            .select("starts_at,ends_at")
+            .eq("course_id", courseId)
+            .eq("is_open", true)
+            .gte("starts_at", new Date().toISOString())
+            .order("starts_at", { ascending: true })
+            .returns<TrialSlotRow[]>()
+        ).data
+          ?.map((slot) => buildTrialSlot(String(slot.starts_at ?? ""), String(slot.ends_at ?? "")))
+          .filter((slot): slot is NonNullable<ReturnType<typeof buildTrialSlot>> => slot !== null) ?? []
+      : computeUpcomingTrialSlots({
+          weekday: course.weekday,
+          startTime: course.start_time,
+          durationMinutes: course.duration_minutes,
+          recurrenceType: course.recurrence_type,
+          trialMode: course.trial_mode,
+          startsAt: course.starts_at,
+        });
 
   if (availableSlots.length === 0) {
     return { error: "Aktuell sind keine Probestunden-Termine verfügbar." };

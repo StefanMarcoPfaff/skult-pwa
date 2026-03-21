@@ -1,10 +1,28 @@
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import {
+  formatCourseEndDate,
+  isCourseClosedForNewRegistrations,
+  isCourseEnded,
+} from "@/lib/course-ending";
+import {
+  getCancellationModelLabel,
+  getProviderDisplayName,
+  getWorkshopStornoPolicyLabel,
+} from "@/lib/provider-profiles";
+import { formatCoursePriceFromRow } from "@/lib/course-display";
+import {
+  buildOfferAvailability,
+  loadOccupiedCourseSeats,
+  loadOccupiedWorkshopSeats,
+} from "@/lib/public-offer-availability";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PayButton } from "./PayButton";
 import ReserveTrialButton from "./ReserveTrialButton";
-import { computeUpcomingTrialSlots, type TrialSlot } from "./trial-slots";
+import SoldOutInquiryForm from "./SoldOutInquiryForm";
+import { buildTrialSlot, computeUpcomingTrialSlots, type TrialSlot } from "./trial-slots";
 
 type Row = Record<string, unknown>;
 type SessionRow = {
@@ -12,6 +30,21 @@ type SessionRow = {
   course_id: string;
   starts_at: string | null;
   ends_at: string | null;
+};
+
+type PublicCourseRow = {
+  teacher_id: string | null;
+  instructor_name: string | null;
+};
+
+type PublicProfileRow = {
+  first_name: string | null;
+  last_name: string | null;
+  provider_type: "independent_teacher" | "studio_provider" | null;
+  organization_name: string | null;
+  photo_url: string | null;
+  bio: string | null;
+  intro_video_url: string | null;
 };
 
 function asString(value: unknown): string | null {
@@ -34,15 +67,12 @@ function getKind(row: Row): "workshop" | "course" | null {
 }
 
 function formatPrice(row: Row): string | null {
-  const priceType = (asString(row.price_type) ?? "").toLowerCase();
-  const currency = asString(row.currency) ?? "EUR";
-  const cents = asNumber(row.price_cents);
-
-  if (priceType === "free") return "Kostenlos";
-  if (cents !== null && cents >= 0) {
-    return new Intl.NumberFormat("de-DE", { style: "currency", currency }).format(cents / 100);
-  }
-  return null;
+  return formatCoursePriceFromRow({
+    kind: asString(row.offer_type) ?? asString(row.kind),
+    priceType: asString(row.price_type),
+    priceCents: asNumber(row.price_cents),
+    currency: asString(row.currency) ?? "EUR",
+  });
 }
 
 const weekdayLabels: Record<number, string> = {
@@ -86,6 +116,10 @@ function formatSessionLine(startsAt: string | null, endsAt: string | null): stri
   return `${date} | ${startTime}-${endTime}`;
 }
 
+function isHttpUrl(value: string | null): value is string {
+  return Boolean(value && /^https?:\/\//i.test(value));
+}
+
 export default async function CourseDetailPage({
   params,
   searchParams,
@@ -126,11 +160,18 @@ export default async function CourseDetailPage({
   const durationMinutes = asNumber(data.duration_minutes);
   const recurrenceRaw = asString(data.recurrence_type);
   const recurrence = recurrenceLabel(recurrenceRaw);
+  const cancellationModel = asString(data.cancellation_model);
+  const workshopStornoPolicy = asString(data.workshop_storno_policy);
   const trialMode = (asString(data.trial_mode) ?? "all_sessions").toLowerCase();
   const startsAt = asString(data.starts_at);
+  const endsAt = asString(data.ends_at);
   const capacity = asNumber(data.capacity);
+  const courseEndLabel = formatCourseEndDate(endsAt);
+  const courseClosedForNewRegistrations =
+    kind === "course" && isCourseClosedForNewRegistrations(endsAt);
+  const courseAlreadyEnded = kind === "course" && isCourseEnded(endsAt);
 
-  const trialSlots: TrialSlot[] =
+  let trialSlots: TrialSlot[] =
     kind === "course" && trialMode === "all_sessions" && startsAt
       ? computeUpcomingTrialSlots({
           weekday,
@@ -141,6 +182,21 @@ export default async function CourseDetailPage({
           startsAt,
         })
       : [];
+
+  if (kind === "course" && trialMode === "manual") {
+    const admin = createSupabaseAdmin();
+    const { data: manualTrialSlots } = await admin
+      .from("trial_slots")
+      .select("starts_at,ends_at")
+      .eq("course_id", id)
+      .eq("is_open", true)
+      .gte("starts_at", new Date().toISOString())
+      .order("starts_at", { ascending: true });
+
+    trialSlots = (manualTrialSlots ?? [])
+      .map((slot) => buildTrialSlot(String(slot.starts_at ?? ""), String(slot.ends_at ?? "")))
+      .filter((slot): slot is TrialSlot => slot !== null);
+  }
 
   if (process.env.NODE_ENV !== "production" && kind === "course") {
     console.log("[courses/[id]] recurrence fields", {
@@ -158,18 +214,23 @@ export default async function CourseDetailPage({
     });
   }
 
-  let remainingPlaces: number | null = null;
-  if (kind === "course" && capacity !== null) {
-    const admin = createSupabaseAdmin();
-    const { count } = await admin
-      .from("trial_reservations")
-      .select("id", { count: "exact", head: true })
-      .eq("course_id", id);
-
-    remainingPlaces = Math.max(0, capacity - (count ?? 0));
-  }
+  const occupiedSeats =
+    kind === "course"
+      ? await loadOccupiedCourseSeats(id)
+      : kind === "workshop"
+        ? await loadOccupiedWorkshopSeats(id)
+        : 0;
+  const availability = buildOfferAvailability(capacity, occupiedSeats);
+  const remainingPlaces = availability.free;
 
   let sessions: SessionRow[] = [];
+  let publicCourse: PublicCourseRow | null = null;
+  let publicProfile: PublicProfileRow | null = null;
+  let profileHeading: string | null = null;
+  let profileDescription: string | null = null;
+  let profilePhotoUrl: string | null = null;
+  let profileVideoUrl: string | null = null;
+  let providerLabel: string | null = null;
   if (kind === "workshop") {
     const { data: sessionData } = await supabase
       .from("course_sessions")
@@ -179,6 +240,50 @@ export default async function CourseDetailPage({
       .returns<SessionRow[]>();
     sessions = sessionData ?? [];
   }
+
+  {
+    const admin = createSupabaseAdmin();
+    const { data: loadedCourse } = await admin
+      .from("courses")
+      .select("teacher_id,instructor_name")
+      .eq("id", id)
+      .maybeSingle<PublicCourseRow>();
+
+    publicCourse = loadedCourse ?? null;
+
+    if (publicCourse?.teacher_id) {
+      const { data: loadedProfile } = await admin
+        .from("profiles")
+        .select("first_name,last_name,provider_type,organization_name,photo_url,bio,intro_video_url")
+        .eq("id", publicCourse.teacher_id)
+        .maybeSingle<PublicProfileRow>();
+
+      publicProfile = loadedProfile ?? null;
+    }
+
+    providerLabel =
+      publicProfile?.provider_type
+        ? getProviderDisplayName(publicProfile.provider_type, publicProfile)
+        : null;
+
+    if (publicProfile?.provider_type === "studio_provider") {
+      profileHeading = publicCourse?.instructor_name ?? providerLabel;
+    } else {
+      profileHeading =
+        [publicProfile?.first_name, publicProfile?.last_name].filter(Boolean).join(" ").trim() ||
+        publicCourse?.instructor_name ||
+        providerLabel;
+    }
+
+    profileDescription = publicProfile?.bio ?? null;
+    profilePhotoUrl = isHttpUrl(publicProfile?.photo_url ?? null) ? publicProfile?.photo_url : null;
+    profileVideoUrl =
+      isHttpUrl(publicProfile?.intro_video_url ?? null) ? publicProfile?.intro_video_url : null;
+  }
+
+  const shouldShowProfileSection = Boolean(
+    profileHeading || profileDescription || profilePhotoUrl || profileVideoUrl || providerLabel
+  );
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
@@ -196,14 +301,67 @@ export default async function CourseDetailPage({
       <section className="rounded-2xl border p-4 text-sm text-muted-foreground">
         {location ? <p>Ort: {location}</p> : null}
         {price ? <p>Preis: {price}</p> : null}
+        {capacity !== null ? (
+          <p>
+            Verfuegbarkeit:{" "}
+            <span className={`rounded-full px-2 py-0.5 text-xs ${availability.badgeClassName}`}>
+              {availability.badgeText}
+            </span>
+          </p>
+        ) : null}
+        {kind === "course" && cancellationModel ? (
+          <p>Kuendigungsmodell: {getCancellationModelLabel(cancellationModel)}</p>
+        ) : null}
         {kind === "course" && weekday !== null && weekdayLabels[weekday] ? (
           <p>Wochentag: {weekdayLabels[weekday]}</p>
         ) : null}
         {kind === "course" && startTime ? <p>Startzeit: {startTime}</p> : null}
         {kind === "course" && recurrence ? <p>Rhythmus: {recurrence}</p> : null}
+        {kind === "course" && courseEndLabel ? (
+          <p>{courseAlreadyEnded ? "Beendet am" : "Endet am"}: {courseEndLabel}</p>
+        ) : null}
+        {kind === "course" && cancellationModel ? <p>Der Preis ist als Monatsbeitrag zu verstehen.</p> : null}
       </section>
 
       {description ? <p className="leading-7">{description}</p> : null}
+
+      {shouldShowProfileSection ? (
+        <section className="rounded-2xl border p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            {profilePhotoUrl ? (
+              <Image
+                src={profilePhotoUrl}
+                alt={profileHeading ?? "Dozent*in"}
+                width={96}
+                height={96}
+                className="h-24 w-24 rounded-2xl object-cover"
+              />
+            ) : null}
+
+            <div className="space-y-3">
+              {profileHeading ? <h2 className="text-xl font-semibold">{profileHeading}</h2> : null}
+              {publicProfile?.provider_type === "studio_provider" && providerLabel && providerLabel !== profileHeading ? (
+                <p className="text-sm text-muted-foreground">Anbieter: {providerLabel}</p>
+              ) : null}
+              {profileDescription ? (
+                <p className="text-sm leading-7 text-muted-foreground">{profileDescription}</p>
+              ) : null}
+              {profileVideoUrl ? (
+                <p>
+                  <a
+                    href={profileVideoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sm font-semibold underline underline-offset-4"
+                  >
+                    Vorstellungsvideo ansehen
+                  </a>
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {kind === "workshop" ? (
         <section className="space-y-3">
@@ -223,23 +381,54 @@ export default async function CourseDetailPage({
           </div>
 
           <div className="space-y-2 rounded-2xl border p-4">
-            <h3 className="text-base font-semibold">Jetzt buchen</h3>
-            <PayButton courseId={id} />
+            <h3 className="text-base font-semibold">{availability.isSoldOut ? "Anfragen" : "Jetzt buchen"}</h3>
+            {capacity !== null ? (
+              <p className={`text-sm font-medium ${availability.badgeClassName}`}>{availability.badgeText}</p>
+            ) : null}
+            {workshopStornoPolicy ? (
+              <p className="text-sm text-muted-foreground">
+                Stornoregelung: {getWorkshopStornoPolicyLabel(workshopStornoPolicy)}
+              </p>
+            ) : null}
+            {availability.isSoldOut ? (
+              <SoldOutInquiryForm courseId={id} offerLabel="Workshop" />
+            ) : (
+              <PayButton
+                courseId={id}
+                stornoPolicyLabel={
+                  workshopStornoPolicy ? getWorkshopStornoPolicyLabel(workshopStornoPolicy) : null
+                }
+              />
+            )}
           </div>
         </section>
       ) : (
         <section className="space-y-3 rounded-2xl border p-4">
-          <h3 className="text-base font-semibold">Kostenlose Probestunde reservieren</h3>
-          {remainingPlaces !== null && remainingPlaces > 0 && remainingPlaces <= 3 ? (
+          <h3 className="text-base font-semibold">
+            {availability.isSoldOut ? "Anfragen" : "Kostenlose Probestunde reservieren"}
+          </h3>
+          {courseEndLabel ? (
+            <p className="text-sm text-muted-foreground">
+              {courseAlreadyEnded
+                ? `Dieser Kurs wurde am ${courseEndLabel} beendet.`
+                : `Dieser Kurs endet am ${courseEndLabel}. Neue Probestunden und neue verbindliche Anmeldungen sind nicht mehr möglich.`}
+            </p>
+          ) : null}
+          {capacity !== null ? (
+            <p className={`text-sm font-medium ${availability.badgeClassName}`}>{availability.badgeText}</p>
+          ) : null}
+          {remainingPlaces !== null && remainingPlaces > 0 && remainingPlaces <= 5 ? (
             <p className="text-sm font-medium text-amber-700">Nur noch {remainingPlaces} Plätze verfügbar</p>
           ) : null}
           {reserved === "1" ? (
             <p className="text-sm text-green-700">
               Herzlichen Glückwunsch! Du hast dich erfolgreich zur Probestunde angemeldet. Wir melden uns in Kürze mit allen weiteren Informationen bei dir.
             </p>
-          ) : trialMode === "manual" ? (
+          ) : availability.isSoldOut ? (
+            <SoldOutInquiryForm courseId={id} offerLabel="Kurs" />
+          ) : courseClosedForNewRegistrations ? (
             <p className="text-sm text-muted-foreground">
-              Probestunden-Termine werden in Kürze verfügbar sein.
+              Für diesen Kurs sind aktuell keine neuen Probestunden oder Neuanmeldungen mehr möglich.
             </p>
           ) : trialSlots.length === 0 ? (
             <p className="text-sm text-muted-foreground">

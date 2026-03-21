@@ -1,6 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
+import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 type RegistrationActionState = {
@@ -26,6 +28,11 @@ type ReservationRow = {
 type RegistrationIntentRow = {
   id: string;
   status: string | null;
+};
+
+type CourseAvailabilityRow = {
+  capacity: number | null;
+  ends_at: string | null;
 };
 
 function isExpired(value: string | null): boolean {
@@ -103,6 +110,12 @@ export async function submitTrialRegistrationAction(
     return { error: "Dieser Anmeldelink ist ungueltig oder abgelaufen." };
   }
 
+  const { data: course } = await admin
+    .from("courses")
+    .select("capacity,ends_at")
+    .eq("id", reservation.course_id)
+    .maybeSingle<CourseAvailabilityRow>();
+
   const first_name = requiredText(formData, "first_name");
   const last_name = requiredText(formData, "last_name");
   const email = requiredText(formData, "email");
@@ -137,6 +150,20 @@ export async function submitTrialRegistrationAction(
 
   const now = new Date().toISOString();
   const existingIntent = await loadRegistrationIntent(admin, reservation.id);
+  const availability = buildOfferAvailability(
+    course?.capacity ?? null,
+    await loadOccupiedCourseSeats(reservation.course_id)
+  );
+
+  if (
+    existingIntent?.status !== "checkout_completed" &&
+    isCourseClosedForNewRegistrations(course?.ends_at ?? null)
+  ) {
+    return { error: "Dieser Kurs nimmt keine neuen verbindlichen Anmeldungen mehr an." };
+  }
+  if (existingIntent?.status !== "checkout_completed" && availability.isSoldOut) {
+    return { error: "Dieser Kurs ist aktuell ausgebucht." };
+  }
 
   if (existingIntent?.status === "checkout_completed") {
     const { error: updateError } = await admin
