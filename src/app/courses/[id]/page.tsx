@@ -278,7 +278,9 @@ export default async function CourseDetailPage({
 
     profileDescription = publicProfile?.bio ?? null;
     profilePhotoUrl =
-      isHttpUrl(publicProfile?.photo_url ?? null) ? (publicProfile?.photo_url ?? null) : null;
+      isHttpUrl(publicProfile?.photo_url ?? null)
+        ? (publicProfile?.photo_url ?? null)
+        : null;
     profileVideoUrl =
       isHttpUrl(publicProfile?.intro_video_url ?? null)
         ? (publicProfile?.intro_video_url ?? null)
