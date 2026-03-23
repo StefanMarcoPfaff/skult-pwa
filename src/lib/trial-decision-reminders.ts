@@ -132,7 +132,7 @@ function toEmailPayload(
     courseTitle: mailContext.courseTitle,
     teacherName: mailContext.teacherName,
     teacherEmail: mailContext.teacherEmail,
-    customerName: [reservation.first_name, reservation.last_name].filter(Boolean).join(" ").trim() || "Der Probeschueler",
+    customerName: [reservation.first_name, reservation.last_name].filter(Boolean).join(" ").trim() || "Der Probeschüler",
     customerEmail: reservation.email,
     trialStartsAt: reservation.trial_starts_at,
     trialEndsAt: reservation.trial_ends_at,

@@ -39,7 +39,7 @@ export async function submitOfferInquiryAction(
   const message = requiredText(formData, "message");
 
   if (!firstName || !lastName || !email) {
-    return { error: "Bitte fuelle mindestens Vorname, Nachname und E-Mail aus." };
+    return { error: "Bitte fülle mindestens Vorname, Nachname und E-Mail aus." };
   }
 
   const admin = createSupabaseAdmin();

@@ -23,7 +23,7 @@ export default function ResetPasswordRequestClient() {
     if (error) {
       setMsg(error.message);
     } else {
-      setMsg("Wenn ein Konto existiert, wurde eine E-Mail zum Zuruecksetzen verschickt.");
+      setMsg("Wenn ein Konto existiert, wurde eine E-Mail zum Zurücksetzen verschickt.");
     }
 
     setBusy(false);
@@ -31,9 +31,9 @@ export default function ResetPasswordRequestClient() {
 
   return (
     <main style={{ maxWidth: 520, margin: "0 auto", padding: "48px 16px" }}>
-      <h1 style={{ fontSize: 40, fontWeight: 800, marginBottom: 16 }}>Passwort zuruecksetzen</h1>
+      <h1 style={{ fontSize: 40, fontWeight: 800, marginBottom: 16 }}>Passwort zurücksetzen</h1>
       <p style={{ marginBottom: 20, color: "#555", lineHeight: 1.5 }}>
-        Gib deine E-Mail-Adresse ein. Wir schicken dir einen Link, ueber den du ein neues Passwort
+        Gib deine E-Mail-Adresse ein. Wir schicken dir einen Link, über den du ein neues Passwort
         vergeben kannst.
       </p>
 
@@ -66,7 +66,7 @@ export default function ResetPasswordRequestClient() {
 
       <p style={{ marginTop: 20, fontSize: 14 }}>
         <Link href="/login" style={{ textDecoration: "underline" }}>
-          Zurueck zum Login
+          Zurück zum Login
         </Link>
       </p>
     </main>

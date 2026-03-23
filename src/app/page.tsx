@@ -5,19 +5,19 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-white px-6 py-10 text-slate-950 sm:px-8 sm:py-14">
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-4xl flex-col items-center justify-center text-center">
-        <div className="mb-10">
+        <div className="mb-8">
           <Image
             src="/RESER_Logo.png"
             alt="RESER Logo"
-            width={280}
-            height={112}
+            width={320}
+            height={128}
             priority
-            className="mx-auto h-auto w-full max-w-[240px] sm:max-w-[280px]"
+            className="mx-auto h-auto w-full max-w-[260px] sm:max-w-[320px]"
           />
         </div>
 
-        <div className="max-w-3xl space-y-6">
-          <h1 className="text-4xl font-semibold tracking-[-0.04em] sm:text-5xl md:text-6xl">
+        <div className="max-w-3xl space-y-4">
+          <h1 className="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
             Find it. Try it. Book it.
           </h1>
 

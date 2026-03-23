@@ -15,7 +15,7 @@ export default function SignupConfirmationClient() {
 
   async function resendConfirmationEmail() {
     if (!email) {
-      setMessage("Bitte registriere dich erneut, damit wir den Bestaetigungslink senden koennen.");
+      setMessage("Bitte registriere dich erneut, damit wir den Bestätigungslink senden können.");
       return;
     }
 
@@ -36,21 +36,21 @@ export default function SignupConfirmationClient() {
       return;
     }
 
-    setMessage("Wir haben dir den Bestaetigungslink erneut geschickt.");
+    setMessage("Wir haben dir den Bestätigungslink erneut geschickt.");
     setBusy(false);
   }
 
   return (
     <main style={{ maxWidth: 560, margin: "0 auto", padding: "48px 16px" }}>
       <h1 style={{ fontSize: 42, fontWeight: 800, marginBottom: 16 }}>
-        Bitte bestaetige jetzt deine E-Mail-Adresse.
+        Bitte bestätige jetzt deine E-Mail-Adresse.
       </h1>
 
       <div style={{ display: "grid", gap: 12, color: "#555", lineHeight: 1.6 }}>
-        <p>Bitte pruefe jetzt dein Postfach und bestaetige deine E-Mail-Adresse.</p>
-        <p>Wir haben dir einen Bestaetigungslink geschickt.</p>
+        <p>Bitte prüfe jetzt dein Postfach und bestätige deine E-Mail-Adresse.</p>
+        <p>Wir haben dir einen Bestätigungslink geschickt.</p>
         <p>
-          Nach der Bestaetigung kannst du dein Profil vervollstaendigen und deine ersten Angebote
+          Nach der Bestätigung kannst du dein Profil vervollständigen und deine ersten Angebote
           anlegen.
         </p>
         {email ? (
@@ -87,7 +87,7 @@ export default function SignupConfirmationClient() {
             color: "#111",
           }}
         >
-          Zurueck zum Login
+          Zurück zum Login
         </Link>
 
         <button

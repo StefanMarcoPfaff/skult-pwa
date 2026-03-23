@@ -60,7 +60,7 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
             onChange={(event) => setProviderType(event.target.value as ProviderType)}
             className="w-full rounded-xl border px-3 py-2 text-sm"
           >
-            <option value="independent_teacher">Selbstaendige Lehrkraft</option>
+            <option value="independent_teacher">Selbstständige Lehrkraft</option>
             <option value="studio_provider">Studio / Anbieter</option>
           </select>
         </label>

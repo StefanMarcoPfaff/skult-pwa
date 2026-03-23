@@ -14,21 +14,21 @@ export const LEGAL_PLACEHOLDERS: Record<keyof typeof LEGAL_LINKS, LegalPlacehold
   agb: {
     title: "AGB Placeholder",
     summary:
-      "Hier werden die finalen Allgemeinen Geschaeftsbedingungen fuer SKULT und die Anbieterbeziehungen verlinkt oder eingebunden.",
+      "Hier werden die finalen Allgemeinen Geschäftsbedingungen für SKULT und die Anbieterbeziehungen verlinkt oder eingebunden.",
   },
   privacy: {
     title: "Datenschutz Placeholder",
     summary:
-      "Hier wird die finale Datenschutzerklaerung mit allen Pflichtangaben zur Datenverarbeitung verlinkt oder eingebunden.",
+      "Hier wird die finale Datenschutzerklärung mit allen Pflichtangaben zur Datenverarbeitung verlinkt oder eingebunden.",
   },
   courseCancellation: {
-    title: "Kurs-Kuendigung Placeholder",
+    title: "Kurs-Kündigung Placeholder",
     summary:
-      "Hier wird die finale rechtliche Erlaeuterung zur Kuendigungslogik fuer wiederkehrende Kurse gepflegt.",
+      "Hier wird die finale rechtliche Erläuterung zur Kündigungslogik für wiederkehrende Kurse gepflegt.",
   },
   workshopStorno: {
     title: "Workshop-Storno Placeholder",
     summary:
-      "Hier wird die finale rechtliche Erlaeuterung zu Storno- und Erstattungsregeln fuer Workshops gepflegt.",
+      "Hier wird die finale rechtliche Erläuterung zu Storno- und Erstattungsregeln für Workshops gepflegt.",
   },
 };

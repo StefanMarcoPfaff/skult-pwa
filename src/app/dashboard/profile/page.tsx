@@ -51,19 +51,19 @@ export default async function DashboardProfilePage({
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       <Link href="/dashboard" className="inline-flex text-sm font-medium underline underline-offset-4">
-        Zurueck zum Dashboard
+        Zurück zum Dashboard
       </Link>
 
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold">Mein Profil</h1>
         <p className="text-sm text-muted-foreground">
-          Diese Angaben bilden die Grundlage fuer dein Dozent*innen-Profil.
+          Diese Angaben bilden die Grundlage für dein Dozent*innen-Profil.
         </p>
       </header>
 
       {onboarding ? (
         <p className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
-          Willkommen. Bitte vervollstaendige jetzt dein Profil, damit du anschliessend Angebote
+          Willkommen. Bitte vervollständige jetzt dein Profil, damit du anschließend Angebote
           anlegen kannst.
         </p>
       ) : null}
@@ -85,8 +85,8 @@ export default async function DashboardProfilePage({
         <h2 className="text-lg font-semibold">Zahlungen</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           {profile?.stripe_account_id
-            ? "Dein Stripe-Konto ist verbunden. Ueber Stripe verwaltest du deine Auszahlungsdaten und Bankverbindung."
-            : "Richte dein Stripe-Konto ein, damit Einnahmen aus Workshops und Kurs-Abos automatisch auf dein Konto ausgezahlt werden koennen."}
+            ? "Dein Stripe-Konto ist verbunden. Über Stripe verwaltest du deine Auszahlungsdaten und Bankverbindung."
+            : "Richte dein Stripe-Konto ein, damit Einnahmen aus Workshops und Kurs-Abos automatisch auf dein Konto ausgezahlt werden können."}
         </p>
         {profile?.stripe_account_id ? (
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -97,7 +97,7 @@ export default async function DashboardProfilePage({
               href="/api/stripe/connect/login"
               className="inline-flex rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
             >
-              Zahlungsdaten aendern
+              Zahlungsdaten ändern
             </Link>
           </div>
         ) : (

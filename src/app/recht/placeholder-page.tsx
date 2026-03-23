@@ -11,7 +11,7 @@ export default function LegalPlaceholderPage({
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       <header className="space-y-2">
         <Link href="/courses" className="text-sm font-semibold underline underline-offset-4">
-          Zurueck
+          Zurück
         </Link>
         <h1 className="text-3xl font-semibold">{title}</h1>
       </header>

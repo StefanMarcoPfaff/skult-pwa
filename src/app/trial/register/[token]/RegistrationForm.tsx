@@ -73,7 +73,7 @@ export default function RegistrationForm({
           {course.instructorName ? <p>Dozent: <span className="font-medium text-foreground">{course.instructorName}</span></p> : null}
           {course.priceLabel ? <p>Preis: <span className="font-medium text-foreground">{course.priceLabel}</span></p> : null}
           {course.cancellationLabel ? (
-            <p>Kuendigungsmodell: <span className="font-medium text-foreground">{course.cancellationLabel}</span></p>
+            <p>Kündigungsbedingungen: <span className="font-medium text-foreground">{course.cancellationLabel}</span></p>
           ) : null}
           {course.cancellationNotice ? <p>{course.cancellationNotice}</p> : null}
           {course.location ? <p>Ort: <span className="font-medium text-foreground">{course.location}</span></p> : null}
@@ -230,13 +230,38 @@ export default function RegistrationForm({
 
       {!completedRegistration ? (
         <section className="rounded-2xl border p-6 space-y-3 text-sm">
+          <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <h2 className="font-semibold text-foreground">Buchungsübersicht</h2>
+            <div className="mt-3 space-y-2 text-muted-foreground">
+              {course.priceLabel ? (
+                <p>
+                  Preis: <span className="font-medium text-foreground">{course.priceLabel}</span>
+                </p>
+              ) : null}
+              {course.instructorName ? (
+                <p>
+                  Dozent: <span className="font-medium text-foreground">{course.instructorName}</span>
+                </p>
+              ) : course.providerName ? (
+                <p>
+                  Dozent: <span className="font-medium text-foreground">{course.providerName}</span>
+                </p>
+              ) : null}
+              <p>
+                Kündigungsbedingungen:{" "}
+                <span className="font-medium text-foreground">
+                  {course.cancellationLabel ?? "Es gelten die individuell festgelegten Bedingungen des Dozenten"}
+                </span>
+              </p>
+            </div>
+          </section>
           <p className="text-muted-foreground">
-            Der angegebene Preis ist ein Monatsbeitrag. Die Kuendigung richtet sich nach dem oben
-            gezeigten Kuendigungsmodell.
+            Der angegebene Preis ist ein Monatsbeitrag. Die Kündigung richtet sich nach den oben
+            gezeigten Kündigungsbedingungen.
           </p>
           <p className="text-muted-foreground">
-            Fuer die Zahlung stehen dir im Checkout aktuell Karte und SEPA-Lastschrift zur
-            Verfuegung.
+            Für die Zahlung stehen dir im Checkout aktuell Karte und SEPA-Lastschrift zur
+            Verfügung.
           </p>
           <label className="flex items-start gap-3">
             <input type="checkbox" name="binding_registration_confirmed" required className="mt-1" />
@@ -261,7 +286,7 @@ export default function RegistrationForm({
                 target="_blank"
                 className="underline underline-offset-4"
               >
-                Datenschutzerklaerung
+                Datenschutzerklärung
               </Link>{" "}
               zur Kenntnis genommen.
             </span>
@@ -269,20 +294,20 @@ export default function RegistrationForm({
           <label className="flex items-start gap-3">
             <input type="checkbox" name="cancellation_terms_accepted" required className="mt-1" />
             <span>
-              Ich akzeptiere die Kurs- und Kuendigungsregelung dieses Angebots sowie den{" "}
+              Ich habe die Stornierungs- bzw. Kündigungsbedingungen gelesen und akzeptiere diese sowie den{" "}
               <Link
                 href={LEGAL_LINKS.courseCancellation}
                 target="_blank"
                 className="underline underline-offset-4"
               >
-                rechtlichen Hinweis zur Kurskuendigung
+                rechtlichen Hinweis zur Kurskündigung
               </Link>
               .
             </span>
           </label>
           <p className="text-xs text-muted-foreground">
             Die verlinkten Rechtstexte sind aktuell als MVP-Platzhalter vorbereitet und werden
-            spaeter durch finale juristische Inhalte ersetzt.
+            später durch finale juristische Inhalte ersetzt.
           </p>
         </section>
       ) : null}

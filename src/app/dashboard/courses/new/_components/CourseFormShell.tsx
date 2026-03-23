@@ -45,7 +45,7 @@ export default async function CourseFormShell() {
           </p>
         </div>
         <Link href="/dashboard/courses/new" className="text-sm underline underline-offset-4">
-          Zurueck
+          Zurück
         </Link>
       </div>
 

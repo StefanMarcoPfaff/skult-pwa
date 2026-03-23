@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
-  getCancellationModelLabel,
   getProviderDisplayName,
-  getWorkshopStornoPolicyLabel,
   type ProviderType,
 } from "@/lib/provider-profiles";
+import {
+  getCourseTerminationModelSummary,
+  getCourseTerminationModelValue,
+  getWorkshopCancellationPolicySummary,
+  getWorkshopCancellationPolicyValue,
+} from "@/lib/offer-policies";
 import {
   COURSE_END_NOTICE_DAYS,
   formatCourseEndDate,
@@ -125,8 +129,8 @@ function formatDateTime(dt: string | null) {
 }
 
 function formatTrialMode(value: string | null): string {
-  if (value === "manual") return "Nur an ausgewaehlten Terminen";
-  return "An jedem Termin moeglich";
+  if (value === "manual") return "Nur an ausgewählten Terminen";
+  return "An jedem Termin möglich";
 }
 
 function formatName(firstName: string | null, lastName: string | null, fallback: string): string {
@@ -177,7 +181,7 @@ function renderParticipantGroup(
       </div>
 
       {entries.length === 0 ? (
-        <p className="mt-4 text-sm text-muted-foreground">Aktuell keine Eintraege.</p>
+        <p className="mt-4 text-sm text-muted-foreground">Aktuell keine Einträge.</p>
       ) : (
         <div className="mt-4 space-y-3">
           {entries.map((entry) => (
@@ -356,7 +360,7 @@ export default async function DashboardCourseDetailPage({
     return (
       <main style={{ padding: 24 }}>
         <Link href="/dashboard/courses" style={{ fontWeight: 700 }}>
-          Zurueck
+          Zurück
         </Link>
         <p style={{ marginTop: 16, fontSize: 18, fontWeight: 800 }}>Nicht gefunden</p>
       </main>
@@ -375,6 +379,16 @@ export default async function DashboardCourseDetailPage({
   const courseEndingScheduled = data.kind === "course" && isCourseEndingScheduled(data.ends_at);
   const courseAlreadyEnded = data.kind === "course" && isCourseEnded(data.ends_at);
   const minimumEndDateInput = getMinimumCourseEndDateInput();
+  const workshopPolicyLabel = getWorkshopCancellationPolicySummary({
+    cancellation_policy: data.workshop_storno_policy,
+  });
+  const coursePolicyLabel = getCourseTerminationModelSummary({
+    termination_model: data.cancellation_model,
+  });
+  const publishBlockedForMissingPolicy =
+    (data.kind === "course" && !getCourseTerminationModelValue({ termination_model: data.cancellation_model })) ||
+    (data.kind === "workshop" &&
+      !getWorkshopCancellationPolicyValue({ cancellation_policy: data.workshop_storno_policy }));
 
   const ticketByTrialReservationId = new Map(
     (trialTickets ?? [])
@@ -419,7 +433,7 @@ export default async function DashboardCourseDetailPage({
             })
             .map<CourseParticipantEntry>((participant) => ({
               id: participant.id,
-              name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
+              name: formatName(participant.first_name, participant.last_name, "Probeschüler*in"),
               email: participant.email,
               statusLabel: "Freigegeben, noch nicht angemeldet",
               checkInLabel: `Eingecheckt am ${formatDateTime(
@@ -436,7 +450,7 @@ export default async function DashboardCourseDetailPage({
             })
             .map<CourseParticipantEntry>((participant) => ({
               id: participant.id,
-              name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
+              name: formatName(participant.first_name, participant.last_name, "Probeschüler*in"),
               email: participant.email,
               statusLabel: "Teilgenommen, Entscheidung offen",
               checkInLabel: `Eingecheckt am ${formatDateTime(
@@ -453,7 +467,7 @@ export default async function DashboardCourseDetailPage({
             })
             .map<CourseParticipantEntry>((participant) => ({
               id: participant.id,
-              name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
+              name: formatName(participant.first_name, participant.last_name, "Probeschüler*in"),
               email: participant.email,
               statusLabel: "Noch nicht teilgenommen",
               checkInLabel:
@@ -491,13 +505,13 @@ export default async function DashboardCourseDetailPage({
   return (
     <main style={{ padding: 24, maxWidth: 820 }}>
       <Link href="/dashboard/courses" style={{ fontWeight: 700 }}>
-        Zurueck
+        Zurück
       </Link>
 
       <h1 style={{ marginTop: 16, fontSize: 32, fontWeight: 900 }}>{data.title}</h1>
       <p className="mt-3 text-sm text-muted-foreground">
-        Dies ist deine interne Vorschau. Pruefe die Angaben, passe sie bei Bedarf an und
-        veroeffentliche das Angebot erst danach.
+        Dies ist deine interne Vorschau. Prüfe die Angaben, passe sie bei Bedarf an und
+        veröffentliche das Angebot erst danach.
       </p>
 
       {savedParam === "1" ? (
@@ -507,12 +521,17 @@ export default async function DashboardCourseDetailPage({
       ) : null}
       {savedParam === "published" ? (
         <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Angebot wurde veroeffentlicht.
+          Angebot wurde veröffentlicht.
         </p>
       ) : null}
       {savedParam === "draft" ? (
         <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
           Angebot wurde als Entwurf gespeichert.
+        </p>
+      ) : null}
+      {savedParam === "missing_policy" ? (
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Veröffentlichen nicht möglich. Bitte hinterlege zuerst die Stornierungs- bzw. Kündigungsbedingungen.
         </p>
       ) : null}
       {savedParam === "ending_scheduled" ? (
@@ -541,28 +560,38 @@ export default async function DashboardCourseDetailPage({
           href={`/dashboard/courses/${data.id}/edit`}
           className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
         >
-          Aendern
+          Ändern
         </Link>
 
         {data.is_published && hasRegistrations ? null : (
           <form action={setCoursePublishStateAction}>
             <input type="hidden" name="course_id" value={data.id} />
             <input type="hidden" name="mode" value={data.is_published ? "draft" : "published"} />
-            <button type="submit" className="rounded-xl border px-4 py-2 text-sm font-semibold">
-              {data.is_published ? "Veroeffentlichung zurueckziehen" : "Jetzt veroeffentlichen"}
+            <button
+              type="submit"
+              disabled={!data.is_published && publishBlockedForMissingPolicy}
+              className="rounded-xl border px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {data.is_published ? "Veröffentlichung zurückziehen" : "Jetzt veröffentlichen"}
             </button>
           </form>
         )}
       </div>
 
+      {!data.is_published && publishBlockedForMissingPolicy ? (
+        <p className="mt-3 text-sm text-red-700">
+          Dieses Angebot kann erst veröffentlicht werden, wenn die passende Stornierungs- bzw. Kündigungsregel gesetzt ist.
+        </p>
+      ) : null}
+
       <div style={{ marginTop: 10, opacity: 0.8 }}>
         <div>Art: {data.kind ?? "-"}</div>
-        <div>Veroeffentlicht: {data.is_published ? "Ja" : "Nein"}</div>
+        <div>Veröffentlicht: {data.is_published ? "Ja" : "Nein"}</div>
         {data.kind === "course" ? <div>Probestunden-Regel: {formatTrialMode(data.trial_mode)}</div> : null}
         {providerLabel ? <div>Anbieter: {providerLabel}</div> : null}
         {data.instructor_name ? <div>Dozent: {data.instructor_name}</div> : null}
         {data.kind === "course" ? (
-          <div>Kuendigungsmodell: {getCancellationModelLabel(data.cancellation_model)}</div>
+          <div>Kündigungsbedingungen: {coursePolicyLabel}</div>
         ) : null}
         {data.kind === "course" && courseEndLabel ? (
           <div>
@@ -570,7 +599,7 @@ export default async function DashboardCourseDetailPage({
           </div>
         ) : null}
         {data.kind === "workshop" ? (
-          <div>Storno-Regel: {getWorkshopStornoPolicyLabel(data.workshop_storno_policy)}</div>
+          <div>Stornierungsbedingungen: {workshopPolicyLabel}</div>
         ) : null}
         {data.location ? <div>Ort: {data.location}</div> : null}
         {data.location_details ? (
@@ -578,7 +607,7 @@ export default async function DashboardCourseDetailPage({
         ) : null}
         {data.kind === "course" && data.starts_at ? <div>Kursstart: {formatDateTime(data.starts_at)}</div> : null}
         {data.kind !== "course" && data.starts_at ? <div>Start: {formatDateTime(data.starts_at)}</div> : null}
-        {data.capacity !== null ? <div>Plaetze: {data.capacity}</div> : null}
+        {data.capacity !== null ? <div>Plätze: {data.capacity}</div> : null}
       </div>
 
       {data.description ? <p style={{ marginTop: 16, lineHeight: 1.6 }}>{data.description}</p> : null}
@@ -590,7 +619,7 @@ export default async function DashboardCourseDetailPage({
             Wenn der Kurs auslaufen soll, kannst du hier ein Enddatum mit mindestens {COURSE_END_NOTICE_DAYS} Tagen Vorlauf festlegen.
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
-            Danach sind keine neuen Probestunden und keine neuen verbindlichen Anmeldungen mehr moeglich. Bestehende Abos werden auf dieses Datum ausgesteuert.
+            Danach sind keine neuen Probestunden und keine neuen verbindlichen Anmeldungen mehr möglich. Bestehende Abos werden auf dieses Datum ausgesteuert.
           </p>
           {courseEndLabel ? (
             <p className="mt-3 text-sm font-medium text-foreground">
@@ -666,7 +695,7 @@ export default async function DashboardCourseDetailPage({
       {data.kind === "course" && groupedCourseParticipants ? (
         <section className="mt-8 space-y-4">
           <div>
-            <h2 className="text-2xl font-semibold">Teilnehmeruebersicht</h2>
+            <h2 className="text-2xl font-semibold">Teilnehmerübersicht</h2>
             <p className="mt-2 text-sm text-muted-foreground">
               Hier siehst du den aktuellen Stand der verbindlichen Anmeldungen und Probeschüler für diesen Kurs.
             </p>
@@ -725,7 +754,7 @@ export default async function DashboardCourseDetailPage({
       {data.is_published && hasRegistrations ? (
         <section className="mt-8 rounded-2xl border p-4">
           <p className="text-sm text-muted-foreground">
-            Die Veroeffentlichung kann nicht zurueckgezogen werden, weil bereits Anmeldungen vorliegen.
+            Die Veröffentlichung kann nicht zurückgezogen werden, weil bereits Anmeldungen vorliegen.
           </p>
         </section>
       ) : null}

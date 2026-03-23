@@ -177,7 +177,7 @@ export default async function DashboardParticipantDetailPage({
     return (
       <main className="mx-auto max-w-3xl space-y-6 p-6">
         <Link href={`/dashboard/courses/${course.id}`} className="inline-flex text-sm font-semibold">
-          Zurueck zum Angebot
+          Zurück zum Angebot
         </Link>
 
         <section className="rounded-2xl border p-6">
@@ -189,7 +189,7 @@ export default async function DashboardParticipantDetailPage({
             )}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Workshop-Teilnehmerdetail fuer {course.title ?? "Workshop"}.
+            Workshop-Teilnehmerdetail für {course.title ?? "Workshop"}.
           </p>
           <div className="mt-4 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2">
             <p>Name: <span className="font-medium text-foreground">{participantName(booking.customer_first_name, booking.customer_last_name, ticket?.customer_name ?? "Workshop-Teilnehmer*in")}</span></p>
@@ -280,9 +280,9 @@ export default async function DashboardParticipantDetailPage({
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
-      <Link href={`/dashboard/courses/${course.id}`} className="inline-flex text-sm font-semibold">
-        Zurueck zum Angebot
-      </Link>
+        <Link href={`/dashboard/courses/${course.id}`} className="inline-flex text-sm font-semibold">
+        Zurück zum Angebot
+        </Link>
 
       <section className="rounded-2xl border p-6">
         <h1 className="text-2xl font-semibold">
@@ -293,7 +293,7 @@ export default async function DashboardParticipantDetailPage({
           )}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Teilnehmerdetail fuer {course.title ?? "Kurs"}.
+          Teilnehmerdetail für {course.title ?? "Kurs"}.
         </p>
         <div className="mt-4 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2">
           <p>Name: <span className="font-medium text-foreground">{participantName(intent?.first_name ?? reservation.first_name, intent?.last_name ?? reservation.last_name, "Teilnehmer*in")}</span></p>
@@ -322,7 +322,7 @@ export default async function DashboardParticipantDetailPage({
             <p>Preis: <span className="font-medium text-foreground">{formatPrice(course.price_cents, course.currency)}</span></p>
           ) : null}
           {course.cancellation_model ? (
-            <p>Kuendigungsmodell: <span className="font-medium text-foreground">{getCancellationModelLabel(course.cancellation_model)}</span></p>
+            <p>Kündigungsmodell: <span className="font-medium text-foreground">{getCancellationModelLabel(course.cancellation_model)}</span></p>
           ) : null}
           {course.location ? <p>Ort: <span className="font-medium text-foreground">{course.location}</span></p> : null}
           {course.location_details ? <p>Raum / Zusatzinfo: <span className="font-medium text-foreground">{course.location_details}</span></p> : null}
@@ -345,7 +345,7 @@ export default async function DashboardParticipantDetailPage({
           </div>
         ) : (
           <p className="mt-4 text-sm text-muted-foreground">
-            Fuer diese Person liegt noch keine verbindliche Registrierung im System vor.
+            Für diese Person liegt noch keine verbindliche Registrierung im System vor.
           </p>
         )}
       </section>

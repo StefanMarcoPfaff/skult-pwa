@@ -23,14 +23,14 @@ export default function LoginClient() {
     (urlMessage === "password_updated"
       ? "Passwort aktualisiert. Du kannst dich jetzt einloggen."
       : urlMessage === "signup_check_email"
-        ? "Bitte bestaetige deine E-Mail ueber den Link in deinem Postfach."
+        ? "Bitte bestätige deine E-Mail über den Link in deinem Postfach."
         : null) ||
     (urlError === "oauth_failed"
       ? "Anmeldung konnte nicht abgeschlossen werden."
       : urlError === "otp_failed"
-        ? "Der Link ist ungueltig oder abgelaufen."
+        ? "Der Link ist ungültig oder abgelaufen."
         : urlError === "missing_code"
-          ? "Der Rueckruf von Supabase war unvollstaendig."
+          ? "Der Rückruf von Supabase war unvollständig."
           : null);
 
   async function signInWithGoogle() {
@@ -70,7 +70,7 @@ export default function LoginClient() {
     <main style={{ maxWidth: 520, margin: "0 auto", padding: "48px 16px" }}>
       <h1 style={{ fontSize: 48, fontWeight: 800, marginBottom: 16 }}>Login</h1>
       <p style={{ marginBottom: 20, color: "#555", lineHeight: 1.5 }}>
-        Fuer Lehrer*innen und Anbieter. Wenn du noch keinen Zugang hast, registriere dich zuerst.
+        Für Lehrer*innen und Anbieter. Wenn du noch keinen Zugang hast, registriere dich zuerst.
       </p>
 
       <button

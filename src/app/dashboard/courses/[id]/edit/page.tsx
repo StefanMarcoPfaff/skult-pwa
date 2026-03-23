@@ -166,9 +166,9 @@ export default async function EditOfferPage({
     <div className="space-y-6">
       <header className="space-y-2">
         <Link href={`/dashboard/courses/${id}`} className="text-sm font-semibold underline underline-offset-4">
-          Zurueck zur Vorschau
+          Zurück zur Vorschau
         </Link>
-        <h1 className="text-2xl font-semibold">Angebot aendern</h1>
+        <h1 className="text-2xl font-semibold">Angebot ändern</h1>
         <p className="text-sm text-muted-foreground">
           Bearbeite dein Angebot und speichere es wieder in die interne Vorschau.
         </p>
@@ -178,7 +178,7 @@ export default async function EditOfferPage({
         {data.kind === "course" ? (
           <CourseForm
             initialValues={courseInitialValues}
-            submitLabel="Aenderungen speichern"
+            submitLabel="Änderungen speichern"
             submitActionOverride={updateCourseAction.bind(null, id)}
             providerType={providerType}
             providerDisplayName={providerDisplayName}
@@ -186,7 +186,7 @@ export default async function EditOfferPage({
         ) : (
           <WorkshopForm
             initialValues={workshopInitialValues}
-            submitLabel="Aenderungen speichern"
+            submitLabel="Änderungen speichern"
             submitActionOverride={updateWorkshopAction.bind(null, id)}
             providerType={providerType}
             providerDisplayName={providerDisplayName}

@@ -46,7 +46,7 @@ export default async function DashboardPage({
         <div className="space-y-2">
           <h1 className="text-3xl font-semibold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">
-            Hier verwaltest du dein Profil, deine Angebote und spaeter deine Teilnehmer*innen.
+            Hier verwaltest du dein Profil, deine Angebote und später deine Teilnehmer*innen.
           </p>
           <p className="text-sm text-muted-foreground">
             Eingeloggt als <span className="font-medium text-foreground">{user.email}</span>
@@ -67,13 +67,13 @@ export default async function DashboardPage({
           <p className="mt-1 text-2xl font-semibold">{totalOffersCount ?? 0}</p>
         </div>
         <div className="rounded-2xl border p-4">
-          <p className="text-sm text-muted-foreground">Veroeffentlichte Angebote</p>
+          <p className="text-sm text-muted-foreground">Veröffentlichte Angebote</p>
           <p className="mt-1 text-2xl font-semibold">{publishedOffersCount ?? 0}</p>
         </div>
         <div className="rounded-2xl border p-4">
           <p className="text-sm text-muted-foreground">Profilstatus</p>
           <p className="mt-1 text-base font-semibold">
-            {profileComplete ? "Profil vollstaendig" : "Profil unvollstaendig"}
+            {profileComplete ? "Profil vollständig" : "Profil unvollständig"}
           </p>
         </div>
       </section>
@@ -82,7 +82,7 @@ export default async function DashboardPage({
         <article className="rounded-2xl border p-5">
           <h2 className="text-lg font-semibold">Mein Profil</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Bearbeite deine persoenlichen Angaben, Selbstbeschreibung und Auszahlungsdaten.
+            Bearbeite deine persönlichen Angaben, Selbstbeschreibung und Auszahlungsdaten.
           </p>
           <Link
             href="/dashboard/profile"
@@ -116,7 +116,7 @@ export default async function DashboardPage({
         <article className="rounded-2xl border p-5">
           <h2 className="text-lg font-semibold">Teilnehmer*innen</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Hier siehst du spaeter, wer sich fuer deine Kurse und Workshops angemeldet hat.
+            Hier siehst du später, wer sich für deine Kurse und Workshops angemeldet hat.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link

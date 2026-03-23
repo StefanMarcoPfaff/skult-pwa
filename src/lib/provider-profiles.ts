@@ -1,3 +1,8 @@
+import {
+  getCourseTerminationModelLabel,
+  getWorkshopCancellationPolicyLabel,
+} from "@/lib/offer-policies";
+
 export const PROVIDER_TYPES = ["independent_teacher", "studio_provider"] as const;
 export type ProviderType = (typeof PROVIDER_TYPES)[number];
 
@@ -45,17 +50,11 @@ export function normalizeCancellationModel(value: string | null | undefined): Ca
 }
 
 export function getCancellationModelLabel(value: string | null | undefined): string {
-  const normalized = normalizeCancellationModel(value);
-  if (normalized === "quarterly") return "Vierteljaehrlich kuendbar";
-  if (normalized === "semiannual") return "Halbjaehrlich kuendbar";
-  return "Monatlich kuendbar";
+  return getCourseTerminationModelLabel(value);
 }
 
 export function getWorkshopStornoPolicyLabel(value: string | null | undefined): string {
-  if (value === "free_until_14_days_then_100") return "Bis 14 Tage vorher kostenfrei, danach 100 %";
-  if (value === "free_until_7_days_then_100") return "Bis 7 Tage vorher kostenfrei, danach 100 %";
-  if (value === "fifty_until_14_days_then_100") return "Bis 14 Tage vorher 50 %, danach 100 %";
-  return "Keine Stornierung / keine Erstattung";
+  return getWorkshopCancellationPolicyLabel(value);
 }
 
 export function getProfileAccountName(input: ProviderNameInput): string {

@@ -242,25 +242,25 @@ export default async function DashboardParticipantsPage({
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold">Teilnehmer*innen</h1>
         <p className="text-sm text-muted-foreground">
-          Hier siehst du Probestunden, Check-ins und offene Entscheidungen fuer deine Kurse.
+          Hier siehst du Probestunden, Check-ins und offene Entscheidungen für deine Kurse.
         </p>
       </header>
 
       {approved ? (
         <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Der Probeschueler wurde fuer die Anmeldung freigegeben.
+          Der Probeschüler wurde für die Anmeldung freigegeben.
         </p>
       ) : null}
 
       {rejected ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Der Probeschueler wurde freundlich abgesagt.
+          Der Probeschüler wurde freundlich abgesagt.
         </p>
       ) : null}
 
       {attendanceRequired ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Eine Entscheidung ist erst moeglich, nachdem das Probestunden-Ticket eingecheckt wurde.
+          Eine Entscheidung ist erst möglich, nachdem das Probestunden-Ticket eingecheckt wurde.
         </p>
       ) : null}
 
@@ -361,7 +361,7 @@ export default async function DashboardParticipantsPage({
                           Details
                         </Link>
                         <span className="text-xs text-muted-foreground">
-                          Entscheidung nach Check-in moeglich
+                          Entscheidung nach Check-in möglich
                         </span>
                       </div>
                     ) : reservation.decision_status === "approved" && reservation.registration_expires_at ? (

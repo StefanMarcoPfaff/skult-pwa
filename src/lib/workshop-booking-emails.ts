@@ -173,21 +173,6 @@ function createTextEmail(input: {
     .join("\n");
 }
 
-function renderSessionListHtml(sessionLines: string[]): string {
-  if (sessionLines.length === 0) {
-    return "<p><b>Termin:</b> Termin folgt</p>";
-  }
-
-  return `
-    <div>
-      <p><b>Termine:</b></p>
-      <ul>
-        ${sessionLines.map((line) => `<li>${line}</li>`).join("")}
-      </ul>
-    </div>
-  `;
-}
-
 export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopBookingEmailData) {
   const qrUrl = buildTicketCheckInUrl(data.qrToken);
   const qrDataUrl = await buildTicketQrCodeDataUrl(data.qrToken);
@@ -203,11 +188,14 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
         infoItems: [
           { label: "Workshop", value: data.workshopTitle },
           ...buildProviderInfoItems(data),
+          { label: "Preis", value: data.priceLabel },
+          { label: "Stornierungsbedingungen", value: data.stornoPolicyLabel },
           { label: "Ort", value: data.location },
           { label: "Weitere Infos", value: data.locationDetails },
-          { label: "Preis", value: data.priceLabel },
-          { label: "Datum / Zeiten", value: data.sessionLines.length > 0 ? data.sessionLines.join("<br />") : "Termin folgt" },
-          { label: "Stornoregelung", value: data.stornoPolicyLabel },
+          {
+            label: "Datum / Zeiten",
+            value: data.sessionLines.length > 0 ? data.sessionLines.join("<br />") : "Termin folgt",
+          },
         ],
         nextSteps: [
           "Dein Platz ist fest für dich reserviert.",
@@ -234,11 +222,11 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
       infoItems: [
         { label: "Workshop", value: data.workshopTitle },
         ...buildProviderInfoItems(data),
+        { label: "Preis", value: data.priceLabel },
+        { label: "Stornierungsbedingungen", value: data.stornoPolicyLabel },
         { label: "Ort", value: data.location },
         { label: "Weitere Infos", value: data.locationDetails },
-        { label: "Preis", value: data.priceLabel },
         { label: "Datum / Zeiten", value: data.sessionLines.length > 0 ? data.sessionLines.join(" | ") : "Termin folgt" },
-        { label: "Stornoregelung", value: data.stornoPolicyLabel },
       ],
       nextSteps: [
         "Dein Platz ist fest für dich reserviert.",

@@ -85,7 +85,7 @@ export default function SignupClient() {
       </button>
 
       <div style={{ marginBottom: 16, fontSize: 14, color: "#555" }}>
-        Apple-Login ist fuer dieses MVP bewusst noch nicht aktiviert.
+        Apple-Login ist für dieses MVP bewusst noch nicht aktiviert.
       </div>
 
       <div style={{ height: 1, background: "#eee", margin: "16px 0" }} />

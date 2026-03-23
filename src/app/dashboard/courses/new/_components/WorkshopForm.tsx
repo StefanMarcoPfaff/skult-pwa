@@ -106,7 +106,7 @@ export default function WorkshopForm({
       const start = new Date(session.starts_at);
       const end = new Date(session.ends_at);
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        return "Ungueltiges Datum";
+        return "Ungültiges Datum";
       }
       if (end <= start) return "Ende muss nach dem Start liegen";
       return null;
@@ -146,17 +146,17 @@ export default function WorkshopForm({
     }
 
     if (providerType === "studio_provider" && !instructorName) {
-      setError("Bitte gib den Dozenten fuer diesen Workshop an.");
+      setError("Bitte gib den Dozenten für diesen Workshop an.");
       return;
     }
 
     if (!stornoPolicy) {
-      setError("Bitte waehle eine Storno-Regel.");
+      setError("Bitte wähle eine Storno-Regel.");
       return;
     }
 
     if (sessions.length === 0) {
-      setError("Bitte fuege mindestens einen Termin hinzu.");
+      setError("Bitte füge mindestens einen Termin hinzu.");
       return;
     }
 
@@ -164,21 +164,21 @@ export default function WorkshopForm({
     if (priceRaw) {
       const parsed = Number(priceRaw.replace(",", "."));
       if (!Number.isFinite(parsed) || parsed < 0) {
-        setError("Bitte gib einen gueltigen Preis >= 0 ein.");
+        setError("Bitte gib einen gültigen Preis >= 0 ein.");
         return;
       }
     }
 
     for (const session of sessions) {
       if (!session.starts_at || !session.ends_at) {
-        setError("Bitte fuelle Start- und Endzeit fuer alle Termine aus.");
+        setError("Bitte fülle Start- und Endzeit für alle Termine aus.");
         return;
       }
 
       const start = new Date(session.starts_at);
       const end = new Date(session.ends_at);
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        setError("Ein Termin hat ein ungueltiges Datum.");
+        setError("Ein Termin hat ein ungültiges Datum.");
         return;
       }
       if (end <= start) {
@@ -240,7 +240,7 @@ export default function WorkshopForm({
           rows={4}
           defaultValue={initialValues?.description ?? ""}
           className="w-full rounded-xl border px-3 py-2 text-sm"
-          placeholder="Kurzbeschreibung fuer die Angebotsseite."
+          placeholder="Kurzbeschreibung für die Angebotsseite."
         />
       </label>
 
@@ -293,7 +293,7 @@ export default function WorkshopForm({
           ))}
         </select>
         <span className="block text-xs text-muted-foreground">
-          Klare und flexible Storno-Regeln schaffen Vertrauen und fuehren oft zu mehr Buchungen.
+          Klare und flexible Storno-Regeln schaffen Vertrauen und führen oft zu mehr Buchungen.
         </span>
       </label>
 
@@ -301,14 +301,14 @@ export default function WorkshopForm({
         <div className="flex items-center justify-between gap-3">
           <div>
             <span className="text-sm font-medium">Termine *</span>
-            <p className="text-xs text-muted-foreground">Jeder Termin benoetigt Start- und Endzeit.</p>
+            <p className="text-xs text-muted-foreground">Jeder Termin benötigt Start- und Endzeit.</p>
           </div>
           <button
             type="button"
             onClick={() => setSessions((prev) => [...prev, createEmptySession()])}
             className="rounded-lg border px-3 py-1 text-xs font-semibold"
           >
-            Termin hinzufuegen
+            Termin hinzufügen
           </button>
         </div>
 
@@ -375,7 +375,7 @@ export default function WorkshopForm({
       </div>
 
       <label className="space-y-1">
-        <span className="text-sm font-medium">Kapazitaet</span>
+        <span className="text-sm font-medium">Kapazität</span>
         <input
           type="number"
           name="capacity"
@@ -403,7 +403,7 @@ export default function WorkshopForm({
         </label>
 
         <label className="space-y-1">
-          <span className="text-sm font-medium">Waehrung</span>
+          <span className="text-sm font-medium">Währung</span>
           <input
             name="currency"
             value={currency}
@@ -421,7 +421,7 @@ export default function WorkshopForm({
             <span>{formatCurrency(priceBreakdown.grossCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
-            <span>Plattformgebuehr ({STRIPE_PLATFORM_FEE_PERCENT} %)</span>
+            <span>Plattformgebühr ({STRIPE_PLATFORM_FEE_PERCENT} %)</span>
             <span>{formatCurrency(priceBreakdown.platformFeeCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4 font-medium text-foreground">
@@ -430,8 +430,8 @@ export default function WorkshopForm({
           </div>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Die voraussichtliche Auszahlung berechnet sich aus dem eingegebenen Preis abzueglich
-          der Plattformgebuehr von {STRIPE_PLATFORM_FEE_PERCENT} %.
+          Die voraussichtliche Auszahlung berechnet sich aus dem eingegebenen Preis abzüglich
+          der Plattformgebühr von {STRIPE_PLATFORM_FEE_PERCENT} %.
         </p>
       </div>
 

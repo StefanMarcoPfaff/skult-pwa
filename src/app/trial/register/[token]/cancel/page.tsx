@@ -29,7 +29,7 @@ export default async function TrialRegistrationCancelPage({
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <Link href={`/trial/register/${token}`} className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
-            Zurueck zur Anmeldung
+            Zurück zur Anmeldung
           </Link>
           <Link href="/courses" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
             Zu den Kursen

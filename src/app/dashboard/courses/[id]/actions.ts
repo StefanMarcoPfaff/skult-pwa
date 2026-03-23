@@ -4,6 +4,10 @@ import { redirect } from "next/navigation";
 import { getStripe } from "@/lib/stripe";
 import { getCancellationModelLabel, getProviderDisplayName } from "@/lib/provider-profiles";
 import {
+  getCourseTerminationModelValue,
+  getWorkshopCancellationPolicyValue,
+} from "@/lib/offer-policies";
+import {
   COURSE_END_NOTICE_DAYS,
   getMinimumCourseEndDate,
   toCourseEndIso,
@@ -21,6 +25,7 @@ type CourseOwnerRow = {
   teacher_id: string;
   ends_at: string | null;
   cancellation_model: string | null;
+  workshop_storno_policy: string | null;
   location: string | null;
   location_details: string | null;
   instructor_name: string | null;
@@ -40,6 +45,10 @@ type ProfileRow = {
   provider_type: "independent_teacher" | "studio_provider" | null;
   organization_name: string | null;
 };
+
+function withSavedParam(targetPath: string, value: string) {
+  return `${targetPath}${targetPath.includes("?") ? "&" : "?"}saved=${value}`;
+}
 
 export async function setCoursePublishStateAction(formData: FormData) {
   const courseId = String(formData.get("course_id") || "").trim();
@@ -72,6 +81,26 @@ export async function setCoursePublishStateAction(formData: FormData) {
     }
   }
 
+  if (publish) {
+    const { data: course } = await supabase
+      .from("courses")
+      .select("kind,cancellation_model,workshop_storno_policy")
+      .eq("id", courseId)
+      .eq("teacher_id", user.id)
+      .maybeSingle<CourseOwnerRow>();
+
+    const missingWorkshopPolicy =
+      course?.kind === "workshop" &&
+      !getWorkshopCancellationPolicyValue({ cancellation_policy: course.workshop_storno_policy });
+    const missingCoursePolicy =
+      course?.kind === "course" &&
+      !getCourseTerminationModelValue({ termination_model: course.cancellation_model });
+
+    if (!course || missingWorkshopPolicy || missingCoursePolicy) {
+      redirect(withSavedParam(targetPath, "missing_policy"));
+    }
+  }
+
   const { error } = await supabase
     .from("courses")
     .update({ is_published: publish })
@@ -82,7 +111,7 @@ export async function setCoursePublishStateAction(formData: FormData) {
     redirect(targetPath);
   }
 
-  redirect(`${targetPath}${targetPath.includes("?") ? "&" : "?"}saved=${publish ? "published" : "draft"}`);
+  redirect(withSavedParam(targetPath, publish ? "published" : "draft"));
 }
 
 export async function scheduleCourseEndAction(formData: FormData) {
@@ -117,7 +146,7 @@ export async function scheduleCourseEndAction(formData: FormData) {
 
   const { data: course, error: courseError } = await admin
     .from("courses")
-    .select("id,title,kind,teacher_id,ends_at,cancellation_model,location,location_details,instructor_name")
+    .select("id,title,kind,teacher_id,ends_at,cancellation_model,workshop_storno_policy,location,location_details,instructor_name")
     .eq("id", courseId)
     .eq("teacher_id", user.id)
     .maybeSingle<CourseOwnerRow>();

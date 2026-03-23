@@ -19,9 +19,9 @@ const weekdayOptions = [
 ];
 
 const cancellationOptions: Array<{ value: CancellationModel; label: string }> = [
-  { value: "monthly", label: "Monatlich kuendbar" },
-  { value: "quarterly", label: "Vierteljaehrlich kuendbar" },
-  { value: "semiannual", label: "Halbjaehrlich kuendbar" },
+  { value: "monthly", label: "Monatlich kündbar" },
+  { value: "quarterly", label: "Vierteljährlich kündbar" },
+  { value: "semiannual", label: "Halbjährlich kündbar" },
 ];
 
 export type CourseFormValues = {
@@ -168,11 +168,11 @@ export default function CourseForm({
       return;
     }
     if (!weekday) {
-      setError("Bitte waehle einen Wochentag.");
+      setError("Bitte wähle einen Wochentag.");
       return;
     }
     if (!startDate) {
-      setError("Bitte waehle ein Startdatum fuer den Kurs.");
+      setError("Bitte wähle ein Startdatum für den Kurs.");
       return;
     }
     if (!startTime) {
@@ -184,34 +184,34 @@ export default function CourseForm({
       return;
     }
     if (!recurrence) {
-      setError("Bitte waehle einen Rhythmus.");
+      setError("Bitte wähle einen Rhythmus.");
       return;
     }
     if (trialMode !== "all_sessions" && trialMode !== "manual") {
-      setError("Bitte waehle eine gueltige Probestunden-Regel.");
+      setError("Bitte wähle eine gültige Probestunden-Regel.");
       return;
     }
     if (trialMode === "manual" && selectedTrialStarts.length === 0) {
-      setError("Bitte waehle mindestens einen Termin fuer Probestunden aus.");
+      setError("Bitte wähle mindestens einen Termin für Probestunden aus.");
       return;
     }
     if (!cancellationModel) {
-      setError("Bitte waehle ein Kuendigungsmodell.");
+      setError("Bitte wähle ein Kündigungsmodell.");
       return;
     }
     if (providerType === "studio_provider" && !instructorName) {
-      setError("Bitte gib den Dozenten fuer diesen Kurs an.");
+      setError("Bitte gib den Dozenten für diesen Kurs an.");
       return;
     }
 
     const selectedWeekday = Number(weekday);
     const startDateWeekday = getWeekdayForDate(startDate);
     if (!Number.isInteger(selectedWeekday) || startDateWeekday === null) {
-      setError("Bitte waehle ein gueltiges Startdatum fuer den Kurs.");
+      setError("Bitte wähle ein gültiges Startdatum für den Kurs.");
       return;
     }
     if (selectedWeekday !== startDateWeekday) {
-      setError("Das Startdatum muss zum gewaehlten Wochentag passen.");
+      setError("Das Startdatum muss zum gewählten Wochentag passen.");
       return;
     }
 
@@ -219,7 +219,7 @@ export default function CourseForm({
     if (priceEurRaw) {
       const parsed = Number(priceEurRaw.replace(",", "."));
       if (!Number.isFinite(parsed) || parsed < 0) {
-        setError("Bitte gib einen gueltigen Preis >= 0 ein.");
+        setError("Bitte gib einen gültigen Preis >= 0 ein.");
         return;
       }
       formData.set("price_cents", String(Math.round(parsed * 100)));
@@ -247,7 +247,7 @@ export default function CourseForm({
             required
             defaultValue={initialValues?.title ?? ""}
             className="w-full rounded-xl border px-3 py-2 text-sm"
-            placeholder="z. B. Toepfern Basics"
+            placeholder="z. B. Töpfern Basics"
           />
         </label>
 
@@ -279,7 +279,7 @@ export default function CourseForm({
           rows={4}
           defaultValue={initialValues?.description ?? ""}
           className="w-full rounded-xl border px-3 py-2 text-sm"
-          placeholder="Kurzbeschreibung fuer den Kurs."
+          placeholder="Kurzbeschreibung für den Kurs."
         />
       </label>
 
@@ -385,12 +385,12 @@ export default function CourseForm({
             onChange={(event) => setRecurrenceType(event.target.value)}
             className="w-full rounded-xl border px-3 py-2 text-sm"
           >
-            <option value="weekly">Woechentlich</option>
-            <option value="biweekly">14-taegig</option>
+            <option value="weekly">Wöchentlich</option>
+            <option value="biweekly">14-tägig</option>
             <option value="monthly">Monatlich</option>
           </select>
           <span className="block text-xs text-muted-foreground">
-            Das Startdatum ist der Anker fuer den Rhythmus und muss zum Wochentag passen.
+            Das Startdatum ist der Anker für den Rhythmus und muss zum Wochentag passen.
           </span>
         </label>
 
@@ -404,10 +404,10 @@ export default function CourseForm({
             className="w-full rounded-xl border px-3 py-2 text-sm"
           >
             <option value="all_sessions">
-              Probeschueler*innen koennen an jedem Termin teilnehmen
+              Probeschüler*innen können an jedem Termin teilnehmen
             </option>
             <option value="manual">
-              Probeschueler*innen koennen nur an ausgewaehlten Terminen teilnehmen
+              Probeschüler*innen können nur an ausgewählten Terminen teilnehmen
             </option>
           </select>
         </label>
@@ -415,9 +415,9 @@ export default function CourseForm({
 
       {trialMode === "manual" ? (
         <section className="rounded-2xl border bg-gray-50 p-4 text-sm">
-          <p className="font-medium">Termine fuer Probestunden</p>
+          <p className="font-medium">Termine für Probestunden</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Waehle aus, an welchen der kommenden Kurstermine Probeschueler*innen teilnehmen duerfen.
+            Wähle aus, an welchen der kommenden Kurstermine Probeschüler*innen teilnehmen dürfen.
           </p>
           {availableManualTrialSlots.length > 0 ? (
             <div className="mt-3 space-y-2">
@@ -448,15 +448,15 @@ export default function CourseForm({
             </div>
           ) : (
             <p className="mt-3 text-xs text-muted-foreground">
-              Sobald Kursstart, Wochentag, Startzeit, Dauer und Rhythmus gueltig gesetzt sind,
-              erscheinen hier die auswaehlbaren Kurstermine.
+              Sobald Kursstart, Wochentag, Startzeit, Dauer und Rhythmus gültig gesetzt sind,
+              erscheinen hier die auswählbaren Kurstermine.
             </p>
           )}
         </section>
       ) : null}
 
       <label className="block space-y-1">
-        <span className="text-sm font-medium">Kuendigungsmodell *</span>
+        <span className="text-sm font-medium">Kündigungsmodell *</span>
         <select
           name="cancellation_model"
           required
@@ -470,18 +470,18 @@ export default function CourseForm({
           ))}
         </select>
         <span className="block text-xs text-muted-foreground">
-          Kund*innen lieben Flexibilitaet. Kuerzere Kuendigungsfristen fuehren oft zu mehr
+          Kund*innen lieben Flexibilität. Kürzere Kündigungsfristen führen oft zu mehr
           Buchungen.
         </span>
         <span className="block text-xs text-muted-foreground">
-          Monatlich endet einen Monat nach der Kuendigung, vierteljaehrlich nach drei Monaten
-          und halbjaehrlich nach sechs Monaten.
+          Monatlich endet einen Monat nach der Kündigung, vierteljährlich nach drei Monaten
+          und halbjährlich nach sechs Monaten.
         </span>
       </label>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <label className="space-y-1 sm:col-span-1">
-          <span className="text-sm font-medium">Kapazitaet</span>
+          <span className="text-sm font-medium">Kapazität</span>
           <input
             type="number"
             name="capacity"
@@ -511,7 +511,7 @@ export default function CourseForm({
         </label>
 
         <label className="space-y-1 sm:col-span-1">
-          <span className="text-sm font-medium">Waehrung *</span>
+          <span className="text-sm font-medium">Währung *</span>
           <input
             name="currency"
             required
@@ -530,7 +530,7 @@ export default function CourseForm({
             <span>{formatCurrency(priceBreakdown.grossCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
-            <span>Plattformgebuehr ({STRIPE_PLATFORM_FEE_PERCENT} %)</span>
+            <span>Plattformgebühr ({STRIPE_PLATFORM_FEE_PERCENT} %)</span>
             <span>{formatCurrency(priceBreakdown.platformFeeCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4 font-medium text-foreground">
@@ -540,7 +540,7 @@ export default function CourseForm({
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
           Die voraussichtliche Auszahlung pro Monat berechnet sich aus dem Monatsbeitrag
-          abzueglich der Plattformgebuehr von {STRIPE_PLATFORM_FEE_PERCENT} %.
+          abzüglich der Plattformgebühr von {STRIPE_PLATFORM_FEE_PERCENT} %.
         </p>
       </div>
 

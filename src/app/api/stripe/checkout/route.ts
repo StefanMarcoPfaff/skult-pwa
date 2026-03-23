@@ -58,12 +58,12 @@ export async function POST(req: Request) {
     const customerPhone = requiredText(phone);
 
     if (!customerFirstName || !customerLastName || !customerEmail || !customerPhone) {
-      return NextResponse.json({ error: "Bitte fuelle alle Pflichtfelder aus." }, { status: 400 });
+      return NextResponse.json({ error: "Bitte fülle alle Pflichtfelder aus." }, { status: 400 });
     }
 
     if (!agbAccepted || !privacyAccepted || !workshopStornoAccepted) {
       return NextResponse.json(
-        { error: "Bitte bestaetige AGB, Datenschutz und die Workshop-Stornoregelung." },
+        { error: "Bitte bestätige AGB, Datenschutz und die Workshop-Stornoregelung." },
         { status: 400 }
       );
     }
@@ -81,7 +81,7 @@ export async function POST(req: Request) {
     }
 
     if (course.offer_type !== "workshop") {
-      return NextResponse.json({ error: "Checkout nur fuer Workshops (V1)" }, { status: 400 });
+      return NextResponse.json({ error: "Checkout nur für Workshops (V1)" }, { status: 400 });
     }
 
     if (course.price_type !== "paid" || !course.price_cents || course.price_cents <= 0) {
@@ -141,7 +141,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error:
-            "Das verbundene Stripe-Konto des Dozenten ist noch nicht fuer Destination Charges mit card_payments und transfers freigeschaltet.",
+            "Das verbundene Stripe-Konto des Dozenten ist noch nicht für Destination Charges mit card_payments und transfers freigeschaltet.",
         },
         { status: 400 }
       );

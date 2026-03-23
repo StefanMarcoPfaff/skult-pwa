@@ -193,7 +193,7 @@ function getResultHint(result: CheckInResult): string | null {
 
   if (result.state === "cancelled") return "Dieses Ticket wurde storniert und kann nicht mehr verwendet werden.";
   if (result.state === "expired") return "Dieses Ticket ist abgelaufen und kann nicht mehr verwendet werden.";
-  if (result.state === "invalid") return "Kein gueltiges Ticket fuer diesen Token gefunden.";
+  if (result.state === "invalid") return "Kein gültiges Ticket für diesen Token gefunden.";
   if (result.checkedInAt) return `Check-in gespeichert am ${formatDateTime(result.checkedInAt)}.`;
   return null;
 }
@@ -214,7 +214,7 @@ export default async function DashboardCheckInPage({
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold">Ticket-Check-in</h1>
         <p className="text-sm text-muted-foreground">
-          QR-Link oeffnen oder Token manuell einfuegen. Gueltige Tickets werden direkt eingecheckt.
+          QR-Link öffnen oder Token manuell einfügen. Gültige Tickets werden direkt eingecheckt.
         </p>
       </header>
 
@@ -228,7 +228,7 @@ export default async function DashboardCheckInPage({
             className="min-w-0 flex-1 rounded-xl border px-4 py-3 text-sm"
           />
           <button type="submit" className="rounded-xl border px-4 py-3 text-sm font-semibold">
-            Ticket pruefen
+            Ticket prüfen
           </button>
         </form>
       </section>

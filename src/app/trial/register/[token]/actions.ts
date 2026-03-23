@@ -107,7 +107,7 @@ export async function submitTrialRegistrationAction(
 
   const { admin, reservation } = await loadApprovedReservation(token);
   if (!reservation) {
-    return { error: "Dieser Anmeldelink ist ungueltig oder abgelaufen." };
+    return { error: "Dieser Anmeldelink ist ungültig oder abgelaufen." };
   }
 
   const { data: course } = await admin
@@ -136,7 +136,7 @@ export async function submitTrialRegistrationAction(
     !city ||
     !country
   ) {
-    return { error: "Bitte fuelle alle Pflichtfelder aus." };
+    return { error: "Bitte fülle alle Pflichtfelder aus." };
   }
 
   const bindingConfirmed = formData.get("binding_registration_confirmed") === "on";
@@ -145,7 +145,7 @@ export async function submitTrialRegistrationAction(
   const cancellationTermsAccepted = formData.get("cancellation_terms_accepted") === "on";
 
   if (!bindingConfirmed || !agbAccepted || !privacyAccepted || !cancellationTermsAccepted) {
-    return { error: "Bitte bestaetige alle erforderlichen Zustimmungspunkte." };
+    return { error: "Bitte bestätige alle erforderlichen Zustimmungspunkte." };
   }
 
   const now = new Date().toISOString();

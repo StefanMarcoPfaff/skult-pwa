@@ -398,21 +398,21 @@ export function prepareTeacherTrialReservationNotification(data: TrialReservatio
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
         <h2>Neue Probestunden-Reservierung</h2>
-        <p>Fuer deinen Kurs <b>${data.courseTitle}</b> wurde eine neue Probestunde reserviert.</p>
+        <p>Für deinen Kurs <b>${data.courseTitle}</b> wurde eine neue Probestunde reserviert.</p>
         <p><b>Name:</b> ${data.customerName}</p>
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
         ${locationLine}
         ${dateLine}
-        <p>Eine erfolgreiche Probestunde kann spaeter in eine regulaere Anmeldung uebergehen.</p>
+        <p>Eine erfolgreiche Probestunde kann später in eine reguläre Anmeldung übergehen.</p>
       </div>
     `,
     text: [
-      `Neue Probestunden-Reservierung fuer ${data.courseTitle}`,
+      `Neue Probestunden-Reservierung für ${data.courseTitle}`,
       `Name: ${data.customerName}`,
       `E-Mail: ${data.customerEmail}`,
       data.location ? `Ort: ${data.location}` : null,
       `Termin: ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}`,
-      "Hinweis: Diese Probestunde kann spaeter in eine regulaere Anmeldung uebergehen.",
+      "Hinweis: Diese Probestunde kann später in eine reguläre Anmeldung übergehen.",
     ]
       .filter(Boolean)
       .join("\n"),
@@ -430,7 +430,7 @@ export function prepareTeacherTrialReservationCancellation(data: TrialReservatio
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
         <h2>Probestunden-Reservierung wurde storniert</h2>
-        <p>Eine Probestunden-Reservierung fuer deinen Kurs <b>${data.courseTitle}</b> wurde storniert.</p>
+        <p>Eine Probestunden-Reservierung für deinen Kurs <b>${data.courseTitle}</b> wurde storniert.</p>
         <p><b>Name:</b> ${data.customerName}</p>
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
         ${locationLine}
@@ -438,7 +438,7 @@ export function prepareTeacherTrialReservationCancellation(data: TrialReservatio
       </div>
     `,
     text: [
-      `Eine Probestunden-Reservierung fuer ${data.courseTitle} wurde storniert.`,
+      `Eine Probestunden-Reservierung für ${data.courseTitle} wurde storniert.`,
       `Name: ${data.customerName}`,
       `E-Mail: ${data.customerEmail}`,
       data.location ? `Ort: ${data.location}` : null,
@@ -650,11 +650,11 @@ export async function prepareCourseSubscriptionConfirmationEmail(
         infoItems: [
           { label: "Kursname", value: data.courseTitle },
           ...buildProviderInfoItems(data),
+          { label: "Preis", value: data.priceLabel },
+          { label: "Kündigungsbedingungen", value: data.cancellationLabel },
           { label: "Ort", value: data.location },
           { label: "Weitere Infos", value: data.locationDetails },
-          { label: "Preis", value: data.priceLabel },
           { label: "Währung", value: data.currency },
-          { label: "Kündigungsregelung", value: data.cancellationLabel },
         ],
         nextSteps: [
           "Dein Platz ist fest für dich eingeplant.",
@@ -673,11 +673,11 @@ export async function prepareCourseSubscriptionConfirmationEmail(
       infoItems: [
         { label: "Kursname", value: data.courseTitle },
         ...buildProviderInfoItems(data),
+        { label: "Preis", value: data.priceLabel },
+        { label: "Kündigungsbedingungen", value: data.cancellationLabel },
         { label: "Ort", value: data.location },
         { label: "Weitere Infos", value: data.locationDetails },
-        { label: "Preis", value: data.priceLabel },
         { label: "Währung", value: data.currency },
-        { label: "Kündigungsregelung", value: data.cancellationLabel },
       ],
       nextSteps: [
         "Dein Platz ist fest für dich eingeplant.",
@@ -708,7 +708,7 @@ export function prepareCourseSubscriptionProviderNotificationEmail(
         ${data.providerName ? `<p><b>Anbieter / Studio:</b> ${data.providerName}</p>` : ""}
         ${data.instructorName ? `<p><b>Dozent:</b> ${data.instructorName}</p>` : ""}
         ${data.priceLabel ? `<p><b>Preis:</b> ${data.priceLabel}</p>` : ""}
-        ${data.cancellationLabel ? `<p><b>Kündigungsregelung:</b> ${data.cancellationLabel}</p>` : ""}
+        ${data.cancellationLabel ? `<p><b>Kündigungsbedingungen:</b> ${data.cancellationLabel}</p>` : ""}
       </div>
     `,
     text: [
@@ -720,7 +720,7 @@ export function prepareCourseSubscriptionProviderNotificationEmail(
       data.providerName ? `Anbieter / Studio: ${data.providerName}` : null,
       data.instructorName ? `Dozent: ${data.instructorName}` : null,
       data.priceLabel ? `Preis: ${data.priceLabel}` : null,
-      data.cancellationLabel ? `Kündigungsregelung: ${data.cancellationLabel}` : null,
+      data.cancellationLabel ? `Kündigungsbedingungen: ${data.cancellationLabel}` : null,
     ]
       .filter(Boolean)
       .join("\n"),
@@ -738,7 +738,7 @@ export function prepareCourseEndingNotificationEmail(data: CourseEndingNotificat
     to: data.customerEmail,
     subject: `Wichtige Info: ${data.courseTitle} endet am ${endDate}`,
     html: createHtmlEmail({
-      title: "Wichtige Aenderung zu deinem Kurs",
+      title: "Wichtige Änderung zu deinem Kurs",
       greeting: data.customerName,
       intro: `Dein Kurs <b>${data.courseTitle}</b> wird zum <b>${endDate}</b> beendet.`,
       infoItems: [
@@ -747,17 +747,17 @@ export function prepareCourseEndingNotificationEmail(data: CourseEndingNotificat
         { label: "Letzter Kurstag", value: endDate },
         { label: "Ort", value: data.location },
         { label: "Weitere Infos", value: data.locationDetails },
-        { label: "Kuendigungsregelung", value: data.cancellationLabel },
+        { label: "Kündigungsregelung", value: data.cancellationLabel },
       ],
       nextSteps: [
         "Dein laufendes Abo wird automatisch zu diesem Datum beendet.",
-        "Du musst dafuer nichts weiter unternehmen.",
-        "Falls es organisatorische Rueckfragen gibt, melden wir uns separat bei dir.",
+        "Du musst dafür nichts weiter unternehmen.",
+        "Falls es organisatorische Rückfragen gibt, melden wir uns separat bei dir.",
       ],
       actions: [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
     }),
     text: createTextEmail({
-      title: "Wichtige Aenderung zu deinem Kurs",
+      title: "Wichtige Änderung zu deinem Kurs",
       greeting: data.customerName,
       intro: `Dein Kurs ${data.courseTitle} wird zum ${endDate} beendet.`,
       infoItems: [
@@ -766,12 +766,12 @@ export function prepareCourseEndingNotificationEmail(data: CourseEndingNotificat
         { label: "Letzter Kurstag", value: endDate },
         { label: "Ort", value: data.location },
         { label: "Weitere Infos", value: data.locationDetails },
-        { label: "Kuendigungsregelung", value: data.cancellationLabel },
+        { label: "Kündigungsregelung", value: data.cancellationLabel },
       ],
       nextSteps: [
         "Dein laufendes Abo wird automatisch zu diesem Datum beendet.",
-        "Du musst dafuer nichts weiter unternehmen.",
-        "Falls es organisatorische Rueckfragen gibt, melden wir uns separat bei dir.",
+        "Du musst dafür nichts weiter unternehmen.",
+        "Falls es organisatorische Rückfragen gibt, melden wir uns separat bei dir.",
       ],
       actions: [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
     }),
@@ -814,9 +814,9 @@ export function prepareTeacherTrialDecisionReminderEmail(data: TeacherTrialDecis
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
         <h2>Probestunde besucht - Entscheidung offen</h2>
-        <p>${data.customerName} hat die Probestunde fuer <b>${data.courseTitle}</b> besucht.</p>
+        <p>${data.customerName} hat die Probestunde für <b>${data.courseTitle}</b> besucht.</p>
         <p><b>Termin:</b> ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}</p>
-        <p>Bitte entscheide jetzt, ob du die Anmeldung freigeben oder absagen moechtest.</p>
+        <p>Bitte entscheide jetzt, ob du die Anmeldung freigeben oder absagen möchtest.</p>
         <p><a href="${data.dashboardUrl}">${data.dashboardUrl}</a></p>
       </div>
     `,
@@ -824,7 +824,7 @@ export function prepareTeacherTrialDecisionReminderEmail(data: TeacherTrialDecis
       `Bitte Entscheidung treffen: ${data.customerName} | ${data.courseTitle}`,
       `${data.customerName} hat die Probestunde besucht.`,
       `Termin: ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}`,
-      "Bitte entscheide jetzt, ob du die Anmeldung freigeben oder absagen moechtest.",
+      "Bitte entscheide jetzt, ob du die Anmeldung freigeben oder absagen möchtest.",
       `Dashboard: ${data.dashboardUrl}`,
     ].join("\n"),
   };

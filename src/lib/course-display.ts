@@ -39,14 +39,14 @@ export function getCancellationNotice(cancellationModel: string | null | undefin
 
   const label = getCancellationModelLabel(cancellationModel);
   if (cancellationModel === "quarterly" || cancellationModel === "minimum_3_months") {
-    return `${label}. Endet nach deiner Kuendigung zum Ende der laufenden 3 Monate.`;
+    return `${label}. Endet nach deiner Kündigung zum Ende der laufenden 3 Monate.`;
   }
   if (
     cancellationModel === "semiannual" ||
     cancellationModel === "minimum_6_months" ||
     cancellationModel === "fixed_course"
   ) {
-    return `${label}. Endet nach deiner Kuendigung zum Ende der laufenden 6 Monate.`;
+    return `${label}. Endet nach deiner Kündigung zum Ende der laufenden 6 Monate.`;
   }
-  return `${label}. Endet nach deiner Kuendigung zum Ende des laufenden Monats.`;
+  return `${label}. Endet nach deiner Kündigung zum Ende des laufenden Monats.`;
 }

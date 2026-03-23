@@ -1,10 +1,8 @@
 import Link from "next/link";
 import QRCode from "react-qr-code";
 import { formatRecurringCoursePrice, getCancellationNotice } from "@/lib/course-display";
-import {
-  getCancellationModelLabel,
-  getProviderDisplayName,
-} from "@/lib/provider-profiles";
+import { getProviderDisplayName } from "@/lib/provider-profiles";
+import { getCourseTerminationModelSummary } from "@/lib/offer-policies";
 import { buildTicketCheckInUrl } from "@/lib/ticket-qr";
 import {
   issueCourseParticipantTicketForSubscription,
@@ -229,9 +227,9 @@ export default async function TrialRegistrationSuccessPage({
         const providerContact = await resolveProviderContact(admin, course ?? null);
         courseTitleForDisplay = course?.title ?? "Kurs";
         priceLabelForDisplay = formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null);
-        cancellationLabelForDisplay = course?.cancellation_model
-          ? getCancellationModelLabel(course.cancellation_model)
-          : null;
+        cancellationLabelForDisplay = getCourseTerminationModelSummary({
+          termination_model: course?.cancellation_model,
+        });
         cancellationNoticeForDisplay = getCancellationNotice(course?.cancellation_model);
 
         const recipientEmail =
@@ -300,9 +298,9 @@ export default async function TrialRegistrationSuccessPage({
               customerEmail: recipientEmail,
               priceLabel: formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null),
               currency: course?.currency ?? "EUR",
-              cancellationLabel: course?.cancellation_model
-                ? getCancellationModelLabel(course.cancellation_model)
-                : null,
+              cancellationLabel: getCourseTerminationModelSummary({
+                termination_model: course?.cancellation_model,
+              }),
               location: course?.location ?? null,
               locationDetails: course?.location_details ?? null,
               qrToken: ticketForDisplay?.qr_token ?? null,
@@ -384,9 +382,9 @@ export default async function TrialRegistrationSuccessPage({
                 providerName,
                 instructorName: course?.instructor_name ?? providerContact.providerContactName,
                 priceLabel: formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null),
-                cancellationLabel: course?.cancellation_model
-                  ? getCancellationModelLabel(course.cancellation_model)
-                  : null,
+                cancellationLabel: getCourseTerminationModelSummary({
+                  termination_model: course?.cancellation_model,
+                }),
               });
 
               if (result?.error) {
@@ -481,7 +479,7 @@ export default async function TrialRegistrationSuccessPage({
         <section className="rounded-2xl border p-6">
           <h2 className="text-xl font-semibold">Dein Kursticket</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Zeige diesen QR-Code kuenftig fuer Anwesenheit und Check-in in {courseTitleForDisplay} vor.
+            Zeige diesen QR-Code künftig für Anwesenheit und Check-in in {courseTitleForDisplay} vor.
           </p>
           <div className="mt-4 inline-block rounded-2xl border bg-white p-4">
             <QRCode value={ticketCheckInUrl} size={220} />
@@ -508,7 +506,7 @@ export default async function TrialRegistrationSuccessPage({
             ) : null}
             {cancellationLabelForDisplay ? (
               <p>
-                Kuendigungsmodell:{" "}
+                Kündigungsbedingungen:{" "}
                 <span className="font-medium text-foreground">{cancellationLabelForDisplay}</span>
               </p>
             ) : null}

@@ -36,13 +36,13 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
   const organization_name = optionalText(formData.get("organization_name"));
 
   if (!isProviderType(provider_type_raw)) {
-    return { error: "Bitte waehle einen gueltigen Anbietertyp." };
+    return { error: "Bitte wähle einen gültigen Anbietertyp." };
   }
 
   if (!first_name) return { error: "Vorname ist erforderlich." };
   if (!last_name) return { error: "Nachname ist erforderlich." };
   if (provider_type_raw === "studio_provider" && !organization_name) {
-    return { error: "Anbietername ist fuer Studios/Anbieter erforderlich." };
+    return { error: "Anbietername ist für Studios/Anbieter erforderlich." };
   }
   if (intro_video_url && !/^https?:\/\//i.test(intro_video_url)) {
     return { error: "Bitte gib einen gültigen Video-Link mit http:// oder https:// an." };

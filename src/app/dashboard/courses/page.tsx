@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { formatCourseEndDate, isCourseEnded, isCourseEndingScheduled } from "@/lib/course-ending";
+import {
+  getCourseTerminationModelSummary,
+  getCourseTerminationModelValue,
+  getWorkshopCancellationPolicySummary,
+  getWorkshopCancellationPolicyValue,
+} from "@/lib/offer-policies";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { setCoursePublishStateAction } from "./[id]/actions";
 
@@ -17,6 +23,8 @@ type OfferRow = {
   recurrence_type: string | null;
   created_at: string | null;
   ends_at: string | null;
+  cancellation_model: string | null;
+  workshop_storno_policy: string | null;
 };
 
 type SessionRow = {
@@ -62,7 +70,8 @@ export default async function DashboardCoursesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await searchParams;
+  const sp = await searchParams;
+  const savedParam = Array.isArray(sp.saved) ? sp.saved[0] : sp.saved;
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -74,7 +83,7 @@ export default async function DashboardCoursesPage({
   }
 
   const baseSelect =
-    "id,teacher_id,title,kind,is_published,location,starts_at,weekday,start_time,recurrence_type,created_at,ends_at";
+    "id,teacher_id,title,kind,is_published,location,starts_at,weekday,start_time,recurrence_type,created_at,ends_at,cancellation_model,workshop_storno_policy";
 
   let offersResult = await supabase
     .from("courses")
@@ -147,6 +156,12 @@ export default async function DashboardCoursesPage({
         </div>
       </section>
 
+      {savedParam === "missing_policy" ? (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Veröffentlichen nicht möglich. Bitte hinterlege zuerst die Stornierungs- bzw. Kündigungsbedingungen.
+        </p>
+      ) : null}
+
       {offers.length === 0 ? (
         <section className="rounded-2xl border p-6">
           <p className="text-sm text-muted-foreground">Du hast noch keine Angebote angelegt.</p>
@@ -176,6 +191,19 @@ export default async function DashboardCoursesPage({
               ? "Mehrere Termine"
               : formatWorkshopDateTime(offer.starts_at);
             const courseTiming = formatCourseSchedule(offer.weekday, offer.start_time, offer.recurrence_type);
+            const policyLabel =
+              kind === "course"
+                ? getCourseTerminationModelSummary({ termination_model: offer.cancellation_model })
+                : getWorkshopCancellationPolicySummary({
+                    cancellation_policy: offer.workshop_storno_policy,
+                  });
+            const isMissingPolicy =
+              (kind === "course" &&
+                !getCourseTerminationModelValue({ termination_model: offer.cancellation_model })) ||
+              (kind === "workshop" &&
+                !getWorkshopCancellationPolicyValue({
+                  cancellation_policy: offer.workshop_storno_policy,
+                }));
 
             return (
               <article key={offer.id} className="rounded-2xl border p-5">
@@ -193,6 +221,12 @@ export default async function DashboardCoursesPage({
                   {kind === "workshop" && workshopTiming ? <p>{workshopTiming}</p> : null}
                   {kind === "course" && courseTiming ? <p>{courseTiming}</p> : null}
                   {kind === "course" && courseEndLabel ? <p>Letzter Kurstag: {courseEndLabel}</p> : null}
+                  <p>
+                    {kind === "course" ? "Kündigungsbedingungen" : "Stornierungsbedingungen"}: {policyLabel}
+                  </p>
+                  {!offer.is_published && isMissingPolicy ? (
+                    <p className="text-red-700">Vor Veröffentlichung muss zuerst eine Regel hinterlegt sein.</p>
+                  ) : null}
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -212,7 +246,11 @@ export default async function DashboardCoursesPage({
                     <input type="hidden" name="course_id" value={offer.id} />
                     <input type="hidden" name="mode" value={offer.is_published ? "draft" : "published"} />
                     <input type="hidden" name="redirect_to" value="/dashboard/courses" />
-                    <button type="submit" className="rounded-lg border px-3 py-1.5 text-sm font-semibold">
+                    <button
+                      type="submit"
+                      disabled={!offer.is_published && isMissingPolicy}
+                      className="rounded-lg border px-3 py-1.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                    >
                       {offer.is_published ? "Veröffentlichung zurückziehen" : "Jetzt veröffentlichen"}
                     </button>
                   </form>
