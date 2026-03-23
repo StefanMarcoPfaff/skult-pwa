@@ -4,15 +4,21 @@ import Link from "next/link";
 import { useState } from "react";
 import { LEGAL_LINKS } from "@/lib/legal";
 
-export function PayButton({
-  courseId,
-  stornoPolicyLabel,
-  disabled,
-}: {
+type PayButtonProps = {
   courseId: string;
+  teacherName?: string | null;
+  priceLabel?: string | null;
   stornoPolicyLabel?: string | null;
   disabled?: boolean;
-}) {
+};
+
+export function PayButton({
+  courseId,
+  teacherName,
+  priceLabel,
+  stornoPolicyLabel,
+  disabled,
+}: PayButtonProps) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -114,9 +120,31 @@ export function PayButton({
       </div>
 
       <p className="text-sm text-muted-foreground">
-        Im Checkout stehen dir aktuell Karte und SEPA-Lastschrift zur Verfuegung. Nach der Zahlung
-        erhaeltst du deine Buchungsbestaetigung und dein Workshop-Ticket per E-Mail.
+        Im Checkout stehen dir aktuell Karte und SEPA-Lastschrift zur Verfügung. Nach der Zahlung
+        erhältst du deine Buchungsbestätigung und dein Workshop-Ticket per E-Mail.
       </p>
+
+      <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+        <h3 className="font-semibold text-foreground">Buchungsübersicht</h3>
+        <div className="mt-3 space-y-2 text-muted-foreground">
+          {priceLabel ? (
+            <p>
+              Preis: <span className="font-medium text-foreground">{priceLabel}</span>
+            </p>
+          ) : null}
+          {teacherName ? (
+            <p>
+              Dozent: <span className="font-medium text-foreground">{teacherName}</span>
+            </p>
+          ) : null}
+          <p>
+            Stornierungsbedingungen:{" "}
+            <span className="font-medium text-foreground">
+              {stornoPolicyLabel ?? "Es gelten die individuell festgelegten Bedingungen des Dozenten"}
+            </span>
+          </p>
+        </div>
+      </section>
 
       <div className="space-y-3 rounded-xl border p-4 text-sm">
         <label className="flex items-start gap-3">
@@ -149,7 +177,7 @@ export function PayButton({
           <span>
             Ich habe die{" "}
             <Link href={LEGAL_LINKS.privacy} target="_blank" className="underline underline-offset-4">
-              Datenschutzerklaerung
+              Datenschutzerklärung
             </Link>{" "}
             zur Kenntnis genommen.
           </span>
@@ -168,8 +196,7 @@ export function PayButton({
             className="mt-1"
           />
           <span>
-            Ich akzeptiere die Stornoregelung dieses Workshops
-            {stornoPolicyLabel ? ` (${stornoPolicyLabel})` : ""} sowie den{" "}
+            Ich habe die Stornierungs- bzw. Kündigungsbedingungen gelesen und akzeptiere diese sowie den{" "}
             <Link
               href={LEGAL_LINKS.workshopStorno}
               target="_blank"
@@ -183,7 +210,7 @@ export function PayButton({
 
         <p className="text-xs text-muted-foreground">
           Die verlinkten Rechtstexte sind aktuell als MVP-Platzhalter vorbereitet und werden
-          spaeter durch finale juristische Inhalte ersetzt.
+          später durch finale juristische Inhalte ersetzt.
         </p>
       </div>
 
