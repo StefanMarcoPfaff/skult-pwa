@@ -6,11 +6,11 @@ import {
   isCourseClosedForNewRegistrations,
   isCourseEnded,
 } from "@/lib/course-ending";
+import { getProviderDisplayName } from "@/lib/provider-profiles";
 import {
-  getCancellationModelLabel,
-  getProviderDisplayName,
-  getWorkshopStornoPolicyLabel,
-} from "@/lib/provider-profiles";
+  getCourseTerminationModelSummary,
+  getWorkshopCancellationPolicySummary,
+} from "@/lib/offer-policies";
 import { formatCoursePriceFromRow } from "@/lib/course-display";
 import {
   buildOfferAvailability,
@@ -160,8 +160,9 @@ export default async function CourseDetailPage({
   const durationMinutes = asNumber(data.duration_minutes);
   const recurrenceRaw = asString(data.recurrence_type);
   const recurrence = recurrenceLabel(recurrenceRaw);
-  const cancellationModel = asString(data.cancellation_model);
-  const workshopStornoPolicy = asString(data.workshop_storno_policy);
+  const cancellationModel = asString(data.termination_model) ?? asString(data.cancellation_model);
+  const workshopStornoPolicy =
+    asString(data.cancellation_policy) ?? asString(data.workshop_storno_policy);
   const trialMode = (asString(data.trial_mode) ?? "all_sessions").toLowerCase();
   const startsAt = asString(data.starts_at);
   const endsAt = asString(data.ends_at);
@@ -276,14 +277,23 @@ export default async function CourseDetailPage({
     }
 
     profileDescription = publicProfile?.bio ?? null;
-    profilePhotoUrl = isHttpUrl(publicProfile?.photo_url ?? null) ? publicProfile?.photo_url : null;
+    profilePhotoUrl =
+      isHttpUrl(publicProfile?.photo_url ?? null) ? (publicProfile?.photo_url ?? null) : null;
     profileVideoUrl =
-      isHttpUrl(publicProfile?.intro_video_url ?? null) ? publicProfile?.intro_video_url : null;
+      isHttpUrl(publicProfile?.intro_video_url ?? null)
+        ? (publicProfile?.intro_video_url ?? null)
+        : null;
   }
 
   const shouldShowProfileSection = Boolean(
     profileHeading || profileDescription || profilePhotoUrl || profileVideoUrl || providerLabel
   );
+  const workshopPolicyLabel = getWorkshopCancellationPolicySummary({
+    cancellation_policy: workshopStornoPolicy,
+  });
+  const coursePolicyLabel = getCourseTerminationModelSummary({
+    termination_model: cancellationModel,
+  });
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
@@ -303,15 +313,13 @@ export default async function CourseDetailPage({
         {price ? <p>Preis: {price}</p> : null}
         {capacity !== null ? (
           <p>
-            Verfuegbarkeit:{" "}
+            Verfügbarkeit:{" "}
             <span className={`rounded-full px-2 py-0.5 text-xs ${availability.badgeClassName}`}>
               {availability.badgeText}
             </span>
           </p>
         ) : null}
-        {kind === "course" && cancellationModel ? (
-          <p>Kuendigungsmodell: {getCancellationModelLabel(cancellationModel)}</p>
-        ) : null}
+        {kind === "course" ? <p>Kündigungsbedingungen: {coursePolicyLabel}</p> : null}
         {kind === "course" && weekday !== null && weekdayLabels[weekday] ? (
           <p>Wochentag: {weekdayLabels[weekday]}</p>
         ) : null}
@@ -385,25 +393,28 @@ export default async function CourseDetailPage({
             {capacity !== null ? (
               <p className={`text-sm font-medium ${availability.badgeClassName}`}>{availability.badgeText}</p>
             ) : null}
-            {workshopStornoPolicy ? (
-              <p className="text-sm text-muted-foreground">
-                Stornoregelung: {getWorkshopStornoPolicyLabel(workshopStornoPolicy)}
-              </p>
-            ) : null}
+            <section className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+              <h3 className="text-base font-semibold">Stornierungsbedingungen</h3>
+              <p className="mt-2 text-sm text-foreground">{workshopPolicyLabel}</p>
+            </section>
             {availability.isSoldOut ? (
               <SoldOutInquiryForm courseId={id} offerLabel="Workshop" />
             ) : (
               <PayButton
                 courseId={id}
-                stornoPolicyLabel={
-                  workshopStornoPolicy ? getWorkshopStornoPolicyLabel(workshopStornoPolicy) : null
-                }
+                teacherName={profileHeading ?? publicCourse?.instructor_name ?? providerLabel}
+                priceLabel={price}
+                stornoPolicyLabel={workshopPolicyLabel}
               />
             )}
           </div>
         </section>
       ) : (
         <section className="space-y-3 rounded-2xl border p-4">
+          <section className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+            <h3 className="text-base font-semibold">Kündigungsbedingungen</h3>
+            <p className="mt-2 text-sm text-foreground">{coursePolicyLabel}</p>
+          </section>
           <h3 className="text-base font-semibold">
             {availability.isSoldOut ? "Anfragen" : "Kostenlose Probestunde reservieren"}
           </h3>
