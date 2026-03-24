@@ -5,7 +5,7 @@ import {
   type ProviderType,
 } from "@/lib/provider-profiles";
 import {
-  getCourseTerminationModelSummary,
+  COURSE_CANCELLATION_SUMMARY,
   getCourseTerminationModelValue,
   getWorkshopCancellationPolicySummary,
   getWorkshopCancellationPolicyValue,
@@ -382,9 +382,6 @@ export default async function DashboardCourseDetailPage({
   const workshopPolicyLabel = getWorkshopCancellationPolicySummary({
     cancellation_policy: data.workshop_storno_policy,
   });
-  const coursePolicyLabel = getCourseTerminationModelSummary({
-    termination_model: data.cancellation_model,
-  });
   const publishBlockedForMissingPolicy =
     (data.kind === "course" && !getCourseTerminationModelValue({ termination_model: data.cancellation_model })) ||
     (data.kind === "workshop" &&
@@ -536,12 +533,12 @@ export default async function DashboardCourseDetailPage({
       ) : null}
       {savedParam === "ending_scheduled" ? (
         <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Kursende wurde geplant. Neue Probestunden und neue verbindliche Anmeldungen sind ab jetzt geschlossen.
+          Kursstopp wurde geplant. Neue Probestunden und neue verbindliche Anmeldungen sind ab jetzt geschlossen.
         </p>
       ) : null}
       {savedParam === "ending_partial" ? (
         <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          Kursende wurde geplant. Mindestens ein bestehendes Abo konnte noch nicht automatisch synchronisiert werden.
+          Kursstopp wurde geplant. Mindestens ein bestehendes Abo konnte noch nicht automatisch synchronisiert werden.
         </p>
       ) : null}
       {savedParam === "ending_too_soon" ? (
@@ -591,7 +588,11 @@ export default async function DashboardCourseDetailPage({
         {providerLabel ? <div>Anbieter: {providerLabel}</div> : null}
         {data.instructor_name ? <div>Dozent: {data.instructor_name}</div> : null}
         {data.kind === "course" ? (
-          <div>Kündigungsbedingungen: {coursePolicyLabel}</div>
+          <>
+            <div>Abrechnung: monatlich</div>
+            <div>Kursmodell: fortlaufend</div>
+            <div>Kündigung: {COURSE_CANCELLATION_SUMMARY}</div>
+          </>
         ) : null}
         {data.kind === "course" && courseEndLabel ? (
           <div>
@@ -614,16 +615,20 @@ export default async function DashboardCourseDetailPage({
 
       {data.kind === "course" ? (
         <section className="mt-6 rounded-2xl border p-5">
-          <h2 className="text-lg font-semibold">Kursende planen</h2>
+          <h2 className="text-lg font-semibold">Kurs stoppen</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Wenn der Kurs auslaufen soll, kannst du hier ein Enddatum mit mindestens {COURSE_END_NOTICE_DAYS} Tagen Vorlauf festlegen.
+            Wenn du diesen Kurs stoppst, sind keine neuen Probestunden und keine neuen Anmeldungen mehr möglich.
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
-            Danach sind keine neuen Probestunden und keine neuen verbindlichen Anmeldungen mehr möglich. Bestehende Abos werden auf dieses Datum ausgesteuert.
+            Bereits aktive Teilnehmer können den Kurs noch bis zum Ende ihres bezahlten Zeitraums besuchen.
+            Der Kurs wird automatisch vollständig beendet, sobald der letzte aktive Teilnehmer ausgelaufen ist.
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Der letzte Kurstag muss mindestens {COURSE_END_NOTICE_DAYS} Tage in der Zukunft liegen.
           </p>
           {courseEndLabel ? (
             <p className="mt-3 text-sm font-medium text-foreground">
-              {courseAlreadyEnded ? "Dieser Kurs endete am" : "Aktuell geplant:"} {courseEndLabel}
+              {courseAlreadyEnded ? "Dieser Kurs wurde beendet am" : "Aktuell geplanter letzter Kurstag:"} {courseEndLabel}
             </p>
           ) : null}
           {!courseAlreadyEnded ? (
@@ -646,7 +651,7 @@ export default async function DashboardCourseDetailPage({
                 />
               </label>
               <button type="submit" className="rounded-xl border px-4 py-2 text-sm font-semibold">
-                {courseEndingScheduled ? "Kursende aktualisieren" : "Kursende planen"}
+                {courseEndingScheduled ? "Kursstopp aktualisieren" : "Kurs stoppen"}
               </button>
             </form>
           ) : null}

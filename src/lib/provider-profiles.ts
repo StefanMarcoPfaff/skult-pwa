@@ -6,14 +6,10 @@ import {
 export const PROVIDER_TYPES = ["independent_teacher", "studio_provider"] as const;
 export type ProviderType = (typeof PROVIDER_TYPES)[number];
 
-export const ACTIVE_CANCELLATION_MODELS = ["monthly", "quarterly", "semiannual"] as const;
+export const ACTIVE_CANCELLATION_MODELS = ["monthly"] as const;
 export type CancellationModel = (typeof ACTIVE_CANCELLATION_MODELS)[number];
 
-export type StoredCancellationModel =
-  | CancellationModel
-  | "minimum_3_months"
-  | "minimum_6_months"
-  | "fixed_course";
+export type StoredCancellationModel = CancellationModel;
 
 export const WORKSHOP_STORNO_POLICIES = [
   "no_refund",
@@ -42,10 +38,7 @@ export function isWorkshopStornoPolicy(value: string | null | undefined): value 
 }
 
 export function normalizeCancellationModel(value: string | null | undefined): CancellationModel {
-  if (value === "quarterly" || value === "minimum_3_months") return "quarterly";
-  if (value === "semiannual" || value === "minimum_6_months" || value === "fixed_course") {
-    return "semiannual";
-  }
+  void value;
   return "monthly";
 }
 

@@ -4,7 +4,11 @@ export const WORKSHOP_POLICY_FALLBACK =
   "Es gelten die individuell festgelegten Bedingungen des Dozenten";
 
 export const COURSE_POLICY_FALLBACK =
-  "Es gelten die individuell festgelegten Bedingungen des Dozenten";
+  "Monatlich zum Ende des Abrechnungszeitraums möglich.";
+
+export const COURSE_BILLING_SUMMARY = "monatlich ab Buchungsdatum";
+export const COURSE_CANCELLATION_SUMMARY =
+  "monatlich zum Ende des Abrechnungszeitraums möglich.";
 
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -36,19 +40,8 @@ export function getWorkshopCancellationPolicyLabel(value: string | null | undefi
 }
 
 export function getCourseTerminationModelLabel(value: string | null | undefined): string {
-  switch (value) {
-    case "quarterly":
-    case "minimum_3_months":
-      return "Vierteljährlich kündbar";
-    case "half_yearly":
-    case "semiannual":
-    case "minimum_6_months":
-    case "fixed_course":
-      return "Halbjährlich kündbar";
-    case "monthly":
-    default:
-      return "Monatlich kündbar";
-  }
+  void value;
+  return "Monatlich zum Ende des Abrechnungszeitraums möglich.";
 }
 
 export function getWorkshopCancellationPolicySummary(input: MaybeRecord): string {

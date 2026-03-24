@@ -1,8 +1,7 @@
 import Link from "next/link";
 import QRCode from "react-qr-code";
-import { formatRecurringCoursePrice, getCancellationNotice } from "@/lib/course-display";
+import { formatRecurringCoursePrice } from "@/lib/course-display";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
-import { getCourseTerminationModelSummary } from "@/lib/offer-policies";
 import { buildTicketCheckInUrl } from "@/lib/ticket-qr";
 import {
   issueCourseParticipantTicketForSubscription,
@@ -150,8 +149,6 @@ export default async function TrialRegistrationSuccessPage({
   let ticketForDisplay: TicketRow | null = null;
   let courseTitleForDisplay = "Kurs";
   let priceLabelForDisplay: string | null = null;
-  let cancellationLabelForDisplay: string | null = null;
-  let cancellationNoticeForDisplay: string | null = null;
 
   if (session_id && intentId) {
     const stripe = getStripe();
@@ -227,11 +224,6 @@ export default async function TrialRegistrationSuccessPage({
         const providerContact = await resolveProviderContact(admin, course ?? null);
         courseTitleForDisplay = course?.title ?? "Kurs";
         priceLabelForDisplay = formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null);
-        cancellationLabelForDisplay = getCourseTerminationModelSummary({
-          termination_model: course?.cancellation_model,
-        });
-        cancellationNoticeForDisplay = getCancellationNotice(course?.cancellation_model);
-
         const recipientEmail =
           finalizedIntent.email?.trim() || reservation?.email?.trim() || null;
         const customerName =
@@ -298,9 +290,7 @@ export default async function TrialRegistrationSuccessPage({
               customerEmail: recipientEmail,
               priceLabel: formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null),
               currency: course?.currency ?? "EUR",
-              cancellationLabel: getCourseTerminationModelSummary({
-                termination_model: course?.cancellation_model,
-              }),
+              cancellationLabel: "Monatlich zum Ende des Abrechnungszeitraums möglich.",
               location: course?.location ?? null,
               locationDetails: course?.location_details ?? null,
               qrToken: ticketForDisplay?.qr_token ?? null,
@@ -382,9 +372,7 @@ export default async function TrialRegistrationSuccessPage({
                 providerName,
                 instructorName: course?.instructor_name ?? providerContact.providerContactName,
                 priceLabel: formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null),
-                cancellationLabel: getCourseTerminationModelSummary({
-                  termination_model: course?.cancellation_model,
-                }),
+                cancellationLabel: "Monatlich zum Ende des Abrechnungszeitraums möglich.",
               });
 
               if (result?.error) {
@@ -495,7 +483,7 @@ export default async function TrialRegistrationSuccessPage({
         </section>
       ) : null}
 
-      {priceLabelForDisplay || cancellationLabelForDisplay ? (
+      {priceLabelForDisplay ? (
         <section className="rounded-2xl border p-6">
           <h2 className="text-xl font-semibold">Deine Kurskonditionen</h2>
           <div className="mt-3 space-y-2 text-sm text-muted-foreground">
@@ -504,13 +492,12 @@ export default async function TrialRegistrationSuccessPage({
                 Preis: <span className="font-medium text-foreground">{priceLabelForDisplay}</span>
               </p>
             ) : null}
-            {cancellationLabelForDisplay ? (
-              <p>
-                Kündigungsbedingungen:{" "}
-                <span className="font-medium text-foreground">{cancellationLabelForDisplay}</span>
-              </p>
-            ) : null}
-            {cancellationNoticeForDisplay ? <p>{cancellationNoticeForDisplay}</p> : null}
+            <p>
+              Abrechnung: <span className="font-medium text-foreground">monatlich ab Buchungsdatum</span>
+            </p>
+            <p>
+              Kündigung: <span className="font-medium text-foreground">monatlich zum Ende des Abrechnungszeitraums möglich.</span>
+            </p>
           </div>
         </section>
       ) : null}

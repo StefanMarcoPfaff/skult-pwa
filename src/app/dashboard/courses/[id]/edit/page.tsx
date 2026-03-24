@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   getProviderDisplayName,
-  normalizeCancellationModel,
   type WorkshopStornoPolicy,
   type ProviderType,
 } from "@/lib/provider-profiles";
@@ -138,7 +137,6 @@ export default async function EditOfferPage({
       .map((slot) => slot.starts_at)
       .filter((value): value is string => typeof value === "string" && value.length > 0),
     instructor_name: data.instructor_name ?? "",
-    cancellation_model: normalizeCancellationModel(data.cancellation_model),
     capacity: data.capacity !== null ? String(data.capacity) : "",
     price_eur: toPriceEur(data.price_cents),
     currency: data.currency ?? "EUR",

@@ -24,7 +24,7 @@ export const LEGAL_PLACEHOLDERS: Record<keyof typeof LEGAL_LINKS, LegalPlacehold
   courseCancellation: {
     title: "Kurs-Kündigung Placeholder",
     summary:
-      "Hier wird die finale rechtliche Erläuterung zur Kündigungslogik für wiederkehrende Kurse gepflegt.",
+      "Hier wird die finale rechtliche Erläuterung für fortlaufende Kurse mit monatlicher Abrechnung und monatlicher Kündigung zum Ende des Abrechnungszeitraums gepflegt.",
   },
   workshopStorno: {
     title: "Workshop-Storno Placeholder",

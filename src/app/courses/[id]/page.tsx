@@ -8,7 +8,8 @@ import {
 } from "@/lib/course-ending";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import {
-  getCourseTerminationModelSummary,
+  COURSE_BILLING_SUMMARY,
+  COURSE_CANCELLATION_SUMMARY,
   getWorkshopCancellationPolicySummary,
 } from "@/lib/offer-policies";
 import { formatCoursePriceFromRow } from "@/lib/course-display";
@@ -293,10 +294,6 @@ export default async function CourseDetailPage({
   const workshopPolicyLabel = getWorkshopCancellationPolicySummary({
     cancellation_policy: workshopStornoPolicy,
   });
-  const coursePolicyLabel = getCourseTerminationModelSummary({
-    termination_model: cancellationModel,
-  });
-
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       <p>
@@ -321,7 +318,8 @@ export default async function CourseDetailPage({
             </span>
           </p>
         ) : null}
-        {kind === "course" ? <p>Kündigungsbedingungen: {coursePolicyLabel}</p> : null}
+        {kind === "course" ? <p>Abrechnung: {COURSE_BILLING_SUMMARY}</p> : null}
+        {kind === "course" ? <p>Kündigung: {COURSE_CANCELLATION_SUMMARY}</p> : null}
         {kind === "course" && weekday !== null && weekdayLabels[weekday] ? (
           <p>Wochentag: {weekdayLabels[weekday]}</p>
         ) : null}
@@ -415,7 +413,10 @@ export default async function CourseDetailPage({
         <section className="space-y-3 rounded-2xl border p-4">
           <section className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
             <h3 className="text-base font-semibold">Kündigungsbedingungen</h3>
-            <p className="mt-2 text-sm text-foreground">{coursePolicyLabel}</p>
+            <div className="mt-2 space-y-1 text-sm text-foreground">
+              <p>Abrechnung: {COURSE_BILLING_SUMMARY}</p>
+              <p>Kündigung: {COURSE_CANCELLATION_SUMMARY}</p>
+            </div>
           </section>
           <h3 className="text-base font-semibold">
             {availability.isSoldOut ? "Anfragen" : "Kostenlose Probestunde reservieren"}

@@ -13,8 +13,6 @@ type CourseInfo = {
   providerType?: "independent_teacher" | "studio_provider" | null;
   instructorName: string | null;
   priceLabel: string | null;
-  cancellationLabel: string | null;
-  cancellationNotice?: string | null;
   location: string | null;
   locationDetails: string | null;
 };
@@ -72,10 +70,8 @@ export default function RegistrationForm({
           {course.providerType === "studio_provider" && course.providerName ? <p>Anbieter: <span className="font-medium text-foreground">{course.providerName}</span></p> : null}
           {course.instructorName ? <p>Dozent: <span className="font-medium text-foreground">{course.instructorName}</span></p> : null}
           {course.priceLabel ? <p>Preis: <span className="font-medium text-foreground">{course.priceLabel}</span></p> : null}
-          {course.cancellationLabel ? (
-            <p>Kündigungsbedingungen: <span className="font-medium text-foreground">{course.cancellationLabel}</span></p>
-          ) : null}
-          {course.cancellationNotice ? <p>{course.cancellationNotice}</p> : null}
+          <p>Abrechnung: <span className="font-medium text-foreground">monatlich ab Buchungsdatum</span></p>
+          <p>Kündigung: <span className="font-medium text-foreground">monatlich zum Ende des Abrechnungszeitraums möglich.</span></p>
           {course.location ? <p>Ort: <span className="font-medium text-foreground">{course.location}</span></p> : null}
           {course.locationDetails ? (
             <p>Raum / Zusatzinfo: <span className="font-medium text-foreground">{course.locationDetails}</span></p>
@@ -247,18 +243,10 @@ export default function RegistrationForm({
                   Dozent: <span className="font-medium text-foreground">{course.providerName}</span>
                 </p>
               ) : null}
-              <p>
-                Kündigungsbedingungen:{" "}
-                <span className="font-medium text-foreground">
-                  {course.cancellationLabel ?? "Es gelten die individuell festgelegten Bedingungen des Dozenten"}
-                </span>
-              </p>
+              <p>Abrechnung: <span className="font-medium text-foreground">monatlich ab Buchungsdatum</span></p>
+              <p>Kündigung: <span className="font-medium text-foreground">monatlich zum Ende des Abrechnungszeitraums möglich.</span></p>
             </div>
           </section>
-          <p className="text-muted-foreground">
-            Der angegebene Preis ist ein Monatsbeitrag. Die Kündigung richtet sich nach den oben
-            gezeigten Kündigungsbedingungen.
-          </p>
           <p className="text-muted-foreground">
             Für die Zahlung stehen dir im Checkout aktuell Karte und SEPA-Lastschrift zur
             Verfügung.

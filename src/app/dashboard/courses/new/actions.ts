@@ -3,7 +3,6 @@
 import { redirect } from "next/navigation";
 import {
   getProviderDisplayName,
-  isCancellationModel,
   isWorkshopStornoPolicy,
   type ProviderType,
 } from "@/lib/provider-profiles";
@@ -360,7 +359,7 @@ async function createOrUpdateCourse(
   const recurrence_type = String(formData.get("recurrence_type") || "").trim();
   const trial_mode = String(formData.get("trial_mode") || "all_sessions").trim().toLowerCase();
   const selectedTrialSlotStarts = parseIsoDateTimeList(formData.getAll("trial_slot_starts_at"));
-  const cancellation_model = String(formData.get("cancellation_model") || "").trim();
+  const cancellation_model = "monthly";
 
   if (weekday === null || weekday < 0 || weekday > 6) {
     return { error: "Bitte wähle einen gültigen Wochentag (0-6)." };
@@ -374,10 +373,6 @@ async function createOrUpdateCourse(
   if (trial_mode !== "all_sessions" && trial_mode !== "manual") {
     return { error: "Bitte wähle eine gültige Probestunden-Regel." };
   }
-  if (!isCancellationModel(cancellation_model)) {
-    return { error: "Bitte wähle ein gültiges Kündigungsmodell." };
-  }
-
   const startDateWeekday = getWeekdayForDate(start_date);
   if (startDateWeekday === null) {
     return { error: "Bitte wähle ein gültiges Startdatum für den Kurs." };

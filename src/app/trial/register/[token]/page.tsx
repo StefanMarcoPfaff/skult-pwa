@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { formatCourseEndDate, isCourseClosedForNewRegistrations } from "@/lib/course-ending";
-import { formatRecurringCoursePrice, getCancellationNotice } from "@/lib/course-display";
+import { formatRecurringCoursePrice } from "@/lib/course-display";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
-import { getCourseTerminationModelSummary } from "@/lib/offer-policies";
 import { loadTicketBySubscriptionId } from "@/lib/tickets";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import RegistrationForm from "./RegistrationForm";
@@ -157,10 +156,6 @@ export default async function TrialRegistrationTokenPage({
           providerType: profile?.provider_type ?? null,
           instructorName: course?.instructor_name ?? null,
           priceLabel: formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null),
-          cancellationLabel: getCourseTerminationModelSummary({
-            termination_model: course?.cancellation_model,
-          }),
-          cancellationNotice: getCancellationNotice(course?.cancellation_model),
           location: course?.location ?? null,
           locationDetails: course?.location_details ?? null,
         }}

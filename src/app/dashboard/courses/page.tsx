@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { formatCourseEndDate, isCourseEnded, isCourseEndingScheduled } from "@/lib/course-ending";
 import {
-  getCourseTerminationModelSummary,
   getCourseTerminationModelValue,
   getWorkshopCancellationPolicySummary,
   getWorkshopCancellationPolicyValue,
@@ -193,7 +192,7 @@ export default async function DashboardCoursesPage({
             const courseTiming = formatCourseSchedule(offer.weekday, offer.start_time, offer.recurrence_type);
             const policyLabel =
               kind === "course"
-                ? getCourseTerminationModelSummary({ termination_model: offer.cancellation_model })
+                ? "Abrechnung: monatlich | Kursmodell: fortlaufend"
                 : getWorkshopCancellationPolicySummary({
                     cancellation_policy: offer.workshop_storno_policy,
                   });
@@ -222,7 +221,7 @@ export default async function DashboardCoursesPage({
                   {kind === "course" && courseTiming ? <p>{courseTiming}</p> : null}
                   {kind === "course" && courseEndLabel ? <p>Letzter Kurstag: {courseEndLabel}</p> : null}
                   <p>
-                    {kind === "course" ? "Kündigungsbedingungen" : "Stornierungsbedingungen"}: {policyLabel}
+                    {kind === "course" ? "Kursmodell" : "Stornierungsbedingungen"}: {policyLabel}
                   </p>
                   {!offer.is_published && isMissingPolicy ? (
                     <p className="text-red-700">Vor Veröffentlichung muss zuerst eine Regel hinterlegt sein.</p>

@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { buildTrialSlot } from "@/app/courses/[id]/trial-slots";
 import { generateRecurringCourseSessions } from "@/lib/course-sessions";
 import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
-import type { CancellationModel, ProviderType } from "@/lib/provider-profiles";
+import type { ProviderType } from "@/lib/provider-profiles";
 import { STRIPE_PLATFORM_FEE_PERCENT } from "@/lib/stripe-connect";
-import { buildTrialSlot } from "@/app/courses/[id]/trial-slots";
 import { createCourseAction } from "../actions";
 
 const weekdayOptions = [
@@ -16,12 +16,6 @@ const weekdayOptions = [
   { value: "5", label: "Freitag" },
   { value: "6", label: "Samstag" },
   { value: "0", label: "Sonntag" },
-];
-
-const cancellationOptions: Array<{ value: CancellationModel; label: string }> = [
-  { value: "monthly", label: "Monatlich kündbar" },
-  { value: "quarterly", label: "Vierteljährlich kündbar" },
-  { value: "semiannual", label: "Halbjährlich kündbar" },
 ];
 
 export type CourseFormValues = {
@@ -39,7 +33,6 @@ export type CourseFormValues = {
   price_eur?: string;
   currency?: string;
   instructor_name?: string;
-  cancellation_model?: CancellationModel;
   trial_slot_starts?: string[];
 };
 
@@ -128,7 +121,12 @@ export default function CourseForm({
     const weekdayValue = Number(weekday);
     const durationValue = Number(durationMinutes);
 
-    if (!startsAt || !Number.isInteger(weekdayValue) || !Number.isFinite(durationValue) || durationValue <= 0) {
+    if (
+      !startsAt ||
+      !Number.isInteger(weekdayValue) ||
+      !Number.isFinite(durationValue) ||
+      durationValue <= 0
+    ) {
       return [];
     }
 
@@ -154,28 +152,27 @@ export default function CourseForm({
 
   const submitAction = (formData: FormData) => {
     const title = String(formData.get("title") ?? "").trim();
-    const weekday = String(formData.get("weekday") ?? "").trim();
-    const startDate = String(formData.get("start_date") ?? "").trim();
-    const startTime = String(formData.get("start_time") ?? "").trim();
+    const weekdayValue = String(formData.get("weekday") ?? "").trim();
+    const startDateValue = String(formData.get("start_date") ?? "").trim();
+    const startTimeValue = String(formData.get("start_time") ?? "").trim();
     const duration = String(formData.get("duration_minutes") ?? "").trim();
     const recurrence = String(formData.get("recurrence_type") ?? "").trim();
-    const trialMode = String(formData.get("trial_mode") ?? "all_sessions").trim();
-    const cancellationModel = String(formData.get("cancellation_model") ?? "").trim();
+    const trialModeValue = String(formData.get("trial_mode") ?? "all_sessions").trim();
     const instructorName = String(formData.get("instructor_name") ?? "").trim();
 
     if (!title) {
       setError("Bitte gib einen Titel ein.");
       return;
     }
-    if (!weekday) {
+    if (!weekdayValue) {
       setError("Bitte wähle einen Wochentag.");
       return;
     }
-    if (!startDate) {
+    if (!startDateValue) {
       setError("Bitte wähle ein Startdatum für den Kurs.");
       return;
     }
-    if (!startTime) {
+    if (!startTimeValue) {
       setError("Bitte gib eine Startzeit an.");
       return;
     }
@@ -187,16 +184,12 @@ export default function CourseForm({
       setError("Bitte wähle einen Rhythmus.");
       return;
     }
-    if (trialMode !== "all_sessions" && trialMode !== "manual") {
+    if (trialModeValue !== "all_sessions" && trialModeValue !== "manual") {
       setError("Bitte wähle eine gültige Probestunden-Regel.");
       return;
     }
-    if (trialMode === "manual" && selectedTrialStarts.length === 0) {
+    if (trialModeValue === "manual" && selectedTrialStarts.length === 0) {
       setError("Bitte wähle mindestens einen Termin für Probestunden aus.");
-      return;
-    }
-    if (!cancellationModel) {
-      setError("Bitte wähle ein Kündigungsmodell.");
       return;
     }
     if (providerType === "studio_provider" && !instructorName) {
@@ -204,8 +197,8 @@ export default function CourseForm({
       return;
     }
 
-    const selectedWeekday = Number(weekday);
-    const startDateWeekday = getWeekdayForDate(startDate);
+    const selectedWeekday = Number(weekdayValue);
+    const startDateWeekday = getWeekdayForDate(startDateValue);
     if (!Number.isInteger(selectedWeekday) || startDateWeekday === null) {
       setError("Bitte wähle ein gültiges Startdatum für den Kurs.");
       return;
@@ -455,29 +448,13 @@ export default function CourseForm({
         </section>
       ) : null}
 
-      <label className="block space-y-1">
-        <span className="text-sm font-medium">Kündigungsmodell *</span>
-        <select
-          name="cancellation_model"
-          required
-          defaultValue={initialValues?.cancellation_model ?? "monthly"}
-          className="w-full rounded-xl border px-3 py-2 text-sm"
-        >
-          {cancellationOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <span className="block text-xs text-muted-foreground">
-          Kund*innen lieben Flexibilität. Kürzere Kündigungsfristen führen oft zu mehr
-          Buchungen.
-        </span>
-        <span className="block text-xs text-muted-foreground">
-          Monatlich endet einen Monat nach der Kündigung, vierteljährlich nach drei Monaten
-          und halbjährlich nach sechs Monaten.
-        </span>
-      </label>
+      <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+        <h2 className="font-medium text-foreground">Hinweis</h2>
+        <p className="mt-2 text-muted-foreground">
+          Dieser Kurs ist fortlaufend. Du kannst den Kurs später in deinem Profil pausieren oder
+          stoppen.
+        </p>
+      </section>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <label className="space-y-1 sm:col-span-1">
@@ -539,8 +516,8 @@ export default function CourseForm({
           </div>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Die voraussichtliche Auszahlung pro Monat berechnet sich aus dem Monatsbeitrag
-          abzüglich der Plattformgebühr von {STRIPE_PLATFORM_FEE_PERCENT} %.
+          Die voraussichtliche Auszahlung pro Monat berechnet sich aus dem Monatsbeitrag abzüglich
+          der Plattformgebühr von {STRIPE_PLATFORM_FEE_PERCENT} %.
         </p>
       </div>
 

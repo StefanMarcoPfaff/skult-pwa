@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCancellationModelLabel, getProviderDisplayName } from "@/lib/provider-profiles";
+import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -321,9 +321,8 @@ export default async function DashboardParticipantDetailPage({
           {formatPrice(course.price_cents, course.currency) ? (
             <p>Preis: <span className="font-medium text-foreground">{formatPrice(course.price_cents, course.currency)}</span></p>
           ) : null}
-          {course.cancellation_model ? (
-            <p>Kündigungsmodell: <span className="font-medium text-foreground">{getCancellationModelLabel(course.cancellation_model)}</span></p>
-          ) : null}
+          <p>Abrechnung: <span className="font-medium text-foreground">monatlich</span></p>
+          <p>Kursmodell: <span className="font-medium text-foreground">fortlaufend</span></p>
           {course.location ? <p>Ort: <span className="font-medium text-foreground">{course.location}</span></p> : null}
           {course.location_details ? <p>Raum / Zusatzinfo: <span className="font-medium text-foreground">{course.location_details}</span></p> : null}
           <p>Probestunde: <span className="font-medium text-foreground">{`${formatDateTime(reservation.trial_starts_at)} - ${formatDateTime(reservation.trial_ends_at)}`}</span></p>
