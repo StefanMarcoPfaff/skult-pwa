@@ -14,7 +14,10 @@ import {
 } from "@/lib/course-ending";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { sendCourseEndingNotificationEmail } from "@/lib/trial-reservation-emails";
+import {
+  sendCourseEndingNotificationEmail,
+  sendCourseEndingProviderSummaryEmail,
+} from "@/lib/trial-reservation-emails";
 
 type PublishMode = "published" | "draft";
 
@@ -49,6 +52,20 @@ type ProfileRow = {
 
 function withSavedParam(targetPath: string, value: string) {
   return `${targetPath}${targetPath.includes("?") ? "&" : "?"}saved=${value}`;
+}
+
+function logCourseStopInfo(message: string, payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === "production") return;
+  console.log("[course end scheduling]", message, payload);
+}
+
+function logCourseStopError(context: string, error: unknown, extra?: Record<string, unknown>) {
+  if (process.env.NODE_ENV === "production") return;
+  console.error("[course end scheduling]", {
+    context,
+    error: error instanceof Error ? error.message : String(error),
+    ...extra,
+  });
 }
 
 export async function setCoursePublishStateAction(formData: FormData) {
@@ -172,7 +189,7 @@ export async function scheduleCourseEndAction(formData: FormData) {
     redirect(`${targetPath}${targetPath.includes("?") ? "&" : "?"}saved=ending_error`);
   }
 
-  const [{ data: registrationIntents }, { data: profile }] = await Promise.all([
+  const [{ data: registrationIntents }, { data: profile }, teacherAuthResult] = await Promise.all([
     admin
       .from("course_registration_intents")
       .select("id,first_name,last_name,email,stripe_subscription_id")
@@ -184,6 +201,7 @@ export async function scheduleCourseEndAction(formData: FormData) {
       .select("first_name,last_name,provider_type,organization_name,photo_url")
       .eq("id", user.id)
       .maybeSingle<ProfileRow>(),
+    admin.auth.admin.getUserById(user.id),
   ]);
 
   const providerType = profile?.provider_type ?? "independent_teacher";
@@ -192,10 +210,14 @@ export async function scheduleCourseEndAction(formData: FormData) {
     last_name: profile?.last_name,
     organization_name: profile?.organization_name,
   });
+  const providerEmail = teacherAuthResult.data.user?.email?.trim() || null;
 
   const stripe = getStripe();
   const cancelAt = Math.floor(new Date(endsAt).getTime() / 1000);
   let hadSubscriptionErrors = false;
+  const notifiedCustomerEmails: string[] = [];
+  let customerNotificationAttempts = 0;
+  let customerNotificationFailures = 0;
 
   for (const intent of registrationIntents ?? []) {
     if (intent.stripe_subscription_id) {
@@ -211,17 +233,22 @@ export async function scheduleCourseEndAction(formData: FormData) {
           .eq("id", intent.id);
       } catch (error) {
         hadSubscriptionErrors = true;
-        console.error("[course end scheduling]", {
-          context: "stripe.subscription.update",
+        logCourseStopError("stripe.subscription.update", error, {
           registrationIntentId: intent.id,
           subscriptionId: intent.stripe_subscription_id,
-          error: error instanceof Error ? error.message : String(error),
         });
       }
     }
 
     if (intent.email) {
+      customerNotificationAttempts += 1;
       try {
+        logCourseStopInfo("participant notification email attempt", {
+          registrationIntentId: intent.id,
+          recipient: intent.email,
+          courseId,
+        });
+
         await sendCourseEndingNotificationEmail({
           registrationIntentId: intent.id,
           courseTitle: course.title ?? "Kurs",
@@ -242,18 +269,71 @@ export async function scheduleCourseEndAction(formData: FormData) {
           locationDetails: course.location_details,
         });
 
+        notifiedCustomerEmails.push(intent.email);
+        logCourseStopInfo("participant notification email sent", {
+          registrationIntentId: intent.id,
+          recipient: intent.email,
+          courseId,
+        });
+
         await admin
           .from("course_registration_intents")
           .update({ course_end_notification_sent_at: new Date().toISOString() })
           .eq("id", intent.id);
       } catch (error) {
-        console.error("[course end scheduling]", {
-          context: "send.course_end_notification",
+        customerNotificationFailures += 1;
+        logCourseStopError("send.course_end_notification", error, {
           registrationIntentId: intent.id,
-          error: error instanceof Error ? error.message : String(error),
+          recipient: intent.email,
+          courseId,
         });
       }
+    } else {
+      logCourseStopInfo("participant notification email skipped", {
+        registrationIntentId: intent.id,
+        reason: "missing-recipient",
+        courseId,
+      });
     }
+  }
+
+  if (providerEmail) {
+    try {
+      logCourseStopInfo("provider course-stop summary email attempt", {
+        recipient: providerEmail,
+        courseId,
+        recipientCount: notifiedCustomerEmails.length,
+        attemptedParticipantEmails: customerNotificationAttempts,
+        failedParticipantEmails: customerNotificationFailures,
+      });
+
+      const result = await sendCourseEndingProviderSummaryEmail({
+        teacherEmail: providerEmail,
+        courseTitle: course.title ?? "Kurs",
+        courseEndsAt: endsAt,
+        recipientCount: notifiedCustomerEmails.length,
+        recipientEmails: notifiedCustomerEmails,
+      });
+
+      logCourseStopInfo("provider course-stop summary email sent", {
+        recipient: providerEmail,
+        courseId,
+        recipientCount: notifiedCustomerEmails.length,
+        messageId: result?.data?.id ?? null,
+      });
+    } catch (error) {
+      logCourseStopError("send.provider_course_end_summary", error, {
+        recipient: providerEmail,
+        courseId,
+        recipientCount: notifiedCustomerEmails.length,
+      });
+    }
+  } else {
+    logCourseStopInfo("provider course-stop summary email skipped", {
+      reason: "missing-recipient",
+      courseId,
+      recipientCount: notifiedCustomerEmails.length,
+    });
   }
 
   const result = hadSubscriptionErrors ? "ending_partial" : "ending_scheduled";

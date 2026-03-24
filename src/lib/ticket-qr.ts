@@ -12,6 +12,7 @@ export function buildTicketViewUrl(qrToken: string): string {
 }
 
 export function buildTicketWalletUrl(qrToken: string): string {
+  // TODO(wallet): Replace this placeholder anchor with a real Apple Wallet / Google Wallet pass export URL.
   const url = new URL(`/ticket/qr/${qrToken}`, getSiteUrl());
   url.hash = "wallet";
   return url.toString();

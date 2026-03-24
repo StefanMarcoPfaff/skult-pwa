@@ -2,6 +2,7 @@ import {
   sendTrialReservationReminderEmail,
   type TrialReservationEmailData,
 } from "@/lib/trial-reservation-emails";
+import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 type TrialReservationReminderRow = {
@@ -26,6 +27,9 @@ type CourseMailRow = {
 type ProfileRow = {
   first_name: string | null;
   last_name: string | null;
+  provider_type: "independent_teacher" | "studio_provider" | null;
+  organization_name: string | null;
+  photo_url: string | null;
 };
 
 type SupabaseLikeError = {
@@ -71,12 +75,16 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
 
   let teacherName: string | null = null;
   let teacherEmail: string | null = null;
+  let providerType: "independent_teacher" | "studio_provider" | null = null;
+  let providerName: string | null = null;
+  let senderDisplayName: string | null = null;
+  let senderImageUrl: string | null = null;
 
   if (course.teacher_id) {
     const [{ data: profile }, authResult] = await Promise.all([
       admin
         .from("profiles")
-        .select("first_name,last_name")
+        .select("first_name,last_name,provider_type,organization_name,photo_url")
         .eq("id", course.teacher_id)
         .maybeSingle<ProfileRow>(),
       admin.auth.admin.getUserById(course.teacher_id),
@@ -85,6 +93,11 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
     const nameParts = [profile?.first_name, profile?.last_name].filter(Boolean);
     teacherName = nameParts.length > 0 ? nameParts.join(" ") : null;
     teacherEmail = authResult.data.user?.email ?? null;
+    providerType = profile?.provider_type ?? null;
+    providerName =
+      profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
+    senderDisplayName = providerType === "studio_provider" ? providerName : teacherName;
+    senderImageUrl = profile?.photo_url ?? null;
   }
 
   return {
@@ -92,6 +105,10 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
     location: course.location,
     teacherName,
     teacherEmail,
+    providerType,
+    providerName,
+    senderDisplayName,
+    senderImageUrl,
   };
 }
 
@@ -119,8 +136,12 @@ function toEmailPayload(
   return {
     reservationId: reservation.id,
     courseTitle: mailContext.courseTitle,
+    providerType: mailContext.providerType,
+    providerName: mailContext.providerName,
     teacherName: mailContext.teacherName,
     teacherEmail: mailContext.teacherEmail,
+    senderDisplayName: mailContext.senderDisplayName,
+    senderImageUrl: mailContext.senderImageUrl,
     customerName: [reservation.first_name, reservation.last_name].filter(Boolean).join(" ").trim() || "du",
     customerEmail: reservation.email,
     location: mailContext.location,

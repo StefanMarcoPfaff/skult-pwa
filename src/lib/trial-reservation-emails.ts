@@ -96,6 +96,14 @@ export type CourseEndingNotificationEmailData = {
   locationDetails: string | null;
 };
 
+export type CourseEndingProviderSummaryEmailData = {
+  teacherEmail: string | null;
+  courseTitle: string;
+  courseEndsAt: string;
+  recipientCount: number;
+  recipientEmails: string[];
+};
+
 export type TeacherTrialDecisionReminderEmailData = {
   reservationId: string;
   courseTitle: string;
@@ -240,6 +248,13 @@ function renderReserFooterHtml() {
 
 function renderReserFooterText() {
   return ["Herzliche Grüße,", "RESER", "Find it. Try it. Book it."].join("\n");
+}
+
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!local || !domain) return email;
+  if (local.length <= 2) return `${local[0] ?? "*"}*@${domain}`;
+  return `${local.slice(0, 2)}***@${domain}`;
 }
 
 function buildFooterBranding(input: {
@@ -920,6 +935,50 @@ export function prepareCourseEndingNotificationEmail(data: CourseEndingNotificat
   };
 }
 
+export function prepareCourseEndingProviderSummaryEmail(data: CourseEndingProviderSummaryEmailData) {
+  const endDate = new Date(data.courseEndsAt).toLocaleDateString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+  const maskedRecipients = data.recipientEmails.map(maskEmail);
+  const footerHtml = renderReserFooterHtml();
+  const footerText = renderReserFooterText();
+
+  return {
+    to: data.teacherEmail ?? "",
+    subject: `Kursstopp-Benachrichtigung versendet: ${data.courseTitle}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+        <h2>Kursstopp-Benachrichtigung versendet</h2>
+        <p>Die Benachrichtigung Ã¼ber das Kursende wurde an die betroffenen Teilnehmer versendet.</p>
+        <p><b>Kurs:</b> ${data.courseTitle}</p>
+        <p><b>Letzter Kurstag:</b> ${endDate}</p>
+        <p><b>Anzahl EmpfÃ¤nger:</b> ${data.recipientCount}</p>
+        ${
+          maskedRecipients.length > 0
+            ? `<div><p><b>Benachrichtigte E-Mail-Adressen:</b></p><ul>${maskedRecipients
+                .map((email) => `<li>${email}</li>`)
+                .join("")}</ul></div>`
+            : "<p><b>Benachrichtigte E-Mail-Adressen:</b> Keine</p>"
+        }
+        ${footerHtml}
+      </div>
+    `,
+    text: [
+      "Kursstopp-Benachrichtigung versendet",
+      "Die Benachrichtigung Ã¼ber das Kursende wurde an die betroffenen Teilnehmer versendet.",
+      `Kurs: ${data.courseTitle}`,
+      `Letzter Kurstag: ${endDate}`,
+      `Anzahl EmpfÃ¤nger: ${data.recipientCount}`,
+      maskedRecipients.length > 0 ? "Benachrichtigte E-Mail-Adressen:" : "Benachrichtigte E-Mail-Adressen: Keine",
+      ...maskedRecipients,
+      "",
+      footerText,
+    ].join("\n"),
+  };
+}
+
 export function prepareTrialRegistrationRejectedEmail(data: TrialRegistrationDecisionEmailData) {
   return {
     to: data.customerEmail,
@@ -1167,6 +1226,28 @@ export async function sendCourseSubscriptionProviderNotificationEmail(
 export async function sendCourseEndingNotificationEmail(data: CourseEndingNotificationEmailData) {
   const resend = getResend();
   const email = prepareCourseEndingNotificationEmail(data);
+  return resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: email.to,
+    subject: email.subject,
+    html: email.html,
+    text: email.text,
+  });
+}
+
+export async function sendCourseEndingProviderSummaryEmail(
+  data: CourseEndingProviderSummaryEmailData
+) {
+  if (!data.teacherEmail) {
+    console.log("[course-ending-email] missing teacher email", {
+      courseTitle: data.courseTitle,
+      recipientCount: data.recipientCount,
+    });
+    return null;
+  }
+
+  const resend = getResend();
+  const email = prepareCourseEndingProviderSummaryEmail(data);
   return resend.emails.send({
     from: "onboarding@resend.dev",
     to: email.to,
