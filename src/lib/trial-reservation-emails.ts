@@ -14,8 +14,12 @@ import { buildTicketCheckInUrl, buildTicketQrCodeDataUrl, buildTicketViewUrl } f
 export type TrialReservationEmailData = {
   reservationId: string;
   courseTitle: string;
+  providerType?: "independent_teacher" | "studio_provider" | null;
+  providerName?: string | null;
   teacherName: string | null;
   teacherEmail: string | null;
+  senderDisplayName?: string | null;
+  senderImageUrl?: string | null;
   customerName: string;
   customerEmail: string;
   location: string | null;
@@ -28,6 +32,8 @@ export type TrialReservationEmailData = {
 export type TrialRegistrationDecisionEmailData = {
   reservationId: string;
   courseTitle: string;
+  senderDisplayName?: string | null;
+  senderImageUrl?: string | null;
   customerName: string;
   customerEmail: string;
   registrationUrl?: string;
@@ -44,6 +50,8 @@ export type CourseSubscriptionConfirmationEmailData = {
   providerType?: "independent_teacher" | "studio_provider" | null;
   providerName: string | null;
   instructorName: string | null;
+  senderDisplayName?: string | null;
+  senderImageUrl?: string | null;
   customerName: string;
   customerEmail: string;
   priceLabel: string | null;
@@ -57,6 +65,8 @@ export type CourseSubscriptionConfirmationEmailData = {
 export type CourseSubscriptionProviderNotificationEmailData = {
   registrationIntentId: string;
   teacherEmail: string | null;
+  senderDisplayName?: string | null;
+  senderImageUrl?: string | null;
   participantName: string;
   participantEmail: string;
   participantPhone?: string | null;
@@ -73,6 +83,8 @@ export type CourseEndingNotificationEmailData = {
   providerType?: "independent_teacher" | "studio_provider" | null;
   providerName: string | null;
   instructorName: string | null;
+  senderDisplayName?: string | null;
+  senderImageUrl?: string | null;
   customerName: string;
   customerEmail: string;
   courseEndsAt: string;
@@ -86,6 +98,8 @@ export type TeacherTrialDecisionReminderEmailData = {
   courseTitle: string;
   teacherName: string | null;
   teacherEmail: string | null;
+  senderDisplayName?: string | null;
+  senderImageUrl?: string | null;
   customerName: string;
   customerEmail: string | null;
   trialStartsAt: string;
@@ -120,6 +134,11 @@ type EmailAction = {
 type InfoItem = {
   label: string;
   value: string | null | undefined;
+};
+
+type FooterBranding = {
+  senderName?: string | null;
+  senderImageUrl?: string | null;
 };
 
 function getSiteUrl(): string {
@@ -175,8 +194,54 @@ function renderSupportHtml() {
   return `<p style="margin: 24px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>`;
 }
 
-function renderFooterHtml() {
-  return `<p style="margin: 24px 0 0;">Herzliche Grüße<br />SKULT</p>`;
+function isHttpUrl(value: string | null | undefined): value is string {
+  return Boolean(value && /^https?:\/\//i.test(value));
+}
+
+function renderFooterHtml(branding?: FooterBranding) {
+  const senderName = branding?.senderName?.trim() || "SKULT";
+  const imageHtml = isHttpUrl(branding?.senderImageUrl)
+    ? `
+      <div style="margin: 18px 0 12px; text-align: center;">
+        <img
+          src="${branding?.senderImageUrl}"
+          alt="${senderName}"
+          style="max-height: 120px; width: auto; max-width: 220px; display: inline-block; border-radius: 12px;"
+        />
+      </div>
+    `
+    : "";
+
+  return `
+    <div style="margin: 24px 0 0; text-align: center;">
+      <p style="margin: 0;">Herzliche Grüße</p>
+      ${imageHtml}
+      <p style="margin: 0; font-weight: 600;">${senderName}</p>
+    </div>
+  `;
+}
+
+function renderFooterText(branding?: FooterBranding) {
+  return ["Herzliche Grüße", branding?.senderName?.trim() || "SKULT"].join("\n");
+}
+
+function buildFooterBranding(input: {
+  providerType?: "independent_teacher" | "studio_provider" | null;
+  providerName?: string | null;
+  teacherName?: string | null;
+  instructorName?: string | null;
+  senderDisplayName?: string | null;
+  senderImageUrl?: string | null;
+}): FooterBranding {
+  return {
+    senderName:
+      input.senderDisplayName ??
+      (shouldShowStudioLabel(input.providerType) ? input.providerName : null) ??
+      input.instructorName ??
+      input.teacherName ??
+      "SKULT",
+    senderImageUrl: input.senderImageUrl,
+  };
 }
 
 function buildProviderInfoItems(input: {
@@ -200,6 +265,7 @@ function createHtmlEmail(input: {
   nextSteps?: string[];
   actions?: EmailAction[];
   support?: string;
+  footer?: FooterBranding;
 }) {
   const greeting = input.greeting ? `<p style="margin: 0 0 16px;">Hallo ${input.greeting},</p>` : "";
   const infoBlock = renderInfoBlockHtml(input.infoItems ?? []);
@@ -224,7 +290,7 @@ function createHtmlEmail(input: {
       ${nextSteps}
       ${renderActionsHtml(input.actions ?? [])}
       ${input.support ?? renderSupportHtml()}
-      ${renderFooterHtml()}
+      ${renderFooterHtml(input.footer)}
     </div>
   `;
 }
@@ -237,6 +303,7 @@ function createTextEmail(input: {
   nextSteps?: string[];
   actions?: EmailAction[];
   support?: string;
+  footer?: FooterBranding;
 }) {
   const infoLines = (input.infoItems ?? [])
     .filter((item) => item.value)
@@ -258,8 +325,7 @@ function createTextEmail(input: {
     "",
     input.support ?? "Wenn du Fragen hast, helfen wir dir gerne weiter.",
     "",
-    "Herzliche Grüße",
-    "SKULT",
+    renderFooterText(input.footer),
   ]
     .filter(Boolean)
     .join("\n");
@@ -323,6 +389,7 @@ export async function prepareCustomerTrialReservationConfirmation(data: TrialRes
           { label: "Reservierung stornieren", href: data.cancelUrl },
         ],
         support: `${qrLines.html}<p style="margin: 18px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>`,
+        footer: buildFooterBranding(data),
       }),
     text: createTextEmail({
       title: "Deine Probestunde ist reserviert 🎉",
@@ -344,6 +411,7 @@ export async function prepareCustomerTrialReservationConfirmation(data: TrialRes
         { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
         { label: "Reservierung stornieren", href: data.cancelUrl },
       ],
+      footer: buildFooterBranding(data),
     }),
   };
 }
@@ -367,6 +435,7 @@ export function prepareCustomerTrialReservationReminder(data: TrialReservationEm
         "Falls du doch nicht teilnehmen kannst, storniere bitte rechtzeitig.",
       ],
       actions: [{ label: "Reservierung stornieren", href: data.cancelUrl }],
+      footer: buildFooterBranding(data),
     }),
     text: createTextEmail({
       title: "Erinnerung an deine Probestunde",
@@ -383,6 +452,7 @@ export function prepareCustomerTrialReservationReminder(data: TrialReservationEm
         "Falls du doch nicht teilnehmen kannst, storniere bitte rechtzeitig.",
       ],
       actions: [{ label: "Reservierung stornieren", href: data.cancelUrl }],
+      footer: buildFooterBranding(data),
     }),
   };
 }
@@ -391,6 +461,8 @@ export function prepareTeacherTrialReservationNotification(data: TrialReservatio
   const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
   const dateLine = `<p><b>Termin:</b> ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}</p>`;
   const teacherEmail = data.teacherEmail ?? "";
+  const footerHtml = renderFooterHtml(buildFooterBranding(data));
+  const footerText = renderFooterText(buildFooterBranding(data));
 
   return {
     to: teacherEmail,
@@ -404,6 +476,7 @@ export function prepareTeacherTrialReservationNotification(data: TrialReservatio
         ${locationLine}
         ${dateLine}
         <p>Eine erfolgreiche Probestunde kann später in eine reguläre Anmeldung übergehen.</p>
+        ${footerHtml}
       </div>
     `,
     text: [
@@ -413,6 +486,8 @@ export function prepareTeacherTrialReservationNotification(data: TrialReservatio
       data.location ? `Ort: ${data.location}` : null,
       `Termin: ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}`,
       "Hinweis: Diese Probestunde kann später in eine reguläre Anmeldung übergehen.",
+      "",
+      footerText,
     ]
       .filter(Boolean)
       .join("\n"),
@@ -423,6 +498,8 @@ export function prepareTeacherTrialReservationCancellation(data: TrialReservatio
   const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
   const dateLine = `<p><b>Stornierter Termin:</b> ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}</p>`;
   const teacherEmail = data.teacherEmail ?? "";
+  const footerHtml = renderFooterHtml(buildFooterBranding(data));
+  const footerText = renderFooterText(buildFooterBranding(data));
 
   return {
     to: teacherEmail,
@@ -435,6 +512,7 @@ export function prepareTeacherTrialReservationCancellation(data: TrialReservatio
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
         ${locationLine}
         ${dateLine}
+        ${footerHtml}
       </div>
     `,
     text: [
@@ -443,6 +521,8 @@ export function prepareTeacherTrialReservationCancellation(data: TrialReservatio
       `E-Mail: ${data.customerEmail}`,
       data.location ? `Ort: ${data.location}` : null,
       `Stornierter Termin: ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}`,
+      "",
+      footerText,
     ]
       .filter(Boolean)
       .join("\n"),
@@ -464,6 +544,7 @@ export function prepareCustomerTrialReservationCancellation(data: TrialReservati
       ],
       nextSteps: ["Wenn du weiterhin Interesse hast, kannst du später jederzeit erneut eine Probestunde anfragen."],
       actions: [{ label: "Zu den Kursen", href: buildAbsoluteUrl("/courses") }],
+      footer: buildFooterBranding(data),
     }),
     text: createTextEmail({
       title: "Deine Probestunde wurde storniert",
@@ -476,6 +557,7 @@ export function prepareCustomerTrialReservationCancellation(data: TrialReservati
       ],
       nextSteps: ["Wenn du weiterhin Interesse hast, kannst du später jederzeit erneut eine Probestunde anfragen."],
       actions: [{ label: "Zu den Kursen", href: buildAbsoluteUrl("/courses") }],
+      footer: buildFooterBranding(data),
     }),
   };
 }
@@ -513,6 +595,7 @@ export function prepareTrialRegistrationApprovedEmail(data: TrialRegistrationDec
             { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
           ]
         : [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+      footer: buildFooterBranding(data),
     }),
     text: createTextEmail({
       title: "Deine Anmeldung ist jetzt möglich ✨",
@@ -535,6 +618,7 @@ export function prepareTrialRegistrationApprovedEmail(data: TrialRegistrationDec
             { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
           ]
         : [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+      footer: buildFooterBranding(data),
     }),
   };
 }
@@ -561,6 +645,7 @@ function prepareTrialRegistrationReminderEmail(
       ],
       nextSteps: ["Schließe deine verbindliche Anmeldung rechtzeitig ab, damit dein Platz gesichert bleibt."],
       actions: data.registrationUrl ? [{ label: "Jetzt anmelden", href: data.registrationUrl }] : [],
+      footer: buildFooterBranding(data),
     }),
     text: createTextEmail({
       title: input.heading,
@@ -573,6 +658,7 @@ function prepareTrialRegistrationReminderEmail(
       ],
       nextSteps: ["Schließe deine verbindliche Anmeldung rechtzeitig ab, damit dein Platz gesichert bleibt."],
       actions: data.registrationUrl ? [{ label: "Jetzt anmelden", href: data.registrationUrl }] : [],
+      footer: buildFooterBranding(data),
     }),
   };
 }
@@ -615,6 +701,7 @@ export function prepareTrialRegistrationExpiredEmail(data: TrialRegistrationExpi
       infoItems: [{ label: "Kurs", value: data.courseTitle }],
       nextSteps: ["Wenn du weiterhin Interesse hast, schau dir gerne unsere aktuellen Kurse an."],
       actions: [{ label: "Zu meinen Kursen", href: data.coursesOverviewUrl }],
+      footer: buildFooterBranding(data),
     }),
     text: createTextEmail({
       title: "Dein Anmeldelink ist abgelaufen",
@@ -623,6 +710,7 @@ export function prepareTrialRegistrationExpiredEmail(data: TrialRegistrationExpi
       infoItems: [{ label: "Kurs", value: data.courseTitle }],
       nextSteps: ["Wenn du weiterhin Interesse hast, schau dir gerne unsere aktuellen Kurse an."],
       actions: [{ label: "Zu meinen Kursen", href: data.coursesOverviewUrl }],
+      footer: buildFooterBranding(data),
     }),
   };
 }
@@ -665,6 +753,7 @@ export async function prepareCourseSubscriptionConfirmationEmail(
           { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
         ],
         support: `${qrLines.html}<p style="margin: 18px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>`,
+        footer: buildFooterBranding(data),
       }),
     text: createTextEmail({
       title: "Deine Anmeldung war erfolgreich 🎉",
@@ -688,6 +777,7 @@ export async function prepareCourseSubscriptionConfirmationEmail(
         ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
         { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
       ],
+      footer: buildFooterBranding(data),
     }),
   };
 }
@@ -695,6 +785,9 @@ export async function prepareCourseSubscriptionConfirmationEmail(
 export function prepareCourseSubscriptionProviderNotificationEmail(
   data: CourseSubscriptionProviderNotificationEmailData
 ) {
+  const footerHtml = renderFooterHtml(buildFooterBranding(data));
+  const footerText = renderFooterText(buildFooterBranding(data));
+
   return {
     to: data.teacherEmail ?? "",
     subject: `Neue verbindliche Anmeldung: ${data.courseTitle}`,
@@ -709,6 +802,7 @@ export function prepareCourseSubscriptionProviderNotificationEmail(
         ${data.instructorName ? `<p><b>Dozent:</b> ${data.instructorName}</p>` : ""}
         ${data.priceLabel ? `<p><b>Preis:</b> ${data.priceLabel}</p>` : ""}
         ${data.cancellationLabel ? `<p><b>Kündigungsbedingungen:</b> ${data.cancellationLabel}</p>` : ""}
+        ${footerHtml}
       </div>
     `,
     text: [
@@ -721,6 +815,8 @@ export function prepareCourseSubscriptionProviderNotificationEmail(
       data.instructorName ? `Dozent: ${data.instructorName}` : null,
       data.priceLabel ? `Preis: ${data.priceLabel}` : null,
       data.cancellationLabel ? `Kündigungsbedingungen: ${data.cancellationLabel}` : null,
+      "",
+      footerText,
     ]
       .filter(Boolean)
       .join("\n"),
@@ -755,6 +851,7 @@ export function prepareCourseEndingNotificationEmail(data: CourseEndingNotificat
         "Falls es organisatorische Rückfragen gibt, melden wir uns separat bei dir.",
       ],
       actions: [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+      footer: buildFooterBranding(data),
     }),
     text: createTextEmail({
       title: "Wichtige Änderung zu deinem Kurs",
@@ -774,6 +871,7 @@ export function prepareCourseEndingNotificationEmail(data: CourseEndingNotificat
         "Falls es organisatorische Rückfragen gibt, melden wir uns separat bei dir.",
       ],
       actions: [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+      footer: buildFooterBranding(data),
     }),
   };
 }
@@ -792,6 +890,7 @@ export function prepareTrialRegistrationRejectedEmail(data: TrialRegistrationDec
         "Wenn es zu einem späteren Zeitpunkt besser passt, freuen wir uns sehr über ein Wiedersehen.",
       ],
       actions: [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+      footer: buildFooterBranding(data),
     }),
     text: createTextEmail({
       title: "Vielen Dank für deine Probestunde",
@@ -803,11 +902,15 @@ export function prepareTrialRegistrationRejectedEmail(data: TrialRegistrationDec
         "Wenn es zu einem späteren Zeitpunkt besser passt, freuen wir uns sehr über ein Wiedersehen.",
       ],
       actions: [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+      footer: buildFooterBranding(data),
     }),
   };
 }
 
 export function prepareTeacherTrialDecisionReminderEmail(data: TeacherTrialDecisionReminderEmailData) {
+  const footerHtml = renderFooterHtml(buildFooterBranding(data));
+  const footerText = renderFooterText(buildFooterBranding(data));
+
   return {
     to: data.teacherEmail ?? "",
     subject: `Bitte Entscheidung treffen: ${data.customerName} | ${data.courseTitle}`,
@@ -818,6 +921,7 @@ export function prepareTeacherTrialDecisionReminderEmail(data: TeacherTrialDecis
         <p><b>Termin:</b> ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}</p>
         <p>Bitte entscheide jetzt, ob du die Anmeldung freigeben oder absagen möchtest.</p>
         <p><a href="${data.dashboardUrl}">${data.dashboardUrl}</a></p>
+        ${footerHtml}
       </div>
     `,
     text: [
@@ -826,6 +930,8 @@ export function prepareTeacherTrialDecisionReminderEmail(data: TeacherTrialDecis
       `Termin: ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}`,
       "Bitte entscheide jetzt, ob du die Anmeldung freigeben oder absagen möchtest.",
       `Dashboard: ${data.dashboardUrl}`,
+      "",
+      footerText,
     ].join("\n"),
   };
 }

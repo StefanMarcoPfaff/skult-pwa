@@ -2,6 +2,7 @@
 
 import { randomBytes } from "crypto";
 import { redirect } from "next/navigation";
+import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
@@ -25,6 +26,14 @@ type CourseMailRow = {
   id: string;
   title: string | null;
   teacher_id: string | null;
+};
+
+type ProfileRow = {
+  first_name: string | null;
+  last_name: string | null;
+  provider_type: "independent_teacher" | "studio_provider" | null;
+  organization_name: string | null;
+  photo_url: string | null;
 };
 
 type SupabaseLikeError = {
@@ -108,7 +117,25 @@ async function loadReservationContext(admin: ReturnType<typeof createSupabaseAdm
     return null;
   }
 
-  return { reservation, course };
+  const { data: profile } = course.teacher_id
+    ? await admin
+        .from("profiles")
+        .select("first_name,last_name,provider_type,organization_name,photo_url")
+        .eq("id", course.teacher_id)
+        .maybeSingle<ProfileRow>()
+    : { data: null };
+
+  const teacherName =
+    [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null;
+  const providerName =
+    profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
+
+  return {
+    reservation,
+    course,
+    senderDisplayName: profile?.provider_type === "studio_provider" ? providerName : teacherName,
+    senderImageUrl: profile?.photo_url ?? null,
+  };
 }
 
 async function hasCheckedInTrialTicket(
@@ -215,6 +242,8 @@ export async function approveTrialReservationAction(formData: FormData) {
       const result = await sendTrialRegistrationApprovedEmail({
         reservationId: context.reservation.id,
         courseTitle: context.course.title ?? "Kurs",
+        senderDisplayName: context.senderDisplayName,
+        senderImageUrl: context.senderImageUrl,
         customerName: getCustomerName(context.reservation),
         customerEmail: context.reservation.email,
         registrationUrl,
@@ -299,6 +328,8 @@ export async function rejectTrialReservationAction(formData: FormData) {
       await sendTrialRegistrationRejectedEmail({
         reservationId: context.reservation.id,
         courseTitle: context.course.title ?? "Kurs",
+        senderDisplayName: context.senderDisplayName,
+        senderImageUrl: context.senderImageUrl,
         customerName: getCustomerName(context.reservation),
         customerEmail: context.reservation.email,
       });

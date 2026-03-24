@@ -20,6 +20,16 @@ export default function ReserveTrialButton({
     <form action={formAction} className="space-y-3">
       {state.error ? <p className="text-sm text-red-700">{state.error}</p> : null}
 
+      <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+        <h3 className="font-semibold text-foreground">Hinweis zur Probestunde</h3>
+        <p className="mt-2 text-muted-foreground">
+          Die erste Probestunde ist kostenlos und unverbindlich. Nach der Buchung erhältst du dein
+          Ticket per E-Mail. Dieses wird vor Ort vom Dozenten gescannt. Nach der Probestunde kann
+          der Dozent dir die verbindliche Anmeldung freigeben. Den Anmeldelink erhältst du
+          anschließend per E-Mail.
+        </p>
+      </section>
+
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">Verfügbare Probestunden-Termine *</legend>
         <div className="space-y-2">

@@ -54,6 +54,7 @@ type ProfileRow = {
   last_name: string | null;
   provider_type: "independent_teacher" | "studio_provider" | null;
   organization_name: string | null;
+  photo_url: string | null;
 };
 
 type ProviderContact = {
@@ -61,6 +62,7 @@ type ProviderContact = {
   providerName: string | null;
   providerEmail: string | null;
   providerContactName: string | null;
+  senderImageUrl: string | null;
 };
 
 type SupabaseLikeError = {
@@ -114,13 +116,14 @@ async function resolveProviderContact(
       providerName: null,
       providerEmail: null,
       providerContactName: null,
+      senderImageUrl: null,
     };
   }
 
   const [{ data: profile }, authResult] = await Promise.all([
     admin
       .from("profiles")
-      .select("first_name,last_name,provider_type,organization_name")
+      .select("first_name,last_name,provider_type,organization_name,photo_url")
       .eq("id", course.teacher_id)
       .maybeSingle<ProfileRow>(),
     admin.auth.admin.getUserById(course.teacher_id),
@@ -133,6 +136,7 @@ async function resolveProviderContact(
     providerEmail: authResult.data.user?.email?.trim() || null,
     providerContactName:
       [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null,
+    senderImageUrl: profile?.photo_url ?? null,
   };
 }
 
@@ -286,6 +290,11 @@ export default async function TrialRegistrationSuccessPage({
               providerType: providerContact.providerType,
               providerName,
               instructorName: course?.instructor_name ?? null,
+              senderDisplayName:
+                providerContact.providerType === "studio_provider"
+                  ? providerName
+                  : course?.instructor_name ?? providerContact.providerContactName,
+              senderImageUrl: providerContact.senderImageUrl,
               customerName,
               customerEmail: recipientEmail,
               priceLabel: formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null),
@@ -371,6 +380,11 @@ export default async function TrialRegistrationSuccessPage({
                 courseTitle: course?.title ?? "Kurs",
                 providerName,
                 instructorName: course?.instructor_name ?? providerContact.providerContactName,
+                senderDisplayName:
+                  providerContact.providerType === "studio_provider"
+                    ? providerName
+                    : course?.instructor_name ?? providerContact.providerContactName,
+                senderImageUrl: providerContact.senderImageUrl,
                 priceLabel: formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null),
                 cancellationLabel: "Monatlich zum Ende des Abrechnungszeitraums möglich.",
               });

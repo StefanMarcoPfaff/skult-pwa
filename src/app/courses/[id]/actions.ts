@@ -3,6 +3,7 @@
 import { randomBytes } from "crypto";
 import { redirect } from "next/navigation";
 import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
+import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -46,6 +47,9 @@ type CourseMailRow = {
 type ProfileRow = {
   first_name: string | null;
   last_name: string | null;
+  provider_type: "independent_teacher" | "studio_provider" | null;
+  organization_name: string | null;
+  photo_url: string | null;
 };
 
 type TrialReservationInsertRow = {
@@ -136,7 +140,7 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
     const [{ data: profile }, authResult] = await Promise.all([
       admin
         .from("profiles")
-        .select("first_name,last_name")
+        .select("first_name,last_name,provider_type,organization_name,photo_url")
         .eq("id", course.teacher_id)
         .maybeSingle<ProfileRow>(),
       admin.auth.admin.getUserById(course.teacher_id),
@@ -145,6 +149,21 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
     const nameParts = [profile?.first_name, profile?.last_name].filter(Boolean);
     teacherName = nameParts.length > 0 ? nameParts.join(" ") : null;
     teacherEmail = authResult.data.user?.email ?? null;
+
+    return {
+      courseTitle: course.title ?? "Kurs",
+      location: course.location,
+      teacherName,
+      teacherEmail,
+      providerType: profile?.provider_type ?? null,
+      providerName:
+        profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null,
+      senderDisplayName:
+        profile?.provider_type === "studio_provider"
+          ? getProviderDisplayName(profile.provider_type, profile)
+          : teacherName,
+      senderImageUrl: profile?.photo_url ?? null,
+    };
   }
 
   return {
@@ -152,6 +171,10 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
     location: course.location,
     teacherName,
     teacherEmail,
+    providerType: null,
+    providerName: null,
+    senderDisplayName: teacherName,
+    senderImageUrl: null,
   };
 }
 
@@ -346,8 +369,12 @@ export async function reserveTrialAction(
     await triggerReservationEmails(admin, {
       reservationId: inserted.id,
       courseTitle: mailContext.courseTitle,
+      providerType: mailContext.providerType,
+      providerName: mailContext.providerName,
       teacherName: mailContext.teacherName,
       teacherEmail: mailContext.teacherEmail,
+      senderDisplayName: mailContext.senderDisplayName,
+      senderImageUrl: mailContext.senderImageUrl,
       customerName: `${firstName} ${lastName}`.trim(),
       customerEmail: email,
       location: mailContext.location,

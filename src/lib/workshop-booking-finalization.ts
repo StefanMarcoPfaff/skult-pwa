@@ -42,6 +42,7 @@ type ProfileRow = {
   last_name: string | null;
   provider_type: "independent_teacher" | "studio_provider" | null;
   organization_name: string | null;
+  photo_url: string | null;
 };
 
 type ProviderContact = {
@@ -49,6 +50,7 @@ type ProviderContact = {
   providerName: string | null;
   providerEmail: string | null;
   providerContactName: string | null;
+  senderImageUrl: string | null;
 };
 
 function isDev() {
@@ -103,13 +105,14 @@ async function resolveWorkshopProviderContact(
       providerName: null,
       providerEmail: null,
       providerContactName: null,
+      senderImageUrl: null,
     };
   }
 
   const [{ data: profile }, authResult] = await Promise.all([
     admin
       .from("profiles")
-      .select("first_name,last_name,provider_type,organization_name")
+      .select("first_name,last_name,provider_type,organization_name,photo_url")
       .eq("id", course.teacher_id)
       .maybeSingle<ProfileRow>(),
     admin.auth.admin.getUserById(course.teacher_id),
@@ -125,6 +128,7 @@ async function resolveWorkshopProviderContact(
     providerName,
     providerEmail,
     providerContactName,
+    senderImageUrl: profile?.photo_url ?? null,
   };
 }
 
@@ -241,6 +245,11 @@ export async function finalizeWorkshopBookingBySession(
         providerName: providerContact.providerName,
         teacherName: course?.instructor_name ?? null,
         teacherEmail: null,
+        senderDisplayName:
+          providerContact.providerType === "studio_provider"
+            ? providerContact.providerName
+            : course?.instructor_name ?? providerContact.providerContactName,
+        senderImageUrl: providerContact.senderImageUrl,
         customerName,
         customerEmail,
         customerPhone: booking.customer_phone?.trim() || null,
@@ -321,6 +330,11 @@ export async function finalizeWorkshopBookingBySession(
           providerName: providerContact.providerName,
           teacherName: providerContact.providerContactName,
           teacherEmail: providerEmail,
+          senderDisplayName:
+            providerContact.providerType === "studio_provider"
+              ? providerContact.providerName
+              : providerContact.providerContactName,
+          senderImageUrl: providerContact.senderImageUrl,
           customerName,
           customerEmail: customerEmail ?? "",
           customerPhone: booking.customer_phone?.trim() || null,

@@ -2,6 +2,7 @@ import {
   sendTeacherTrialDecisionReminderEmail,
   type TeacherTrialDecisionReminderEmailData,
 } from "@/lib/trial-reservation-emails";
+import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 type TrialDecisionReminderRow = {
@@ -30,6 +31,9 @@ type CourseMailRow = {
 type ProfileRow = {
   first_name: string | null;
   last_name: string | null;
+  provider_type: "independent_teacher" | "studio_provider" | null;
+  organization_name: string | null;
+  photo_url: string | null;
 };
 
 type SupabaseLikeError = {
@@ -106,7 +110,7 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
   const [{ data: profile }, authResult] = await Promise.all([
     admin
       .from("profiles")
-      .select("first_name,last_name")
+      .select("first_name,last_name,provider_type,organization_name,photo_url")
       .eq("id", course.teacher_id)
       .maybeSingle<ProfileRow>(),
     admin.auth.admin.getUserById(course.teacher_id),
@@ -118,6 +122,13 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
     courseTitle: course.title ?? "Kurs",
     teacherName: nameParts.length > 0 ? nameParts.join(" ") : null,
     teacherEmail: authResult.data.user?.email ?? null,
+    senderDisplayName:
+      profile?.provider_type === "studio_provider"
+        ? getProviderDisplayName(profile.provider_type, profile)
+        : nameParts.length > 0
+          ? nameParts.join(" ")
+          : null,
+    senderImageUrl: profile?.photo_url ?? null,
   };
 }
 
@@ -132,6 +143,8 @@ function toEmailPayload(
     courseTitle: mailContext.courseTitle,
     teacherName: mailContext.teacherName,
     teacherEmail: mailContext.teacherEmail,
+    senderDisplayName: mailContext.senderDisplayName,
+    senderImageUrl: mailContext.senderImageUrl,
     customerName: [reservation.first_name, reservation.last_name].filter(Boolean).join(" ").trim() || "Der Probeschüler",
     customerEmail: reservation.email,
     trialStartsAt: reservation.trial_starts_at,

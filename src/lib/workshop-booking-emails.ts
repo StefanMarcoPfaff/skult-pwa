@@ -17,6 +17,8 @@ export type WorkshopBookingEmailData = {
   providerName: string | null;
   teacherName: string | null;
   teacherEmail: string | null;
+  senderDisplayName?: string | null;
+  senderImageUrl?: string | null;
   customerName: string;
   customerEmail: string;
   customerPhone?: string | null;
@@ -36,6 +38,11 @@ type EmailAction = {
 type InfoItem = {
   label: string;
   value: string | null | undefined;
+};
+
+type FooterBranding = {
+  senderName?: string | null;
+  senderImageUrl?: string | null;
 };
 
 function buildProviderInfoItems(input: {
@@ -100,6 +107,48 @@ function renderActionsHtml(actions: EmailAction[]): string {
   `;
 }
 
+function isHttpUrl(value: string | null | undefined): value is string {
+  return Boolean(value && /^https?:\/\//i.test(value));
+}
+
+function renderFooterHtml(branding?: FooterBranding) {
+  const senderName = branding?.senderName?.trim() || "SKULT";
+  const imageHtml = isHttpUrl(branding?.senderImageUrl)
+    ? `
+      <div style="margin: 18px 0 12px; text-align: center;">
+        <img
+          src="${branding?.senderImageUrl}"
+          alt="${senderName}"
+          style="max-height: 120px; width: auto; max-width: 220px; display: inline-block; border-radius: 12px;"
+        />
+      </div>
+    `
+    : "";
+
+  return `
+    <div style="margin: 24px 0 0; text-align: center;">
+      <p style="margin: 0;">Herzliche Grüße</p>
+      ${imageHtml}
+      <p style="margin: 0; font-weight: 600;">${senderName}</p>
+    </div>
+  `;
+}
+
+function renderFooterText(branding?: FooterBranding) {
+  return ["Herzliche Grüße", branding?.senderName?.trim() || "SKULT"].join("\n");
+}
+
+function buildFooterBranding(data: WorkshopBookingEmailData): FooterBranding {
+  return {
+    senderName:
+      data.senderDisplayName ??
+      (shouldShowStudioLabel(data.providerType) ? data.providerName : null) ??
+      data.teacherName ??
+      "SKULT",
+    senderImageUrl: data.senderImageUrl,
+  };
+}
+
 function createHtmlEmail(input: {
   title: string;
   greeting?: string;
@@ -108,6 +157,7 @@ function createHtmlEmail(input: {
   nextSteps?: string[];
   actions?: EmailAction[];
   support?: string;
+  footer?: FooterBranding;
 }) {
   const infoBlock = renderInfoBlockHtml(input.infoItems ?? []);
   const greeting = input.greeting ? `<p style="margin: 0 0 16px;">Hallo ${input.greeting},</p>` : "";
@@ -132,7 +182,7 @@ function createHtmlEmail(input: {
       ${nextSteps}
       ${renderActionsHtml(input.actions ?? [])}
       ${input.support ?? `<p style="margin: 24px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>`}
-      <p style="margin: 24px 0 0;">Herzliche Grüße<br />SKULT</p>
+      ${renderFooterHtml(input.footer)}
     </div>
   `;
 }
@@ -145,6 +195,7 @@ function createTextEmail(input: {
   nextSteps?: string[];
   actions?: EmailAction[];
   support?: string;
+  footer?: FooterBranding;
 }) {
   const infoLines = (input.infoItems ?? [])
     .filter((item) => item.value)
@@ -166,8 +217,7 @@ function createTextEmail(input: {
     "",
     input.support ?? "Wenn du Fragen hast, helfen wir dir gerne weiter.",
     "",
-    "Herzliche Grüße",
-    "SKULT",
+    renderFooterText(input.footer),
   ]
     .filter(Boolean)
     .join("\n");
@@ -214,6 +264,7 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
           </div>
           <p style="margin: 18px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>
         `,
+        footer: buildFooterBranding(data),
       }),
     text: createTextEmail({
       title: "Deine Workshop-Buchung war erfolgreich 🎉",
@@ -237,11 +288,15 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
         { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
       ],
       support: `Ticket-Link: ${qrUrl}`,
+      footer: buildFooterBranding(data),
     }),
   };
 }
 
 export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingEmailData) {
+  const footerHtml = renderFooterHtml(buildFooterBranding(data));
+  const footerText = renderFooterText(buildFooterBranding(data));
+
   return {
     to: data.teacherEmail ?? "",
     subject: `Neue Workshop-Anmeldung: ${data.workshopTitle}`,
@@ -260,6 +315,7 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
             ? `<div><p><b>Termine:</b></p><ul>${data.sessionLines.map((line) => `<li>${line}</li>`).join("")}</ul></div>`
             : "<p><b>Termin:</b> Termin folgt</p>"
         }
+        ${footerHtml}
       </div>
     `,
     text: [
@@ -273,6 +329,8 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
       data.priceLabel ? `Preis: ${data.priceLabel}` : null,
       data.sessionLines.length > 0 ? "Termine:" : "Termin: Termin folgt",
       ...data.sessionLines,
+      "",
+      footerText,
     ]
       .filter(Boolean)
       .join("\n"),

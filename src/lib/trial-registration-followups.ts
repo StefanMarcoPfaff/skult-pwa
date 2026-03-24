@@ -5,6 +5,7 @@ import {
   sendTrialRegistrationReminder72hEmail,
   type TrialRegistrationDecisionEmailData,
 } from "@/lib/trial-reservation-emails";
+import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 type TrialRegistrationFollowupRow = {
@@ -28,6 +29,15 @@ type TrialRegistrationFollowupRow = {
 type CourseRow = {
   id: string;
   title: string | null;
+  teacher_id: string | null;
+};
+
+type ProfileRow = {
+  first_name: string | null;
+  last_name: string | null;
+  provider_type: "independent_teacher" | "studio_provider" | null;
+  organization_name: string | null;
+  photo_url: string | null;
 };
 
 type SupabaseLikeError = {
@@ -103,7 +113,7 @@ function getCustomerName(reservation: TrialRegistrationFollowupRow): string {
 async function loadCourse(admin: ReturnType<typeof createSupabaseAdmin>, courseId: string) {
   const { data: course, error } = await admin
     .from("courses")
-    .select("id,title")
+    .select("id,title,teacher_id")
     .eq("id", courseId)
     .maybeSingle<CourseRow>();
 
@@ -154,15 +164,35 @@ function isApprovedTrialReservationConverted(
   return completedIntentReservationIds.has(reservation.id);
 }
 
-function buildDecisionEmailData(
+async function buildDecisionEmailData(
+  admin: ReturnType<typeof createSupabaseAdmin>,
   reservation: TrialRegistrationFollowupRow,
-  courseTitle: string
-): TrialRegistrationDecisionEmailData | null {
+  course: CourseRow
+): Promise<TrialRegistrationDecisionEmailData | null> {
   if (!reservation.email) return null;
+
+  let senderDisplayName: string | null = null;
+  let senderImageUrl: string | null = null;
+
+  if (course.teacher_id) {
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("first_name,last_name,provider_type,organization_name,photo_url")
+      .eq("id", course.teacher_id)
+      .maybeSingle<ProfileRow>();
+
+    senderDisplayName =
+      profile?.provider_type === "studio_provider"
+        ? getProviderDisplayName(profile.provider_type, profile)
+        : [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null;
+    senderImageUrl = profile?.photo_url ?? null;
+  }
 
   return {
     reservationId: reservation.id,
-    courseTitle,
+    courseTitle: course.title ?? "Kurs",
+    senderDisplayName,
+    senderImageUrl,
     customerName: getCustomerName(reservation),
     customerEmail: reservation.email,
     registrationUrl: reservation.registration_token ? buildRegistrationUrl(reservation.registration_token) : undefined,
@@ -269,7 +299,7 @@ export async function runTrialRegistrationFollowupJob(
       continue;
     }
 
-    const emailData = buildDecisionEmailData(reservation, course.title ?? "Kurs");
+    const emailData = await buildDecisionEmailData(admin, reservation, course);
     if (!emailData || !reservation.email) {
       summary.skippedReasons.missing_email += 1;
       continue;

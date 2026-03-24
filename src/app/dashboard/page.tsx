@@ -78,7 +78,20 @@ export default async function DashboardPage({
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-4">
+        <article className="rounded-2xl border border-slate-300 bg-slate-50 p-5">
+          <h2 className="text-lg font-semibold">🎟 Ticket scannen</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Scanne hier die Tickets deiner Teilnehmer vor Ort.
+          </p>
+          <Link
+            href="/dashboard/check-in"
+            className="mt-4 inline-flex rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
+          >
+            Zum Scanner
+          </Link>
+        </article>
+
         <article className="rounded-2xl border p-5">
           <h2 className="text-lg font-semibold">Mein Profil</h2>
           <p className="mt-2 text-sm text-muted-foreground">

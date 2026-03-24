@@ -44,6 +44,7 @@ type ProfileRow = {
   last_name: string | null;
   provider_type: "independent_teacher" | "studio_provider" | null;
   organization_name: string | null;
+  photo_url: string | null;
 };
 
 function withSavedParam(targetPath: string, value: string) {
@@ -180,7 +181,7 @@ export async function scheduleCourseEndAction(formData: FormData) {
       .returns<RegistrationIntentNotificationRow[]>(),
     admin
       .from("profiles")
-      .select("first_name,last_name,provider_type,organization_name")
+      .select("first_name,last_name,provider_type,organization_name,photo_url")
       .eq("id", user.id)
       .maybeSingle<ProfileRow>(),
   ]);
@@ -227,6 +228,9 @@ export async function scheduleCourseEndAction(formData: FormData) {
           providerType,
           providerName,
           instructorName: course.instructor_name,
+          senderDisplayName:
+            providerType === "studio_provider" ? providerName : course.instructor_name ?? providerName,
+          senderImageUrl: profile?.photo_url ?? null,
           customerName:
             [intent.first_name, intent.last_name].filter(Boolean).join(" ").trim() || "Kursteilnehmer*in",
           customerEmail: intent.email,
