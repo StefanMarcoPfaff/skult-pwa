@@ -11,6 +11,12 @@ export function buildTicketViewUrl(qrToken: string): string {
   return url.toString();
 }
 
+export function buildTicketWalletUrl(qrToken: string): string {
+  const url = new URL(`/ticket/qr/${qrToken}`, getSiteUrl());
+  url.hash = "wallet";
+  return url.toString();
+}
+
 export function buildTicketCheckInUrl(qrToken: string): string {
   const url = new URL("/dashboard/check-in", getSiteUrl());
   url.searchParams.set("token", qrToken);

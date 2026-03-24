@@ -1,6 +1,7 @@
 import { getResend } from "@/lib/resend";
 import { shouldShowStudioLabel } from "@/lib/provider-profiles";
-import { buildTicketCheckInUrl, buildTicketQrCodeDataUrl, buildTicketViewUrl } from "@/lib/ticket-qr";
+import { buildCalendarUrl } from "@/lib/calendar";
+import { buildTicketQrCodeDataUrl, buildTicketViewUrl, buildTicketWalletUrl } from "@/lib/ticket-qr";
 
 /*
  * MVP verification checklist:
@@ -57,6 +58,8 @@ export type CourseSubscriptionConfirmationEmailData = {
   priceLabel: string | null;
   currency: string | null;
   cancellationLabel: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
   location: string | null;
   locationDetails: string | null;
   qrToken?: string | null;
@@ -225,6 +228,20 @@ function renderFooterText(branding?: FooterBranding) {
   return ["Herzliche Grüße", branding?.senderName?.trim() || "SKULT"].join("\n");
 }
 
+function renderReserFooterHtml() {
+  return `
+    <div style="margin: 24px 0 0; text-align: center;">
+      <p style="margin: 0;">Herzliche Grüße,</p>
+      <p style="margin: 10px 0 0; font-weight: 600;">RESER</p>
+      <p style="margin: 4px 0 0; color: #4b5563;">Find it. Try it. Book it.</p>
+    </div>
+  `;
+}
+
+function renderReserFooterText() {
+  return ["Herzliche Grüße,", "RESER", "Find it. Try it. Book it."].join("\n");
+}
+
 function buildFooterBranding(input: {
   providerType?: "independent_teacher" | "studio_provider" | null;
   providerName?: string | null;
@@ -346,24 +363,28 @@ async function getQrLines(
     };
   }
 
-  const checkInUrl = buildTicketCheckInUrl(qrToken);
   const qrDataUrl = await buildTicketQrCodeDataUrl(qrToken);
   return {
     html: `
       <p>${options?.htmlLead ?? "Bitte bring dieses QR-Ticket mit. Es wird bei deiner Ankunft gescannt."}</p>
       <p><img src="${qrDataUrl}" alt="${options?.imageAlt ?? "QR-Ticket"}" width="180" height="180" /></p>
-      <p><a href="${checkInUrl}">${checkInUrl}</a></p>
     `,
-    text: [
-      options?.textLead ?? "Bitte bring dieses QR-Ticket mit. Es wird bei deiner Ankunft gescannt.",
-      `Check-in-Link: ${checkInUrl}`,
-    ],
+    text: [options?.textLead ?? "Bitte bring dieses QR-Ticket mit. Es wird bei deiner Ankunft gescannt."],
   };
 }
 
 export async function prepareCustomerTrialReservationConfirmation(data: TrialReservationEmailData) {
   const qrLines = await getQrLines(data.qrToken);
   const ticketUrl = data.qrToken ? buildTicketViewUrl(data.qrToken) : null;
+  const walletUrl = data.qrToken ? buildTicketWalletUrl(data.qrToken) : null;
+  const calendarUrl = buildCalendarUrl({
+    title: `Probestunde: ${data.courseTitle}`,
+    startsAt: data.trialStartsAt,
+    endsAt: data.trialEndsAt,
+    location: data.location,
+    description: data.teacherName ? `Dozent: ${data.teacherName}` : "Kostenlose Probestunde",
+    filename: `probestunde-${data.courseTitle}`,
+  });
 
   return {
     to: data.customerEmail,
@@ -385,6 +406,8 @@ export async function prepareCustomerTrialReservationConfirmation(data: TrialRes
         ],
         actions: [
           ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
+          { label: "Im Kalender speichern", href: calendarUrl },
+          ...(walletUrl ? [{ label: "Ins Wallet speichern", href: walletUrl }] : []),
           { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
           { label: "Reservierung stornieren", href: data.cancelUrl },
         ],
@@ -408,6 +431,8 @@ export async function prepareCustomerTrialReservationConfirmation(data: TrialRes
       ],
       actions: [
         ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
+        { label: "Im Kalender speichern", href: calendarUrl },
+        ...(walletUrl ? [{ label: "Ins Wallet speichern", href: walletUrl }] : []),
         { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
         { label: "Reservierung stornieren", href: data.cancelUrl },
       ],
@@ -461,8 +486,8 @@ export function prepareTeacherTrialReservationNotification(data: TrialReservatio
   const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
   const dateLine = `<p><b>Termin:</b> ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}</p>`;
   const teacherEmail = data.teacherEmail ?? "";
-  const footerHtml = renderFooterHtml(buildFooterBranding(data));
-  const footerText = renderFooterText(buildFooterBranding(data));
+  const footerHtml = renderReserFooterHtml();
+  const footerText = renderReserFooterText();
 
   return {
     to: teacherEmail,
@@ -498,8 +523,8 @@ export function prepareTeacherTrialReservationCancellation(data: TrialReservatio
   const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
   const dateLine = `<p><b>Stornierter Termin:</b> ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}</p>`;
   const teacherEmail = data.teacherEmail ?? "";
-  const footerHtml = renderFooterHtml(buildFooterBranding(data));
-  const footerText = renderFooterText(buildFooterBranding(data));
+  const footerHtml = renderReserFooterHtml();
+  const footerText = renderReserFooterText();
 
   return {
     to: teacherEmail,
@@ -726,6 +751,21 @@ export async function prepareCourseSubscriptionConfirmationEmail(
     imageAlt: "QR-Ticket für deine Kursanmeldung",
   });
   const ticketUrl = data.qrToken ? buildTicketViewUrl(data.qrToken) : null;
+  const walletUrl = data.qrToken ? buildTicketWalletUrl(data.qrToken) : null;
+  const calendarUrl =
+    data.startsAt
+      ? buildCalendarUrl({
+          title: data.courseTitle,
+          startsAt: data.startsAt,
+          endsAt: data.endsAt,
+          location: data.location,
+          description:
+            data.providerName || data.instructorName
+              ? `Anbieter: ${data.providerName ?? data.instructorName}`
+              : "Kursanmeldung",
+          filename: `kurs-${data.courseTitle}`,
+        })
+      : null;
 
   return {
     to: data.customerEmail,
@@ -750,6 +790,8 @@ export async function prepareCourseSubscriptionConfirmationEmail(
         ],
         actions: [
           ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
+          ...(calendarUrl ? [{ label: "Im Kalender speichern", href: calendarUrl }] : []),
+          ...(walletUrl ? [{ label: "Ins Wallet speichern", href: walletUrl }] : []),
           { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
         ],
         support: `${qrLines.html}<p style="margin: 18px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>`,
@@ -775,6 +817,8 @@ export async function prepareCourseSubscriptionConfirmationEmail(
       ],
       actions: [
         ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
+        ...(calendarUrl ? [{ label: "Im Kalender speichern", href: calendarUrl }] : []),
+        ...(walletUrl ? [{ label: "Ins Wallet speichern", href: walletUrl }] : []),
         { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
       ],
       footer: buildFooterBranding(data),
@@ -785,8 +829,8 @@ export async function prepareCourseSubscriptionConfirmationEmail(
 export function prepareCourseSubscriptionProviderNotificationEmail(
   data: CourseSubscriptionProviderNotificationEmailData
 ) {
-  const footerHtml = renderFooterHtml(buildFooterBranding(data));
-  const footerText = renderFooterText(buildFooterBranding(data));
+  const footerHtml = renderReserFooterHtml();
+  const footerText = renderReserFooterText();
 
   return {
     to: data.teacherEmail ?? "",
@@ -908,8 +952,8 @@ export function prepareTrialRegistrationRejectedEmail(data: TrialRegistrationDec
 }
 
 export function prepareTeacherTrialDecisionReminderEmail(data: TeacherTrialDecisionReminderEmailData) {
-  const footerHtml = renderFooterHtml(buildFooterBranding(data));
-  const footerText = renderFooterText(buildFooterBranding(data));
+  const footerHtml = renderReserFooterHtml();
+  const footerText = renderReserFooterText();
 
   return {
     to: data.teacherEmail ?? "",

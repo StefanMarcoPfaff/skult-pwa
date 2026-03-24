@@ -230,6 +230,11 @@ export async function finalizeWorkshopBookingBySession(
     (workshopSessions ?? []).length > 0
       ? (workshopSessions ?? []).map((item) => formatSessionLine(item.starts_at, item.ends_at))
       : [];
+  const firstSessionStart = workshopSessions?.[0]?.starts_at ?? null;
+  const lastSessionEnd =
+    workshopSessions && workshopSessions.length > 0
+      ? workshopSessions[workshopSessions.length - 1]?.ends_at ?? null
+      : null;
 
   if (ticket && customerEmail && !booking.workshop_confirmation_email_sent_at) {
     try {
@@ -255,6 +260,8 @@ export async function finalizeWorkshopBookingBySession(
         customerPhone: booking.customer_phone?.trim() || null,
         location: course?.location ?? null,
         locationDetails: course?.location_details ?? null,
+        startsAt: firstSessionStart,
+        endsAt: lastSessionEnd,
         sessionLines,
         stornoPolicyLabel: getWorkshopStornoPolicyLabel(course?.workshop_storno_policy),
         priceLabel: formatPrice(course?.price_cents ?? null, course?.currency ?? null),
@@ -340,6 +347,8 @@ export async function finalizeWorkshopBookingBySession(
           customerPhone: booking.customer_phone?.trim() || null,
           location: course?.location ?? null,
           locationDetails: course?.location_details ?? null,
+          startsAt: firstSessionStart,
+          endsAt: lastSessionEnd,
           sessionLines,
           stornoPolicyLabel: getWorkshopStornoPolicyLabel(course?.workshop_storno_policy),
           priceLabel: formatPrice(course?.price_cents ?? null, course?.currency ?? null),

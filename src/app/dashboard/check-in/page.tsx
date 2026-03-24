@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { loadTicketByQrToken } from "@/lib/tickets";
+import CheckInScannerClient from "./CheckInScannerClient";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -214,11 +215,18 @@ export default async function DashboardCheckInPage({
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold">Ticket-Check-in</h1>
         <p className="text-sm text-muted-foreground">
-          QR-Link öffnen oder Token manuell einfügen. Gültige Tickets werden direkt eingecheckt.
+          Scanne hier den QR-Code per Kamera oder prüfe den Token manuell als Fallback.
         </p>
       </header>
 
+      <CheckInScannerClient />
+
       <section className="rounded-2xl border p-4">
+        <h2 className="text-base font-semibold">Manueller Fallback</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Wenn die Kamera auf diesem Gerät nicht verfügbar ist, kannst du den Token hier manuell
+          eingeben.
+        </p>
         <form action="/dashboard/check-in" method="get" className="flex flex-col gap-3 sm:flex-row">
           <input
             type="text"

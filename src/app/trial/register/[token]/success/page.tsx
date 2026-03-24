@@ -45,6 +45,8 @@ type CourseRow = {
   price_cents: number | null;
   currency: string | null;
   cancellation_model: string | null;
+  starts_at: string | null;
+  duration_minutes: number | null;
   location: string | null;
   location_details: string | null;
 };
@@ -219,7 +221,7 @@ export default async function TrialRegistrationSuccessPage({
           admin
             .from("courses")
             .select(
-              "id,title,teacher_id,instructor_name,price_cents,currency,cancellation_model,location,location_details"
+              "id,title,teacher_id,instructor_name,price_cents,currency,cancellation_model,starts_at,duration_minutes,location,location_details"
             )
             .eq("id", finalizedIntent.course_id)
             .maybeSingle<CourseRow>(),
@@ -300,6 +302,11 @@ export default async function TrialRegistrationSuccessPage({
               priceLabel: formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null),
               currency: course?.currency ?? "EUR",
               cancellationLabel: "Monatlich zum Ende des Abrechnungszeitraums möglich.",
+              startsAt: course?.starts_at ?? null,
+              endsAt:
+                course?.starts_at && course?.duration_minutes
+                  ? new Date(new Date(course.starts_at).getTime() + course.duration_minutes * 60 * 1000).toISOString()
+                  : null,
               location: course?.location ?? null,
               locationDetails: course?.location_details ?? null,
               qrToken: ticketForDisplay?.qr_token ?? null,

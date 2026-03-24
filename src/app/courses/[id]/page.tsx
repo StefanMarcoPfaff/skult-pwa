@@ -411,13 +411,6 @@ export default async function CourseDetailPage({
         </section>
       ) : (
         <section className="space-y-3 rounded-2xl border p-4">
-          <section className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
-            <h3 className="text-base font-semibold">Kündigungsbedingungen</h3>
-            <div className="mt-2 space-y-1 text-sm text-foreground">
-              <p>Abrechnung: {COURSE_BILLING_SUMMARY}</p>
-              <p>Kündigung: {COURSE_CANCELLATION_SUMMARY}</p>
-            </div>
-          </section>
           <h3 className="text-base font-semibold">
             {availability.isSoldOut ? "Anfragen" : "Kostenlose Probestunde reservieren"}
           </h3>

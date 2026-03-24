@@ -38,7 +38,8 @@ export default async function TicketQrPage({
       <section className="rounded-2xl border p-6">
         <h1 className="text-3xl font-semibold">Dein Ticket</h1>
         <p className="mt-3 text-sm text-muted-foreground">
-          Dies ist deine Ticketansicht. Dein Ticket wird erst beim Check-in durch das Team vor Ort gescannt.
+          Dies ist deine Ticketansicht. Dein Ticket wird erst beim Check-in durch das Team vor Ort
+          gescannt.
         </p>
       </section>
 
@@ -65,13 +66,26 @@ export default async function TicketQrPage({
       <section className="rounded-2xl border p-6">
         <h2 className="text-xl font-semibold">QR-Ticket</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Bitte zeige diesen QR-Code beim Einlass vor. Der Check-in wird nur durch das Team ausgelöst.
+          Bitte zeige diesen QR-Code beim Einlass vor. Der Check-in wird nur durch das Team vor Ort
+          ausgelöst.
         </p>
         <div className="mt-4 inline-block rounded-2xl border bg-white p-4">
           <QRCode value={checkInUrl} size={240} />
         </div>
         <p className="mt-4 text-sm text-muted-foreground">
-          Code: <span className="font-mono font-medium text-foreground">{shortToken(lookup.ticket.qr_token)}</span>
+          Code:{" "}
+          <span className="font-mono font-medium text-foreground">
+            {shortToken(lookup.ticket.qr_token)}
+          </span>
+        </p>
+      </section>
+
+      <section id="wallet" className="rounded-2xl border p-6">
+        <h2 className="text-xl font-semibold">Ins Wallet speichern</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Wallet-Pässe für Apple Wallet und Google Wallet sind technisch vorbereitet, aber in
+          diesem MVP noch nicht als echte Pass-Datei aktiviert. Dieser Bereich ist der feste
+          UI-Hook für den späteren Wallet-Export.
         </p>
       </section>
 

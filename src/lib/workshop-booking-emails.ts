@@ -1,6 +1,7 @@
 import { getResend } from "@/lib/resend";
 import { shouldShowStudioLabel } from "@/lib/provider-profiles";
-import { buildTicketCheckInUrl, buildTicketQrCodeDataUrl } from "@/lib/ticket-qr";
+import { buildCalendarUrl } from "@/lib/calendar";
+import { buildTicketQrCodeDataUrl, buildTicketViewUrl, buildTicketWalletUrl } from "@/lib/ticket-qr";
 
 /*
  * MVP verification checklist:
@@ -24,6 +25,8 @@ export type WorkshopBookingEmailData = {
   customerPhone?: string | null;
   location: string | null;
   locationDetails: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
   sessionLines: string[];
   stornoPolicyLabel: string | null;
   priceLabel: string | null;
@@ -138,6 +141,20 @@ function renderFooterText(branding?: FooterBranding) {
   return ["Herzliche Grüße", branding?.senderName?.trim() || "SKULT"].join("\n");
 }
 
+function renderReserFooterHtml() {
+  return `
+    <div style="margin: 24px 0 0; text-align: center;">
+      <p style="margin: 0;">Herzliche Grüße,</p>
+      <p style="margin: 10px 0 0; font-weight: 600;">RESER</p>
+      <p style="margin: 4px 0 0; color: #4b5563;">Find it. Try it. Book it.</p>
+    </div>
+  `;
+}
+
+function renderReserFooterText() {
+  return ["Herzliche Grüße,", "RESER", "Find it. Try it. Book it."].join("\n");
+}
+
 function buildFooterBranding(data: WorkshopBookingEmailData): FooterBranding {
   return {
     senderName:
@@ -224,8 +241,20 @@ function createTextEmail(input: {
 }
 
 export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopBookingEmailData) {
-  const qrUrl = buildTicketCheckInUrl(data.qrToken);
+  const ticketUrl = buildTicketViewUrl(data.qrToken);
+  const walletUrl = buildTicketWalletUrl(data.qrToken);
   const qrDataUrl = await buildTicketQrCodeDataUrl(data.qrToken);
+  const calendarUrl =
+    data.startsAt
+      ? buildCalendarUrl({
+          title: data.workshopTitle,
+          startsAt: data.startsAt,
+          endsAt: data.endsAt,
+          location: data.location,
+          description: data.providerName ?? data.teacherName ?? "Workshop",
+          filename: `workshop-${data.workshopTitle}`,
+        })
+      : null;
 
   return {
     to: data.customerEmail,
@@ -252,7 +281,9 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
           "Bitte zeige dein Ticket beim Einlass vor.",
         ],
         actions: [
-          { label: "Ticket ansehen", href: qrUrl },
+          { label: "Ticket ansehen", href: ticketUrl },
+          ...(calendarUrl ? [{ label: "Im Kalender speichern", href: calendarUrl }] : []),
+          { label: "Ins Wallet speichern", href: walletUrl },
           { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
         ],
         support: `
@@ -260,7 +291,6 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
             <p style="margin: 0 0 10px;"><b>Dein Ticket</b></p>
             <p style="margin: 0 0 14px;">Bitte zeige dieses Ticket beim Einlass vor.</p>
             <p style="margin: 0 0 14px;"><img src="${qrDataUrl}" alt="QR-Ticket für den Workshop" width="180" height="180" /></p>
-            <p style="margin: 0;"><a href="${qrUrl}">${qrUrl}</a></p>
           </div>
           <p style="margin: 18px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>
         `,
@@ -284,18 +314,20 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
         "Bitte zeige dein Ticket beim Einlass vor.",
       ],
       actions: [
-        { label: "Ticket ansehen", href: qrUrl },
+        { label: "Ticket ansehen", href: ticketUrl },
+        ...(calendarUrl ? [{ label: "Im Kalender speichern", href: calendarUrl }] : []),
+        { label: "Ins Wallet speichern", href: walletUrl },
         { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
       ],
-      support: `Ticket-Link: ${qrUrl}`,
+      support: `Ticket-Link: ${ticketUrl}`,
       footer: buildFooterBranding(data),
     }),
   };
 }
 
 export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingEmailData) {
-  const footerHtml = renderFooterHtml(buildFooterBranding(data));
-  const footerText = renderFooterText(buildFooterBranding(data));
+  const footerHtml = renderReserFooterHtml();
+  const footerText = renderReserFooterText();
 
   return {
     to: data.teacherEmail ?? "",
