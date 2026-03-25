@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
 import type { ProviderType, WorkshopStornoPolicy } from "@/lib/provider-profiles";
-import { STRIPE_PLATFORM_FEE_PERCENT } from "@/lib/stripe-connect";
+import { getPlatformFeePercent } from "@/lib/stripe-connect";
 import { createWorkshopAction } from "../actions";
 
 type SessionInput = {
@@ -133,7 +133,11 @@ export default function WorkshopForm({
     return String(Math.round(parsed * 100));
   }, [priceEur]);
 
-  const priceBreakdown = calculateCoursePriceBreakdown(priceCentsOrEmpty ? Number(priceCentsOrEmpty) : 0);
+  const platformFeePercent = getPlatformFeePercent(providerType);
+  const priceBreakdown = calculateCoursePriceBreakdown(
+    priceCentsOrEmpty ? Number(priceCentsOrEmpty) : 0,
+    providerType
+  );
 
   const submitAction = async (formData: FormData) => {
     const title = String(formData.get("title") ?? "").trim();
@@ -421,7 +425,7 @@ export default function WorkshopForm({
             <span>{formatCurrency(priceBreakdown.grossCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
-            <span>Plattformgebühr ({STRIPE_PLATFORM_FEE_PERCENT} %)</span>
+            <span>Plattformgebühr ({platformFeePercent} %)</span>
             <span>{formatCurrency(priceBreakdown.platformFeeCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4 font-medium text-foreground">
@@ -431,7 +435,7 @@ export default function WorkshopForm({
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
           Die Auszahlung an Dich berechnet sich aus dem eingegebenen Preis abzüglich der
-          Plattformgebühr von {STRIPE_PLATFORM_FEE_PERCENT} %.
+          Plattformgebühr von {platformFeePercent} %.
         </p>
       </div>
 

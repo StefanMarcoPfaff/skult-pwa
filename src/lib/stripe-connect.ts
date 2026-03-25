@@ -1,6 +1,15 @@
 import type Stripe from "stripe";
+import type { ProviderType } from "@/lib/provider-profiles";
 
-export const STRIPE_PLATFORM_FEE_PERCENT = 10;
+export const INDEPENDENT_TEACHER_PLATFORM_FEE_PERCENT = 10;
+export const STUDIO_PROVIDER_PLATFORM_FEE_PERCENT = 5;
+
+export function getPlatformFeePercent(providerType: ProviderType | null | undefined): number {
+  return providerType === "studio_provider"
+    ? STUDIO_PROVIDER_PLATFORM_FEE_PERCENT
+    : INDEPENDENT_TEACHER_PLATFORM_FEE_PERCENT;
+}
+
 export function getRequestedStripeConnectCapabilities():
   | Stripe.AccountCreateParams.Capabilities
   | Stripe.AccountUpdateParams.Capabilities {
@@ -40,16 +49,20 @@ export function getSiteUrl(requestUrl?: string): string {
   return "http://localhost:3000";
 }
 
-export function calculateApplicationFeeAmount(amountCents: number): number {
-  return Math.round(amountCents * (STRIPE_PLATFORM_FEE_PERCENT / 100));
+export function calculateApplicationFeeAmount(
+  amountCents: number,
+  providerType: ProviderType | null | undefined
+): number {
+  return Math.round(amountCents * (getPlatformFeePercent(providerType) / 100));
 }
 
 export function buildDestinationPaymentIntentData(
   amountCents: number,
-  stripeAccountId: string
+  stripeAccountId: string,
+  providerType: ProviderType | null | undefined
 ): Stripe.Checkout.SessionCreateParams.PaymentIntentData {
   return {
-    application_fee_amount: calculateApplicationFeeAmount(amountCents),
+    application_fee_amount: calculateApplicationFeeAmount(amountCents, providerType),
     transfer_data: {
       destination: stripeAccountId,
     },
@@ -57,10 +70,11 @@ export function buildDestinationPaymentIntentData(
 }
 
 export function buildDestinationSubscriptionData(
-  stripeAccountId: string
+  stripeAccountId: string,
+  providerType: ProviderType | null | undefined
 ): Stripe.Checkout.SessionCreateParams.SubscriptionData {
   return {
-    application_fee_percent: STRIPE_PLATFORM_FEE_PERCENT,
+    application_fee_percent: getPlatformFeePercent(providerType),
     transfer_data: {
       destination: stripeAccountId,
     },

@@ -7,6 +7,7 @@ import {
   isStripeDestinationChargeReady,
   summarizeStripeAccount,
 } from "@/lib/stripe-connect";
+import type { ProviderType } from "@/lib/provider-profiles";
 import { createClient } from "@/lib/supabase-server";
 import crypto from "crypto";
 
@@ -135,9 +136,9 @@ export async function POST(req: Request) {
 
     const { data: teacherProfile, error: teacherProfileError } = await supabase
       .from("profiles")
-      .select("stripe_account_id")
+      .select("stripe_account_id,provider_type")
       .eq("id", ownerCourse.teacher_id)
-      .maybeSingle<{ stripe_account_id: string | null }>();
+      .maybeSingle<{ stripe_account_id: string | null; provider_type: ProviderType | null }>();
 
     if (teacherProfileError || !teacherProfile?.stripe_account_id) {
       return NextResponse.json(
@@ -212,7 +213,11 @@ export async function POST(req: Request) {
       success_url: `${siteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}&courseId=${course.id}`,
       cancel_url: `${siteUrl}/checkout/cancel?courseId=${course.id}`,
       payment_intent_data: {
-        ...buildDestinationPaymentIntentData(course.price_cents, teacherProfile.stripe_account_id),
+        ...buildDestinationPaymentIntentData(
+          course.price_cents,
+          teacherProfile.stripe_account_id,
+          teacherProfile.provider_type
+        ),
         on_behalf_of: teacherProfile.stripe_account_id,
       },
       metadata: {

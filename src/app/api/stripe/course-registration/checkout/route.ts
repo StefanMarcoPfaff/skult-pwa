@@ -7,6 +7,7 @@ import {
   getSiteUrl,
   isStripeDestinationChargeReady,
 } from "@/lib/stripe-connect";
+import type { ProviderType } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 type IntentRow = {
@@ -94,9 +95,9 @@ export async function GET(req: Request) {
 
   const { data: profile } = await admin
     .from("profiles")
-    .select("stripe_account_id")
+    .select("stripe_account_id,provider_type")
     .eq("id", course.teacher_id)
-    .maybeSingle<{ stripe_account_id: string | null }>();
+    .maybeSingle<{ stripe_account_id: string | null; provider_type: ProviderType | null }>();
 
   if (!profile?.stripe_account_id) {
     return NextResponse.redirect(new URL(`/trial/register/${token}?error=provider_payment_missing`, url));
@@ -129,7 +130,7 @@ export async function GET(req: Request) {
       },
     ],
     subscription_data: {
-      ...buildDestinationSubscriptionData(profile.stripe_account_id),
+      ...buildDestinationSubscriptionData(profile.stripe_account_id, profile.provider_type),
       metadata: {
         registrationIntentId: intent.id,
         trialReservationId: intent.trial_reservation_id,

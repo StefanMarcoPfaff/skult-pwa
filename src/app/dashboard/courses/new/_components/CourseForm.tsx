@@ -5,7 +5,7 @@ import { buildTrialSlot } from "@/app/courses/[id]/trial-slots";
 import { generateRecurringCourseSessions } from "@/lib/course-sessions";
 import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
 import type { ProviderType } from "@/lib/provider-profiles";
-import { STRIPE_PLATFORM_FEE_PERCENT } from "@/lib/stripe-connect";
+import { getPlatformFeePercent } from "@/lib/stripe-connect";
 import { createCourseAction } from "../actions";
 
 const weekdayOptions = [
@@ -115,7 +115,8 @@ export default function CourseForm({
     initialValues?.trial_slot_starts ?? []
   );
 
-  const priceBreakdown = calculateCoursePriceBreakdown(parsePriceToCents(priceEur));
+  const platformFeePercent = getPlatformFeePercent(providerType);
+  const priceBreakdown = calculateCoursePriceBreakdown(parsePriceToCents(priceEur), providerType);
   const availableManualTrialSlots = useMemo(() => {
     const startsAt = combineCourseStartsAtISO(startDate, startTime);
     const weekdayValue = Number(weekday);
@@ -507,7 +508,7 @@ export default function CourseForm({
             <span>{formatCurrency(priceBreakdown.grossCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
-            <span>Plattformgebühr ({STRIPE_PLATFORM_FEE_PERCENT} %)</span>
+            <span>Plattformgebühr ({platformFeePercent} %)</span>
             <span>{formatCurrency(priceBreakdown.platformFeeCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4 font-medium text-foreground">
@@ -517,7 +518,7 @@ export default function CourseForm({
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
           Die voraussichtliche Auszahlung pro Monat berechnet sich aus dem Monatsbeitrag abzüglich
-          der Plattformgebühr von {STRIPE_PLATFORM_FEE_PERCENT} %.
+          der Plattformgebühr von {platformFeePercent} %.
         </p>
       </div>
 
