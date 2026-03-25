@@ -375,7 +375,7 @@ export default function WorkshopForm({
       </div>
 
       <label className="space-y-1">
-        <span className="text-sm font-medium">Kapazität</span>
+        <span className="text-sm font-medium">Kapazität (maximale Personenanzahl)</span>
         <input
           type="number"
           name="capacity"
@@ -388,7 +388,7 @@ export default function WorkshopForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-1">
-          <span className="text-sm font-medium">Preis (EUR)</span>
+          <span className="text-sm font-medium">Preis pro Person (EUR)</span>
           <input
             type="number"
             name="price_eur"
@@ -417,7 +417,7 @@ export default function WorkshopForm({
         <p className="font-medium">Preisaufteilung</p>
         <div className="mt-3 space-y-1 text-muted-foreground">
           <div className="flex items-center justify-between gap-4">
-            <span>Workshoppreis</span>
+            <span>Workshoppreis pro Kunde</span>
             <span>{formatCurrency(priceBreakdown.grossCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
@@ -425,17 +425,15 @@ export default function WorkshopForm({
             <span>{formatCurrency(priceBreakdown.platformFeeCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4 font-medium text-foreground">
-            <span>Voraussichtliche Auszahlung pro Kund*in</span>
+            <span>Deine Einnahmen pro Kunde</span>
             <span>{formatCurrency(priceBreakdown.payoutCents, currency)}</span>
           </div>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Die voraussichtliche Auszahlung berechnet sich aus dem eingegebenen Preis abzüglich
-          der Plattformgebühr von {STRIPE_PLATFORM_FEE_PERCENT} %.
+          Die Auszahlung an Dich berechnet sich aus dem eingegebenen Preis abzüglich der
+          Plattformgebühr von {STRIPE_PLATFORM_FEE_PERCENT} %.
         </p>
       </div>
-
-      <p className="text-xs text-muted-foreground">Wird intern in Cent gespeichert.</p>
 
       {error ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

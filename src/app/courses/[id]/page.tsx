@@ -36,6 +36,7 @@ type SessionRow = {
 type PublicCourseRow = {
   teacher_id: string | null;
   instructor_name: string | null;
+  workshop_storno_policy: string | null;
 };
 
 type PublicProfileRow = {
@@ -257,7 +258,7 @@ export default async function CourseDetailPage({
     const admin = createSupabaseAdmin();
     const { data: loadedCourse } = await admin
       .from("courses")
-      .select("teacher_id,instructor_name")
+      .select("teacher_id,instructor_name,workshop_storno_policy")
       .eq("id", id)
       .maybeSingle<PublicCourseRow>();
 
@@ -301,8 +302,10 @@ export default async function CourseDetailPage({
   const shouldShowProfileSection = Boolean(
     profileHeading || profileDescription || profilePhotoUrl || profileVideoUrl || providerLabel
   );
+  const resolvedWorkshopPolicy =
+    publicCourse?.workshop_storno_policy ?? workshopStornoPolicy;
   const workshopPolicyLabel = getWorkshopCancellationPolicySummary({
-    cancellation_policy: workshopStornoPolicy,
+    cancellation_policy: resolvedWorkshopPolicy,
   });
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
