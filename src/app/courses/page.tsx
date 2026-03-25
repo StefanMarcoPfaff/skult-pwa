@@ -170,6 +170,10 @@ export default async function CoursesPage() {
                   ? !isCourseClosedForNewRegistrations(endsAt)
                   : isWorkshopBookable(startsAt, endsAt),
             });
+            const availabilityText =
+              kind === "workshop" && !isWorkshopBookable(startsAt, endsAt)
+                ? "Nicht mehr buchbar"
+                : availability.badgeText;
             const price = formatPrice(o);
             const courseSchedule = kind === "course" ? formatCourseSchedule(o) : null;
             const workshopTimeHint = kind === "workshop" ? formatDateTime(startsAt) : null;
@@ -188,7 +192,7 @@ export default async function CoursesPage() {
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs ${availability.badgeClassName}`}
                     >
-                      {availability.badgeText}
+                      {availabilityText}
                     </span>
                   </div>
 
@@ -198,7 +202,7 @@ export default async function CoursesPage() {
                     {capacity !== null ? ` · Plätze: ${capacity}` : ""}
                   </p>
 
-                  <p className="mt-2 text-sm font-medium text-gray-700">{availability.badgeText}</p>
+                  <p className="mt-2 text-sm font-medium text-gray-700">{availabilityText}</p>
 
                   {kind === "workshop" && workshopTimeHint ? (
                     <p className="mt-2 text-sm text-gray-700">Termin: {workshopTimeHint}</p>

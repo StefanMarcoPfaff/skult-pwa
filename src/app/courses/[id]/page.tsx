@@ -233,6 +233,7 @@ export default async function CourseDetailPage({
     isBookable:
       kind === "course" ? !courseClosedForNewRegistrations : isWorkshopBookable(startsAt, endsAt),
   });
+  const workshopCanBook = kind === "workshop" ? isWorkshopBookable(startsAt, endsAt) : false;
 
   let sessions: SessionRow[] = [];
   let publicCourse: PublicCourseRow | null = null;
@@ -398,15 +399,17 @@ export default async function CourseDetailPage({
           </div>
 
           <div className="space-y-2 rounded-2xl border p-4">
-            <h3 className="text-base font-semibold">{availability.isSoldOut ? "Anfragen" : "Jetzt buchen"}</h3>
+            <h3 className="text-base font-semibold">
+              {availability.isSoldOut || !workshopCanBook ? "Anfragen" : "Jetzt buchen"}
+            </h3>
             {capacity !== null ? (
               <p className={`text-sm font-medium ${availability.badgeClassName}`}>{availability.badgeText}</p>
             ) : null}
-            <section className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
-              <h3 className="text-base font-semibold">Stornierungsbedingungen</h3>
-              <p className="mt-2 text-sm text-foreground">{workshopPolicyLabel}</p>
-            </section>
-            {availability.isSoldOut ? (
+            {!workshopCanBook ? (
+              <p className="text-sm text-muted-foreground">
+                Dieser Workshop ist nicht mehr buchbar.
+              </p>
+            ) : availability.isSoldOut ? (
               <SoldOutInquiryForm courseId={id} offerLabel="Workshop" />
             ) : (
               <PayButton

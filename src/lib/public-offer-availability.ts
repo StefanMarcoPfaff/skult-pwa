@@ -19,6 +19,7 @@ export type OfferAvailability = {
   occupied: number;
   free: number | null;
   isSoldOut: boolean;
+  isBookable: boolean;
   badgeClassName: string;
   badgeText: string;
 };
@@ -126,9 +127,10 @@ export function buildOfferAvailability(
       capacity,
       occupied,
       free: free === null ? null : Math.max(0, free),
-      isSoldOut: true,
-      badgeClassName: "bg-red-100 text-red-700",
-      badgeText: "Ausgebucht",
+      isSoldOut: false,
+      isBookable: false,
+      badgeClassName: "bg-slate-100 text-slate-700",
+      badgeText: "Nicht mehr buchbar",
     };
   }
 
@@ -138,6 +140,7 @@ export function buildOfferAvailability(
       occupied,
       free,
       isSoldOut: false,
+      isBookable: true,
       badgeClassName: "bg-gray-100 text-gray-700",
       badgeText: "Verfügbarkeit auf Anfrage",
     };
@@ -149,6 +152,7 @@ export function buildOfferAvailability(
       occupied,
       free: 0,
       isSoldOut: true,
+      isBookable: true,
       badgeClassName: "bg-red-100 text-red-700",
       badgeText: "Ausgebucht",
     };
@@ -160,6 +164,7 @@ export function buildOfferAvailability(
       occupied,
       free,
       isSoldOut: false,
+      isBookable: true,
       badgeClassName: "bg-amber-100 text-amber-800",
       badgeText: formatFreeSeatText(free),
     };
@@ -170,6 +175,7 @@ export function buildOfferAvailability(
     occupied,
     free,
     isSoldOut: false,
+    isBookable: true,
     badgeClassName: "bg-emerald-100 text-emerald-700",
     badgeText: formatFreeSeatText(free),
   };

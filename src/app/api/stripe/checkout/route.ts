@@ -101,16 +101,20 @@ export async function POST(req: Request) {
         : typeof course.capacity === "string" && course.capacity.trim()
           ? Number(course.capacity)
           : null;
+    const workshopCanBook = isWorkshopBookable(
+      typeof course.starts_at === "string" ? course.starts_at : null,
+      typeof course.ends_at === "string" ? course.ends_at : null
+    );
     const availability = buildOfferAvailability(
       Number.isFinite(capacity) ? capacity : null,
       await loadOccupiedWorkshopSeats(courseId),
       {
-        isBookable: isWorkshopBookable(
-          typeof course.starts_at === "string" ? course.starts_at : null,
-          typeof course.ends_at === "string" ? course.ends_at : null
-        ),
+        isBookable: workshopCanBook,
       }
     );
+    if (!workshopCanBook) {
+      return NextResponse.json({ error: "Dieser Workshop ist nicht mehr buchbar." }, { status: 400 });
+    }
     if (availability.isSoldOut) {
       return NextResponse.json({ error: "Dieser Workshop ist aktuell ausgebucht." }, { status: 400 });
     }

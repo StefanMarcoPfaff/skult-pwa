@@ -140,7 +140,7 @@ export function PayButton({
           <p>
             Stornierungsbedingungen:{" "}
             <span className="font-medium text-foreground">
-              {stornoPolicyLabel ?? "Es gelten die individuell festgelegten Bedingungen des Dozenten"}
+              {stornoPolicyLabel}
             </span>
           </p>
         </div>
