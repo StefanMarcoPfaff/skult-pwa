@@ -4,6 +4,16 @@ type CountRow = {
   course_id: string | null;
 };
 
+type TrialReservationCountRow = {
+  course_id: string | null;
+  status: string | null;
+  decision_status: string | null;
+  trial_starts_at: string | null;
+  trial_ends_at: string | null;
+  cancelled_at: string | null;
+  converted_at: string | null;
+};
+
 export type OfferAvailability = {
   capacity: number | null;
   occupied: number;
@@ -12,6 +22,24 @@ export type OfferAvailability = {
   badgeClassName: string;
   badgeText: string;
 };
+
+function parseDate(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isActiveTrialReservationForCapacity(row: TrialReservationCountRow, now = Date.now()): boolean {
+  if (!row.course_id) return false;
+  if (row.cancelled_at || row.converted_at) return false;
+  if ((row.status ?? "").toLowerCase() !== "pending") return false;
+  if (row.decision_status && (row.decision_status ?? "").toLowerCase() !== "pending") return false;
+
+  const trialEndsAt = parseDate(row.trial_ends_at);
+  if (trialEndsAt === null) return true;
+
+  return trialEndsAt >= now;
+}
 
 function buildCountMap(rows: CountRow[]): Map<string, number> {
   const map = new Map<string, number>();
@@ -36,7 +64,7 @@ export async function loadOccupiedSeatCountsForOffers(courseIds: string[]): Prom
   }
 
   const admin = createSupabaseAdmin();
-  const [{ data: courseRows }, { data: workshopRows }] = await Promise.all([
+  const [{ data: courseRows }, { data: workshopRows }, { data: trialReservationRows }] = await Promise.all([
     admin
       .from("course_registration_intents")
       .select("course_id")
@@ -49,10 +77,23 @@ export async function loadOccupiedSeatCountsForOffers(courseIds: string[]): Prom
       .in("course_id", courseIds)
       .eq("status", "paid")
       .returns<CountRow[]>(),
+    admin
+      .from("trial_reservations")
+      .select("course_id,status,decision_status,trial_starts_at,trial_ends_at,cancelled_at,converted_at")
+      .in("course_id", courseIds)
+      .returns<TrialReservationCountRow[]>(),
   ]);
 
+  const courseCounts = buildCountMap(courseRows ?? []);
+  const now = Date.now();
+
+  for (const row of trialReservationRows ?? []) {
+    if (!isActiveTrialReservationForCapacity(row, now) || !row.course_id) continue;
+    courseCounts.set(row.course_id, (courseCounts.get(row.course_id) ?? 0) + 1);
+  }
+
   return {
-    courseCounts: buildCountMap(courseRows ?? []),
+    courseCounts,
     workshopCounts: buildCountMap(workshopRows ?? []),
   };
 }
@@ -67,8 +108,29 @@ export async function loadOccupiedWorkshopSeats(courseId: string): Promise<numbe
   return workshopCounts.get(courseId) ?? 0;
 }
 
-export function buildOfferAvailability(capacity: number | null, occupied: number): OfferAvailability {
+function formatFreeSeatText(free: number): string {
+  if (free === 1) return "Noch 1 Platz frei";
+  return `Noch ${free} Plätze frei`;
+}
+
+export function buildOfferAvailability(
+  capacity: number | null,
+  occupied: number,
+  options?: { isBookable?: boolean }
+): OfferAvailability {
+  const isBookable = options?.isBookable ?? true;
   const free = capacity === null ? null : Math.max(0, capacity - occupied);
+
+  if (!isBookable) {
+    return {
+      capacity,
+      occupied,
+      free: free === null ? null : Math.max(0, free),
+      isSoldOut: true,
+      badgeClassName: "bg-red-100 text-red-700",
+      badgeText: "Ausgebucht",
+    };
+  }
 
   if (free === null) {
     return {
@@ -77,7 +139,7 @@ export function buildOfferAvailability(capacity: number | null, occupied: number
       free,
       isSoldOut: false,
       badgeClassName: "bg-gray-100 text-gray-700",
-      badgeText: "offen",
+      badgeText: "Verfügbarkeit auf Anfrage",
     };
   }
 
@@ -99,7 +161,7 @@ export function buildOfferAvailability(capacity: number | null, occupied: number
       free,
       isSoldOut: false,
       badgeClassName: "bg-amber-100 text-amber-800",
-      badgeText: `${free} frei`,
+      badgeText: formatFreeSeatText(free),
     };
   }
 
@@ -109,6 +171,6 @@ export function buildOfferAvailability(capacity: number | null, occupied: number
     free,
     isSoldOut: false,
     badgeClassName: "bg-emerald-100 text-emerald-700",
-    badgeText: `${free} frei`,
+    badgeText: formatFreeSeatText(free),
   };
 }

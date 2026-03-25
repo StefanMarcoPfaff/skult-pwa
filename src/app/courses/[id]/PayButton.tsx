@@ -183,6 +183,14 @@ export function PayButton({
           </span>
         </label>
 
+        <p className="text-xs text-muted-foreground">
+          Weitere Informationen findest du im{" "}
+          <Link href={LEGAL_LINKS.imprint} target="_blank" className="underline underline-offset-4">
+            Impressum
+          </Link>
+          .
+        </p>
+
         <label className="flex items-start gap-3">
           <input
             type="checkbox"
@@ -207,11 +215,6 @@ export function PayButton({
             .
           </span>
         </label>
-
-        <p className="text-xs text-muted-foreground">
-          Die verlinkten Rechtstexte sind aktuell als MVP-Platzhalter vorbereitet und werden
-          später durch finale juristische Inhalte ersetzt.
-        </p>
       </div>
 
       <button

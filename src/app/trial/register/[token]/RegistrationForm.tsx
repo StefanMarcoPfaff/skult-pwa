@@ -279,6 +279,13 @@ export default function RegistrationForm({
               zur Kenntnis genommen.
             </span>
           </label>
+          <p className="text-xs text-muted-foreground">
+            Weitere rechtliche Informationen findest du im{" "}
+            <Link href={LEGAL_LINKS.imprint} target="_blank" className="underline underline-offset-4">
+              Impressum
+            </Link>
+            .
+          </p>
           <label className="flex items-start gap-3">
             <input type="checkbox" name="cancellation_terms_accepted" required className="mt-1" />
             <span>
@@ -293,10 +300,6 @@ export default function RegistrationForm({
               .
             </span>
           </label>
-          <p className="text-xs text-muted-foreground">
-            Die verlinkten Rechtstexte sind aktuell als MVP-Platzhalter vorbereitet und werden
-            später durch finale juristische Inhalte ersetzt.
-          </p>
         </section>
       ) : null}
 

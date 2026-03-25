@@ -28,6 +28,13 @@ function requiredText(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function isWorkshopBookable(startsAt: string | null, endsAt: string | null) {
+  const reference = endsAt ?? startsAt;
+  if (!reference) return true;
+  const parsed = new Date(reference).getTime();
+  return Number.isFinite(parsed) ? parsed >= Date.now() : true;
+}
+
 export async function POST(req: Request) {
   try {
     const {
@@ -72,7 +79,7 @@ export async function POST(req: Request) {
 
     const { data: course, error: courseErr } = await supabase
       .from("courses_lite")
-      .select("id,title,price_type,price_cents,currency,offer_type,capacity")
+      .select("id,title,price_type,price_cents,currency,offer_type,capacity,starts_at,ends_at")
       .eq("id", courseId)
       .single();
 
@@ -96,7 +103,13 @@ export async function POST(req: Request) {
           : null;
     const availability = buildOfferAvailability(
       Number.isFinite(capacity) ? capacity : null,
-      await loadOccupiedWorkshopSeats(courseId)
+      await loadOccupiedWorkshopSeats(courseId),
+      {
+        isBookable: isWorkshopBookable(
+          typeof course.starts_at === "string" ? course.starts_at : null,
+          typeof course.ends_at === "string" ? course.ends_at : null
+        ),
+      }
     );
     if (availability.isSoldOut) {
       return NextResponse.json({ error: "Dieser Workshop ist aktuell ausgebucht." }, { status: 400 });

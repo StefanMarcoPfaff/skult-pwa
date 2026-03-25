@@ -1,4 +1,5 @@
-﻿import Link from "next/link";
+import Link from "next/link";
+import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatCoursePriceFromRow } from "@/lib/course-display";
 import { buildOfferAvailability, loadOccupiedSeatCountsForOffers } from "@/lib/public-offer-availability";
@@ -54,14 +55,21 @@ function formatCourseSchedule(row: Row): string | null {
     recurrence === "weekly"
       ? "wöchentlich"
       : recurrence === "biweekly"
-      ? "14-tägig"
-      : recurrence === "monthly"
-      ? "monatlich"
-      : asString(row.recurrence_type);
+        ? "14-tägig"
+        : recurrence === "monthly"
+          ? "monatlich"
+          : asString(row.recurrence_type);
   const weekdayLabel = weekday !== null && weekdayLabels[weekday] ? weekdayLabels[weekday] : null;
 
   const parts = [weekdayLabel, startTime, recurrenceLabel].filter(Boolean);
   return parts.length ? parts.join(" · ") : null;
+}
+
+function isWorkshopBookable(startsAt: string | null, endsAt: string | null) {
+  const reference = endsAt ?? startsAt;
+  if (!reference) return true;
+  const parsed = new Date(reference).getTime();
+  return Number.isFinite(parsed) ? parsed >= Date.now() : true;
 }
 
 export default async function CoursesPage() {
@@ -147,6 +155,7 @@ export default async function CoursesPage() {
             const subtitle = asString(o.subtitle);
             const location = asString(o.location);
             const startsAt = asString(o.starts_at);
+            const endsAt = asString(o.ends_at);
             const capacity = asNumber(o.capacity);
             const kind = getKind(o);
             const occupied =
@@ -155,7 +164,12 @@ export default async function CoursesPage() {
                 : kind === "workshop"
                   ? workshopCounts.get(id) ?? 0
                   : 0;
-            const availability = buildOfferAvailability(capacity, occupied);
+            const availability = buildOfferAvailability(capacity, occupied, {
+              isBookable:
+                kind === "course"
+                  ? !isCourseClosedForNewRegistrations(endsAt)
+                  : isWorkshopBookable(startsAt, endsAt),
+            });
             const price = formatPrice(o);
             const courseSchedule = kind === "course" ? formatCourseSchedule(o) : null;
             const workshopTimeHint = kind === "workshop" ? formatDateTime(startsAt) : null;
@@ -183,6 +197,8 @@ export default async function CoursesPage() {
                     {price ? ` · ${price}` : ""}
                     {capacity !== null ? ` · Plätze: ${capacity}` : ""}
                   </p>
+
+                  <p className="mt-2 text-sm font-medium text-gray-700">{availability.badgeText}</p>
 
                   {kind === "workshop" && workshopTimeHint ? (
                     <p className="mt-2 text-sm text-gray-700">Termin: {workshopTimeHint}</p>

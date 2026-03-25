@@ -121,6 +121,13 @@ function isHttpUrl(value: string | null): value is string {
   return Boolean(value && /^https?:\/\//i.test(value));
 }
 
+function isWorkshopBookable(startsAt: string | null, endsAt: string | null) {
+  const reference = endsAt ?? startsAt;
+  if (!reference) return true;
+  const parsed = new Date(reference).getTime();
+  return Number.isFinite(parsed) ? parsed >= Date.now() : true;
+}
+
 export default async function CourseDetailPage({
   params,
   searchParams,
@@ -222,8 +229,10 @@ export default async function CourseDetailPage({
       : kind === "workshop"
         ? await loadOccupiedWorkshopSeats(id)
         : 0;
-  const availability = buildOfferAvailability(capacity, occupiedSeats);
-  const remainingPlaces = availability.free;
+  const availability = buildOfferAvailability(capacity, occupiedSeats, {
+    isBookable:
+      kind === "course" ? !courseClosedForNewRegistrations : isWorkshopBookable(startsAt, endsAt),
+  });
 
   let sessions: SessionRow[] = [];
   let publicCourse: PublicCourseRow | null = null;
@@ -312,7 +321,7 @@ export default async function CourseDetailPage({
         {price ? <p>Preis: {price}</p> : null}
         {capacity !== null ? (
           <p>
-            Verfügbarkeit:{" "}
+            Freie Plätze:{" "}
             <span className={`rounded-full px-2 py-0.5 text-xs ${availability.badgeClassName}`}>
               {availability.badgeText}
             </span>
@@ -423,9 +432,6 @@ export default async function CourseDetailPage({
           ) : null}
           {capacity !== null ? (
             <p className={`text-sm font-medium ${availability.badgeClassName}`}>{availability.badgeText}</p>
-          ) : null}
-          {remainingPlaces !== null && remainingPlaces > 0 && remainingPlaces <= 5 ? (
-            <p className="text-sm font-medium text-amber-700">Nur noch {remainingPlaces} Plätze verfügbar</p>
           ) : null}
           {reserved === "1" ? (
             <p className="text-sm text-green-700">
