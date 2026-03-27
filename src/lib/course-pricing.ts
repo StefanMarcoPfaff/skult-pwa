@@ -1,5 +1,5 @@
 import type { ProviderType } from "@/lib/provider-profiles";
-import { getPlatformFeePercent } from "@/lib/stripe-connect";
+import { calculatePlatformFeeAmount } from "@/lib/platform-fees";
 
 export type CoursePriceBreakdown = {
   grossCents: number;
@@ -12,7 +12,7 @@ export function calculateCoursePriceBreakdown(
   providerType: ProviderType | null | undefined
 ): CoursePriceBreakdown {
   const grossCents = Number.isFinite(amountCents) && amountCents > 0 ? Math.round(amountCents) : 0;
-  const platformFeeCents = Math.round(grossCents * (getPlatformFeePercent(providerType) / 100));
+  const platformFeeCents = calculatePlatformFeeAmount(grossCents, providerType);
   const payoutCents = Math.max(0, grossCents - platformFeeCents);
 
   return {

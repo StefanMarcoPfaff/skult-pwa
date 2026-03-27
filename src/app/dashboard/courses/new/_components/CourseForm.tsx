@@ -4,8 +4,8 @@ import { useMemo, useState, useTransition } from "react";
 import { buildTrialSlot } from "@/app/courses/[id]/trial-slots";
 import { generateRecurringCourseSessions } from "@/lib/course-sessions";
 import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
+import { getPlatformFeePercent } from "@/lib/platform-fees";
 import type { ProviderType } from "@/lib/provider-profiles";
-import { getPlatformFeePercent } from "@/lib/stripe-connect";
 import { createCourseAction } from "../actions";
 
 const weekdayOptions = [

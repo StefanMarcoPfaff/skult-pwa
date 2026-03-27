@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
+import { getPlatformFeePercent } from "@/lib/platform-fees";
 import type { ProviderType, WorkshopStornoPolicy } from "@/lib/provider-profiles";
-import { getPlatformFeePercent } from "@/lib/stripe-connect";
 import { createWorkshopAction } from "../actions";
 
 type SessionInput = {

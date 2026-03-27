@@ -12,9 +12,7 @@ type ProfileRow = {
 function buildErrorRedirect(siteUrl: string, message: string) {
   const url = new URL("/dashboard/profile", siteUrl);
   url.searchParams.set("stripe_error", "1");
-  if (process.env.NODE_ENV !== "production") {
-    url.searchParams.set("stripe_error_detail", message.slice(0, 240));
-  }
+  url.searchParams.set("stripe_error_detail", message.slice(0, 240));
   return NextResponse.redirect(url);
 }
 
@@ -51,10 +49,28 @@ export async function GET(req: Request) {
     }
 
     const stripe = getStripe();
+    try {
+      await stripe.accounts.retrieve(profile.stripe_account_id);
+    } catch (error: unknown) {
+      console.error("[stripe-connect-login]", {
+        context: "accounts.retrieve",
+        stripeAccountId: profile.stripe_account_id,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return buildErrorRedirect(
+        siteUrl,
+        "Das hinterlegte Stripe-Konto ist nicht mehr verfügbar. Bitte starte das Stripe-Onboarding erneut."
+      );
+    }
+
     const loginLink = await stripe.accounts.createLoginLink(profile.stripe_account_id);
 
     return NextResponse.redirect(loginLink.url);
   } catch (error: unknown) {
+    console.error("[stripe-connect-login]", {
+      context: "route",
+      message: error instanceof Error ? error.message : String(error),
+    });
     const message =
       error instanceof Error ? error.message : "Stripe Express Login-Link konnte nicht erstellt werden.";
     return buildErrorRedirect(siteUrl, message);

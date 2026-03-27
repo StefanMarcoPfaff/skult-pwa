@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type Stripe from "stripe";
 import { buildOfferAvailability, loadOccupiedWorkshopSeats } from "@/lib/public-offer-availability";
 import { getStripe } from "@/lib/stripe";
 import {
@@ -148,7 +149,23 @@ export async function POST(req: Request) {
     }
 
     const stripe = getStripe();
-    const connectedAccount = await stripe.accounts.retrieve(teacherProfile.stripe_account_id);
+    let connectedAccount: Stripe.Account;
+    try {
+      connectedAccount = await stripe.accounts.retrieve(teacherProfile.stripe_account_id);
+    } catch (error: unknown) {
+      console.error("[stripe-checkout-connect]", {
+        context: "account.retrieve.failed",
+        stripeAccountId: teacherProfile.stripe_account_id,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return NextResponse.json(
+        {
+          error:
+            "Die hinterlegten Stripe-Zahlungsdaten des Dozenten sind nicht mehr gültig. Bitte Stripe-Onboarding erneut starten.",
+        },
+        { status: 400 }
+      );
+    }
 
     logCheckoutConnectState("account.retrieve", {
       stripeAccountId: teacherProfile.stripe_account_id,

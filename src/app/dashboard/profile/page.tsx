@@ -31,7 +31,7 @@ export default async function DashboardProfilePage({
   const stripeConnected = stripeConnectedParam === "1";
   const stripeError = stripeErrorParam === "1";
   const onboarding = onboardingParam === "1";
-  const stripeErrorDetail = process.env.NODE_ENV !== "production" ? stripeErrorDetailParam : undefined;
+  const stripeErrorDetail = stripeErrorDetailParam;
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -85,19 +85,19 @@ export default async function DashboardProfilePage({
         <h2 className="text-lg font-semibold">Zahlungen</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           {profile?.stripe_account_id
-            ? "Dein Stripe-Konto ist verbunden. Über Stripe verwaltest du deine Auszahlungsdaten und Bankverbindung."
+            ? "Ein Stripe-Konto ist hinterlegt. Falls Auszahlungen noch nicht aktiv sind, starte das Onboarding erneut."
             : "Richte dein Stripe-Konto ein, damit Einnahmen aus Workshops und Kurs-Abos automatisch auf dein Konto ausgezahlt werden können."}
         </p>
         {profile?.stripe_account_id ? (
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <p className="inline-flex rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
-              Stripe-Konto verbunden
+            <p className="inline-flex rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700">
+              Stripe-Konto hinterlegt
             </p>
             <Link
-              href="/api/stripe/connect/login"
+              href="/api/stripe/connect"
               className="inline-flex rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
             >
-              Zahlungsdaten ändern
+              Stripe-Onboarding fortsetzen
             </Link>
           </div>
         ) : (

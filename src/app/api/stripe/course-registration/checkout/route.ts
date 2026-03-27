@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type Stripe from "stripe";
 import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
 import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
 import { getStripe } from "@/lib/stripe";
@@ -104,7 +105,17 @@ export async function GET(req: Request) {
   }
 
   const stripe = getStripe();
-  const account = await stripe.accounts.retrieve(profile.stripe_account_id);
+  let account: Stripe.Account;
+  try {
+    account = await stripe.accounts.retrieve(profile.stripe_account_id);
+  } catch (error: unknown) {
+    console.error("[stripe-course-registration-connect]", {
+      context: "account.retrieve.failed",
+      stripeAccountId: profile.stripe_account_id,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return NextResponse.redirect(new URL(`/trial/register/${token}?error=provider_payment_missing`, url));
+  }
   if (!isStripeDestinationChargeReady(account)) {
     return NextResponse.redirect(new URL(`/trial/register/${token}?error=provider_payment_incomplete`, url));
   }

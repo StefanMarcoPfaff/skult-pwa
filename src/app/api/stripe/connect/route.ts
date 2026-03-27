@@ -22,15 +22,10 @@ type ProfileRow = {
 type SupabaseLikeError = {
   message?: string;
   code?: string;
-  details?: string;
-  hint?: string;
 };
 
 function logConnectError(context: string, error: unknown, meta?: Record<string, unknown>) {
-  if (process.env.NODE_ENV === "production") return;
-
   const stripeError = error as Stripe.StripeRawError & {
-    raw?: Record<string, unknown>;
     statusCode?: number;
     requestId?: string;
   };
@@ -41,11 +36,8 @@ function logConnectError(context: string, error: unknown, meta?: Record<string, 
     message: stripeError?.message ?? supabaseError?.message ?? String(error),
     type: stripeError?.type,
     code: stripeError?.code ?? supabaseError?.code,
-    raw: stripeError?.raw ?? null,
     statusCode: stripeError?.statusCode ?? null,
     requestId: stripeError?.requestId ?? null,
-    details: supabaseError?.details,
-    hint: supabaseError?.hint,
     ...meta,
   });
 }
@@ -61,10 +53,29 @@ function logStripeAccountState(context: string, account: Stripe.Account) {
 function buildErrorRedirect(siteUrl: string, message: string) {
   const url = new URL("/dashboard/profile", siteUrl);
   url.searchParams.set("stripe_error", "1");
-  if (process.env.NODE_ENV !== "production") {
-    url.searchParams.set("stripe_error_detail", message.slice(0, 240));
-  }
+  url.searchParams.set("stripe_error_detail", message.slice(0, 240));
   return NextResponse.redirect(url);
+}
+
+function getUserFacingConnectErrorMessage(error: unknown): string {
+  const stripeError = error as Stripe.StripeRawError & {
+    statusCode?: number;
+  };
+  const message = stripeError?.message ?? (error instanceof Error ? error.message : "");
+
+  if (
+    stripeError?.code === "resource_missing" ||
+    /no such account/i.test(message) ||
+    /account.*not found/i.test(message)
+  ) {
+    return "Das hinterlegte Stripe-Konto war nicht mehr gÃ¼ltig. Bitte starte das Stripe-Onboarding erneut.";
+  }
+
+  if (/return_url|refresh_url|url/i.test(message)) {
+    return "Stripe-Onboarding konnte wegen einer ungÃ¼ltigen RÃ¼ckleitungs-URL nicht gestartet werden.";
+  }
+
+  return "Stripe-Onboarding konnte derzeit nicht gestartet werden. Bitte versuche es erneut.";
 }
 
 export async function GET(req: Request) {
@@ -99,7 +110,25 @@ export async function GET(req: Request) {
 
     const stripe = getStripe();
     let stripeAccountId = profile?.stripe_account_id ?? null;
-    let account: Stripe.Account;
+    let account: Stripe.Account | null = null;
+    let shouldPersistStripeAccountId = false;
+
+    if (stripeAccountId) {
+      try {
+        const existingAccount = await stripe.accounts.retrieve(stripeAccountId);
+        logStripeAccountState("accounts.retrieve", existingAccount);
+
+        account = await stripe.accounts.update(stripeAccountId, getStripeConnectAccountUpdateParams());
+        logStripeAccountState("accounts.update", account);
+      } catch (error: unknown) {
+        logConnectError("accounts.retrieve-or-update", error, {
+          userId: user.id,
+          stripeAccountId,
+          siteUrl,
+        });
+        stripeAccountId = null;
+      }
+    }
 
     if (!stripeAccountId) {
       account = await stripe.accounts.create(
@@ -113,29 +142,11 @@ export async function GET(req: Request) {
       logStripeAccountState("accounts.create", account);
 
       stripeAccountId = account.id;
+      shouldPersistStripeAccountId = true;
+    }
 
-      const { error: upsertError } = await supabase.from("profiles").upsert(
-        {
-          id: user.id,
-          stripe_account_id: stripeAccountId,
-        },
-        { onConflict: "id" }
-      );
-
-      if (upsertError) {
-        logConnectError("profiles.upsert", upsertError, {
-          userId: user.id,
-          stripeAccountId,
-          siteUrl,
-        });
-        return buildErrorRedirect(siteUrl, upsertError.message ?? "profiles.upsert failed");
-      }
-    } else {
-      const existingAccount = await stripe.accounts.retrieve(stripeAccountId);
-      logStripeAccountState("accounts.retrieve", existingAccount);
-
-      account = await stripe.accounts.update(stripeAccountId, getStripeConnectAccountUpdateParams());
-      logStripeAccountState("accounts.update", account);
+    if (!account) {
+      throw new Error("Stripe account could not be prepared for onboarding.");
     }
 
     if (!isStripeDestinationChargeReady(account)) {
@@ -159,6 +170,28 @@ export async function GET(req: Request) {
       refresh_url: refreshUrl,
     });
 
+    if (shouldPersistStripeAccountId) {
+      const { error: upsertError } = await supabase.from("profiles").upsert(
+        {
+          id: user.id,
+          stripe_account_id: stripeAccountId,
+        },
+        { onConflict: "id" }
+      );
+
+      if (upsertError) {
+        logConnectError("profiles.upsert", upsertError, {
+          userId: user.id,
+          stripeAccountId,
+          siteUrl,
+        });
+        return buildErrorRedirect(
+          siteUrl,
+          "Stripe-Onboarding wurde erstellt, aber das Konto konnte lokal nicht gespeichert werden."
+        );
+      }
+    }
+
     return NextResponse.redirect(accountLink.url);
   } catch (error: unknown) {
     logConnectError("route", error, {
@@ -166,8 +199,7 @@ export async function GET(req: Request) {
       configuredSiteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? null,
     });
 
-    const message =
-      error instanceof Error ? error.message : "Stripe Connect onboarding konnte nicht gestartet werden.";
+    const message = getUserFacingConnectErrorMessage(error);
     return buildErrorRedirect(siteUrl, message);
   }
 }

@@ -1,14 +1,6 @@
 import type Stripe from "stripe";
 import type { ProviderType } from "@/lib/provider-profiles";
-
-export const INDEPENDENT_TEACHER_PLATFORM_FEE_PERCENT = 10;
-export const STUDIO_PROVIDER_PLATFORM_FEE_PERCENT = 5;
-
-export function getPlatformFeePercent(providerType: ProviderType | null | undefined): number {
-  return providerType === "studio_provider"
-    ? STUDIO_PROVIDER_PLATFORM_FEE_PERCENT
-    : INDEPENDENT_TEACHER_PLATFORM_FEE_PERCENT;
-}
+import { calculatePlatformFeeAmount, getPlatformFeePercent } from "@/lib/platform-fees";
 
 export function getRequestedStripeConnectCapabilities():
   | Stripe.AccountCreateParams.Capabilities
@@ -33,17 +25,17 @@ function isAbsoluteHttpUrl(value: string): boolean {
 }
 
 export function getSiteUrl(requestUrl?: string): string {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL;
+  if (configured && isAbsoluteHttpUrl(configured)) {
+    return configured;
+  }
+
   if (requestUrl) {
     try {
       return new URL(requestUrl).origin;
     } catch {
       // fall through to env/default handling
     }
-  }
-
-  const configured = process.env.NEXT_PUBLIC_SITE_URL;
-  if (configured && isAbsoluteHttpUrl(configured)) {
-    return configured;
   }
 
   return "http://localhost:3000";
@@ -53,7 +45,7 @@ export function calculateApplicationFeeAmount(
   amountCents: number,
   providerType: ProviderType | null | undefined
 ): number {
-  return Math.round(amountCents * (getPlatformFeePercent(providerType) / 100));
+  return calculatePlatformFeeAmount(amountCents, providerType);
 }
 
 export function buildDestinationPaymentIntentData(
