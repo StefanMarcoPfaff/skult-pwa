@@ -123,7 +123,7 @@ export async function GET(req: Request) {
   const siteUrl = getSiteUrl(req.url);
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
-    payment_method_types: ["card", "sepa_debit"],
+    payment_method_types: ["card"],
     customer_email: intent.email,
     line_items: [
       {
