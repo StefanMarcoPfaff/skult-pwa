@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { getResend } from "@/lib/resend";
+import { sendResendEmail } from "@/lib/resend";
 import { randomUUID } from "crypto";
 
 export const runtime = "nodejs";
@@ -61,10 +61,7 @@ export async function POST(req: Request) {
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
     const ticketUrl = `${siteUrl}/ticket/${attendeeKey}`;
 
-    // Mail senden
-    const resend = getResend();
-    await resend.emails.send({
-      from: "onboarding@resend.dev",
+    await sendResendEmail({
       to: email,
       subject: `Probestunde bestätigt: ${course.title}`,
       html: `
@@ -82,13 +79,14 @@ export async function POST(req: Request) {
             Wichtig: Bitte zeige das Ticket bei der Probestunde vor (Dozent*in scannt den QR-Code).
           </p>
 
-          <p>Liebe Grüße<br/>SKULT-Team<br/><small>für alle Nutzer*innen</small></p>
+          <p>Liebe Grüße<br/>RESER</p>
         </div>
       `,
     });
 
     return NextResponse.json({ ok: true, ticketUrl, bookingId: booking.id });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Serverfehler" }, { status: 500 });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Serverfehler";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

@@ -1,4 +1,4 @@
-import { getResend } from "@/lib/resend";
+import { sendResendEmail } from "@/lib/resend";
 import { shouldShowStudioLabel } from "@/lib/provider-profiles";
 import { buildCalendarUrl } from "@/lib/calendar";
 import { buildTicketQrCodeDataUrl, buildTicketViewUrl, buildTicketWalletUrl } from "@/lib/ticket-qr";
@@ -1040,10 +1040,8 @@ export function prepareTeacherTrialDecisionReminderEmail(data: TeacherTrialDecis
 }
 
 export async function sendTrialReservationConfirmationEmail(data: TrialReservationEmailData) {
-  const resend = getResend();
   const email = await prepareCustomerTrialReservationConfirmation(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -1052,10 +1050,8 @@ export async function sendTrialReservationConfirmationEmail(data: TrialReservati
 }
 
 export async function sendTrialReservationReminderEmail(data: TrialReservationEmailData) {
-  const resend = getResend();
   const email = prepareCustomerTrialReservationReminder(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -1072,10 +1068,8 @@ export async function sendTeacherTrialReservationNotificationEmail(data: TrialRe
     return null;
   }
 
-  const resend = getResend();
   const email = prepareTeacherTrialReservationNotification(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -1092,10 +1086,8 @@ export async function sendTeacherTrialReservationCancellationEmail(data: TrialRe
     return null;
   }
 
-  const resend = getResend();
   const email = prepareTeacherTrialReservationCancellation(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -1104,10 +1096,8 @@ export async function sendTeacherTrialReservationCancellationEmail(data: TrialRe
 }
 
 export async function sendCustomerTrialReservationCancellationEmail(data: TrialReservationEmailData) {
-  const resend = getResend();
   const email = prepareCustomerTrialReservationCancellation(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -1116,10 +1106,8 @@ export async function sendCustomerTrialReservationCancellationEmail(data: TrialR
 }
 
 export async function sendTrialRegistrationApprovedEmail(data: TrialRegistrationDecisionEmailData) {
-  const resend = getResend();
   const email = prepareTrialRegistrationApprovedEmail(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -1128,10 +1116,8 @@ export async function sendTrialRegistrationApprovedEmail(data: TrialRegistration
 }
 
 export async function sendTrialRegistrationRejectedEmail(data: TrialRegistrationDecisionEmailData) {
-  const resend = getResend();
   const email = prepareTrialRegistrationRejectedEmail(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -1140,10 +1126,8 @@ export async function sendTrialRegistrationRejectedEmail(data: TrialRegistration
 }
 
 export async function sendTrialRegistrationReminder24hEmail(data: TrialRegistrationDecisionEmailData) {
-  const resend = getResend();
   const email = prepareTrialRegistrationReminder24hEmail(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -1152,10 +1136,8 @@ export async function sendTrialRegistrationReminder24hEmail(data: TrialRegistrat
 }
 
 export async function sendTrialRegistrationReminder48hEmail(data: TrialRegistrationDecisionEmailData) {
-  const resend = getResend();
   const email = prepareTrialRegistrationReminder48hEmail(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -1164,10 +1146,8 @@ export async function sendTrialRegistrationReminder48hEmail(data: TrialRegistrat
 }
 
 export async function sendTrialRegistrationReminder72hEmail(data: TrialRegistrationDecisionEmailData) {
-  const resend = getResend();
   const email = prepareTrialRegistrationReminder72hEmail(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -1176,10 +1156,8 @@ export async function sendTrialRegistrationReminder72hEmail(data: TrialRegistrat
 }
 
 export async function sendTrialRegistrationExpiredEmail(data: TrialRegistrationExpiredEmailData) {
-  const resend = getResend();
   const email = prepareTrialRegistrationExpiredEmail(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -1190,10 +1168,8 @@ export async function sendTrialRegistrationExpiredEmail(data: TrialRegistrationE
 export async function sendCourseSubscriptionConfirmationEmail(
   data: CourseSubscriptionConfirmationEmailData
 ) {
-  const resend = getResend();
   const email = await prepareCourseSubscriptionConfirmationEmail(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -1212,10 +1188,8 @@ export async function sendCourseSubscriptionProviderNotificationEmail(
     return null;
   }
 
-  const resend = getResend();
   const email = prepareCourseSubscriptionProviderNotificationEmail(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -1224,10 +1198,8 @@ export async function sendCourseSubscriptionProviderNotificationEmail(
 }
 
 export async function sendCourseEndingNotificationEmail(data: CourseEndingNotificationEmailData) {
-  const resend = getResend();
   const email = prepareCourseEndingNotificationEmail(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -1246,10 +1218,8 @@ export async function sendCourseEndingProviderSummaryEmail(
     return null;
   }
 
-  const resend = getResend();
   const email = prepareCourseEndingProviderSummaryEmail(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -1266,10 +1236,8 @@ export async function sendTeacherTrialDecisionReminderEmail(data: TeacherTrialDe
     return null;
   }
 
-  const resend = getResend();
   const email = prepareTeacherTrialDecisionReminderEmail(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,

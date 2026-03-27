@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
-import { getResend } from "@/lib/resend";
+import { sendResendEmail } from "@/lib/resend";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const resend = getResend();
-
-    const result = await resend.emails.send({
-      from: "RESER <hello@getreser.app>",
+    const result = await sendResendEmail({
       to: "stefan.marco.pfaff@gmail.com",
       subject: "RESER Testmail",
       html: "<p>Wenn du das liest, funktioniert der Mailversand von hello@getreser.app.</p>",

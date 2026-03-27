@@ -1,5 +1,9 @@
 import { Resend } from "resend";
 
+export const RESEND_FROM_EMAIL = "hello@getreser.app";
+export const RESEND_FROM_NAME = "RESER";
+export const RESEND_FROM = `${RESEND_FROM_NAME} <${RESEND_FROM_EMAIL}>`;
+
 export function getResend() {
   const key = process.env.RESEND_API_KEY;
 
@@ -10,4 +14,18 @@ export function getResend() {
   }
 
   return new Resend(key);
+}
+
+type SendEmailOptions = Parameters<Resend["emails"]["send"]>[0];
+
+export function getResendFromAddress() {
+  return RESEND_FROM;
+}
+
+export async function sendResendEmail(email: Omit<SendEmailOptions, "from">) {
+  const resend = getResend();
+  return resend.emails.send({
+    from: getResendFromAddress(),
+    ...email,
+  });
 }

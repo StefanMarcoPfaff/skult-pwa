@@ -1,7 +1,7 @@
 "use server";
 
 import { getProviderDisplayName } from "@/lib/provider-profiles";
-import { getResend } from "@/lib/resend";
+import { sendResendEmail } from "@/lib/resend";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 export type OfferInquiryState = {
@@ -69,10 +69,7 @@ export async function submitOfferInquiryAction(
 
   const providerName =
     profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
-  const resend = getResend();
-
-  await resend.emails.send({
-    from: "onboarding@resend.dev",
+  await sendResendEmail({
     to: providerEmail,
     subject: `Neue Anfrage zu ${course.title ?? "deinem Angebot"}`,
     html: `

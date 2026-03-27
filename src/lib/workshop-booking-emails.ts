@@ -1,4 +1,4 @@
-import { getResend } from "@/lib/resend";
+import { sendResendEmail } from "@/lib/resend";
 import { shouldShowStudioLabel } from "@/lib/provider-profiles";
 import { buildCalendarUrl } from "@/lib/calendar";
 import { buildTicketQrCodeDataUrl, buildTicketViewUrl, buildTicketWalletUrl } from "@/lib/ticket-qr";
@@ -370,10 +370,8 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
 }
 
 export async function sendWorkshopCustomerBookingConfirmationEmail(data: WorkshopBookingEmailData) {
-  const resend = getResend();
   const email = await prepareWorkshopCustomerBookingConfirmation(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
@@ -390,10 +388,8 @@ export async function sendWorkshopTeacherBookingNotificationEmail(data: Workshop
     return null;
   }
 
-  const resend = getResend();
   const email = prepareWorkshopTeacherBookingNotification(data);
-  return resend.emails.send({
-    from: "onboarding@resend.dev",
+  return sendResendEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
