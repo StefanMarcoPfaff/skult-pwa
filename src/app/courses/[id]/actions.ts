@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
+import { isPubliclyVisibleOffer } from "@/lib/public-offer-visibility";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
@@ -22,6 +23,8 @@ export type TrialReservationState = {
 type CourseLiteTrialRow = {
   id: string;
   kind: string | null;
+  is_published: boolean | null;
+  is_publicly_visible: boolean | null;
   capacity: number | null;
   weekday: number | null;
   start_time: string | null;
@@ -244,14 +247,25 @@ export async function reserveTrialAction(
 
   const { data: course, error: courseError } = await supabase
     .from("courses_lite")
-    .select("id,kind,capacity,weekday,start_time,duration_minutes,recurrence_type,trial_mode,starts_at,ends_at")
+    .select("id,kind,is_published,is_publicly_visible,capacity,weekday,start_time,duration_minutes,recurrence_type,trial_mode,starts_at,ends_at")
     .eq("id", courseId)
     .eq("is_published", true)
+    .eq("is_publicly_visible", true)
     .maybeSingle<CourseLiteTrialRow>();
 
   if (courseError || !course || course.kind !== "course") {
     logReservationError("load-course", courseError);
     return { error: "Kurs nicht gefunden." };
+  }
+  if (
+    !isPubliclyVisibleOffer({
+      kind: course.kind,
+      isPublished: course.is_published,
+      startsAt: course.starts_at,
+      endsAt: course.ends_at,
+    })
+  ) {
+    return { error: "Dieser Kurs ist öffentlich nicht mehr verfügbar." };
   }
 
   if (isCourseClosedForNewRegistrations(course.ends_at)) {

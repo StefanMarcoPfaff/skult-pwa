@@ -302,12 +302,6 @@ export default async function DashboardCourseDetailPage({
     .order("starts_at", { ascending: true })
     .returns<SessionRow[]>();
 
-  const { count: registrationsCount } = await supabase
-    .from("bookings")
-    .select("id", { count: "exact", head: true })
-    .eq("course_id", id);
-  const hasRegistrations = (registrationsCount ?? 0) > 0;
-
   const { data: trialParticipants } = data?.kind === "course"
     ? await admin
         .from("trial_reservations")
@@ -560,8 +554,7 @@ export default async function DashboardCourseDetailPage({
           Ändern
         </Link>
 
-        {data.is_published && hasRegistrations ? null : (
-          <form action={setCoursePublishStateAction}>
+        <form action={setCoursePublishStateAction}>
             <input type="hidden" name="course_id" value={data.id} />
             <input type="hidden" name="mode" value={data.is_published ? "draft" : "published"} />
             <button
@@ -571,8 +564,7 @@ export default async function DashboardCourseDetailPage({
             >
               {data.is_published ? "Veröffentlichung zurückziehen" : "Jetzt veröffentlichen"}
             </button>
-          </form>
-        )}
+        </form>
       </div>
 
       {!data.is_published && publishBlockedForMissingPolicy ? (
@@ -756,13 +748,6 @@ export default async function DashboardCourseDetailPage({
         </section>
       ) : null}
 
-      {data.is_published && hasRegistrations ? (
-        <section className="mt-8 rounded-2xl border p-4">
-          <p className="text-sm text-muted-foreground">
-            Die Veröffentlichung kann nicht zurückgezogen werden, weil bereits Anmeldungen vorliegen.
-          </p>
-        </section>
-      ) : null}
     </main>
   );
 }

@@ -3,6 +3,7 @@ import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatCoursePriceFromRow } from "@/lib/course-display";
 import { buildOfferAvailability, loadOccupiedSeatCountsForOffers } from "@/lib/public-offer-availability";
+import { isPubliclyVisibleOffer } from "@/lib/public-offer-visibility";
 
 type Row = Record<string, unknown>;
 
@@ -76,10 +77,12 @@ export default async function CoursesPage() {
   const supabase = await createSupabaseServerClient();
 
   let publishedFilterApplied = true;
+  let publicVisibilityFilterApplied = true;
   let response = await supabase
     .from("courses_lite")
     .select("*")
     .eq("is_published", true)
+    .eq("is_publicly_visible", true)
     .order("created_at", { ascending: false })
     .limit(50);
 
@@ -88,12 +91,14 @@ export default async function CoursesPage() {
       .from("courses_lite")
       .select("*")
       .eq("is_published", true)
+      .eq("is_publicly_visible", true)
       .order("starts_at", { ascending: true, nullsFirst: false })
       .limit(50);
   }
 
   if (response.error) {
     publishedFilterApplied = false;
+    publicVisibilityFilterApplied = false;
     response = await supabase
       .from("courses_lite")
       .select("*")
@@ -127,6 +132,20 @@ export default async function CoursesPage() {
     if (canClientFilter) {
       offers = offers.filter((o) => o.is_published === true);
       publishedFilterApplied = true;
+    }
+  }
+  if (!publicVisibilityFilterApplied) {
+    const canClientFilter = offers.some((o) => getKind(o) !== null);
+    if (canClientFilter) {
+      offers = offers.filter((o) =>
+        isPubliclyVisibleOffer({
+          kind: getKind(o),
+          isPublished: typeof o.is_published === "boolean" ? o.is_published : true,
+          startsAt: asString(o.starts_at),
+          endsAt: asString(o.ends_at),
+        })
+      );
+      publicVisibilityFilterApplied = true;
     }
   }
 

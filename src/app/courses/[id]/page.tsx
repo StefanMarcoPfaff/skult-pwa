@@ -18,6 +18,7 @@ import {
   loadOccupiedCourseSeats,
   loadOccupiedWorkshopSeats,
 } from "@/lib/public-offer-availability";
+import { isPubliclyVisibleOffer } from "@/lib/public-offer-visibility";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PayButton } from "./PayButton";
@@ -145,6 +146,7 @@ export default async function CourseDetailPage({
     .select("*")
     .eq("id", id)
     .eq("is_published", true)
+    .eq("is_publicly_visible", true)
     .maybeSingle<Row>();
 
   if (response.error) {
@@ -155,6 +157,16 @@ export default async function CourseDetailPage({
 
   const data = response.data;
   if (typeof data.is_published === "boolean" && !data.is_published) {
+    return notFound();
+  }
+  if (
+    !isPubliclyVisibleOffer({
+      kind: getKind(data),
+      isPublished: typeof data.is_published === "boolean" ? data.is_published : true,
+      startsAt: asString(data.starts_at),
+      endsAt: asString(data.ends_at),
+    })
+  ) {
     return notFound();
   }
 

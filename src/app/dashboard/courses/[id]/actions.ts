@@ -88,17 +88,6 @@ export async function setCoursePublishStateAction(formData: FormData) {
     redirect("/login");
   }
 
-  if (!publish) {
-    const { count } = await supabase
-      .from("bookings")
-      .select("id", { count: "exact", head: true })
-      .eq("course_id", courseId);
-
-    if ((count ?? 0) > 0) {
-      redirect(targetPath);
-    }
-  }
-
   if (publish) {
     const { data: course } = await supabase
       .from("courses")
