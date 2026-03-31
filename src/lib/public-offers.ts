@@ -149,6 +149,8 @@ export async function getPublicCourseById(id: string): Promise<PublicOfferDetail
       : [publicProfile?.first_name, publicProfile?.last_name].filter(Boolean).join(" ").trim() ||
         publicCourse?.instructor_name ||
         providerLabel;
+  const profilePhotoUrl = publicProfile?.photo_url ?? null;
+  const profileVideoUrl = publicProfile?.intro_video_url ?? null;
 
   return {
     offer,
@@ -158,9 +160,7 @@ export async function getPublicCourseById(id: string): Promise<PublicOfferDetail
     providerLabel,
     profileHeading,
     profileDescription: publicProfile?.bio ?? null,
-    profilePhotoUrl: isHttpUrl(publicProfile?.photo_url ?? null) ? publicProfile.photo_url : null,
-    profileVideoUrl: isHttpUrl(publicProfile?.intro_video_url ?? null)
-      ? publicProfile.intro_video_url
-      : null,
+    profilePhotoUrl: isHttpUrl(profilePhotoUrl) ? profilePhotoUrl : null,
+    profileVideoUrl: isHttpUrl(profileVideoUrl) ? profileVideoUrl : null,
   };
 }
