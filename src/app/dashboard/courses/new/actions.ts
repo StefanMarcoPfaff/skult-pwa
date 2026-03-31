@@ -8,6 +8,11 @@ import {
 } from "@/lib/provider-profiles";
 import { generateRecurringCourseSessions } from "@/lib/course-sessions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  getWorkshopCheckoutCurrency,
+  isWorkshopCheckoutCurrencySupported,
+  normalizeWorkshopCurrency,
+} from "@/lib/workshop-checkout";
 
 type ActionResult = { error?: string };
 type SupabaseLikeError = {
@@ -236,12 +241,18 @@ async function createOrUpdateWorkshop(
   const location_details = parseOptionalString(formData.get("location_details"));
   const capacity = parseOptionalInt(formData.get("capacity"));
   const price_cents = parseOptionalInt(formData.get("price_cents"));
-  const currency = String(formData.get("currency") || "EUR").trim() || "EUR";
+  const currency = normalizeWorkshopCurrency(String(formData.get("currency") || ""));
   const workshop_storno_policy = String(formData.get("workshop_storno_policy") || "").trim();
   const sessions = parseSessionsJson(formData);
   if (!sessions) return { error: "Bitte füge mindestens einen gültigen Termin hinzu (Ende nach Start)." };
   if (!isWorkshopStornoPolicy(workshop_storno_policy)) {
     return { error: "Bitte wähle eine gültige Storno-Regel." };
+  }
+
+  if (!isWorkshopCheckoutCurrencySupported(currency)) {
+    return {
+      error: `Workshops sind aktuell nur mit ${getWorkshopCheckoutCurrency()} als WÃ¤hrung verfÃ¼gbar.`,
+    };
   }
 
   const providerProfileResult = await loadProviderProfile(supabase, user.id);

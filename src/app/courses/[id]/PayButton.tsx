@@ -120,8 +120,8 @@ export function PayButton({
       </div>
 
       <p className="text-sm text-muted-foreground">
-        Im Checkout stehen dir aktuell Karte und SEPA-Lastschrift zur Verfügung. Nach der Zahlung
-        erhältst du deine Buchungsbestätigung und dein Workshop-Ticket per E-Mail.
+        Im Checkout zeigt Stripe automatisch die verfügbaren Zahlungsmethoden für Gerät, Land
+        und Buchung an, zum Beispiel Karte, Apple Pay, Google Pay, SEPA oder Klarna.
       </p>
 
       <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">

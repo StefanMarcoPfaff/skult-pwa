@@ -17,8 +17,11 @@ import {
   isCourseEnded,
   isCourseEndingScheduled,
 } from "@/lib/course-ending";
+import { getPublicCourseById } from "@/lib/public-offers";
+import { getSiteUrl } from "@/lib/site-url";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { EmbedCodePanel } from "@/components/dashboard/EmbedCodePanel";
 import { scheduleCourseEndAction, setCoursePublishStateAction } from "./actions";
 
 type Row = {
@@ -361,6 +364,11 @@ export default async function DashboardCourseDetailPage({
     );
   }
 
+  const publicOffer = await getPublicCourseById(id);
+  const siteUrl = getSiteUrl();
+  const publicUrl = `${siteUrl}/courses/${data.id}`;
+  const embedUrl = `${siteUrl}/embed/courses/${data.id}`;
+
   const providerLabel =
     profile?.provider_type === "studio_provider"
       ? getProviderDisplayName("studio_provider", {
@@ -604,6 +612,12 @@ export default async function DashboardCourseDetailPage({
       </div>
 
       {data.description ? <p style={{ marginTop: 16, lineHeight: 1.6 }}>{data.description}</p> : null}
+
+      <EmbedCodePanel
+        isEnabled={Boolean(publicOffer)}
+        publicUrl={publicUrl}
+        embedUrl={embedUrl}
+      />
 
       {data.kind === "course" ? (
         <section className="mt-6 rounded-2xl border p-5">

@@ -13,6 +13,7 @@ const HIDDEN_PREFIXES = [
   "/ticket",
   "/tickets",
   "/auth",
+  "/embed",
 ] as const;
 
 export default function PublicFooter() {

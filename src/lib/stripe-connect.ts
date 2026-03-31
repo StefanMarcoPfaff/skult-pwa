@@ -9,6 +9,12 @@ export function getRequestedStripeConnectCapabilities():
     card_payments: {
       requested: true,
     },
+    klarna_payments: {
+      requested: true,
+    },
+    sepa_debit_payments: {
+      requested: true,
+    },
     transfers: {
       requested: true,
     },

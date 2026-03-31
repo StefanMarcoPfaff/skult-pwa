@@ -6,7 +6,6 @@ import {
   isCourseClosedForNewRegistrations,
   isCourseEnded,
 } from "@/lib/course-ending";
-import { getProviderDisplayName } from "@/lib/provider-profiles";
 import {
   COURSE_BILLING_SUMMARY,
   COURSE_CANCELLATION_SUMMARY,
@@ -18,9 +17,8 @@ import {
   loadOccupiedCourseSeats,
   loadOccupiedWorkshopSeats,
 } from "@/lib/public-offer-availability";
-import { isPubliclyVisibleOffer } from "@/lib/public-offer-visibility";
+import { getPublicCourseById } from "@/lib/public-offers";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PayButton } from "./PayButton";
 import ReserveTrialButton from "./ReserveTrialButton";
 import SoldOutInquiryForm from "./SoldOutInquiryForm";
@@ -34,22 +32,6 @@ type SessionRow = {
   ends_at: string | null;
 };
 
-type PublicCourseRow = {
-  teacher_id: string | null;
-  instructor_name: string | null;
-  workshop_storno_policy: string | null;
-};
-
-type PublicProfileRow = {
-  first_name: string | null;
-  last_name: string | null;
-  provider_type: "independent_teacher" | "studio_provider" | null;
-  organization_name: string | null;
-  photo_url: string | null;
-  bio: string | null;
-  intro_video_url: string | null;
-};
-
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
@@ -60,12 +42,6 @@ function asNumber(value: unknown): number | null {
     const parsed = Number(value);
     if (Number.isFinite(parsed)) return parsed;
   }
-  return null;
-}
-
-function getKind(row: Row): "workshop" | "course" | null {
-  const raw = (asString(row.offer_type) ?? asString(row.kind) ?? "").toLowerCase();
-  if (raw === "workshop" || raw === "course") return raw;
   return null;
 }
 
@@ -119,10 +95,6 @@ function formatSessionLine(startsAt: string | null, endsAt: string | null): stri
   return `${date} | ${startTime}-${endTime}`;
 }
 
-function isHttpUrl(value: string | null): value is string {
-  return Boolean(value && /^https?:\/\//i.test(value));
-}
-
 function isWorkshopBookable(startsAt: string | null, endsAt: string | null) {
   const reference = endsAt ?? startsAt;
   if (!reference) return true;
@@ -139,38 +111,12 @@ export default async function CourseDetailPage({
 }) {
   const { id } = await params;
   const { reserved } = await searchParams;
-  const supabase = await createSupabaseServerClient();
+  const publicOffer = await getPublicCourseById(id);
+  if (!publicOffer) return notFound();
 
-  let response = await supabase
-    .from("courses_lite")
-    .select("*")
-    .eq("id", id)
-    .eq("is_published", true)
-    .eq("is_publicly_visible", true)
-    .maybeSingle<Row>();
-
-  if (response.error) {
-    response = await supabase.from("courses_lite").select("*").eq("id", id).maybeSingle<Row>();
-  }
-
-  if (response.error || !response.data) return notFound();
-
-  const data = response.data;
-  if (typeof data.is_published === "boolean" && !data.is_published) {
-    return notFound();
-  }
-  if (
-    !isPubliclyVisibleOffer({
-      kind: getKind(data),
-      isPublished: typeof data.is_published === "boolean" ? data.is_published : true,
-      startsAt: asString(data.starts_at),
-      endsAt: asString(data.ends_at),
-    })
-  ) {
-    return notFound();
-  }
-
-  const kind = getKind(data) ?? "workshop";
+  const supabase = await createSupabaseAdmin();
+  const data = publicOffer.offer;
+  const kind = publicOffer.kind;
   const title = asString(data.title) ?? "Ohne Titel";
   const description = asString(data.description) ?? asString(data.subtitle);
   const location = asString(data.location);
@@ -249,13 +195,6 @@ export default async function CourseDetailPage({
   const workshopCanBook = kind === "workshop" ? isWorkshopBookable(startsAt, endsAt) : false;
 
   let sessions: SessionRow[] = [];
-  let publicCourse: PublicCourseRow | null = null;
-  let publicProfile: PublicProfileRow | null = null;
-  let profileHeading: string | null = null;
-  let profileDescription: string | null = null;
-  let profilePhotoUrl: string | null = null;
-  let profileVideoUrl: string | null = null;
-  let providerLabel: string | null = null;
   if (kind === "workshop") {
     const { data: sessionData } = await supabase
       .from("course_sessions")
@@ -266,50 +205,8 @@ export default async function CourseDetailPage({
     sessions = sessionData ?? [];
   }
 
-  {
-    const admin = createSupabaseAdmin();
-    const { data: loadedCourse } = await admin
-      .from("courses")
-      .select("teacher_id,instructor_name,workshop_storno_policy")
-      .eq("id", id)
-      .maybeSingle<PublicCourseRow>();
-
-    publicCourse = loadedCourse ?? null;
-
-    if (publicCourse?.teacher_id) {
-      const { data: loadedProfile } = await admin
-        .from("profiles")
-        .select("first_name,last_name,provider_type,organization_name,photo_url,bio,intro_video_url")
-        .eq("id", publicCourse.teacher_id)
-        .maybeSingle<PublicProfileRow>();
-
-      publicProfile = loadedProfile ?? null;
-    }
-
-    providerLabel =
-      publicProfile?.provider_type
-        ? getProviderDisplayName(publicProfile.provider_type, publicProfile)
-        : null;
-
-    if (publicProfile?.provider_type === "studio_provider") {
-      profileHeading = publicCourse?.instructor_name ?? providerLabel;
-    } else {
-      profileHeading =
-        [publicProfile?.first_name, publicProfile?.last_name].filter(Boolean).join(" ").trim() ||
-        publicCourse?.instructor_name ||
-        providerLabel;
-    }
-
-    profileDescription = publicProfile?.bio ?? null;
-    profilePhotoUrl =
-      isHttpUrl(publicProfile?.photo_url ?? null)
-        ? (publicProfile?.photo_url ?? null)
-        : null;
-    profileVideoUrl =
-      isHttpUrl(publicProfile?.intro_video_url ?? null)
-        ? (publicProfile?.intro_video_url ?? null)
-        : null;
-  }
+  const { publicCourse, publicProfile, providerLabel, profileHeading, profileDescription, profilePhotoUrl, profileVideoUrl } =
+    publicOffer;
 
   const shouldShowProfileSection = Boolean(
     profileHeading || profileDescription || profilePhotoUrl || profileVideoUrl || providerLabel

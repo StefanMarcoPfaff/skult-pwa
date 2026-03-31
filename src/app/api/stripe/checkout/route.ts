@@ -10,6 +10,11 @@ import {
 } from "@/lib/stripe-connect";
 import type { ProviderType } from "@/lib/provider-profiles";
 import { createClient } from "@/lib/supabase-server";
+import {
+  getWorkshopCheckoutCurrencyError,
+  isWorkshopCheckoutCurrencySupported,
+  normalizeWorkshopCurrency,
+} from "@/lib/workshop-checkout";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
@@ -95,6 +100,13 @@ export async function POST(req: Request) {
 
     if (course.price_type !== "paid" || !course.price_cents || course.price_cents <= 0) {
       return NextResponse.json({ error: "Workshop nicht paid konfiguriert" }, { status: 400 });
+    }
+
+    if (!isWorkshopCheckoutCurrencySupported(course.currency)) {
+      return NextResponse.json(
+        { error: getWorkshopCheckoutCurrencyError(course.currency) },
+        { status: 400 }
+      );
     }
 
     const capacity =
@@ -212,15 +224,15 @@ export async function POST(req: Request) {
     }
 
     const siteUrl = getSiteUrl(req.url);
+    const workshopCurrency = normalizeWorkshopCurrency(course.currency);
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      payment_method_types: ["card"],
       customer_email: customerEmail,
       line_items: [
         {
           price_data: {
-            currency: (course.currency || "EUR").toLowerCase(),
+            currency: workshopCurrency.toLowerCase(),
             unit_amount: course.price_cents,
             product_data: { name: course.title || "Workshop" },
           },

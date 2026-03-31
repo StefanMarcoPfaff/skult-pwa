@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
 import { getPlatformFeePercent } from "@/lib/platform-fees";
 import type { ProviderType, WorkshopStornoPolicy } from "@/lib/provider-profiles";
+import { getWorkshopCheckoutCurrency } from "@/lib/workshop-checkout";
 import { createWorkshopAction } from "../actions";
 
 type SessionInput = {
@@ -87,9 +88,10 @@ export default function WorkshopForm({
   providerType: ProviderType;
   providerDisplayName: string;
 }) {
+  const workshopCurrency = getWorkshopCheckoutCurrency();
   const [error, setError] = useState<string | null>(null);
   const [priceEur, setPriceEur] = useState(initialValues?.price_eur ?? "");
-  const [currency, setCurrency] = useState(initialValues?.currency ?? "EUR");
+  const [currency] = useState(workshopCurrency);
   const [sessions, setSessions] = useState<SessionInput[]>(() =>
     initialValues?.sessions && initialValues.sessions.length > 0
       ? initialValues.sessions.map((session, index) => ({
@@ -411,8 +413,8 @@ export default function WorkshopForm({
           <input
             name="currency"
             value={currency}
-            onChange={(event) => setCurrency(event.target.value)}
-            className="w-full rounded-xl border px-3 py-2 text-sm uppercase"
+            readOnly
+            className="w-full rounded-xl border bg-gray-50 px-3 py-2 text-sm uppercase text-gray-700"
           />
         </label>
       </div>
@@ -438,6 +440,10 @@ export default function WorkshopForm({
           Plattformgebühr von {platformFeePercent} %.
         </p>
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        Workshop-Checkout ist aktuell nur in {workshopCurrency} aktiviert.
+      </p>
 
       {error ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
