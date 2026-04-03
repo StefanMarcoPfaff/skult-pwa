@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import {
+  finalizeCourseRegistrationCheckoutSession,
+  markCourseRegistrationCheckoutFailed,
+} from "@/lib/course-registration-finalization";
 import { finalizeWorkshopBookingBySession } from "@/lib/workshop-booking-finalization";
 
 export const runtime = "nodejs";
@@ -31,12 +35,36 @@ export async function POST(req: Request) {
   try {
     if (
       event.type !== "checkout.session.completed" &&
-      event.type !== "checkout.session.async_payment_succeeded"
+      event.type !== "checkout.session.async_payment_succeeded" &&
+      event.type !== "checkout.session.async_payment_failed"
     ) {
       return NextResponse.json({ received: true });
     }
 
     const session = event.data.object as Stripe.Checkout.Session;
+    if (session.metadata?.registrationIntentId) {
+      if (event.type === "checkout.session.async_payment_failed") {
+        await markCourseRegistrationCheckoutFailed({
+          sessionId: session.id,
+          expectedIntentId: session.metadata.registrationIntentId,
+        });
+        return NextResponse.json({ received: true });
+      }
+
+      const finalized = await finalizeCourseRegistrationCheckoutSession({
+        sessionId: session.id,
+        expectedIntentId: session.metadata.registrationIntentId,
+      });
+
+      logWebhookEvent("course registration checkout handled", {
+        sessionId: session.id,
+        intentId: finalized.kind === "ignored" ? null : finalized.intentId,
+        result: finalized.kind,
+      });
+
+      return NextResponse.json({ received: true });
+    }
+
     if (session.payment_status !== "paid") {
       return NextResponse.json({ received: true });
     }

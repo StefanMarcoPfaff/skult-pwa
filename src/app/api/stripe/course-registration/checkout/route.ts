@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
+import {
+  getCourseSubscriptionCheckoutCurrency,
+  getCourseSubscriptionCheckoutCurrencyError,
+  isCourseSubscriptionCheckoutCurrencySupported,
+} from "@/lib/course-subscription-checkout";
 import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
 import { getStripe } from "@/lib/stripe";
 import {
@@ -85,6 +90,17 @@ export async function GET(req: Request) {
     return NextResponse.redirect(new URL(`/trial/register/${token}?error=course_unavailable`, url));
   }
 
+  if (!isCourseSubscriptionCheckoutCurrencySupported(course.currency)) {
+    return NextResponse.redirect(
+      new URL(
+        `/trial/register/${token}?error=${encodeURIComponent(
+          getCourseSubscriptionCheckoutCurrencyError(course.currency)
+        )}`,
+        url
+      )
+    );
+  }
+
   if (isCourseClosedForNewRegistrations(course.ends_at)) {
     return NextResponse.redirect(new URL(`/trial/register/${token}?error=course_ending`, url));
   }
@@ -123,12 +139,11 @@ export async function GET(req: Request) {
   const siteUrl = getSiteUrl(req.url);
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
-    payment_method_types: ["card"],
     customer_email: intent.email,
     line_items: [
       {
         price_data: {
-          currency: (course.currency || "EUR").toLowerCase(),
+          currency: getCourseSubscriptionCheckoutCurrency().toLowerCase(),
           unit_amount: course.price_cents,
           recurring: {
             interval: "month",
@@ -157,6 +172,7 @@ export async function GET(req: Request) {
       courseId: intent.course_id,
       registrationToken: token,
       teacherStripeAccountId: profile.stripe_account_id,
+      checkoutFlow: "course_registration",
     },
     client_reference_id: intent.id,
   });

@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import {
+  getProfileImageMaxSizeLabel,
+  validateProfileImageFile,
+} from "@/lib/profile-image-upload";
 import { saveProfileAction, type SaveProfileState } from "./actions";
 import type { ProviderType } from "@/lib/provider-profiles";
 
@@ -17,6 +22,7 @@ type ProfileFormProps = {
 };
 
 export default function ProfileForm({ initialValues }: ProfileFormProps) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [state, setState] = useState<SaveProfileState>({});
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState(initialValues.photo_url);
@@ -36,16 +42,28 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
 
   const submitAction = (formData: FormData) => {
     setFileError(null);
+    setState({});
     const introVideoUrl = String(formData.get("intro_video_url") || "").trim();
     if (introVideoUrl && !/^https?:\/\//i.test(introVideoUrl)) {
-      setVideoUrlError("Bitte gib einen gültigen Link mit http:// oder https:// an.");
+      setVideoUrlError("Bitte gib einen gueltigen Link mit http:// oder https:// an.");
       return;
     }
     setVideoUrlError(null);
 
     startTransition(async () => {
-      const result = await saveProfileAction(formData);
-      setState(result);
+      try {
+        const result = await saveProfileAction(formData);
+        setState(result);
+
+        if (result.redirectTo) {
+          router.push(result.redirectTo);
+          router.refresh();
+        }
+      } catch {
+        setState({
+          error: "Beim Speichern des Profils ist ein Fehler aufgetreten. Bitte versuche es erneut.",
+        });
+      }
     });
   };
 
@@ -60,7 +78,7 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
             onChange={(event) => setProviderType(event.target.value as ProviderType)}
             className="w-full rounded-xl border px-3 py-2 text-sm"
           >
-            <option value="independent_teacher">Selbstständige Lehrkraft</option>
+            <option value="independent_teacher">Selbststaendige Lehrkraft</option>
             <option value="studio_provider">Studio / Anbieter</option>
           </select>
         </label>
@@ -129,9 +147,20 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
                 return;
               }
 
-              if (!nextFile.type.startsWith("image/")) {
-                setFileError("Bitte nur Bilddateien hochladen.");
+              const validation = validateProfileImageFile({
+                size: nextFile.size,
+                type: nextFile.type,
+                name: nextFile.name,
+              });
+
+              if (!validation.ok) {
+                setFileError(validation.error);
                 event.target.value = "";
+                if (photoObjectUrl) {
+                  URL.revokeObjectURL(photoObjectUrl);
+                  setPhotoObjectUrl(null);
+                }
+                setPhotoPreviewUrl(initialValues.photo_url);
                 return;
               }
 
@@ -146,7 +175,7 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
             className="w-full rounded-xl border px-3 py-2 text-sm"
           />
           <span className="block text-xs text-muted-foreground">
-            Optional: JPG, PNG oder WebP
+            Optional: JPG, PNG oder WebP, maximal {getProfileImageMaxSizeLabel()}
           </span>
           <input type="hidden" name="existing_photo_url" value={initialValues.photo_url} />
           {photoPreviewUrl.trim() ? (
@@ -181,7 +210,7 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
             rel="noreferrer"
             className="inline-flex text-sm font-medium underline underline-offset-4"
           >
-            Video-Link öffnen
+            Video-Link oeffnen
           </a>
         ) : null}
       </label>
@@ -204,9 +233,21 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
         </p>
       ) : null}
 
+      {state.warning ? (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {state.warning}
+        </p>
+      ) : null}
+
+      {state.success && !state.redirectTo ? (
+        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          {state.success}
+        </p>
+      ) : null}
+
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || Boolean(fileError) || Boolean(videoUrlError)}
         className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
       >
         {pending ? "Speichert..." : "Speichern"}

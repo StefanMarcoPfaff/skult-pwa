@@ -95,9 +95,9 @@ export default async function TrialRegistrationTokenPage({
     return (
       <main className="mx-auto max-w-2xl space-y-6 p-6">
         <section className="rounded-2xl border p-6">
-          <h1 className="text-2xl font-semibold">Link nicht mehr gültig</h1>
+          <h1 className="text-2xl font-semibold">Link nicht mehr gueltig</h1>
           <p className="mt-3 text-sm text-muted-foreground">
-            Dieser Anmeldelink ist ungültig oder bereits abgelaufen.
+            Dieser Anmeldelink ist ungueltig oder bereits abgelaufen.
           </p>
           <Link href="/courses" className="mt-4 inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
             Zu den Kursen
@@ -123,9 +123,7 @@ export default async function TrialRegistrationTokenPage({
       : { data: null };
 
   const providerName =
-    profile?.provider_type
-      ? getProviderDisplayName(profile.provider_type, profile)
-      : null;
+    profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
 
   const ticket =
     isCompletedRegistration && intentByToken?.stripe_subscription_id
@@ -134,14 +132,16 @@ export default async function TrialRegistrationTokenPage({
 
   const checkoutError =
     error === "course_unavailable"
-      ? "Dieser Kurs ist aktuell nicht für die Online-Anmeldung verfügbar."
+      ? "Dieser Kurs ist aktuell nicht fuer die Online-Anmeldung verfuegbar."
       : error === "course_ending"
         ? `Dieser Kurs endet am ${formatCourseEndDate(course?.ends_at ?? null) ?? "dem geplanten Termin"} und nimmt keine neuen verbindlichen Anmeldungen mehr an.`
         : error === "provider_payment_missing"
-          ? "Der Anbieter hat noch keine vollständigen Zahlungsdaten hinterlegt."
+          ? "Der Anbieter hat noch keine vollstaendigen Zahlungsdaten hinterlegt."
           : error === "provider_payment_incomplete"
-            ? "Das verknüpfte Stripe-Konto ist noch nicht vollständig eingerichtet."
-            : null;
+            ? "Das verknuepfte Stripe-Konto ist noch nicht vollstaendig eingerichtet."
+            : error
+              ? error
+              : null;
   const isEditMode = isCompletedRegistration && edit === "1";
   const registrationClosed =
     !isCompletedRegistration && isCourseClosedForNewRegistrations(course?.ends_at ?? null);

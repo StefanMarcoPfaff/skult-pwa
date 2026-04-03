@@ -1,146 +1,11 @@
 import Link from "next/link";
 import QRCode from "react-qr-code";
-import { formatRecurringCoursePrice } from "@/lib/course-display";
-import { getProviderDisplayName } from "@/lib/provider-profiles";
+import {
+  finalizeCourseRegistrationCheckoutSession,
+  type CourseRegistrationFinalizeResult,
+} from "@/lib/course-registration-finalization";
 import { buildTicketCheckInUrl } from "@/lib/ticket-qr";
-import {
-  issueCourseParticipantTicketForSubscription,
-  type TicketRow,
-} from "@/lib/tickets";
-import {
-  sendCourseSubscriptionConfirmationEmail,
-  sendCourseSubscriptionProviderNotificationEmail,
-} from "@/lib/trial-reservation-emails";
-import { getStripe } from "@/lib/stripe";
-import { createSupabaseAdmin } from "@/lib/supabase/admin";
-
-type CourseRegistrationIntentRow = {
-  id: string;
-  trial_reservation_id: string;
-  course_id: string;
-  first_name: string | null;
-  last_name: string | null;
-  email: string | null;
-  phone: string | null;
-  status: string | null;
-  completed_at: string | null;
-  registration_confirmation_email_sent_at: string | null;
-  provider_notification_email_sent_at: string | null;
-};
-
-type TrialReservationRow = {
-  id: string;
-  first_name: string | null;
-  last_name: string | null;
-  email: string | null;
-  converted_at: string | null;
-  converted_registration_intent_id: string | null;
-};
-
-type CourseRow = {
-  id: string;
-  title: string | null;
-  teacher_id: string | null;
-  instructor_name: string | null;
-  price_cents: number | null;
-  currency: string | null;
-  cancellation_model: string | null;
-  starts_at: string | null;
-  duration_minutes: number | null;
-  location: string | null;
-  location_details: string | null;
-};
-
-type ProfileRow = {
-  first_name: string | null;
-  last_name: string | null;
-  provider_type: "independent_teacher" | "studio_provider" | null;
-  organization_name: string | null;
-  photo_url: string | null;
-};
-
-type ProviderContact = {
-  providerType: "independent_teacher" | "studio_provider" | null;
-  providerName: string | null;
-  providerEmail: string | null;
-  providerContactName: string | null;
-  senderImageUrl: string | null;
-};
-
-type SupabaseLikeError = {
-  name?: string;
-  message?: string;
-  code?: string;
-  details?: string;
-  hint?: string;
-  stack?: string;
-};
-
-function logRegistrationSuccessInfo(message: string, payload: Record<string, unknown>) {
-  if (process.env.NODE_ENV === "production") return;
-  console.log("[course registration success]", message, payload);
-}
-
-function logRegistrationSuccessError(context: string, error: unknown) {
-  if (process.env.NODE_ENV === "production") return;
-  const fallback =
-    typeof error === "object" && error !== null ? (error as Record<string, unknown>) : undefined;
-  const supabaseError = (error ?? {}) as SupabaseLikeError;
-  console.error("[course registration success]", {
-    context,
-    name:
-      supabaseError.name ??
-      (error instanceof Error ? error.name : undefined) ??
-      (typeof fallback?.name === "string" ? fallback.name : undefined),
-    message:
-      supabaseError.message ??
-      (error instanceof Error ? error.message : undefined) ??
-      (typeof fallback?.message === "string" ? fallback.message : undefined),
-    code: supabaseError.code ?? (typeof fallback?.code === "string" ? fallback.code : undefined),
-    details:
-      supabaseError.details ?? (typeof fallback?.details === "string" ? fallback.details : undefined),
-    hint: supabaseError.hint ?? (typeof fallback?.hint === "string" ? fallback.hint : undefined),
-    stack:
-      supabaseError.stack ??
-      (error instanceof Error ? error.stack : undefined) ??
-      (typeof fallback?.stack === "string" ? fallback.stack : undefined),
-    raw: fallback,
-  });
-}
-
-async function resolveProviderContact(
-  admin: ReturnType<typeof createSupabaseAdmin>,
-  course: CourseRow | null
-): Promise<ProviderContact> {
-  if (!course?.teacher_id) {
-    return {
-      providerType: null,
-      providerName: null,
-      providerEmail: null,
-      providerContactName: null,
-      senderImageUrl: null,
-    };
-  }
-
-  const [{ data: profile }, authResult] = await Promise.all([
-    admin
-      .from("profiles")
-      .select("first_name,last_name,provider_type,organization_name,photo_url")
-      .eq("id", course.teacher_id)
-      .maybeSingle<ProfileRow>(),
-    admin.auth.admin.getUserById(course.teacher_id),
-  ]);
-
-  return {
-    providerType: profile?.provider_type ?? null,
-    providerName:
-      profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null,
-    providerEmail: authResult.data.user?.email?.trim() || null,
-    providerContactName:
-      [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null,
-    senderImageUrl: profile?.photo_url ?? null,
-  };
-}
+import type { TicketRow } from "@/lib/tickets";
 
 export default async function TrialRegistrationSuccessPage({
   params,
@@ -151,315 +16,23 @@ export default async function TrialRegistrationSuccessPage({
 }) {
   const { token } = await params;
   const { session_id, intentId } = await searchParams;
-  const admin = createSupabaseAdmin();
   let ticketForDisplay: TicketRow | null = null;
   let courseTitleForDisplay = "Kurs";
   let priceLabelForDisplay: string | null = null;
+  let checkoutState: CourseRegistrationFinalizeResult["kind"] | null = null;
 
   if (session_id && intentId) {
-    const stripe = getStripe();
-    const session = await stripe.checkout.sessions.retrieve(session_id, {
-      expand: ["subscription"],
+    const result = await finalizeCourseRegistrationCheckoutSession({
+      sessionId: session_id,
+      expectedIntentId: intentId,
     });
 
-    if (
-      session.metadata?.registrationIntentId === intentId &&
-      (session.status === "complete" || session.payment_status === "paid")
-    ) {
-      const completedAt = new Date().toISOString();
-      const completionPayload = {
-        status: "checkout_completed" as const,
-        completed_at: completedAt,
-        stripe_checkout_session_id: session.id,
-        stripe_customer_id: typeof session.customer === "string" ? session.customer : null,
-        stripe_subscription_id:
-          typeof session.subscription === "string"
-            ? session.subscription
-            : session.subscription?.id ?? null,
-      };
+    checkoutState = result.kind;
 
-      logRegistrationSuccessInfo("checkout completion recognized", {
-        intentId,
-        sessionId: session.id,
-      });
-
-      const { data: updatedIntent, error: finalizeError } = await admin
-        .from("course_registration_intents")
-        .update(completionPayload)
-        .eq("id", intentId)
-        .neq("status", "checkout_completed")
-        .select(
-          "id,trial_reservation_id,course_id,first_name,last_name,email,phone,status,completed_at,registration_confirmation_email_sent_at,provider_notification_email_sent_at"
-        )
-        .maybeSingle<CourseRegistrationIntentRow>();
-
-      if (finalizeError) {
-        logRegistrationSuccessError("finalize-checkout", finalizeError);
-      }
-
-      const { data: storedIntent, error: storedIntentError } = await admin
-        .from("course_registration_intents")
-        .select(
-          "id,trial_reservation_id,course_id,first_name,last_name,email,phone,status,completed_at,registration_confirmation_email_sent_at,provider_notification_email_sent_at"
-        )
-        .eq("id", intentId)
-        .maybeSingle<CourseRegistrationIntentRow>();
-
-      if (storedIntentError) {
-        logRegistrationSuccessError("load-stored-intent", storedIntentError);
-      }
-
-      const finalizedIntent = updatedIntent ?? storedIntent;
-
-      if (finalizedIntent?.status === "checkout_completed") {
-        const [{ data: reservation }, { data: course }] = await Promise.all([
-          admin
-            .from("trial_reservations")
-            .select("id,first_name,last_name,email,converted_at,converted_registration_intent_id")
-            .eq("id", finalizedIntent.trial_reservation_id)
-            .maybeSingle<TrialReservationRow>(),
-          admin
-            .from("courses")
-            .select(
-              "id,title,teacher_id,instructor_name,price_cents,currency,cancellation_model,starts_at,duration_minutes,location,location_details"
-            )
-            .eq("id", finalizedIntent.course_id)
-            .maybeSingle<CourseRow>(),
-        ]);
-
-        const providerContact = await resolveProviderContact(admin, course ?? null);
-        courseTitleForDisplay = course?.title ?? "Kurs";
-        priceLabelForDisplay = formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null);
-        const recipientEmail =
-          finalizedIntent.email?.trim() || reservation?.email?.trim() || null;
-        const customerName =
-          [finalizedIntent.first_name, finalizedIntent.last_name]
-            .filter(Boolean)
-            .join(" ")
-            .trim() ||
-          [reservation?.first_name, reservation?.last_name].filter(Boolean).join(" ").trim() ||
-          "dein Kind";
-        const providerName = providerContact.providerName;
-        const subscriptionId =
-          typeof session.subscription === "string"
-            ? session.subscription
-            : session.subscription?.id ?? null;
-
-        if (subscriptionId && recipientEmail) {
-          try {
-            const ticketResult = await issueCourseParticipantTicketForSubscription({
-              subscriptionId,
-              courseId: finalizedIntent.course_id,
-              customerName,
-              customerEmail: recipientEmail,
-            });
-
-            ticketForDisplay = ticketResult.ticket;
-
-            logRegistrationSuccessInfo(
-              ticketResult.created ? "course participant ticket created" : "course participant ticket reused",
-              {
-                intentId: finalizedIntent.id,
-                subscriptionId,
-                ticketId: ticketResult.ticket.id,
-                recipient: recipientEmail,
-              }
-            );
-          } catch (error) {
-            logRegistrationSuccessError("issue-course-participant-ticket", error);
-          }
-        } else {
-          logRegistrationSuccessInfo("course participant ticket skipped", {
-            intentId: finalizedIntent.id,
-            subscriptionId,
-            recipient: recipientEmail,
-            reason: subscriptionId ? "missing-recipient" : "missing-subscription-id",
-          });
-        }
-
-        if (recipientEmail && !finalizedIntent.registration_confirmation_email_sent_at) {
-          try {
-            logRegistrationSuccessInfo("confirmation email attempt", {
-              intentId: finalizedIntent.id,
-              recipient: recipientEmail,
-              sentAtAlreadySet: Boolean(finalizedIntent.registration_confirmation_email_sent_at),
-              emailSource: finalizedIntent.email?.trim() ? "registration_intent" : "trial_reservation",
-            });
-
-            const result = await sendCourseSubscriptionConfirmationEmail({
-              registrationIntentId: finalizedIntent.id,
-              courseTitle: course?.title ?? "Kurs",
-              providerType: providerContact.providerType,
-              providerName,
-              instructorName: course?.instructor_name ?? null,
-              senderDisplayName:
-                providerContact.providerType === "studio_provider"
-                  ? providerName
-                  : course?.instructor_name ?? providerContact.providerContactName,
-              senderImageUrl: providerContact.senderImageUrl,
-              customerName,
-              customerEmail: recipientEmail,
-              priceLabel: formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null),
-              currency: course?.currency ?? "EUR",
-              cancellationLabel: "Monatlich zum Ende des Abrechnungszeitraums möglich.",
-              startsAt: course?.starts_at ?? null,
-              endsAt:
-                course?.starts_at && course?.duration_minutes
-                  ? new Date(new Date(course.starts_at).getTime() + course.duration_minutes * 60 * 1000).toISOString()
-                  : null,
-              location: course?.location ?? null,
-              locationDetails: course?.location_details ?? null,
-              qrToken: ticketForDisplay?.qr_token ?? null,
-            });
-
-            if (result?.error) {
-              throw result.error;
-            }
-
-            const sentAt = new Date().toISOString();
-            const { error: emailTimestampError } = await admin
-              .from("course_registration_intents")
-              .update({ registration_confirmation_email_sent_at: sentAt })
-              .eq("id", finalizedIntent.id)
-              .is("registration_confirmation_email_sent_at", null);
-
-            if (emailTimestampError) {
-              logRegistrationSuccessError("update-confirmation-email-timestamp", emailTimestampError);
-            }
-
-            logRegistrationSuccessInfo("confirmation email sent", {
-              intentId: finalizedIntent.id,
-              recipient: recipientEmail,
-              messageId: result?.data?.id ?? null,
-              sentAtAlreadySet: false,
-            });
-          } catch (error) {
-            logRegistrationSuccessInfo("confirmation email failed", {
-              intentId: finalizedIntent.id,
-              recipient: recipientEmail,
-              sentAtAlreadySet: Boolean(finalizedIntent.registration_confirmation_email_sent_at),
-            });
-            logRegistrationSuccessError("send-confirmation-email", error);
-          }
-        } else {
-          logRegistrationSuccessInfo("confirmation email skipped", {
-            intentId: finalizedIntent.id,
-            recipient: recipientEmail,
-            reason: recipientEmail ? "already-sent" : "missing-recipient",
-            sentAtAlreadySet: Boolean(finalizedIntent.registration_confirmation_email_sent_at),
-            registrationConfirmationEmailSentAt:
-              finalizedIntent.registration_confirmation_email_sent_at,
-          });
-        }
-
-        const providerEmail = providerContact.providerEmail;
-        if (providerEmail && !finalizedIntent.provider_notification_email_sent_at) {
-          const claimedAt = new Date().toISOString();
-          const { data: claimedRows, error: claimError } = await admin
-            .from("course_registration_intents")
-            .update({ provider_notification_email_sent_at: claimedAt })
-            .eq("id", finalizedIntent.id)
-            .is("provider_notification_email_sent_at", null)
-            .select("id");
-
-          if (claimError) {
-            logRegistrationSuccessError("claim-provider-notification-email", claimError);
-          } else if (!claimedRows || claimedRows.length === 0) {
-            logRegistrationSuccessInfo("provider notification email skipped", {
-              intentId: finalizedIntent.id,
-              recipient: providerEmail,
-              reason: "already-sent",
-              sentAtAlreadySet: true,
-            });
-          } else {
-            try {
-              logRegistrationSuccessInfo("provider notification email attempt", {
-                intentId: finalizedIntent.id,
-                recipient: providerEmail,
-              });
-
-              const result = await sendCourseSubscriptionProviderNotificationEmail({
-                registrationIntentId: finalizedIntent.id,
-                teacherEmail: providerEmail,
-                participantName: customerName,
-                participantEmail: recipientEmail ?? "",
-                participantPhone: finalizedIntent.phone?.trim() || null,
-                courseTitle: course?.title ?? "Kurs",
-                providerName,
-                instructorName: course?.instructor_name ?? providerContact.providerContactName,
-                senderDisplayName:
-                  providerContact.providerType === "studio_provider"
-                    ? providerName
-                    : course?.instructor_name ?? providerContact.providerContactName,
-                senderImageUrl: providerContact.senderImageUrl,
-                priceLabel: formatRecurringCoursePrice(course?.price_cents ?? null, course?.currency ?? null),
-                cancellationLabel: "Monatlich zum Ende des Abrechnungszeitraums möglich.",
-              });
-
-              if (result?.error) {
-                throw result.error;
-              }
-
-              logRegistrationSuccessInfo("provider notification email sent", {
-                intentId: finalizedIntent.id,
-                recipient: providerEmail,
-                messageId: result?.data?.id ?? null,
-              });
-            } catch (error) {
-              await admin
-                .from("course_registration_intents")
-                .update({ provider_notification_email_sent_at: null })
-                .eq("id", finalizedIntent.id)
-                .eq("provider_notification_email_sent_at", claimedAt);
-
-              logRegistrationSuccessInfo("provider notification email failed", {
-                intentId: finalizedIntent.id,
-                recipient: providerEmail,
-              });
-              logRegistrationSuccessError("send-provider-notification-email", error);
-            }
-          }
-        } else {
-          logRegistrationSuccessInfo("provider notification email skipped", {
-            intentId: finalizedIntent.id,
-            recipient: providerEmail,
-            reason: providerEmail ? "already-sent" : "missing-recipient",
-            sentAtAlreadySet: Boolean(finalizedIntent.provider_notification_email_sent_at),
-            providerNotificationEmailSentAt: finalizedIntent.provider_notification_email_sent_at,
-          });
-        }
-
-        if (
-          reservation &&
-          (!reservation.converted_at ||
-            reservation.converted_registration_intent_id !== finalizedIntent.id)
-        ) {
-          const conversionTimestamp = finalizedIntent.completed_at ?? completedAt;
-          const { error: conversionError } = await admin
-            .from("trial_reservations")
-            .update({
-              converted_at: conversionTimestamp,
-              converted_registration_intent_id: finalizedIntent.id,
-            })
-            .eq("id", reservation.id);
-
-          if (conversionError) {
-            logRegistrationSuccessError("mark-trial-reservation-converted", conversionError);
-          } else {
-            logRegistrationSuccessInfo("trial reservation marked converted", {
-              reservationId: reservation.id,
-              intentId: finalizedIntent.id,
-              convertedAt: conversionTimestamp,
-            });
-          }
-        } else {
-          logRegistrationSuccessInfo("trial reservation conversion skipped", {
-            reservationId: reservation?.id ?? null,
-            intentId: finalizedIntent.id,
-            reason: reservation ? "already-converted" : "missing-reservation",
-          });
-        }
-      }
+    if (result.kind === "completed") {
+      ticketForDisplay = result.ticket;
+      courseTitleForDisplay = result.courseTitle;
+      priceLabelForDisplay = result.priceLabel;
     }
   }
 
@@ -470,15 +43,24 @@ export default async function TrialRegistrationSuccessPage({
   return (
     <main className="mx-auto max-w-2xl space-y-6 p-6">
       <section className="rounded-2xl border p-6">
-        <h1 className="text-2xl font-semibold">Deine Anmeldung war erfolgreich! 🎉</h1>
+        <h1 className="text-2xl font-semibold">
+          {checkoutState === "pending"
+            ? "Deine Zahlung wird noch bestaetigt."
+            : "Deine Anmeldung war erfolgreich!"}
+        </h1>
         <p className="mt-3 text-sm text-muted-foreground">
-          Alle weiteren Informationen zu deinem Kurs erhältst du per E-Mail.
+          {checkoutState === "pending"
+            ? "Sobald Stripe die Subscription-Zahlung bestaetigt hat, wird deine Kursanmeldung automatisch abgeschlossen und du erhaeltst die weiteren Informationen per E-Mail."
+            : "Alle weiteren Informationen zu deinem Kurs erhaeltst du per E-Mail."}
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <Link href="/courses" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
             Zu den Kursen
           </Link>
-          <Link href={`/trial/register/${token}`} className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
+          <Link
+            href={`/trial/register/${token}`}
+            className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
+          >
             Anmeldedaten ansehen
           </Link>
         </div>
@@ -488,7 +70,7 @@ export default async function TrialRegistrationSuccessPage({
         <section className="rounded-2xl border p-6">
           <h2 className="text-xl font-semibold">Dein Kursticket</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Zeige diesen QR-Code künftig für Anwesenheit und Check-in in {courseTitleForDisplay} vor.
+            Zeige diesen QR-Code kuenftig fuer Anwesenheit und Check-in in {courseTitleForDisplay} vor.
           </p>
           <div className="mt-4 inline-block rounded-2xl border bg-white p-4">
             <QRCode value={ticketCheckInUrl} size={220} />
@@ -508,16 +90,17 @@ export default async function TrialRegistrationSuccessPage({
         <section className="rounded-2xl border p-6">
           <h2 className="text-xl font-semibold">Deine Kurskonditionen</h2>
           <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-            {priceLabelForDisplay ? (
-              <p>
-                Preis: <span className="font-medium text-foreground">{priceLabelForDisplay}</span>
-              </p>
-            ) : null}
+            <p>
+              Preis: <span className="font-medium text-foreground">{priceLabelForDisplay}</span>
+            </p>
             <p>
               Abrechnung: <span className="font-medium text-foreground">monatlich ab Buchungsdatum</span>
             </p>
             <p>
-              Kündigung: <span className="font-medium text-foreground">monatlich zum Ende des Abrechnungszeitraums möglich.</span>
+              Kuendigung:{" "}
+              <span className="font-medium text-foreground">
+                monatlich zum Ende des Abrechnungszeitraums moeglich.
+              </span>
             </p>
           </div>
         </section>
