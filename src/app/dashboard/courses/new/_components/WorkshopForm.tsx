@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useFormStatus } from "react-dom";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
 import { getPlatformFeePercent } from "@/lib/platform-fees";
 import type { ProviderType, WorkshopStornoPolicy } from "@/lib/provider-profiles";
@@ -61,20 +61,6 @@ function formatCurrency(cents: number, currency: string): string {
   }).format(cents / 100);
 }
 
-function SubmitButton({ label }: { label: string }) {
-  const { pending } = useFormStatus();
-
-  return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-    >
-      {pending ? "Speichert..." : label}
-    </button>
-  );
-}
-
 export default function WorkshopForm({
   initialValues,
   submitActionOverride,
@@ -83,11 +69,13 @@ export default function WorkshopForm({
   providerDisplayName,
 }: {
   initialValues?: WorkshopFormValues;
-  submitActionOverride?: (formData: FormData) => Promise<{ error?: string } | void>;
+  submitActionOverride?: (formData: FormData) => Promise<{ error?: string; redirectTo?: string } | void>;
   submitLabel?: string;
   providerType: ProviderType;
   providerDisplayName: string;
 }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
   const workshopCurrency = getWorkshopCheckoutCurrency();
   const [error, setError] = useState<string | null>(null);
   const [priceEur, setPriceEur] = useState(initialValues?.price_eur ?? "");
@@ -108,7 +96,7 @@ export default function WorkshopForm({
       const start = new Date(session.starts_at);
       const end = new Date(session.ends_at);
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        return "Ungültiges Datum";
+        return "Ungueltiges Datum";
       }
       if (end <= start) return "Ende muss nach dem Start liegen";
       return null;
@@ -141,7 +129,7 @@ export default function WorkshopForm({
     providerType
   );
 
-  const submitAction = async (formData: FormData) => {
+  const submitAction = (formData: FormData) => {
     const title = String(formData.get("title") ?? "").trim();
     const stornoPolicy = String(formData.get("workshop_storno_policy") ?? "").trim();
     const instructorName = String(formData.get("instructor_name") ?? "").trim();
@@ -152,17 +140,17 @@ export default function WorkshopForm({
     }
 
     if (providerType === "studio_provider" && !instructorName) {
-      setError("Bitte gib den Dozenten für diesen Workshop an.");
+      setError("Bitte gib den Dozenten fuer diesen Workshop an.");
       return;
     }
 
     if (!stornoPolicy) {
-      setError("Bitte wähle eine Storno-Regel.");
+      setError("Bitte waehle eine Storno-Regel.");
       return;
     }
 
     if (sessions.length === 0) {
-      setError("Bitte füge mindestens einen Termin hinzu.");
+      setError("Bitte fuege mindestens einen Termin hinzu.");
       return;
     }
 
@@ -170,21 +158,21 @@ export default function WorkshopForm({
     if (priceRaw) {
       const parsed = Number(priceRaw.replace(",", "."));
       if (!Number.isFinite(parsed) || parsed < 0) {
-        setError("Bitte gib einen gültigen Preis >= 0 ein.");
+        setError("Bitte gib einen gueltigen Preis >= 0 ein.");
         return;
       }
     }
 
     for (const session of sessions) {
       if (!session.starts_at || !session.ends_at) {
-        setError("Bitte fülle Start- und Endzeit für alle Termine aus.");
+        setError("Bitte fuelle Start- und Endzeit fuer alle Termine aus.");
         return;
       }
 
       const start = new Date(session.starts_at);
       const end = new Date(session.ends_at);
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        setError("Ein Termin hat ein ungültiges Datum.");
+        setError("Ein Termin hat ein ungueltiges Datum.");
         return;
       }
       if (end <= start) {
@@ -194,11 +182,38 @@ export default function WorkshopForm({
     }
 
     setError(null);
-    const action = submitActionOverride ?? createWorkshopAction;
-    const result = await action(formData);
-    if (result?.error) {
-      setError(result.error);
-    }
+    startTransition(async () => {
+      try {
+        const action = submitActionOverride ?? createWorkshopAction;
+        const result: { error?: string; redirectTo?: string } = await Promise.race([
+          action(formData).then((value) => value ?? {}),
+          new Promise<{ error?: string; redirectTo?: string }>((resolve) =>
+            setTimeout(
+              () =>
+                resolve({
+                  error: "Das Speichern des Workshops dauert zu lange. Bitte versuche es erneut.",
+                }),
+              25000
+            )
+          ),
+        ]);
+
+        if (result?.error) {
+          setError(result.error);
+          return;
+        }
+
+        if (result?.redirectTo) {
+          router.push(result.redirectTo);
+          router.refresh();
+        }
+      } catch (submitError) {
+        console.error("[workshop-form] submit failed", {
+          message: submitError instanceof Error ? submitError.message : String(submitError),
+        });
+        setError("Beim Speichern des Workshops ist ein Fehler aufgetreten. Bitte versuche es erneut.");
+      }
+    });
   };
 
   return (
@@ -246,7 +261,7 @@ export default function WorkshopForm({
           rows={4}
           defaultValue={initialValues?.description ?? ""}
           className="w-full rounded-xl border px-3 py-2 text-sm"
-          placeholder="Kurzbeschreibung für die Angebotsseite."
+          placeholder="Kurzbeschreibung fuer die Angebotsseite."
         />
       </label>
 
@@ -299,7 +314,7 @@ export default function WorkshopForm({
           ))}
         </select>
         <span className="block text-xs text-muted-foreground">
-          Klare und flexible Storno-Regeln schaffen Vertrauen und führen oft zu mehr Buchungen.
+          Klare und flexible Storno-Regeln schaffen Vertrauen und fuehren oft zu mehr Buchungen.
         </span>
       </label>
 
@@ -307,14 +322,14 @@ export default function WorkshopForm({
         <div className="flex items-center justify-between gap-3">
           <div>
             <span className="text-sm font-medium">Termine *</span>
-            <p className="text-xs text-muted-foreground">Jeder Termin benötigt Start- und Endzeit.</p>
+            <p className="text-xs text-muted-foreground">Jeder Termin benoetigt Start- und Endzeit.</p>
           </div>
           <button
             type="button"
             onClick={() => setSessions((prev) => [...prev, createEmptySession()])}
             className="rounded-lg border px-3 py-1 text-xs font-semibold"
           >
-            Termin hinzufügen
+            Termin hinzufuegen
           </button>
         </div>
 
@@ -381,7 +396,7 @@ export default function WorkshopForm({
       </div>
 
       <label className="space-y-1">
-        <span className="text-sm font-medium">Kapazität (maximale Personenanzahl)</span>
+        <span className="text-sm font-medium">Kapazitaet (maximale Personenanzahl)</span>
         <input
           type="number"
           name="capacity"
@@ -409,7 +424,7 @@ export default function WorkshopForm({
         </label>
 
         <label className="space-y-1">
-          <span className="text-sm font-medium">Währung</span>
+          <span className="text-sm font-medium">Waehrung</span>
           <input
             name="currency"
             value={currency}
@@ -427,7 +442,7 @@ export default function WorkshopForm({
             <span>{formatCurrency(priceBreakdown.grossCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
-            <span>Plattformgebühr ({platformFeePercent} %)</span>
+            <span>Plattformgebuehr ({platformFeePercent} %)</span>
             <span>{formatCurrency(priceBreakdown.platformFeeCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4 font-medium text-foreground">
@@ -436,8 +451,8 @@ export default function WorkshopForm({
           </div>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Die Auszahlung an Dich berechnet sich aus dem eingegebenen Preis abzüglich der
-          Plattformgebühr von {platformFeePercent} %.
+          Die Auszahlung an Dich berechnet sich aus dem eingegebenen Preis abzueglich der
+          Plattformgebuehr von {platformFeePercent} %.
         </p>
       </div>
 
@@ -451,7 +466,13 @@ export default function WorkshopForm({
         </p>
       ) : null}
 
-      <SubmitButton label={submitLabel} />
+      <button
+        type="submit"
+        disabled={pending}
+        className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+      >
+        {pending ? "Speichert..." : submitLabel}
+      </button>
     </form>
   );
 }

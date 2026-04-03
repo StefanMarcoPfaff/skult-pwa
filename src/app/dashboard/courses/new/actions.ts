@@ -14,7 +14,7 @@ import {
   normalizeWorkshopCurrency,
 } from "@/lib/workshop-checkout";
 
-type ActionResult = { error?: string };
+type ActionResult = { error?: string; redirectTo?: string };
 type SupabaseLikeError = {
   message?: string;
   code?: string;
@@ -151,6 +151,13 @@ function logSupabaseError(context: string, error: unknown) {
   });
 }
 
+function logWorkshopSaveEvent(context: string, payload: Record<string, unknown>) {
+  console.error("[workshop-save]", {
+    context,
+    ...payload,
+  });
+}
+
 function formatUserSupabaseError(error: unknown): string {
   const supabaseError = (error ?? {}) as SupabaseLikeError;
   const msg = String(supabaseError.message || "Unbekannter Fehler").slice(0, 160);
@@ -160,6 +167,27 @@ function formatUserSupabaseError(error: unknown): string {
     return `${msg}${code}${hint}`;
   }
   return msg;
+}
+
+async function withTimeout<T>(
+  label: string,
+  operation: PromiseLike<T>,
+  timeoutMs = 20000
+): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await Promise.race([
+      Promise.resolve(operation),
+      new Promise<T>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
 }
 
 async function requireTeacher() {
@@ -174,11 +202,7 @@ async function requireTeacher() {
     return { supabase, user: null as null, error: formatUserSupabaseError(error) };
   }
 
-  if (!user) {
-    redirect("/login");
-  }
-
-  return { supabase, user: user!, error: null as string | null };
+  return { supabase, user: user ?? null, error: null as string | null };
 }
 
 async function loadProviderProfile(
@@ -231,7 +255,7 @@ async function createOrUpdateWorkshop(
 ): Promise<ActionResult> {
   const { supabase, user, error: authError } = await requireTeacher();
   if (authError) return { error: authError };
-  if (!user) redirect("/login");
+  if (!user) return { redirectTo: "/login" };
 
   const title = String(formData.get("title") || "").trim();
   if (!title) return { error: "Bitte gib einen Titel an." };
@@ -244,14 +268,14 @@ async function createOrUpdateWorkshop(
   const currency = normalizeWorkshopCurrency(String(formData.get("currency") || ""));
   const workshop_storno_policy = String(formData.get("workshop_storno_policy") || "").trim();
   const sessions = parseSessionsJson(formData);
-  if (!sessions) return { error: "Bitte füge mindestens einen gültigen Termin hinzu (Ende nach Start)." };
+  if (!sessions) return { error: "Bitte fuege mindestens einen gueltigen Termin hinzu (Ende nach Start)." };
   if (!isWorkshopStornoPolicy(workshop_storno_policy)) {
-    return { error: "Bitte wähle eine gültige Storno-Regel." };
+    return { error: "Bitte waehle eine gueltige Storno-Regel." };
   }
 
   if (!isWorkshopCheckoutCurrencySupported(currency)) {
     return {
-      error: `Workshops sind aktuell nur mit ${getWorkshopCheckoutCurrency()} als WÃ¤hrung verfÃ¼gbar.`,
+      error: `Workshops sind aktuell nur mit ${getWorkshopCheckoutCurrency()} als Waehrung verfuegbar.`,
     };
   }
 
@@ -261,90 +285,135 @@ async function createOrUpdateWorkshop(
   const providerType = providerProfileResult.profile?.provider_type ?? "independent_teacher";
   const providerDisplayName = getProviderDisplayName(providerType, providerProfileResult.profile ?? {});
   if (!providerDisplayName) {
-    return { error: "Bitte vervollständige zuerst dein Profil, damit der Anbietername verfügbar ist." };
+    return { error: "Bitte vervollstaendige zuerst dein Profil, damit der Anbietername verfuegbar ist." };
   }
 
   const instructorInput = parseOptionalString(formData.get("instructor_name"));
   const instructor_name = providerType === "studio_provider" ? instructorInput : providerDisplayName;
   if (!instructor_name) {
-    return { error: "Bitte gib einen Dozenten für diesen Workshop an." };
+    return { error: "Bitte gib einen Dozenten fuer diesen Workshop an." };
   }
 
+  logWorkshopSaveEvent("start", {
+    mode: options.mode,
+    courseId: options.mode === "update" ? options.courseId : null,
+    teacherId: user.id,
+    sessionCount: sessions.length,
+    hasLocation: Boolean(location),
+    hasPrice: price_cents !== null,
+  });
+
   if (options.mode === "create") {
-    const { data, error } = await supabase.rpc("create_workshop_with_sessions", {
-      p_title: title,
-      p_description: description,
-      p_location: location,
-      p_location_details: location_details,
-      p_instructor_name: instructor_name,
-      p_workshop_storno_policy: workshop_storno_policy,
-      p_capacity: capacity,
-      p_price_cents: price_cents,
-      p_currency: currency,
-      p_sessions: sessions,
-    });
+    try {
+      const { data, error } = await withTimeout(
+        "rpc.create_workshop_with_sessions",
+        supabase.rpc("create_workshop_with_sessions", {
+          p_title: title,
+          p_description: description,
+          p_location: location,
+          p_location_details: location_details,
+          p_instructor_name: instructor_name,
+          p_workshop_storno_policy: workshop_storno_policy,
+          p_capacity: capacity,
+          p_price_cents: price_cents,
+          p_currency: currency,
+          p_sessions: sessions,
+        })
+      );
 
-    if (error) {
-      logSupabaseError("rpc.create_workshop_with_sessions", error);
-      return { error: formatUserSupabaseError(error) };
+      if (error) {
+        logSupabaseError("rpc.create_workshop_with_sessions", error);
+        return { error: formatUserSupabaseError(error) };
+      }
+
+      const newId = String(data || "").trim();
+      if (!newId) return { error: "Workshop wurde erstellt, aber keine ID zurueckgegeben." };
+
+      return { redirectTo: `/dashboard/courses/${newId}` };
+    } catch (error: unknown) {
+      logWorkshopSaveEvent("timeout_or_exception", {
+        mode: "create",
+        teacherId: user.id,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        error:
+          "Das Speichern des Workshops dauert zu lange oder konnte nicht abgeschlossen werden. Bitte versuche es erneut.",
+      };
     }
-
-    const newId = String(data || "").trim();
-    if (!newId) return { error: "Workshop wurde erstellt, aber keine ID zurückgegeben." };
-    redirect(`/dashboard/courses/${newId}`);
   }
 
   const ownership = await assertTeacherOwnsCourse(supabase, user.id, options.courseId);
   if (!ownership.ok) return { error: ownership.error ?? "Angebot nicht gefunden." };
 
   const firstSessionStart = sessions[0]?.starts_at ?? null;
-  const { error: updateCourseError } = await supabase
-    .from("courses")
-    .update({
-      title,
-      description,
-      location,
-      location_details,
-      instructor_name,
-      workshop_storno_policy,
-      capacity,
-      price_cents,
-      currency,
-      starts_at: firstSessionStart,
-    })
-    .eq("id", options.courseId)
-    .eq("teacher_id", user.id)
-    .eq("kind", "workshop");
 
-  if (updateCourseError) {
-    logSupabaseError("update.courses(workshop)", updateCourseError);
-    return { error: formatUserSupabaseError(updateCourseError) };
+  try {
+    const { error: updateCourseError } = await withTimeout(
+      "update.courses(workshop)",
+      supabase
+        .from("courses")
+        .update({
+          title,
+          description,
+          location,
+          location_details,
+          instructor_name,
+          workshop_storno_policy,
+          capacity,
+          price_cents,
+          currency,
+          starts_at: firstSessionStart,
+        })
+        .eq("id", options.courseId)
+        .eq("teacher_id", user.id)
+        .eq("kind", "workshop")
+    );
+
+    if (updateCourseError) {
+      logSupabaseError("update.courses(workshop)", updateCourseError);
+      return { error: formatUserSupabaseError(updateCourseError) };
+    }
+
+    const { error: deleteSessionsError } = await withTimeout(
+      "delete.course_sessions(workshop)",
+      supabase.from("course_sessions").delete().eq("course_id", options.courseId)
+    );
+
+    if (deleteSessionsError) {
+      logSupabaseError("delete.course_sessions(workshop)", deleteSessionsError);
+      return { error: formatUserSupabaseError(deleteSessionsError) };
+    }
+
+    const { error: insertSessionsError } = await withTimeout(
+      "insert.course_sessions(workshop)",
+      supabase.from("course_sessions").insert(
+        sessions.map((session) => ({
+          course_id: options.courseId,
+          starts_at: session.starts_at,
+          ends_at: session.ends_at,
+        }))
+      )
+    );
+
+    if (insertSessionsError) {
+      logSupabaseError("insert.course_sessions(workshop)", insertSessionsError);
+      return { error: formatUserSupabaseError(insertSessionsError) };
+    }
+
+    return { redirectTo: `/dashboard/courses/${options.courseId}?saved=1` };
+  } catch (error: unknown) {
+    logWorkshopSaveEvent("timeout_or_exception", {
+      mode: "update",
+      courseId: options.courseId,
+      teacherId: user.id,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return {
+      error:
+        "Das Speichern des Workshops dauert zu lange oder konnte nicht abgeschlossen werden. Bitte versuche es erneut.",
+    };
   }
-
-  const { error: deleteSessionsError } = await supabase
-    .from("course_sessions")
-    .delete()
-    .eq("course_id", options.courseId);
-
-  if (deleteSessionsError) {
-    logSupabaseError("delete.course_sessions(workshop)", deleteSessionsError);
-    return { error: formatUserSupabaseError(deleteSessionsError) };
-  }
-
-  const { error: insertSessionsError } = await supabase.from("course_sessions").insert(
-    sessions.map((session) => ({
-      course_id: options.courseId,
-      starts_at: session.starts_at,
-      ends_at: session.ends_at,
-    }))
-  );
-
-  if (insertSessionsError) {
-    logSupabaseError("insert.course_sessions(workshop)", insertSessionsError);
-    return { error: formatUserSupabaseError(insertSessionsError) };
-  }
-
-  redirect(`/dashboard/courses/${options.courseId}?saved=1`);
 }
 
 async function createOrUpdateCourse(
@@ -373,28 +442,28 @@ async function createOrUpdateCourse(
   const cancellation_model = "monthly";
 
   if (weekday === null || weekday < 0 || weekday > 6) {
-    return { error: "Bitte wähle einen gültigen Wochentag (0-6)." };
+    return { error: "Bitte waehle einen gueltigen Wochentag (0-6)." };
   }
-  if (!start_date) return { error: "Bitte wähle ein Startdatum für den Kurs." };
+  if (!start_date) return { error: "Bitte waehle ein Startdatum fuer den Kurs." };
   if (!start_time) return { error: "Bitte gib eine Startzeit an." };
   if (duration_minutes === null || duration_minutes <= 0) {
-    return { error: "Bitte gib eine gültige Dauer in Minuten an." };
+    return { error: "Bitte gib eine gueltige Dauer in Minuten an." };
   }
-  if (!recurrence_type) return { error: "Bitte wähle eine Wiederholung." };
+  if (!recurrence_type) return { error: "Bitte waehle eine Wiederholung." };
   if (trial_mode !== "all_sessions" && trial_mode !== "manual") {
-    return { error: "Bitte wähle eine gültige Probestunden-Regel." };
+    return { error: "Bitte waehle eine gueltige Probestunden-Regel." };
   }
   const startDateWeekday = getWeekdayForDate(start_date);
   if (startDateWeekday === null) {
-    return { error: "Bitte wähle ein gültiges Startdatum für den Kurs." };
+    return { error: "Bitte waehle ein gueltiges Startdatum fuer den Kurs." };
   }
   if (startDateWeekday !== weekday) {
-    return { error: "Das Startdatum muss zum gewählten Wochentag passen." };
+    return { error: "Das Startdatum muss zum gewaehlten Wochentag passen." };
   }
 
   const starts_at = combineCourseStartsAtISO(start_date, start_time);
   if (!starts_at) {
-    return { error: "Startdatum konnte nicht berechnet werden. Bitte prüfe Startdatum und Startzeit." };
+    return { error: "Startdatum konnte nicht berechnet werden. Bitte pruefe Startdatum und Startzeit." };
   }
 
   const validManualTrialOccurrences =
@@ -412,7 +481,7 @@ async function createOrUpdateCourse(
       : [];
 
   if (trial_mode === "manual" && selectedTrialSlotStarts.length === 0) {
-    return { error: "Bitte wähle mindestens einen Termin für Probestunden aus." };
+    return { error: "Bitte waehle mindestens einen Termin fuer Probestunden aus." };
   }
 
   const manualTrialSlots: TrialSlotInsert[] =
@@ -429,7 +498,7 @@ async function createOrUpdateCourse(
       : [];
 
   if (trial_mode === "manual" && manualTrialSlots.length !== selectedTrialSlotStarts.length) {
-    return { error: "Mindestens einer der ausgewählten Probestunden-Termine ist ungültig." };
+    return { error: "Mindestens einer der ausgewaehlten Probestunden-Termine ist ungueltig." };
   }
 
   const price_cents = parseOptionalInt(formData.get("price_cents"));
@@ -441,14 +510,14 @@ async function createOrUpdateCourse(
   const providerType = providerProfileResult.profile?.provider_type ?? "independent_teacher";
   const providerDisplayName = getProviderDisplayName(providerType, providerProfileResult.profile ?? {});
   if (!providerDisplayName) {
-    return { error: "Bitte vervollständige zuerst dein Profil, damit der Anbietername verfügbar ist." };
+    return { error: "Bitte vervollstaendige zuerst dein Profil, damit der Anbietername verfuegbar ist." };
   }
 
   const instructorInput = parseOptionalString(formData.get("instructor_name"));
   const instructor_name = providerType === "studio_provider" ? instructorInput : providerDisplayName;
 
   if (!instructor_name) {
-    return { error: "Bitte gib einen Dozenten für diesen Kurs an." };
+    return { error: "Bitte gib einen Dozenten fuer diesen Kurs an." };
   }
 
   if (options.mode === "create") {
