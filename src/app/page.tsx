@@ -18,19 +18,15 @@ export default function Home() {
 
         <div className="max-w-3xl space-y-4">
           <h1 className="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
-            Find it. Try it. Book it.
+            Find. Try. Reserve.
           </h1>
 
           <div className="mx-auto max-w-2xl space-y-4 text-base leading-7 text-slate-600 sm:text-lg">
             <p>
-              Finde inspirierende Kurse und Workshops in deiner Nähe
-              <br />
-              probiere sie aus und buche direkt online.
+              Finde inspirierende Kurse und Workshops in deiner Nähe, probiere sie aus und buche direkt online.
             </p>
             <p>
-              Oder erstelle als Dozent deine eigenen Angebote
-              <br />
-              und erreiche genau die Menschen, die danach suchen.
+              Oder erstelle eigene Angebote und erreiche genau die Menschen, die danach suchen.
             </p>
           </div>
         </div>
