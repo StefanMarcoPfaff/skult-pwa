@@ -18,7 +18,7 @@ export default function Home() {
 
         <div className="max-w-3xl space-y-4">
           <h1 className="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
-            Find. Try. Reserve.
+            FIND. TRY. RESERVE.
           </h1>
 
           <div className="mx-auto max-w-2xl space-y-4 text-base leading-7 text-slate-600 sm:text-lg">
