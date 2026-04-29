@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { formatCourseEndDate, isCourseClosedForNewRegistrations } from "@/lib/course-ending";
+import { formatCourseLifecycleDate, type CourseStatus, isCourseOpenForNewRegistrations } from "@/lib/course-lifecycle";
 import { formatRecurringCoursePrice } from "@/lib/course-display";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { loadTicketBySubscriptionId } from "@/lib/tickets";
@@ -44,6 +45,8 @@ type CourseRow = {
   location: string | null;
   location_details: string | null;
   ends_at: string | null;
+  status: CourseStatus;
+  stop_date: string | null;
 };
 
 type ProfileRow = {
@@ -109,7 +112,7 @@ export default async function TrialRegistrationTokenPage({
 
   const { data: course } = await admin
     .from("courses")
-    .select("id,title,teacher_id,instructor_name,price_cents,currency,cancellation_model,location,location_details,ends_at")
+    .select("id,title,teacher_id,instructor_name,price_cents,currency,cancellation_model,location,location_details,ends_at,status,stop_date")
     .eq("id", fallbackCourseId)
     .maybeSingle<CourseRow>();
 
@@ -130,21 +133,26 @@ export default async function TrialRegistrationTokenPage({
       ? await loadTicketBySubscriptionId(intentByToken.stripe_subscription_id)
       : null;
 
+  const stopDateLabel = formatCourseLifecycleDate(course?.stop_date ?? null);
   const checkoutError =
     error === "course_unavailable"
       ? "Dieser Kurs ist aktuell nicht fuer die Online-Anmeldung verfuegbar."
-      : error === "course_ending"
-        ? `Dieser Kurs endet am ${formatCourseEndDate(course?.ends_at ?? null) ?? "dem geplanten Termin"} und nimmt keine neuen verbindlichen Anmeldungen mehr an.`
+        : error === "course_ending"
+        ? `Dieser Kurs endet am ${stopDateLabel ?? formatCourseEndDate(course?.ends_at ?? null) ?? "dem geplanten Termin"} und nimmt keine neuen verbindlichen Anmeldungen mehr an.`
         : error === "provider_payment_missing"
           ? "Der Anbieter hat noch keine vollstaendigen Zahlungsdaten hinterlegt."
           : error === "provider_payment_incomplete"
             ? "Das verknuepfte Stripe-Konto ist noch nicht vollstaendig eingerichtet."
+            : error === "subscription_creation_failed"
+              ? "Die Stripe-Subscription konnte nicht erstellt werden. Bitte versuche es erneut."
             : error
               ? error
               : null;
   const isEditMode = isCompletedRegistration && edit === "1";
   const registrationClosed =
-    !isCompletedRegistration && isCourseClosedForNewRegistrations(course?.ends_at ?? null);
+    !isCompletedRegistration &&
+    (!isCourseOpenForNewRegistrations(course?.status, course?.ends_at ?? null) ||
+      isCourseClosedForNewRegistrations(course?.ends_at ?? null));
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">

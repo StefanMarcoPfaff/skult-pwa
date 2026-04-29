@@ -400,3 +400,21 @@ export async function sendWorkshopTeacherBookingNotificationEmail(data: Workshop
 export async function sendWorkshopBookingNotificationEmail(data: WorkshopBookingEmailData) {
   return sendWorkshopTeacherBookingNotificationEmail(data);
 }
+
+export async function sendWorkshopCancellationEmail(input: {
+  customerEmail: string;
+  customerName: string;
+}) {
+  return sendResendEmail({
+    to: input.customerEmail,
+    subject: "Workshop abgesagt",
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+        <p>Hallo ${input.customerName},</p>
+        <p>der Workshop wurde abgesagt.</p>
+        <p>Der Betrag wird automatisch zurueckerstattet.</p>
+      </div>
+    `,
+    text: `Hallo ${input.customerName},\n\nder Workshop wurde abgesagt.\nDer Betrag wird automatisch zurueckerstattet.`,
+  });
+}

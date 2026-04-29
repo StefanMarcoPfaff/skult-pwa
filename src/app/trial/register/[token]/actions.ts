@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
+import { type CourseStatus, isCourseOpenForNewRegistrations } from "@/lib/course-lifecycle";
 import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -33,6 +34,7 @@ type RegistrationIntentRow = {
 type CourseAvailabilityRow = {
   capacity: number | null;
   ends_at: string | null;
+  status: CourseStatus;
 };
 
 function isExpired(value: string | null): boolean {
@@ -112,7 +114,7 @@ export async function submitTrialRegistrationAction(
 
   const { data: course } = await admin
     .from("courses")
-    .select("capacity,ends_at")
+    .select("capacity,ends_at,status")
     .eq("id", reservation.course_id)
     .maybeSingle<CourseAvailabilityRow>();
 
@@ -157,7 +159,8 @@ export async function submitTrialRegistrationAction(
 
   if (
     existingIntent?.status !== "checkout_completed" &&
-    isCourseClosedForNewRegistrations(course?.ends_at ?? null)
+    (!isCourseOpenForNewRegistrations(course?.status, course?.ends_at ?? null) ||
+      isCourseClosedForNewRegistrations(course?.ends_at ?? null))
   ) {
     return { error: "Dieser Kurs nimmt keine neuen verbindlichen Anmeldungen mehr an." };
   }

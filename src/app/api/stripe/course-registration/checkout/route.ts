@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
+import { type CourseStatus, isCourseOpenForNewRegistrations } from "@/lib/course-lifecycle";
 import {
+  getCourseSubscriptionBillingCycleAnchor,
   getCourseSubscriptionCheckoutCurrency,
   getCourseSubscriptionCheckoutCurrencyError,
   isCourseSubscriptionCheckoutCurrencySupported,
@@ -41,6 +43,7 @@ type CourseRow = {
   teacher_id: string | null;
   capacity: number | null;
   ends_at: string | null;
+  status: CourseStatus;
 };
 
 function isExpired(value: string | null): boolean {
@@ -82,7 +85,7 @@ export async function GET(req: Request) {
 
   const { data: course } = await admin
     .from("courses")
-    .select("id,title,price_cents,currency,teacher_id,capacity,ends_at")
+    .select("id,title,price_cents,currency,teacher_id,capacity,ends_at,status")
     .eq("id", intent.course_id)
     .maybeSingle<CourseRow>();
 
@@ -101,7 +104,7 @@ export async function GET(req: Request) {
     );
   }
 
-  if (isCourseClosedForNewRegistrations(course.ends_at)) {
+  if (!isCourseOpenForNewRegistrations(course.status, course.ends_at) || isCourseClosedForNewRegistrations(course.ends_at)) {
     return NextResponse.redirect(new URL(`/trial/register/${token}?error=course_ending`, url));
   }
 
@@ -137,45 +140,62 @@ export async function GET(req: Request) {
   }
 
   const siteUrl = getSiteUrl(req.url);
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    customer_email: intent.email,
-    line_items: [
-      {
-        price_data: {
-          currency: getCourseSubscriptionCheckoutCurrency().toLowerCase(),
-          unit_amount: course.price_cents,
-          recurring: {
-            interval: "month",
+  const sessionCurrency = getCourseSubscriptionCheckoutCurrency().toLowerCase();
+  const billingCycleAnchor = getCourseSubscriptionBillingCycleAnchor();
+
+  let session: Stripe.Checkout.Session;
+  try {
+    session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer_email: intent.email,
+      line_items: [
+        {
+          price_data: {
+            currency: sessionCurrency,
+            unit_amount: course.price_cents,
+            recurring: {
+              interval: "month",
+            },
+            product_data: {
+              name: course.title || "Kurs",
+            },
           },
-          product_data: {
-            name: course.title || "Kurs",
-          },
+          quantity: 1,
         },
-        quantity: 1,
+      ],
+      subscription_data: {
+        ...buildDestinationSubscriptionData(profile.stripe_account_id, profile.provider_type),
+        billing_cycle_anchor: billingCycleAnchor,
+        metadata: {
+          registrationIntentId: intent.id,
+          trialReservationId: intent.trial_reservation_id,
+          courseId: intent.course_id,
+          registrationToken: token,
+        },
       },
-    ],
-    subscription_data: {
-      ...buildDestinationSubscriptionData(profile.stripe_account_id, profile.provider_type),
+      success_url: `${siteUrl}/trial/register/${token}/success?session_id={CHECKOUT_SESSION_ID}&intentId=${intent.id}`,
+      cancel_url: `${siteUrl}/trial/register/${token}/cancel?intentId=${intent.id}`,
       metadata: {
         registrationIntentId: intent.id,
         trialReservationId: intent.trial_reservation_id,
         courseId: intent.course_id,
         registrationToken: token,
+        teacherStripeAccountId: profile.stripe_account_id,
+        checkoutFlow: "course_registration",
       },
-    },
-    success_url: `${siteUrl}/trial/register/${token}/success?session_id={CHECKOUT_SESSION_ID}&intentId=${intent.id}`,
-    cancel_url: `${siteUrl}/trial/register/${token}/cancel?intentId=${intent.id}`,
-    metadata: {
-      registrationIntentId: intent.id,
-      trialReservationId: intent.trial_reservation_id,
+      client_reference_id: intent.id,
+    });
+  } catch (error: unknown) {
+    console.error("[stripe-course-registration-checkout]", {
+      context: "checkout.session.create.failed",
+      intentId: intent.id,
       courseId: intent.course_id,
-      registrationToken: token,
-      teacherStripeAccountId: profile.stripe_account_id,
-      checkoutFlow: "course_registration",
-    },
-    client_reference_id: intent.id,
-  });
+      billingCycleAnchor,
+      currency: sessionCurrency,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return NextResponse.redirect(new URL(`/trial/register/${token}?error=subscription_creation_failed`, url));
+  }
 
   await admin
     .from("course_registration_intents")

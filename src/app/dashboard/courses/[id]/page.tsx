@@ -1,28 +1,30 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { EmbedCodePanel } from "@/components/dashboard/EmbedCodePanel";
 import {
-  getProviderDisplayName,
-  type ProviderType,
-} from "@/lib/provider-profiles";
+  formatCourseLifecycleDate,
+  getNextPossiblePauseDate,
+  getCourseStatusLabel,
+  type CourseStatus,
+} from "@/lib/course-lifecycle";
 import {
   COURSE_CANCELLATION_SUMMARY,
   getCourseTerminationModelValue,
   getWorkshopCancellationPolicySummary,
   getWorkshopCancellationPolicyValue,
 } from "@/lib/offer-policies";
-import {
-  COURSE_END_NOTICE_DAYS,
-  formatCourseEndDate,
-  getMinimumCourseEndDateInput,
-  isCourseEnded,
-  isCourseEndingScheduled,
-} from "@/lib/course-ending";
+import { getProviderDisplayName, type ProviderType } from "@/lib/provider-profiles";
 import { getPublicCourseById } from "@/lib/public-offers";
 import { getSiteUrl } from "@/lib/site-url";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { EmbedCodePanel } from "@/components/dashboard/EmbedCodePanel";
-import { scheduleCourseEndAction, setCoursePublishStateAction } from "./actions";
+import {
+  cancelWorkshopAction,
+  scheduleCoursePauseAction,
+  scheduleCourseStopAction,
+  setCoursePublishStateAction,
+} from "./actions";
+import { PauseCourseModal, StopCourseModal } from "./CourseLifecycleModal";
 
 type Row = {
   id: string;
@@ -33,6 +35,7 @@ type Row = {
   starts_at: string | null;
   capacity: number | null;
   kind: string | null;
+  status: CourseStatus;
   is_published: boolean | null;
   trial_mode: string | null;
   instructor_name: string | null;
@@ -40,7 +43,9 @@ type Row = {
   workshop_storno_policy: string | null;
   teacher_id: string;
   ends_at: string | null;
-  end_scheduled_at: string | null;
+  pause_start_date: string | null;
+  pause_end_date: string | null;
+  stop_date: string | null;
 };
 
 type SessionRow = {
@@ -132,8 +137,8 @@ function formatDateTime(dt: string | null) {
 }
 
 function formatTrialMode(value: string | null): string {
-  if (value === "manual") return "Nur an ausgewählten Terminen";
-  return "An jedem Termin möglich";
+  if (value === "manual") return "Nur an ausgewaehlten Terminen";
+  return "An jedem Termin moeglich";
 }
 
 function formatName(firstName: string | null, lastName: string | null, fallback: string): string {
@@ -184,7 +189,7 @@ function renderParticipantGroup(
       </div>
 
       {entries.length === 0 ? (
-        <p className="mt-4 text-sm text-muted-foreground">Aktuell keine Einträge.</p>
+        <p className="mt-4 text-sm text-muted-foreground">Aktuell keine Eintraege.</p>
       ) : (
         <div className="mt-4 space-y-3">
           {entries.map((entry) => (
@@ -232,7 +237,7 @@ function renderWorkshopParticipantGroup(
       </div>
 
       {entries.length === 0 ? (
-        <p className="mt-4 text-sm text-muted-foreground">Aktuell keine Einträge.</p>
+        <p className="mt-4 text-sm text-muted-foreground">Aktuell keine Eintraege.</p>
       ) : (
         <div className="mt-4 space-y-3">
           {entries.map((entry) => (
@@ -287,7 +292,7 @@ export default async function DashboardCourseDetailPage({
 
   const { data, error } = await supabase
     .from("courses")
-    .select("id,title,description,location,location_details,starts_at,capacity,kind,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,end_scheduled_at")
+    .select("id,title,description,location,location_details,starts_at,capacity,kind,status,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,pause_start_date,pause_end_date,stop_date")
     .eq("id", id)
     .eq("teacher_id", user.id)
     .single<Row>();
@@ -305,16 +310,17 @@ export default async function DashboardCourseDetailPage({
     .order("starts_at", { ascending: true })
     .returns<SessionRow[]>();
 
-  const { data: trialParticipants } = data?.kind === "course"
-    ? await admin
-        .from("trial_reservations")
-        .select(
-          "id,course_id,first_name,last_name,email,decision_status,approved_at,trial_starts_at,trial_ends_at,registration_expires_at,converted_at,converted_registration_intent_id"
-        )
-        .eq("course_id", id)
-        .order("trial_starts_at", { ascending: false })
-        .returns<TrialParticipantRow[]>()
-    : { data: [] as TrialParticipantRow[] };
+  const { data: trialParticipants } =
+    data?.kind === "course"
+      ? await admin
+          .from("trial_reservations")
+          .select(
+            "id,course_id,first_name,last_name,email,decision_status,approved_at,trial_starts_at,trial_ends_at,registration_expires_at,converted_at,converted_registration_intent_id"
+          )
+          .eq("course_id", id)
+          .order("trial_starts_at", { ascending: false })
+          .returns<TrialParticipantRow[]>()
+      : { data: [] as TrialParticipantRow[] };
 
   const trialReservationIds = (trialParticipants ?? []).map((participant) => participant.id);
   const [{ data: trialTickets }, { data: registrationIntents }] =
@@ -333,15 +339,16 @@ export default async function DashboardCourseDetailPage({
         ])
       : [{ data: [] as TrialTicketRow[] }, { data: [] as RegistrationIntentRow[] }];
 
-  const { data: workshopBookings } = data?.kind === "workshop"
+  const { data: workshopBookings } =
+    data?.kind === "workshop"
       ? await admin
-        .from("bookings")
-        .select("id,course_id,status,attendee_key,checked_in_at,created_at,customer_first_name,customer_last_name,customer_email,customer_phone")
-        .eq("course_id", id)
-        .eq("status", "paid")
-        .order("created_at", { ascending: false })
-        .returns<WorkshopBookingRow[]>()
-    : { data: [] as WorkshopBookingRow[] };
+          .from("bookings")
+          .select("id,course_id,status,attendee_key,checked_in_at,created_at,customer_first_name,customer_last_name,customer_email,customer_phone")
+          .eq("course_id", id)
+          .eq("status", "paid")
+          .order("created_at", { ascending: false })
+          .returns<WorkshopBookingRow[]>()
+      : { data: [] as WorkshopBookingRow[] };
 
   const workshopBookingIds = (workshopBookings ?? []).map((booking) => booking.id);
   const { data: workshopTickets } =
@@ -357,7 +364,7 @@ export default async function DashboardCourseDetailPage({
     return (
       <main style={{ padding: 24 }}>
         <Link href="/dashboard/courses" style={{ fontWeight: 700 }}>
-          Zurück
+          Zurueck
         </Link>
         <p style={{ marginTop: 16, fontSize: 18, fontWeight: 800 }}>Nicht gefunden</p>
       </main>
@@ -377,13 +384,14 @@ export default async function DashboardCourseDetailPage({
           organization_name: profile.organization_name,
         })
       : null;
-  const courseEndLabel = formatCourseEndDate(data.ends_at);
-  const courseEndingScheduled = data.kind === "course" && isCourseEndingScheduled(data.ends_at);
-  const courseAlreadyEnded = data.kind === "course" && isCourseEnded(data.ends_at);
-  const minimumEndDateInput = getMinimumCourseEndDateInput();
+  const statusLabel = getCourseStatusLabel(data.status);
+  const pauseStartLabel = formatCourseLifecycleDate(data.pause_start_date);
+  const pauseEndLabel = formatCourseLifecycleDate(data.pause_end_date);
+  const stopDateLabel = formatCourseLifecycleDate(data.stop_date);
   const workshopPolicyLabel = getWorkshopCancellationPolicySummary({
     cancellation_policy: data.workshop_storno_policy,
   });
+  const nextPossiblePauseDate = getNextPossiblePauseDate();
   const publishBlockedForMissingPolicy =
     (data.kind === "course" && !getCourseTerminationModelValue({ termination_model: data.cancellation_model })) ||
     (data.kind === "workshop" &&
@@ -432,7 +440,7 @@ export default async function DashboardCourseDetailPage({
             })
             .map<CourseParticipantEntry>((participant) => ({
               id: participant.id,
-              name: formatName(participant.first_name, participant.last_name, "Probeschüler*in"),
+              name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
               email: participant.email,
               statusLabel: "Freigegeben, noch nicht angemeldet",
               checkInLabel: `Eingecheckt am ${formatDateTime(
@@ -449,7 +457,7 @@ export default async function DashboardCourseDetailPage({
             })
             .map<CourseParticipantEntry>((participant) => ({
               id: participant.id,
-              name: formatName(participant.first_name, participant.last_name, "Probeschüler*in"),
+              name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
               email: participant.email,
               statusLabel: "Teilgenommen, Entscheidung offen",
               checkInLabel: `Eingecheckt am ${formatDateTime(
@@ -466,7 +474,7 @@ export default async function DashboardCourseDetailPage({
             })
             .map<CourseParticipantEntry>((participant) => ({
               id: participant.id,
-              name: formatName(participant.first_name, participant.last_name, "Probeschüler*in"),
+              name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
               email: participant.email,
               statusLabel: "Noch nicht teilgenommen",
               checkInLabel:
@@ -489,13 +497,17 @@ export default async function DashboardCourseDetailPage({
           const ticket = workshopTicketByBookingId.get(booking.id);
           return {
             id: booking.id,
-            name:
-              formatName(booking.customer_first_name, booking.customer_last_name, ticket?.customer_name || "Workshop-Gast"),
+            name: formatName(
+              booking.customer_first_name,
+              booking.customer_last_name,
+              ticket?.customer_name || "Workshop-Gast"
+            ),
             email: booking.customer_email ?? ticket?.customer_email ?? null,
             statusLabel: booking.status === "paid" ? "Gebucht" : booking.status ?? "-",
-            checkInLabel: ticket?.checked_in_at ?? booking.checked_in_at
-              ? `Eingecheckt am ${formatDateTime(ticket?.checked_in_at ?? booking.checked_in_at)}`
-              : "Noch nicht eingecheckt",
+            checkInLabel:
+              ticket?.checked_in_at ?? booking.checked_in_at
+                ? `Eingecheckt am ${formatDateTime(ticket?.checked_in_at ?? booking.checked_in_at)}`
+                : "Noch nicht eingecheckt",
             meta: booking.created_at ? `Gebucht am ${formatDateTime(booking.created_at)}` : null,
           };
         })
@@ -504,13 +516,12 @@ export default async function DashboardCourseDetailPage({
   return (
     <main style={{ padding: 24, maxWidth: 820 }}>
       <Link href="/dashboard/courses" style={{ fontWeight: 700 }}>
-        Zurück
+        Zurueck
       </Link>
 
       <h1 style={{ marginTop: 16, fontSize: 32, fontWeight: 900 }}>{data.title}</h1>
       <p className="mt-3 text-sm text-muted-foreground">
-        Dies ist deine interne Vorschau. Prüfe die Angaben, passe sie bei Bedarf an und
-        veröffentliche das Angebot erst danach.
+        Dies ist deine interne Vorschau. Pruefe die Angaben, passe sie bei Bedarf an und aktiviere das Angebot erst danach.
       </p>
 
       {savedParam === "1" ? (
@@ -518,39 +529,59 @@ export default async function DashboardCourseDetailPage({
           Angebot wurde aktualisiert.
         </p>
       ) : null}
-      {savedParam === "published" ? (
+      {savedParam === "play_started" ? (
         <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Angebot wurde veröffentlicht.
-        </p>
-      ) : null}
-      {savedParam === "draft" ? (
-        <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Angebot wurde als Entwurf gespeichert.
+          Angebot wurde aktiviert.
         </p>
       ) : null}
       {savedParam === "missing_policy" ? (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Veröffentlichen nicht möglich. Bitte hinterlege zuerst die Stornierungs- bzw. Kündigungsbedingungen.
+          Aktivieren nicht moeglich. Bitte hinterlege zuerst die Stornierungs- bzw. Kuendigungsbedingungen.
         </p>
       ) : null}
-      {savedParam === "ending_scheduled" ? (
+      {savedParam === "pause_scheduled" ? (
         <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Kursstopp wurde geplant. Neue Probestunden und neue verbindliche Anmeldungen sind ab jetzt geschlossen.
+          Kurspause wurde geplant.
         </p>
       ) : null}
-      {savedParam === "ending_partial" ? (
+      {savedParam === "stop_scheduled" ? (
+        <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Kursstopp wurde geplant.
+        </p>
+      ) : null}
+      {savedParam === "stop_partial" ? (
         <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
           Kursstopp wurde geplant. Mindestens ein bestehendes Abo konnte noch nicht automatisch synchronisiert werden.
         </p>
       ) : null}
-      {savedParam === "ending_too_soon" ? (
-        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Das Kursende muss mindestens {COURSE_END_NOTICE_DAYS} Tage in der Zukunft liegen.
+      {savedParam === "workshop_cancelled" ? (
+        <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Workshop wurde abgesagt, Rueckerstattungen wurden angestossen.
         </p>
       ) : null}
-      {savedParam === "ending_invalid" || savedParam === "ending_error" ? (
+      {savedParam === "workshop_cancel_partial" ? (
+        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          Workshop wurde deaktiviert, aber mindestens eine Rueckerstattung ist fehlgeschlagen.
+        </p>
+      ) : null}
+      {savedParam === "play_invalid" || savedParam === "pause_invalid" || savedParam === "stop_invalid" ? (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Das Kursende konnte nicht geplant werden.
+          Diese Statusaenderung ist fuer den Kurs aktuell nicht zulaessig.
+        </p>
+      ) : null}
+      {savedParam === "workshop_cancel_invalid" ? (
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Der Workshop konnte in diesem Zustand nicht abgesagt werden.
+        </p>
+      ) : null}
+      {savedParam === "play_error" || savedParam === "pause_error" || savedParam === "stop_error" ? (
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Die Statusaenderung konnte nicht gespeichert werden.
+        </p>
+      ) : null}
+      {savedParam === "workshop_cancel_error" ? (
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Die Workshop-Absage konnte nicht abgeschlossen werden.
         </p>
       ) : null}
 
@@ -559,31 +590,46 @@ export default async function DashboardCourseDetailPage({
           href={`/dashboard/courses/${data.id}/edit`}
           className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
         >
-          Ändern
+          Aendern
         </Link>
 
-        <form action={setCoursePublishStateAction}>
+        {data.status === "draft" ? (
+          <form action={setCoursePublishStateAction}>
             <input type="hidden" name="course_id" value={data.id} />
-            <input type="hidden" name="mode" value={data.is_published ? "draft" : "published"} />
+            <input type="hidden" name="mode" value="play" />
             <button
               type="submit"
-              disabled={!data.is_published && publishBlockedForMissingPolicy}
+              disabled={publishBlockedForMissingPolicy}
               className="rounded-xl border px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {data.is_published ? "Veröffentlichung zurückziehen" : "Jetzt veröffentlichen"}
+              Aktivieren
             </button>
-        </form>
+          </form>
+        ) : null}
+        {data.kind === "workshop" && data.status !== "ended" ? (
+          <form action={cancelWorkshopAction}>
+            <input type="hidden" name="course_id" value={data.id} />
+            <input type="hidden" name="redirect_to" value={`/dashboard/courses/${data.id}`} />
+            <button
+              type="submit"
+              className="rounded-xl border px-4 py-2 text-sm font-semibold"
+            >
+              Workshop absagen
+            </button>
+          </form>
+        ) : null}
       </div>
 
-      {!data.is_published && publishBlockedForMissingPolicy ? (
+      {data.status === "draft" && publishBlockedForMissingPolicy ? (
         <p className="mt-3 text-sm text-red-700">
-          Dieses Angebot kann erst veröffentlicht werden, wenn die passende Stornierungs- bzw. Kündigungsregel gesetzt ist.
+          Dieses Angebot kann erst aktiviert werden, wenn die passende Stornierungs- bzw. Kuendigungsregel gesetzt ist.
         </p>
       ) : null}
 
       <div style={{ marginTop: 10, opacity: 0.8 }}>
         <div>Art: {data.kind ?? "-"}</div>
-        <div>Veröffentlicht: {data.is_published ? "Ja" : "Nein"}</div>
+        <div>Status: {statusLabel}</div>
+        <div>Veroeffentlicht: {data.is_published ? "Ja" : "Nein"}</div>
         {data.kind === "course" ? <div>Probestunden-Regel: {formatTrialMode(data.trial_mode)}</div> : null}
         {providerLabel ? <div>Anbieter: {providerLabel}</div> : null}
         {data.instructor_name ? <div>Dozent: {data.instructor_name}</div> : null}
@@ -591,76 +637,58 @@ export default async function DashboardCourseDetailPage({
           <>
             <div>Abrechnung: monatlich</div>
             <div>Kursmodell: fortlaufend</div>
-            <div>Kündigung: {COURSE_CANCELLATION_SUMMARY}</div>
+            <div>Kuendigung: {COURSE_CANCELLATION_SUMMARY}</div>
           </>
         ) : null}
-        {data.kind === "course" && courseEndLabel ? (
-          <div>
-            Status: {courseAlreadyEnded ? "Beendet" : "Endet"} am {courseEndLabel}
-          </div>
-        ) : null}
-        {data.kind === "workshop" ? (
-          <div>Stornierungsbedingungen: {workshopPolicyLabel}</div>
-        ) : null}
+        {data.kind === "course" && pauseStartLabel ? <div>Pausenstart: {pauseStartLabel}</div> : null}
+        {data.kind === "course" && pauseEndLabel ? <div>Pause endet: {pauseEndLabel}</div> : null}
+        {data.kind === "course" && stopDateLabel ? <div>Stopdatum: {stopDateLabel}</div> : null}
+        {data.kind === "workshop" ? <div>Stornierungsbedingungen: {workshopPolicyLabel}</div> : null}
         {data.location ? <div>Ort: {data.location}</div> : null}
-        {data.location_details ? (
-          <div>Raum / Zusatzinfo: {data.location_details}</div>
-        ) : null}
+        {data.location_details ? <div>Raum / Zusatzinfo: {data.location_details}</div> : null}
         {data.kind === "course" && data.starts_at ? <div>Kursstart: {formatDateTime(data.starts_at)}</div> : null}
         {data.kind !== "course" && data.starts_at ? <div>Start: {formatDateTime(data.starts_at)}</div> : null}
-        {data.capacity !== null ? <div>Plätze: {data.capacity}</div> : null}
+        {data.capacity !== null ? <div>Plaetze: {data.capacity}</div> : null}
       </div>
 
       {data.description ? <p style={{ marginTop: 16, lineHeight: 1.6 }}>{data.description}</p> : null}
 
-      <EmbedCodePanel
-        isEnabled={Boolean(publicOffer)}
-        publicUrl={publicUrl}
-        embedUrl={embedUrl}
-      />
+      <EmbedCodePanel isEnabled={Boolean(publicOffer)} publicUrl={publicUrl} embedUrl={embedUrl} />
 
       {data.kind === "course" ? (
         <section className="mt-6 rounded-2xl border p-5">
-          <h2 className="text-lg font-semibold">Kurs stoppen</h2>
+          <h2 className="text-lg font-semibold">Kursstatus steuern</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Wenn du diesen Kurs stoppst, sind keine neuen Probestunden und keine neuen Anmeldungen mehr möglich.
+            Pausen beginnen am letzten Tag eines Monats und enden am ersten Tag eines Monats. Stopps enden am letzten Tag eines Monats.
           </p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Bereits aktive Teilnehmer können den Kurs noch bis zum Ende ihres bezahlten Zeitraums besuchen.
-            Der Kurs wird automatisch vollständig beendet, sobald der letzte aktive Teilnehmer ausgelaufen ist.
-          </p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Der letzte Kurstag muss mindestens {COURSE_END_NOTICE_DAYS} Tage in der Zukunft liegen.
-          </p>
-          {courseEndLabel ? (
+          {(pauseStartLabel || pauseEndLabel || stopDateLabel) && (
             <p className="mt-3 text-sm font-medium text-foreground">
-              {courseAlreadyEnded ? "Dieser Kurs wurde beendet am" : "Aktuell geplanter letzter Kurstag:"} {courseEndLabel}
+              {pauseStartLabel ? `Geplanter Pausenstart: ${pauseStartLabel}. ` : ""}
+              {pauseEndLabel ? `Geplantes Pausenende: ${pauseEndLabel}. ` : ""}
+              {stopDateLabel ? `Geplantes Stopdatum: ${stopDateLabel}.` : ""}
             </p>
-          ) : null}
-          {!courseAlreadyEnded ? (
-            <form action={scheduleCourseEndAction} className="mt-4 flex flex-wrap items-end gap-3">
-              <input type="hidden" name="course_id" value={data.id} />
-              <input type="hidden" name="redirect_to" value={`/dashboard/courses/${data.id}`} />
-              <label className="space-y-1 text-sm">
-                <span className="font-medium">Letzter Kurstag</span>
-                <input
-                  type="date"
-                  name="end_date"
-                  min={minimumEndDateInput}
-                  defaultValue={
-                    courseEndingScheduled && data.ends_at
-                      ? new Date(data.ends_at).toISOString().slice(0, 10)
-                      : minimumEndDateInput
-                  }
-                  className="rounded-xl border px-3 py-2"
-                  required
-                />
-              </label>
-              <button type="submit" className="rounded-xl border px-4 py-2 text-sm font-semibold">
-                {courseEndingScheduled ? "Kursstopp aktualisieren" : "Kurs stoppen"}
-              </button>
-            </form>
-          ) : null}
+          )}
+          <div className="mt-4 flex flex-wrap gap-3">
+            {(data.status === "active" || data.status === "pause_scheduled") && (
+              <PauseCourseModal
+                courseId={data.id}
+                redirectTo={`/dashboard/courses/${data.id}`}
+                nextPossiblePauseDate={nextPossiblePauseDate}
+                initialPauseStartDate={data.pause_start_date}
+                initialPauseEndDate={data.pause_end_date}
+                action={scheduleCoursePauseAction}
+              />
+            )}
+            {["active", "pause_scheduled", "paused", "stop_scheduled"].includes(data.status) && (
+              <StopCourseModal
+                courseId={data.id}
+                redirectTo={`/dashboard/courses/${data.id}`}
+                nextPossibleStopDate={nextPossiblePauseDate}
+                initialStopDate={data.stop_date}
+                action={scheduleCourseStopAction}
+              />
+            )}
+          </div>
         </section>
       ) : null}
 
@@ -706,9 +734,9 @@ export default async function DashboardCourseDetailPage({
       {data.kind === "course" && groupedCourseParticipants ? (
         <section className="mt-8 space-y-4">
           <div>
-            <h2 className="text-2xl font-semibold">Teilnehmerübersicht</h2>
+            <h2 className="text-2xl font-semibold">Teilnehmeruebersicht</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Hier siehst du den aktuellen Stand der verbindlichen Anmeldungen und Probeschüler für diesen Kurs.
+              Hier siehst du den aktuellen Stand der verbindlichen Anmeldungen und Probeschueler fuer diesen Kurs.
             </p>
           </div>
 
@@ -720,9 +748,9 @@ export default async function DashboardCourseDetailPage({
 
           <section className="rounded-2xl border p-5">
             <div>
-              <h3 className="text-lg font-semibold">Probeschüler Status unterteilt</h3>
+              <h3 className="text-lg font-semibold">Probeschueler Status unterteilt</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Probeschüler werden nach ihrem aktuellen Fortschritt im Aufnahmeprozess gruppiert.
+                Probeschueler werden nach ihrem aktuellen Fortschritt im Aufnahmeprozess gruppiert.
               </p>
             </div>
             <div className="mt-5 space-y-4">
@@ -761,7 +789,6 @@ export default async function DashboardCourseDetailPage({
           )}
         </section>
       ) : null}
-
     </main>
   );
 }

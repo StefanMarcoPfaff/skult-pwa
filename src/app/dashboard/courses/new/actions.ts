@@ -541,6 +541,7 @@ async function createOrUpdateCourse(
         starts_at,
         price_cents,
         currency,
+        status: "draft",
         is_published: false,
       })
       .select("id")

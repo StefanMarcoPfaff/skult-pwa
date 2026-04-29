@@ -61,6 +61,7 @@ export async function isOfferPubliclyVisible(row: Row): Promise<boolean> {
   const kind = getPublicOfferKind(row);
   const isVisible = isPubliclyVisibleOffer({
     kind,
+    status: asString(row.status),
     isPublished: typeof row.is_published === "boolean" ? row.is_published : true,
     startsAt: asString(row.starts_at),
     endsAt: asString(row.ends_at),

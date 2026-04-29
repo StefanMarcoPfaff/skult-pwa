@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     const admin = createSupabaseAdmin();
     const { data: course, error: courseErr } = await admin
       .from("courses")
-      .select("id, kind, title, location, starts_at, ends_at, is_published")
+      .select("id, kind, title, location, starts_at, ends_at, is_published, status")
       .eq("id", courseId)
       .single();
 
@@ -31,6 +31,7 @@ export async function POST(req: Request) {
     if (
       !isPubliclyVisibleOffer({
         kind: course.kind,
+        status: course.status,
         isPublished: course.is_published,
         startsAt: course.starts_at,
         endsAt: course.ends_at,

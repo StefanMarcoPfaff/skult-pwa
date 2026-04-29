@@ -1,40 +1,37 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { sendCoursePauseNotificationEmail, sendCourseStopNotificationEmail } from "@/lib/course-lifecycle-emails";
 import { getStripe } from "@/lib/stripe";
-import { getCancellationModelLabel, getProviderDisplayName } from "@/lib/provider-profiles";
 import {
-  getCourseTerminationModelValue,
-  getWorkshopCancellationPolicyValue,
-} from "@/lib/offer-policies";
-import {
-  COURSE_END_NOTICE_DAYS,
-  getMinimumCourseEndDate,
-  toCourseEndIso,
-} from "@/lib/course-ending";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+  CourseStatus,
+  formatCourseLifecycleDate,
+  getFirstDayOfNextMonthDate,
+  getNextPossiblePauseDate,
+  isFirstDayOfMonthDate,
+  isLastDayOfMonthDate,
+  toCourseLifecycleDate,
+} from "@/lib/course-lifecycle";
+import { getCourseTerminationModelValue, getWorkshopCancellationPolicyValue } from "@/lib/offer-policies";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import {
-  sendCourseEndingNotificationEmail,
-  sendCourseEndingProviderSummaryEmail,
-} from "@/lib/trial-reservation-emails";
-
-type PublishMode = "published" | "draft";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { sendWorkshopCancellationEmail } from "@/lib/workshop-booking-emails";
 
 type CourseOwnerRow = {
   id: string;
   title: string | null;
   kind: string | null;
   teacher_id: string;
-  ends_at: string | null;
+  status: CourseStatus;
+  is_published: boolean | null;
+  pause_start_date: string | null;
+  pause_end_date: string | null;
+  stop_date: string | null;
   cancellation_model: string | null;
   workshop_storno_policy: string | null;
-  location: string | null;
-  location_details: string | null;
-  instructor_name: string | null;
 };
 
-type RegistrationIntentNotificationRow = {
+type RegistrationIntentSubscriptionRow = {
   id: string;
   first_name: string | null;
   last_name: string | null;
@@ -42,105 +39,41 @@ type RegistrationIntentNotificationRow = {
   stripe_subscription_id: string | null;
 };
 
-type ProfileRow = {
+type TrialRecipientRow = {
+  id: string;
   first_name: string | null;
   last_name: string | null;
-  provider_type: "independent_teacher" | "studio_provider" | null;
-  organization_name: string | null;
-  photo_url: string | null;
+  email: string | null;
+  converted_at: string | null;
+  cancelled_at: string | null;
 };
+
+type WorkshopBookingRefundRow = {
+  id: string;
+  customer_first_name: string | null;
+  customer_last_name: string | null;
+  customer_email: string | null;
+  status: string | null;
+  stripe_session_id: string | null;
+  refunded_at: string | null;
+  stripe_refund_id: string | null;
+};
+
+type PublishMode = "play";
 
 function withSavedParam(targetPath: string, value: string) {
   return `${targetPath}${targetPath.includes("?") ? "&" : "?"}saved=${value}`;
 }
 
-function logCourseStopInfo(message: string, payload: Record<string, unknown>) {
-  if (process.env.NODE_ENV === "production") return;
-  console.log("[course end scheduling]", message, payload);
+function toStopDateEndUnix(stopDate: string): number {
+  return Math.floor(new Date(`${stopDate}T23:59:59.999+01:00`).getTime() / 1000);
 }
 
-function logCourseStopError(context: string, error: unknown, extra?: Record<string, unknown>) {
-  if (process.env.NODE_ENV === "production") return;
-  console.error("[course end scheduling]", {
-    context,
-    error: error instanceof Error ? error.message : String(error),
-    ...extra,
-  });
+function formatRecipientName(firstName: string | null, lastName: string | null): string {
+  return [firstName, lastName].filter(Boolean).join(" ").trim() || "Kursteilnehmer*in";
 }
 
-export async function setCoursePublishStateAction(formData: FormData) {
-  const courseId = String(formData.get("course_id") || "").trim();
-  const mode = String(formData.get("mode") || "").trim() as PublishMode;
-  const redirectTo = String(formData.get("redirect_to") || "").trim();
-  const targetPath = redirectTo || `/dashboard/courses/${courseId}`;
-
-  if (!courseId || (mode !== "published" && mode !== "draft")) {
-    redirect("/dashboard");
-  }
-
-  const publish = mode === "published";
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  if (publish) {
-    const { data: course } = await supabase
-      .from("courses")
-      .select("kind,cancellation_model,workshop_storno_policy")
-      .eq("id", courseId)
-      .eq("teacher_id", user.id)
-      .maybeSingle<CourseOwnerRow>();
-
-    const missingWorkshopPolicy =
-      course?.kind === "workshop" &&
-      !getWorkshopCancellationPolicyValue({ cancellation_policy: course.workshop_storno_policy });
-    const missingCoursePolicy =
-      course?.kind === "course" &&
-      !getCourseTerminationModelValue({ termination_model: course.cancellation_model });
-
-    if (!course || missingWorkshopPolicy || missingCoursePolicy) {
-      redirect(withSavedParam(targetPath, "missing_policy"));
-    }
-  }
-
-  const { error } = await supabase
-    .from("courses")
-    .update({ is_published: publish })
-    .eq("id", courseId)
-    .eq("teacher_id", user.id);
-
-  if (error) {
-    redirect(targetPath);
-  }
-
-  redirect(withSavedParam(targetPath, publish ? "published" : "draft"));
-}
-
-export async function scheduleCourseEndAction(formData: FormData) {
-  const courseId = String(formData.get("course_id") || "").trim();
-  const endDate = String(formData.get("end_date") || "").trim();
-  const redirectTo = String(formData.get("redirect_to") || "").trim();
-  const targetPath = redirectTo || `/dashboard/courses/${courseId}`;
-
-  if (!courseId || !endDate) {
-    redirect(`${targetPath}${targetPath.includes("?") ? "&" : "?"}saved=ending_invalid`);
-  }
-
-  const endsAt = toCourseEndIso(endDate);
-  if (!endsAt) {
-    redirect(`${targetPath}${targetPath.includes("?") ? "&" : "?"}saved=ending_invalid`);
-  }
-
-  const minimumEndDate = getMinimumCourseEndDate();
-  if (new Date(endsAt).getTime() < minimumEndDate.getTime()) {
-    redirect(`${targetPath}${targetPath.includes("?") ? "&" : "?"}saved=ending_too_soon`);
-  }
-
+async function requireOwnedCourse(courseId: string) {
   const supabase = await createSupabaseServerClient();
   const admin = createSupabaseAdmin();
   const {
@@ -151,180 +84,369 @@ export async function scheduleCourseEndAction(formData: FormData) {
     redirect("/login");
   }
 
-  const { data: course, error: courseError } = await admin
+  const { data: course } = await admin
     .from("courses")
-    .select("id,title,kind,teacher_id,ends_at,cancellation_model,workshop_storno_policy,location,location_details,instructor_name")
+    .select(
+      "id,title,kind,teacher_id,status,is_published,pause_start_date,pause_end_date,stop_date,cancellation_model,workshop_storno_policy"
+    )
     .eq("id", courseId)
     .eq("teacher_id", user.id)
     .maybeSingle<CourseOwnerRow>();
 
-  if (courseError || !course || course.kind !== "course") {
-    redirect(`${targetPath}${targetPath.includes("?") ? "&" : "?"}saved=ending_invalid`);
+  return { admin, user, course };
+}
+
+export async function setCoursePublishStateAction(formData: FormData) {
+  const courseId = String(formData.get("course_id") || "").trim();
+  const mode = String(formData.get("mode") || "").trim() as PublishMode;
+  const redirectTo = String(formData.get("redirect_to") || "").trim();
+  const targetPath = redirectTo || `/dashboard/courses/${courseId}`;
+
+  if (!courseId || mode !== "play") {
+    redirect("/dashboard");
   }
 
-  const scheduledAt = new Date().toISOString();
-  const { error: updateCourseError } = await admin
+  const { admin, user, course } = await requireOwnedCourse(courseId);
+
+  if (!course || course.status !== "draft") {
+    redirect(withSavedParam(targetPath, "play_invalid"));
+  }
+
+  const missingWorkshopPolicy =
+    course.kind === "workshop" &&
+    !getWorkshopCancellationPolicyValue({ cancellation_policy: course.workshop_storno_policy });
+  const missingCoursePolicy =
+    course.kind === "course" &&
+    !getCourseTerminationModelValue({ termination_model: course.cancellation_model });
+
+  if (missingWorkshopPolicy || missingCoursePolicy) {
+    redirect(withSavedParam(targetPath, "missing_policy"));
+  }
+
+  const { error } = await admin
     .from("courses")
     .update({
-      ends_at: endsAt,
-      end_scheduled_at: scheduledAt,
-      end_reason: "provider_scheduled_mvp",
+      status: "active",
+      is_published: true,
+      pause_start_date: null,
+      pause_end_date: null,
+      stop_date: null,
+    })
+    .eq("id", courseId)
+    .eq("teacher_id", user.id);
+
+  if (error) {
+    redirect(withSavedParam(targetPath, "play_error"));
+  }
+
+  redirect(withSavedParam(targetPath, "play_started"));
+}
+
+export async function scheduleCoursePauseAction(formData: FormData) {
+  const courseId = String(formData.get("course_id") || "").trim();
+  const pauseStartDate = toCourseLifecycleDate(String(formData.get("pause_start_date") || "").trim());
+  const pauseEndDate = toCourseLifecycleDate(String(formData.get("pause_end_date") || "").trim());
+  const redirectTo = String(formData.get("redirect_to") || "").trim();
+  const targetPath = redirectTo || `/dashboard/courses/${courseId}`;
+
+  if (!courseId || !pauseStartDate || !pauseEndDate) {
+    redirect(withSavedParam(targetPath, "pause_invalid"));
+  }
+
+  const nextPossiblePauseDate = getNextPossiblePauseDate();
+  const defaultResumeDate = getFirstDayOfNextMonthDate(pauseStartDate);
+
+  if (
+    !isLastDayOfMonthDate(pauseStartDate) ||
+    !isFirstDayOfMonthDate(pauseEndDate) ||
+    pauseEndDate <= pauseStartDate ||
+    pauseStartDate < nextPossiblePauseDate ||
+    (defaultResumeDate !== null && pauseEndDate < defaultResumeDate)
+  ) {
+    redirect(withSavedParam(targetPath, "pause_invalid"));
+  }
+
+  const { admin, user, course } = await requireOwnedCourse(courseId);
+
+  if (!course || course.kind !== "course") {
+    redirect(withSavedParam(targetPath, "pause_invalid"));
+  }
+
+  if (course.status !== "active" && course.status !== "pause_scheduled") {
+    redirect(withSavedParam(targetPath, "pause_invalid"));
+  }
+
+  const { error } = await admin
+    .from("courses")
+    .update({
+      status: "pause_scheduled",
+      pause_start_date: pauseStartDate,
+      pause_end_date: pauseEndDate,
+      stop_date: null,
+      is_published: true,
     })
     .eq("id", courseId)
     .eq("teacher_id", user.id)
     .eq("kind", "course");
 
-  if (updateCourseError) {
-    redirect(`${targetPath}${targetPath.includes("?") ? "&" : "?"}saved=ending_error`);
+  if (error) {
+    redirect(withSavedParam(targetPath, "pause_error"));
   }
 
-  const [{ data: registrationIntents }, { data: profile }, teacherAuthResult] = await Promise.all([
-    admin
-      .from("course_registration_intents")
-      .select("id,first_name,last_name,email,stripe_subscription_id")
-      .eq("course_id", courseId)
-      .eq("status", "checkout_completed")
-      .returns<RegistrationIntentNotificationRow[]>(),
-    admin
-      .from("profiles")
-      .select("first_name,last_name,provider_type,organization_name,photo_url")
-      .eq("id", user.id)
-      .maybeSingle<ProfileRow>(),
-    admin.auth.admin.getUserById(user.id),
-  ]);
+  const { data: recipients } = await admin
+    .from("course_registration_intents")
+    .select("id,first_name,last_name,email,stripe_subscription_id")
+    .eq("course_id", courseId)
+    .eq("status", "checkout_completed")
+    .returns<RegistrationIntentSubscriptionRow[]>();
 
-  const providerType = profile?.provider_type ?? "independent_teacher";
-  const providerName = getProviderDisplayName(providerType, {
-    first_name: profile?.first_name,
-    last_name: profile?.last_name,
-    organization_name: profile?.organization_name,
-  });
-  const providerEmail = teacherAuthResult.data.user?.email?.trim() || null;
+  const pauseStartDateLabel = formatCourseLifecycleDate(pauseStartDate) ?? pauseStartDate;
+  const pauseEndDateLabel = formatCourseLifecycleDate(pauseEndDate) ?? pauseEndDate;
+
+  for (const recipient of recipients ?? []) {
+    const recipientEmail = recipient.email?.trim();
+    if (!recipientEmail) continue;
+
+    try {
+      await sendCoursePauseNotificationEmail({
+        courseTitle: course.title ?? "Kurs",
+        customerName: formatRecipientName(recipient.first_name, recipient.last_name),
+        customerEmail: recipientEmail,
+        pauseStartDateLabel,
+        pauseEndDateLabel,
+      });
+    } catch {
+      // Keep the lifecycle state change even if one notification fails.
+    }
+  }
+
+  redirect(withSavedParam(targetPath, "pause_scheduled"));
+}
+
+export async function scheduleCourseStopAction(formData: FormData) {
+  const courseId = String(formData.get("course_id") || "").trim();
+  const stopDate = toCourseLifecycleDate(String(formData.get("stop_date") || "").trim());
+  const redirectTo = String(formData.get("redirect_to") || "").trim();
+  const targetPath = redirectTo || `/dashboard/courses/${courseId}`;
+
+  if (!courseId || !stopDate || !isLastDayOfMonthDate(stopDate)) {
+    redirect(withSavedParam(targetPath, "stop_invalid"));
+  }
+
+  const { admin, user, course } = await requireOwnedCourse(courseId);
+
+  if (!course || course.kind !== "course") {
+    redirect(withSavedParam(targetPath, "stop_invalid"));
+  }
+
+  if (!["active", "pause_scheduled", "paused", "stop_scheduled"].includes(course.status)) {
+    redirect(withSavedParam(targetPath, "stop_invalid"));
+  }
+
+  const { error: updateError } = await admin
+    .from("courses")
+    .update({
+      status: "stop_scheduled",
+      stop_date: stopDate,
+      pause_start_date: null,
+      pause_end_date: null,
+      is_published: false,
+      end_scheduled_at: new Date().toISOString(),
+      end_reason: "provider_lifecycle_stop",
+    })
+    .eq("id", courseId)
+    .eq("teacher_id", user.id)
+    .eq("kind", "course");
+
+  if (updateError) {
+    redirect(withSavedParam(targetPath, "stop_error"));
+  }
+
+  const { data: registrationIntents } = await admin
+    .from("course_registration_intents")
+    .select("id,first_name,last_name,email,stripe_subscription_id")
+    .eq("course_id", courseId)
+    .eq("status", "checkout_completed")
+    .returns<RegistrationIntentSubscriptionRow[]>();
+
+  const { data: trialUsers } = await admin
+    .from("trial_reservations")
+    .select("id,first_name,last_name,email,converted_at,cancelled_at")
+    .eq("course_id", courseId)
+    .is("cancelled_at", null)
+    .returns<TrialRecipientRow[]>();
 
   const stripe = getStripe();
-  const cancelAt = Math.floor(new Date(endsAt).getTime() / 1000);
+  const cancelAt = toStopDateEndUnix(stopDate);
   let hadSubscriptionErrors = false;
-  const notifiedCustomerEmails: string[] = [];
-  let customerNotificationAttempts = 0;
-  let customerNotificationFailures = 0;
+  const stopDateLabel = formatCourseLifecycleDate(stopDate) ?? stopDate;
 
   for (const intent of registrationIntents ?? []) {
-    if (intent.stripe_subscription_id) {
+    const recipientEmail = intent.email?.trim();
+    if (recipientEmail) {
       try {
-        await stripe.subscriptions.update(intent.stripe_subscription_id, {
-          cancel_at: cancelAt,
-          proration_behavior: "none",
-        });
-
-        await admin
-          .from("course_registration_intents")
-          .update({ subscription_end_scheduled_at: endsAt })
-          .eq("id", intent.id);
-      } catch (error) {
-        hadSubscriptionErrors = true;
-        logCourseStopError("stripe.subscription.update", error, {
-          registrationIntentId: intent.id,
-          subscriptionId: intent.stripe_subscription_id,
-        });
-      }
-    }
-
-    if (intent.email) {
-      customerNotificationAttempts += 1;
-      try {
-        logCourseStopInfo("participant notification email attempt", {
-          registrationIntentId: intent.id,
-          recipient: intent.email,
-          courseId,
-        });
-
-        await sendCourseEndingNotificationEmail({
-          registrationIntentId: intent.id,
+        await sendCourseStopNotificationEmail({
           courseTitle: course.title ?? "Kurs",
-          providerType,
-          providerName,
-          instructorName: course.instructor_name,
-          senderDisplayName:
-            providerType === "studio_provider" ? providerName : course.instructor_name ?? providerName,
-          senderImageUrl: profile?.photo_url ?? null,
-          customerName:
-            [intent.first_name, intent.last_name].filter(Boolean).join(" ").trim() || "Kursteilnehmer*in",
-          customerEmail: intent.email,
-          courseEndsAt: endsAt,
-          cancellationLabel: course.cancellation_model
-            ? getCancellationModelLabel(course.cancellation_model)
-            : null,
-          location: course.location,
-          locationDetails: course.location_details,
+          customerName: formatRecipientName(intent.first_name, intent.last_name),
+          customerEmail: recipientEmail,
+          stopDateLabel,
         });
-
-        notifiedCustomerEmails.push(intent.email);
-        logCourseStopInfo("participant notification email sent", {
-          registrationIntentId: intent.id,
-          recipient: intent.email,
-          courseId,
-        });
-
-        await admin
-          .from("course_registration_intents")
-          .update({ course_end_notification_sent_at: new Date().toISOString() })
-          .eq("id", intent.id);
-      } catch (error) {
-        customerNotificationFailures += 1;
-        logCourseStopError("send.course_end_notification", error, {
-          registrationIntentId: intent.id,
-          recipient: intent.email,
-          courseId,
-        });
+      } catch {
+        // Keep the lifecycle state change even if one notification fails.
       }
-    } else {
-      logCourseStopInfo("participant notification email skipped", {
-        registrationIntentId: intent.id,
-        reason: "missing-recipient",
-        courseId,
-      });
     }
-  }
 
-  if (providerEmail) {
+    if (!intent.stripe_subscription_id) continue;
+
     try {
-      logCourseStopInfo("provider course-stop summary email attempt", {
-        recipient: providerEmail,
-        courseId,
-        recipientCount: notifiedCustomerEmails.length,
-        attemptedParticipantEmails: customerNotificationAttempts,
-        failedParticipantEmails: customerNotificationFailures,
+      await stripe.subscriptions.update(intent.stripe_subscription_id, {
+        cancel_at: cancelAt,
+        proration_behavior: "none",
       });
 
-      const result = await sendCourseEndingProviderSummaryEmail({
-        teacherEmail: providerEmail,
-        courseTitle: course.title ?? "Kurs",
-        courseEndsAt: endsAt,
-        recipientCount: notifiedCustomerEmails.length,
-        recipientEmails: notifiedCustomerEmails,
-      });
-
-      logCourseStopInfo("provider course-stop summary email sent", {
-        recipient: providerEmail,
-        courseId,
-        recipientCount: notifiedCustomerEmails.length,
-        messageId: result?.data?.id ?? null,
-      });
-    } catch (error) {
-      logCourseStopError("send.provider_course_end_summary", error, {
-        recipient: providerEmail,
-        courseId,
-        recipientCount: notifiedCustomerEmails.length,
-      });
+      await admin
+        .from("course_registration_intents")
+        .update({ subscription_end_scheduled_at: `${stopDate}T23:59:59.999+01:00` })
+        .eq("id", intent.id);
+    } catch {
+      hadSubscriptionErrors = true;
     }
-  } else {
-    logCourseStopInfo("provider course-stop summary email skipped", {
-      reason: "missing-recipient",
-      courseId,
-      recipientCount: notifiedCustomerEmails.length,
-    });
   }
 
-  const result = hadSubscriptionErrors ? "ending_partial" : "ending_scheduled";
-  redirect(`${targetPath}${targetPath.includes("?") ? "&" : "?"}saved=${result}&notice_days=${COURSE_END_NOTICE_DAYS}`);
+  const participantEmails = new Set(
+    (registrationIntents ?? [])
+      .map((intent) => intent.email?.trim().toLowerCase())
+      .filter((email): email is string => Boolean(email))
+  );
+
+  for (const trialUser of trialUsers ?? []) {
+    const recipientEmail = trialUser.email?.trim();
+    if (!recipientEmail || participantEmails.has(recipientEmail.toLowerCase())) continue;
+
+    try {
+      await sendCourseStopNotificationEmail({
+        courseTitle: course.title ?? "Kurs",
+        customerName: formatRecipientName(trialUser.first_name, trialUser.last_name),
+        customerEmail: recipientEmail,
+        stopDateLabel,
+      });
+    } catch {
+      // Keep the lifecycle state change even if one notification fails.
+    }
+  }
+
+  redirect(withSavedParam(targetPath, hadSubscriptionErrors ? "stop_partial" : "stop_scheduled"));
+}
+
+export async function cancelWorkshopAction(formData: FormData) {
+  const courseId = String(formData.get("course_id") || "").trim();
+  const redirectTo = String(formData.get("redirect_to") || "").trim();
+  const targetPath = redirectTo || `/dashboard/courses/${courseId}`;
+
+  if (!courseId) {
+    redirect(withSavedParam(targetPath, "workshop_cancel_invalid"));
+  }
+
+  const { admin, user, course } = await requireOwnedCourse(courseId);
+
+  if (!course || course.kind !== "workshop") {
+    redirect(withSavedParam(targetPath, "workshop_cancel_invalid"));
+  }
+
+  const { error: unpublishError } = await admin
+    .from("courses")
+    .update({
+      is_published: false,
+      status: "ended",
+    })
+    .eq("id", courseId)
+    .eq("teacher_id", user.id)
+    .eq("kind", "workshop");
+
+  if (unpublishError) {
+    redirect(withSavedParam(targetPath, "workshop_cancel_error"));
+  }
+
+  const { data: bookings } = await admin
+    .from("bookings")
+    .select(
+      "id,customer_first_name,customer_last_name,customer_email,status,stripe_session_id,refunded_at,stripe_refund_id"
+    )
+    .eq("course_id", courseId)
+    .returns<WorkshopBookingRefundRow[]>();
+
+  const stripe = getStripe();
+  let hadRefundErrors = false;
+
+  for (const booking of bookings ?? []) {
+    if (booking.status === "refunded" || booking.refunded_at || booking.stripe_refund_id) {
+      continue;
+    }
+
+    if (booking.status !== "paid" || !booking.stripe_session_id) {
+      await admin
+        .from("bookings")
+        .update({
+          status: "cancelled",
+        })
+        .eq("id", booking.id);
+      continue;
+    }
+
+    let refundId: string | null = null;
+    let refundAmount: number | null = null;
+
+    try {
+      const session = await stripe.checkout.sessions.retrieve(booking.stripe_session_id, {
+        expand: ["payment_intent"],
+      });
+      const paymentIntentId =
+        typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent?.id ?? null;
+
+      if (!paymentIntentId) {
+        hadRefundErrors = true;
+        continue;
+      }
+
+      const refund = await stripe.refunds.create({
+        payment_intent: paymentIntentId,
+      });
+      refundId = refund.id;
+      refundAmount = refund.amount ?? null;
+    } catch {
+      hadRefundErrors = true;
+      continue;
+    }
+
+    const { error: bookingUpdateError } = await admin
+      .from("bookings")
+      .update({
+        status: "refunded",
+        refunded_at: new Date().toISOString(),
+        stripe_refund_id: refundId,
+        refund_amount_cents: refundAmount,
+      })
+      .eq("id", booking.id);
+
+    if (bookingUpdateError) {
+      hadRefundErrors = true;
+      continue;
+    }
+
+    const recipientEmail = booking.customer_email?.trim();
+    if (recipientEmail) {
+      try {
+        await sendWorkshopCancellationEmail({
+          customerEmail: recipientEmail,
+          customerName: formatRecipientName(booking.customer_first_name, booking.customer_last_name),
+        });
+      } catch {
+        // Keep cancellation/refund state even if email delivery fails.
+      }
+    }
+  }
+
+  redirect(withSavedParam(targetPath, hadRefundErrors ? "workshop_cancel_partial" : "workshop_cancelled"));
 }

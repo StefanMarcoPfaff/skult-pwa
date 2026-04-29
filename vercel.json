@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/courses/lifecycle",
+      "schedule": "5 0 * * *"
+    },
+    {
       "path": "/api/trial/decision-reminders",
       "schedule": "*/15 * * * *"
     },

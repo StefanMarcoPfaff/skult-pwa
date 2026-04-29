@@ -1,11 +1,19 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { formatCourseLifecycleDate } from "@/lib/course-lifecycle";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  getDefaultParticipantPauseStartDate,
+  pauseParticipantSubscriptionAction,
+  stopParticipantSubscriptionAction,
+} from "./actions";
+import { ParticipantPauseModal, ParticipantStopModal } from "./ParticipantSubscriptionModal";
 
 type SearchParams = {
   source?: string;
+  saved?: string;
 };
 
 type TrialReservationRow = {
@@ -48,6 +56,11 @@ type ProfileRow = {
 type RegistrationIntentRow = {
   id: string;
   status: string | null;
+  stripe_subscription_id: string | null;
+  subscription_status: string | null;
+  subscription_pause_start_date: string | null;
+  subscription_pause_end_date: string | null;
+  subscription_cancel_scheduled_at: string | null;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
@@ -114,6 +127,15 @@ function formatAddress(parts: Array<string | null | undefined>): string {
   return parts.filter(Boolean).join(", ") || "-";
 }
 
+function formatParticipantSubscriptionStatus(status: string | null): string {
+  if (status === "paused") return "Pausiert";
+  if (status === "cancel_scheduled") return "Beendet zum Periodenende";
+  if (status === "cancelled") return "Beendet";
+  if (status === "active") return "Aktiv";
+  if (status === "inactive") return "Inaktiv";
+  return status ?? "-";
+}
+
 async function requireTeacherId() {
   const supabase = await createSupabaseServerClient();
   const {
@@ -132,7 +154,7 @@ export default async function DashboardParticipantDetailPage({
   searchParams: Promise<SearchParams>;
 }) {
   const { id } = await params;
-  const { source } = await searchParams;
+  const { source, saved } = await searchParams;
   const teacherId = await requireTeacherId();
   const admin = createSupabaseAdmin();
 
@@ -179,6 +201,27 @@ export default async function DashboardParticipantDetailPage({
         <Link href={`/dashboard/courses/${course.id}`} className="inline-flex text-sm font-semibold">
           Zurück zum Angebot
         </Link>
+
+      {saved === "participant_paused" ? (
+        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Die Teilnahme wurde pausiert.
+        </p>
+      ) : null}
+      {saved === "participant_cancel_scheduled" ? (
+        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Die Teilnahme wurde zum Periodenende beendet.
+        </p>
+      ) : null}
+      {saved === "participant_pause_invalid" || saved === "participant_stop_invalid" ? (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Die Teilnahme konnte in diesem Zustand nicht geaendert werden.
+        </p>
+      ) : null}
+      {saved === "participant_pause_error" || saved === "participant_stop_error" ? (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Die Stripe-Aenderung fuer diese Teilnahme ist fehlgeschlagen.
+        </p>
+      ) : null}
 
         <section className="rounded-2xl border p-6">
           <h1 className="text-2xl font-semibold">
@@ -255,7 +298,7 @@ export default async function DashboardParticipantDetailPage({
     admin
       .from("course_registration_intents")
       .select(
-        "id,status,first_name,last_name,email,phone,street_and_number,postal_code,city,country,notes,completed_at"
+        "id,status,stripe_subscription_id,subscription_status,subscription_pause_start_date,subscription_pause_end_date,subscription_cancel_scheduled_at,first_name,last_name,email,phone,street_and_number,postal_code,city,country,notes,completed_at"
       )
       .eq("trial_reservation_id", reservation.id)
       .maybeSingle<RegistrationIntentRow>(),
@@ -277,6 +320,9 @@ export default async function DashboardParticipantDetailPage({
 
   const providerName =
     profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
+  const defaultPauseStartDate = getDefaultParticipantPauseStartDate();
+  const pauseStartLabel = formatCourseLifecycleDate(intent?.subscription_pause_start_date ?? null);
+  const pauseEndLabel = formatCourseLifecycleDate(intent?.subscription_pause_end_date ?? null);
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
@@ -329,6 +375,55 @@ export default async function DashboardParticipantDetailPage({
         </div>
       </section>
 
+      {intent?.stripe_subscription_id ? (
+        <section className="rounded-2xl border p-6">
+          <h2 className="text-xl font-semibold">Teilnahme steuern</h2>
+          <div className="mt-4 space-y-2 text-sm text-muted-foreground">
+            <p>
+              Subscriptionstatus:{" "}
+              <span className="font-medium text-foreground">
+                {formatParticipantSubscriptionStatus(intent.subscription_status)}
+              </span>
+            </p>
+            {pauseStartLabel ? (
+              <p>
+                Pause seit: <span className="font-medium text-foreground">{pauseStartLabel}</span>
+              </p>
+            ) : null}
+            {pauseEndLabel ? (
+              <p>
+                Pause bis: <span className="font-medium text-foreground">{pauseEndLabel}</span>
+              </p>
+            ) : null}
+            {intent.subscription_cancel_scheduled_at ? (
+              <p>
+                Beendigung vorgemerkt am:{" "}
+                <span className="font-medium text-foreground">{formatDateTime(intent.subscription_cancel_scheduled_at)}</span>
+              </p>
+            ) : null}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3">
+            {(intent.subscription_status ?? "active") !== "cancel_scheduled" ? (
+              <ParticipantPauseModal
+                reservationId={reservation.id}
+                redirectTo={`/dashboard/participants/${reservation.id}?source=trial`}
+                action={pauseParticipantSubscriptionAction}
+                defaultPauseStartDate={defaultPauseStartDate}
+                defaultPauseEndDate={intent.subscription_pause_end_date}
+                minimumPauseEndDate={defaultPauseStartDate}
+              />
+            ) : null}
+            {(intent.subscription_status ?? "active") !== "cancel_scheduled" ? (
+              <ParticipantStopModal
+                reservationId={reservation.id}
+                redirectTo={`/dashboard/participants/${reservation.id}?source=trial`}
+                action={stopParticipantSubscriptionAction}
+              />
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
       <section className="rounded-2xl border p-6">
         <h2 className="text-xl font-semibold">Gespeicherte Anmeldedaten</h2>
         {intent ? (
@@ -340,6 +435,8 @@ export default async function DashboardParticipantDetailPage({
             <p className="sm:col-span-2">Adresse: <span className="font-medium text-foreground">{formatAddress([intent.street_and_number, intent.postal_code, intent.city, intent.country])}</span></p>
             <p className="sm:col-span-2">Notizen: <span className="font-medium text-foreground">{intent.notes ?? "-"}</span></p>
             <p>Status: <span className="font-medium text-foreground">{intent.status ?? "-"}</span></p>
+            <p>Stripe Subscription: <span className="font-medium text-foreground">{intent.stripe_subscription_id ?? "-"}</span></p>
+            <p>Teilnahmestatus: <span className="font-medium text-foreground">{formatParticipantSubscriptionStatus(intent.subscription_status)}</span></p>
             <p>Checkout abgeschlossen: <span className="font-medium text-foreground">{formatDateTime(intent.completed_at)}</span></p>
           </div>
         ) : (

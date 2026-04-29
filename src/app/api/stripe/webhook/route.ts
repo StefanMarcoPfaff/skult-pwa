@@ -15,6 +15,17 @@ function logWebhookEvent(message: string, payload: Record<string, unknown>) {
   console.log("[stripe-webhook]", message, payload);
 }
 
+function isCheckoutSessionPaymentConfirmed(
+  eventType: Stripe.Event.Type,
+  session: Stripe.Checkout.Session
+): boolean {
+  if (eventType === "checkout.session.async_payment_succeeded") {
+    return true;
+  }
+
+  return session.payment_status === "paid";
+}
+
 export async function POST(req: Request) {
   const sig = req.headers.get("stripe-signature");
   if (!sig) {
@@ -51,6 +62,15 @@ export async function POST(req: Request) {
         return NextResponse.json({ received: true });
       }
 
+      if (!isCheckoutSessionPaymentConfirmed(event.type, session)) {
+        logWebhookEvent("course registration checkout awaiting confirmed payment", {
+          sessionId: session.id,
+          eventType: event.type,
+          paymentStatus: session.payment_status,
+        });
+        return NextResponse.json({ received: true });
+      }
+
       const finalized = await finalizeCourseRegistrationCheckoutSession({
         sessionId: session.id,
         expectedIntentId: session.metadata.registrationIntentId,
@@ -65,7 +85,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ received: true });
     }
 
-    if (session.payment_status !== "paid") {
+    if (!isCheckoutSessionPaymentConfirmed(event.type, session)) {
       return NextResponse.json({ received: true });
     }
 
