@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import { getFirstDayOfNextMonthDate } from "@/lib/course-lifecycle";
+import { getFirstDayOfNextMonthDate } from "@/lib/course-lifecycle-shared";
 
 function validateLastDayOfMonth(value: string): boolean {
   if (!value) return false;

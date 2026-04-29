@@ -1,11 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { formatCourseLifecycleDate } from "@/lib/course-lifecycle";
+import { formatCourseLifecycleDate, getBerlinTodayDate } from "@/lib/course-lifecycle-shared";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
-  getDefaultParticipantPauseStartDate,
   pauseParticipantSubscriptionAction,
   stopParticipantSubscriptionAction,
 } from "./actions";
@@ -320,7 +319,7 @@ export default async function DashboardParticipantDetailPage({
 
   const providerName =
     profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
-  const defaultPauseStartDate = getDefaultParticipantPauseStartDate();
+  const defaultPauseStartDate = getBerlinTodayDate();
   const pauseStartLabel = formatCourseLifecycleDate(intent?.subscription_pause_start_date ?? null);
   const pauseEndLabel = formatCourseLifecycleDate(intent?.subscription_pause_end_date ?? null);
 

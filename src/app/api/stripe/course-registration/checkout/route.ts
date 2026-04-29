@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
-import { type CourseStatus, isCourseOpenForNewRegistrations } from "@/lib/course-lifecycle";
+import { type CourseStatus, isCourseOpenForNewRegistrations } from "@/lib/course-lifecycle-shared";
 import {
   getCourseSubscriptionBillingCycleAnchor,
   getCourseSubscriptionCheckoutCurrency,

@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { formatCourseEndDate, isCourseClosedForNewRegistrations } from "@/lib/course-ending";
-import { formatCourseLifecycleDate, type CourseStatus, isCourseOpenForNewRegistrations } from "@/lib/course-lifecycle";
+import {
+  formatCourseLifecycleDate,
+  type CourseStatus,
+  isCourseOpenForNewRegistrations,
+} from "@/lib/course-lifecycle-shared";
 import { formatRecurringCoursePrice } from "@/lib/course-display";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { loadTicketBySubscriptionId } from "@/lib/tickets";

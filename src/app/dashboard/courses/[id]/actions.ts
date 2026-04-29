@@ -11,7 +11,7 @@ import {
   isFirstDayOfMonthDate,
   isLastDayOfMonthDate,
   toCourseLifecycleDate,
-} from "@/lib/course-lifecycle";
+} from "@/lib/course-lifecycle-shared";
 import { getCourseTerminationModelValue, getWorkshopCancellationPolicyValue } from "@/lib/offer-policies";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";

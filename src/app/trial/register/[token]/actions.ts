@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
-import { type CourseStatus, isCourseOpenForNewRegistrations } from "@/lib/course-lifecycle";
+import { type CourseStatus, isCourseOpenForNewRegistrations } from "@/lib/course-lifecycle-shared";
 import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 

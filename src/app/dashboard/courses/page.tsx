@@ -4,7 +4,7 @@ import {
   formatCourseLifecycleDate,
   getCourseStatusLabel,
   type CourseStatus,
-} from "@/lib/course-lifecycle";
+} from "@/lib/course-lifecycle-shared";
 import {
   getCourseTerminationModelValue,
   getWorkshopCancellationPolicySummary,

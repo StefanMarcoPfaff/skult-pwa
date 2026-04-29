@@ -6,7 +6,7 @@ import {
   getNextPossiblePauseDate,
   getCourseStatusLabel,
   type CourseStatus,
-} from "@/lib/course-lifecycle";
+} from "@/lib/course-lifecycle-shared";
 import {
   COURSE_CANCELLATION_SUMMARY,
   getCourseTerminationModelValue,

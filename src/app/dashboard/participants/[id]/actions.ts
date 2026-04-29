@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { formatCourseLifecycleDate, getBerlinTodayDate, toCourseLifecycleDate } from "@/lib/course-lifecycle";
+import { formatCourseLifecycleDate, toCourseLifecycleDate } from "@/lib/course-lifecycle-shared";
 import {
   sendParticipantCancellationConfirmationEmail,
   sendParticipantPauseConfirmationEmail,
@@ -161,15 +161,9 @@ export async function stopParticipantSubscriptionAction(formData: FormData) {
   const stripe = getStripe();
   let cancellationDateLabel = "dem Ende des aktuellen Abrechnungszeitraums";
   try {
-    const updatedSubscription = await stripe.subscriptions.update(subscription.stripe_subscription_id, {
+    await stripe.subscriptions.update(subscription.stripe_subscription_id, {
       cancel_at_period_end: true,
     });
-
-    if (typeof updatedSubscription.current_period_end === "number") {
-      cancellationDateLabel =
-        formatCourseLifecycleDate(new Date(updatedSubscription.current_period_end * 1000).toISOString().slice(0, 10)) ??
-        cancellationDateLabel;
-    }
   } catch {
     redirect(withSavedParam(redirectTo, "participant_stop_error"));
   }
@@ -203,8 +197,4 @@ export async function stopParticipantSubscriptionAction(formData: FormData) {
   }
 
   redirect(withSavedParam(redirectTo, "participant_cancel_scheduled"));
-}
-
-export function getDefaultParticipantPauseStartDate() {
-  return getBerlinTodayDate();
 }
