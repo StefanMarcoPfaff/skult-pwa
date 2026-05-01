@@ -12,8 +12,7 @@ import {
   getWorkshopCancellationPolicyValue,
 } from "@/lib/offer-policies";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { duplicateCourseAction, setCoursePublishStateAction } from "./[id]/actions";
-import { CourseCardShareButton } from "./CourseCardShareButton";
+import { OfferCard } from "./OfferCard";
 
 type OfferRow = {
   id: string;
@@ -112,23 +111,6 @@ function getReferenceTime() {
   return Date.now();
 }
 
-function ActionIcon(props: {
-  title: string;
-  label: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <span
-      title={props.title}
-      aria-label={props.label}
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-full border bg-background transition ${props.className ?? "text-muted-foreground hover:text-foreground"}`}
-    >
-      {props.children}
-    </span>
-  );
-}
-
 export default async function DashboardCoursesPage({
   searchParams,
 }: {
@@ -178,7 +160,7 @@ export default async function DashboardCoursesPage({
   }
 
   const offers = offersResult.data ?? [];
-  const offerIds = offers.map((o) => o.id);
+  const offerIds = offers.map((offer) => offer.id);
 
   let sessionRows: SessionRow[] = [];
   if (offerIds.length > 0) {
@@ -364,110 +346,29 @@ export default async function DashboardCoursesPage({
                 : "text-muted-foreground hover:text-foreground";
 
             return (
-              <article
+              <OfferCard
                 key={offer.id}
-                className="group relative rounded-2xl border p-5 transition hover:border-foreground/20 hover:shadow-sm focus-within:ring-2 focus-within:ring-foreground/20 cursor-pointer"
-              >
-                <Link
-                  href={detailHref}
-                  aria-label={`${offer.title} ansehen`}
-                  className="absolute inset-0 rounded-2xl focus-visible:outline-none"
-                />
-                <div className="flex items-start justify-between gap-3">
-                  <div className="relative z-10">
-                    <h2 className="text-lg font-semibold">{offer.title}</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {kind === "course" ? "Kurs" : kind === "workshop" ? "Workshop" : "-"} • {statusLabel}
-                    </p>
-                  </div>
-                  <div
-                    className="relative z-10 flex items-center gap-2"
-                    onMouseDown={(event) => event.stopPropagation()}
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    {normalizedStatus === "draft" ? (
-                      <form action={setCoursePublishStateAction}>
-                        <input type="hidden" name="course_id" value={offer.id} />
-                        <input type="hidden" name="mode" value="play" />
-                        <input type="hidden" name="redirect_to" value="/dashboard/courses" />
-                        <button
-                          type="submit"
-                          disabled={isMissingPolicy}
-                          title="veröffentlichen / starten"
-                          aria-label="veröffentlichen / starten"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border bg-background text-muted-foreground transition hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
-                            <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10-6.86a1 1 0 0 0 0-1.72l-10-6.86a1 1 0 0 0-1.5.86Z" />
-                          </svg>
-                        </button>
-                      </form>
-                    ) : (
-                      <Link href={detailHref} className="inline-flex">
-                        <ActionIcon title="veröffentlichen / starten" label="veröffentlichen / starten" className={playIconClass}>
-                          <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
-                            <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10-6.86a1 1 0 0 0 0-1.72l-10-6.86a1 1 0 0 0-1.5.86Z" />
-                          </svg>
-                        </ActionIcon>
-                      </Link>
-                    )}
-                    <Link href={detailHref} className="inline-flex">
-                      <ActionIcon title="pausieren" label="pausieren" className={pauseIconClass}>
-                        <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
-                          <path d="M7 5.5A1.5 1.5 0 0 1 8.5 4h1A1.5 1.5 0 0 1 11 5.5v13A1.5 1.5 0 0 1 9.5 20h-1A1.5 1.5 0 0 1 7 18.5v-13Zm6 0A1.5 1.5 0 0 1 14.5 4h1A1.5 1.5 0 0 1 17 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-1A1.5 1.5 0 0 1 13 18.5v-13Z" />
-                        </svg>
-                      </ActionIcon>
-                    </Link>
-                    <Link href={detailHref} className="inline-flex">
-                      <ActionIcon title="beenden" label="beenden" className={stopIconClass}>
-                        <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
-                          <path d="M7 7.5A1.5 1.5 0 0 1 8.5 6h7A1.5 1.5 0 0 1 17 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 16.5v-9Z" />
-                        </svg>
-                      </ActionIcon>
-                    </Link>
-                    <Link
-                      href={`/dashboard/courses/${offer.id}/edit`}
-                      className="inline-flex relative z-10"
-                      title="bearbeiten"
-                      aria-label="bearbeiten"
-                    >
-                      <ActionIcon title="bearbeiten" label="bearbeiten">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-                          <path d="m4 20 4.5-1 9-9a2.12 2.12 0 1 0-3-3l-9 9L4 20Z" />
-                          <path d="M13.5 6.5 17.5 10.5" />
-                        </svg>
-                      </ActionIcon>
-                    </Link>
-                    <form action={duplicateCourseAction} className="relative z-10">
-                      <input type="hidden" name="course_id" value={offer.id} />
-                      <button type="submit" className="inline-flex" title="kopieren" aria-label="kopieren">
-                        <ActionIcon title="kopieren" label="kopieren">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-                            <rect x="9" y="9" width="10" height="10" rx="2" />
-                            <path d="M7 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1" />
-                          </svg>
-                        </ActionIcon>
-                      </button>
-                    </form>
-                    <div className="relative z-10">
-                      <CourseCardShareButton href={publicHref} />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="relative z-10 mt-3 space-y-1 text-sm text-muted-foreground">
-                  {offer.location ? <p>Ort: {offer.location}</p> : null}
-                  {kind === "workshop" && workshopTiming ? <p>{workshopTiming}</p> : null}
-                  {kind === "course" && courseTiming ? <p>{courseTiming}</p> : null}
-                  {kind === "course" && pauseStartLabel ? <p>Pausenstart: {pauseStartLabel}</p> : null}
-                  {kind === "course" && pauseEndLabel ? <p>Pause endet: {pauseEndLabel}</p> : null}
-                  {kind === "course" && stopDateLabel ? <p>Stopdatum: {stopDateLabel}</p> : null}
-                  <p>{kind === "course" ? "Kursmodell" : "Stornierungsbedingungen"}: {policyLabel}</p>
-                  {normalizedStatus === "draft" && isMissingPolicy ? (
-                    <p className="text-red-700">Vor der Aktivierung muss zuerst eine Regel hinterlegt sein.</p>
-                  ) : null}
-                </div>
-              </article>
+                id={offer.id}
+                title={offer.title}
+                kindLabel={kind === "course" ? "Kurs" : kind === "workshop" ? "Workshop" : "-"}
+                statusLabel={statusLabel}
+                location={offer.location}
+                workshopTiming={kind === "workshop" ? workshopTiming : null}
+                courseTiming={kind === "course" ? courseTiming : null}
+                pauseStartLabel={kind === "course" ? pauseStartLabel : null}
+                pauseEndLabel={kind === "course" ? pauseEndLabel : null}
+                stopDateLabel={kind === "course" ? stopDateLabel : null}
+                policyTypeLabel={kind === "course" ? "Kursmodell" : "Stornierungsbedingungen"}
+                policyLabel={policyLabel}
+                isMissingPolicy={isMissingPolicy}
+                isDraft={normalizedStatus === "draft"}
+                publicHref={publicHref}
+                detailHref={detailHref}
+                editHref={`/dashboard/courses/${offer.id}/edit`}
+                playIconClass={playIconClass}
+                pauseIconClass={pauseIconClass}
+                stopIconClass={stopIconClass}
+              />
             );
           })}
         </section>
