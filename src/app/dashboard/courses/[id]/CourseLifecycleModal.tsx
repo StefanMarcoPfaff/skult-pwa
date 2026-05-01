@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useId, useRef, useState } from "react";
 import { getFirstDayOfNextMonthDate } from "@/lib/course-lifecycle-shared";
 
@@ -24,6 +25,9 @@ export function PauseCourseModal(props: {
   initialPauseStartDate?: string | null;
   initialPauseEndDate?: string | null;
   action: (formData: FormData) => void | Promise<void>;
+  triggerContent?: ReactNode;
+  triggerTitle?: string;
+  triggerDisabled?: boolean;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -39,10 +43,15 @@ export function PauseCourseModal(props: {
     <>
       <button
         type="button"
-        className="rounded-xl border px-4 py-2 text-sm font-semibold"
+        className="disabled:cursor-not-allowed disabled:opacity-50"
+        title={props.triggerTitle ?? "Pause planen"}
+        aria-label={props.triggerTitle ?? "Pause planen"}
+        disabled={props.triggerDisabled}
         onClick={() => dialogRef.current?.showModal()}
       >
-        Pause planen
+        {props.triggerContent ?? (
+          <span className="rounded-xl border px-4 py-2 text-sm font-semibold">Pause planen</span>
+        )}
       </button>
       <dialog ref={dialogRef} aria-labelledby={titleId} className="w-full max-w-lg rounded-2xl border p-0 backdrop:bg-black/30">
         <div className="space-y-4 p-6">
@@ -122,6 +131,9 @@ export function StopCourseModal(props: {
   nextPossibleStopDate: string;
   initialStopDate?: string | null;
   action: (formData: FormData) => void | Promise<void>;
+  triggerContent?: ReactNode;
+  triggerTitle?: string;
+  triggerDisabled?: boolean;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -131,10 +143,15 @@ export function StopCourseModal(props: {
     <>
       <button
         type="button"
-        className="rounded-xl border px-4 py-2 text-sm font-semibold"
+        className="disabled:cursor-not-allowed disabled:opacity-50"
+        title={props.triggerTitle ?? "Stopp planen"}
+        aria-label={props.triggerTitle ?? "Stopp planen"}
+        disabled={props.triggerDisabled}
         onClick={() => dialogRef.current?.showModal()}
       >
-        Stopp planen
+        {props.triggerContent ?? (
+          <span className="rounded-xl border px-4 py-2 text-sm font-semibold">Stopp planen</span>
+        )}
       </button>
       <dialog ref={dialogRef} aria-labelledby={titleId} className="w-full max-w-lg rounded-2xl border p-0 backdrop:bg-black/30">
         <div className="space-y-4 p-6">
