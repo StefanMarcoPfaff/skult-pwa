@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { sendCoursePauseNotificationEmail, sendCourseStopNotificationEmail } from "@/lib/course-lifecycle-emails";
 import { getStripe } from "@/lib/stripe";
@@ -60,6 +61,40 @@ type WorkshopBookingRefundRow = {
 };
 
 type PublishMode = "play";
+
+type CourseCopySourceRow = {
+  id: string;
+  teacher_id: string;
+  kind: string | null;
+  title: string | null;
+  description: string | null;
+  location: string | null;
+  location_details: string | null;
+  capacity: number | null;
+  starts_at: string | null;
+  weekday: number | null;
+  start_time: string | null;
+  duration_minutes: number | null;
+  recurrence_type: string | null;
+  trial_mode: string | null;
+  instructor_name: string | null;
+  cancellation_model: string | null;
+  workshop_storno_policy: string | null;
+  price_cents: number | null;
+  currency: string | null;
+};
+
+type CourseSessionCopyRow = {
+  starts_at: string | null;
+  ends_at: string | null;
+};
+
+type TrialSlotCopyRow = {
+  starts_at: string | null;
+  ends_at: string | null;
+  is_open: boolean | null;
+  source_type: string | null;
+};
 
 function withSavedParam(targetPath: string, value: string) {
   return `${targetPath}${targetPath.includes("?") ? "&" : "?"}saved=${value}`;
@@ -140,6 +175,123 @@ export async function setCoursePublishStateAction(formData: FormData) {
   }
 
   redirect(withSavedParam(targetPath, "play_started"));
+}
+
+export async function duplicateCourseAction(formData: FormData) {
+  const courseId = String(formData.get("course_id") || "").trim();
+
+  if (!courseId) {
+    redirect("/dashboard/courses");
+  }
+
+  const { admin, user } = await requireOwnedCourse(courseId);
+
+  const { data: sourceCourse } = await admin
+    .from("courses")
+    .select(
+      "id,teacher_id,kind,title,description,location,location_details,capacity,starts_at,weekday,start_time,duration_minutes,recurrence_type,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,price_cents,currency"
+    )
+    .eq("id", courseId)
+    .eq("teacher_id", user.id)
+    .maybeSingle<CourseCopySourceRow>();
+
+  if (!sourceCourse) {
+    redirect("/dashboard/courses");
+  }
+
+  const { data: copiedCourse, error: insertError } = await admin
+    .from("courses")
+    .insert({
+      teacher_id: user.id,
+      kind: sourceCourse.kind,
+      title: sourceCourse.title ?? "Kopie",
+      description: sourceCourse.description,
+      location: sourceCourse.location,
+      location_details: sourceCourse.location_details,
+      capacity: sourceCourse.capacity,
+      starts_at: sourceCourse.starts_at,
+      weekday: sourceCourse.weekday,
+      start_time: sourceCourse.start_time,
+      duration_minutes: sourceCourse.duration_minutes,
+      recurrence_type: sourceCourse.recurrence_type,
+      trial_mode: sourceCourse.trial_mode ?? "all_sessions",
+      instructor_name: sourceCourse.instructor_name,
+      cancellation_model: sourceCourse.cancellation_model,
+      workshop_storno_policy: sourceCourse.workshop_storno_policy,
+      price_cents: sourceCourse.price_cents,
+      currency: sourceCourse.currency,
+      status: "draft",
+      is_published: false,
+      ends_at: null,
+      end_scheduled_at: null,
+      end_reason: null,
+      pause_start_date: null,
+      pause_end_date: null,
+      stop_date: null,
+    })
+    .select("id")
+    .single<{ id: string }>();
+
+  if (insertError || !copiedCourse) {
+    redirect(withSavedParam(`/dashboard/courses/${courseId}`, "copy_error"));
+  }
+
+  if (sourceCourse.kind === "workshop") {
+    const { data: sessions } = await admin
+      .from("course_sessions")
+      .select("starts_at,ends_at")
+      .eq("course_id", courseId)
+      .order("starts_at", { ascending: true })
+      .returns<CourseSessionCopyRow[]>();
+
+    const copiedSessions = (sessions ?? []).filter((session) => session.starts_at && session.ends_at);
+
+    if (copiedSessions.length > 0) {
+      const { error: sessionInsertError } = await admin.from("course_sessions").insert(
+        copiedSessions.map((session) => ({
+          course_id: copiedCourse.id,
+          starts_at: session.starts_at as string,
+          ends_at: session.ends_at as string,
+        }))
+      );
+
+      if (sessionInsertError) {
+        redirect(withSavedParam(`/dashboard/courses/${courseId}`, "copy_error"));
+      }
+    }
+  }
+
+  if (sourceCourse.kind === "course" && sourceCourse.trial_mode === "manual") {
+    const { data: trialSlots } = await admin
+      .from("trial_slots")
+      .select("starts_at,ends_at,is_open,source_type")
+      .eq("course_id", courseId)
+      .eq("is_open", true)
+      .order("starts_at", { ascending: true })
+      .returns<TrialSlotCopyRow[]>();
+
+    const copiedTrialSlots = (trialSlots ?? []).filter((slot) => slot.starts_at && slot.ends_at);
+
+    if (copiedTrialSlots.length > 0) {
+      const { error: trialSlotInsertError } = await admin.from("trial_slots").insert(
+        copiedTrialSlots.map((slot) => ({
+          course_id: copiedCourse.id,
+          starts_at: slot.starts_at as string,
+          ends_at: slot.ends_at as string,
+          is_open: slot.is_open ?? true,
+          source_type: "manual" as const,
+        }))
+      );
+
+      if (trialSlotInsertError) {
+        redirect(withSavedParam(`/dashboard/courses/${courseId}`, "copy_error"));
+      }
+    }
+  }
+
+  revalidatePath("/dashboard/courses");
+  revalidatePath(`/dashboard/courses/${courseId}`);
+  redirect(`/dashboard/courses/${copiedCourse.id}/edit?copied=1`);
 }
 
 export async function scheduleCoursePauseAction(formData: FormData) {

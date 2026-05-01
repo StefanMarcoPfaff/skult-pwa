@@ -5,6 +5,7 @@ import {
   formatCourseLifecycleDate,
   getNextPossiblePauseDate,
   getCourseStatusLabel,
+  resolveDashboardCourseStatus,
   type CourseStatus,
 } from "@/lib/course-lifecycle-shared";
 import {
@@ -20,6 +21,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   cancelWorkshopAction,
+  duplicateCourseAction,
   scheduleCoursePauseAction,
   scheduleCourseStopAction,
   setCoursePublishStateAction,
@@ -35,7 +37,7 @@ type Row = {
   starts_at: string | null;
   capacity: number | null;
   kind: string | null;
-  status: CourseStatus;
+  status: CourseStatus | null;
   is_published: boolean | null;
   trial_mode: string | null;
   instructor_name: string | null;
@@ -290,12 +292,27 @@ export default async function DashboardCourseDetailPage({
     redirect("/login");
   }
 
-  const { data, error } = await supabase
+  let courseResponse = await supabase
     .from("courses")
-    .select("id,title,description,location,location_details,starts_at,capacity,kind,status,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,pause_start_date,pause_end_date,stop_date")
+    .select(
+      "id,title,description,location,location_details,starts_at,capacity,kind,status,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,pause_start_date,pause_end_date,stop_date"
+    )
     .eq("id", id)
     .eq("teacher_id", user.id)
     .single<Row>();
+
+  if (courseResponse.error) {
+    courseResponse = await supabase
+      .from("courses")
+      .select(
+        "id,title,description,location,location_details,starts_at,capacity,kind,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at"
+      )
+      .eq("id", id)
+      .eq("teacher_id", user.id)
+      .single<Row>();
+  }
+
+  const { data, error } = courseResponse;
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -384,7 +401,12 @@ export default async function DashboardCourseDetailPage({
           organization_name: profile.organization_name,
         })
       : null;
-  const statusLabel = getCourseStatusLabel(data.status);
+  const normalizedStatus = resolveDashboardCourseStatus({
+    status: data.status,
+    isPublished: data.is_published,
+    endsAt: data.ends_at,
+  });
+  const statusLabel = getCourseStatusLabel(normalizedStatus);
   const pauseStartLabel = formatCourseLifecycleDate(data.pause_start_date);
   const pauseEndLabel = formatCourseLifecycleDate(data.pause_end_date);
   const stopDateLabel = formatCourseLifecycleDate(data.stop_date);
@@ -534,6 +556,11 @@ export default async function DashboardCourseDetailPage({
           Angebot wurde aktiviert.
         </p>
       ) : null}
+      {savedParam === "copy_error" ? (
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Das Angebot konnte nicht kopiert werden.
+        </p>
+      ) : null}
       {savedParam === "missing_policy" ? (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           Aktivieren nicht moeglich. Bitte hinterlege zuerst die Stornierungs- bzw. Kuendigungsbedingungen.
@@ -592,8 +619,14 @@ export default async function DashboardCourseDetailPage({
         >
           Aendern
         </Link>
+        <form action={duplicateCourseAction}>
+          <input type="hidden" name="course_id" value={data.id} />
+          <button type="submit" className="rounded-xl border px-4 py-2 text-sm font-semibold">
+            Kopieren
+          </button>
+        </form>
 
-        {data.status === "draft" ? (
+        {normalizedStatus === "draft" ? (
           <form action={setCoursePublishStateAction}>
             <input type="hidden" name="course_id" value={data.id} />
             <input type="hidden" name="mode" value="play" />
@@ -606,7 +639,7 @@ export default async function DashboardCourseDetailPage({
             </button>
           </form>
         ) : null}
-        {data.kind === "workshop" && data.status !== "ended" ? (
+        {data.kind === "workshop" && normalizedStatus !== "ended" ? (
           <form action={cancelWorkshopAction}>
             <input type="hidden" name="course_id" value={data.id} />
             <input type="hidden" name="redirect_to" value={`/dashboard/courses/${data.id}`} />
@@ -620,7 +653,7 @@ export default async function DashboardCourseDetailPage({
         ) : null}
       </div>
 
-      {data.status === "draft" && publishBlockedForMissingPolicy ? (
+      {normalizedStatus === "draft" && publishBlockedForMissingPolicy ? (
         <p className="mt-3 text-sm text-red-700">
           Dieses Angebot kann erst aktiviert werden, wenn die passende Stornierungs- bzw. Kuendigungsregel gesetzt ist.
         </p>
@@ -669,7 +702,7 @@ export default async function DashboardCourseDetailPage({
             </p>
           )}
           <div className="mt-4 flex flex-wrap gap-3">
-            {(data.status === "active" || data.status === "pause_scheduled") && (
+            {(normalizedStatus === "active" || normalizedStatus === "pause_scheduled") && (
               <PauseCourseModal
                 courseId={data.id}
                 redirectTo={`/dashboard/courses/${data.id}`}
@@ -679,7 +712,7 @@ export default async function DashboardCourseDetailPage({
                 action={scheduleCoursePauseAction}
               />
             )}
-            {["active", "pause_scheduled", "paused", "stop_scheduled"].includes(data.status) && (
+            {["active", "pause_scheduled", "paused", "stop_scheduled"].includes(normalizedStatus) && (
               <StopCourseModal
                 courseId={data.id}
                 redirectTo={`/dashboard/courses/${data.id}`}

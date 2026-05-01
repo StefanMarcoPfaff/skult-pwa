@@ -67,10 +67,14 @@ function toPriceEur(priceCents: number | null): string {
 
 export default async function EditOfferPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
+  const copiedParam = Array.isArray(sp.copied) ? sp.copied[0] : sp.copied;
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -170,6 +174,11 @@ export default async function EditOfferPage({
         <p className="text-sm text-muted-foreground">
           Bearbeite dein Angebot und speichere es wieder in die interne Vorschau.
         </p>
+        {copiedParam === "1" ? (
+          <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+            Kopie als Entwurf erstellt. Bitte pruefe vor allem Datum, Preis und Sichtbarkeit vor der Aktivierung.
+          </p>
+        ) : null}
       </header>
 
       <div className="rounded-2xl border p-6">

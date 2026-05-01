@@ -8,6 +8,15 @@ export type CourseStatus =
   | "stop_scheduled"
   | "ended";
 
+const COURSE_STATUS_VALUES: CourseStatus[] = [
+  "draft",
+  "active",
+  "pause_scheduled",
+  "paused",
+  "stop_scheduled",
+  "ended",
+];
+
 type TimeZoneDateParts = {
   year: number;
   month: number;
@@ -137,6 +146,33 @@ export function getCourseStatusLabel(status: CourseStatus): string {
     default:
       return status;
   }
+}
+
+export function isCourseStatus(value: string | null | undefined): value is CourseStatus {
+  return COURSE_STATUS_VALUES.includes(value as CourseStatus);
+}
+
+export function resolveDashboardCourseStatus(input: {
+  status?: string | null;
+  isPublished?: boolean | null;
+  endsAt?: string | null;
+}): CourseStatus {
+  if (isCourseStatus(input.status)) {
+    return input.status;
+  }
+
+  if (input.isPublished) {
+    return "active";
+  }
+
+  if (input.endsAt) {
+    const endsAt = new Date(input.endsAt).getTime();
+    if (Number.isFinite(endsAt) && endsAt < Date.now()) {
+      return "ended";
+    }
+  }
+
+  return "draft";
 }
 
 export function isCourseOpenForNewRegistrations(

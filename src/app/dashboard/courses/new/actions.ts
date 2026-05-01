@@ -329,6 +329,20 @@ async function createOrUpdateWorkshop(
       const newId = String(data || "").trim();
       if (!newId) return { error: "Workshop wurde erstellt, aber keine ID zurueckgegeben." };
 
+      const { error: statusUpdateError } = await supabase
+        .from("courses")
+        .update({
+          status: "draft",
+          is_published: false,
+        })
+        .eq("id", newId)
+        .eq("teacher_id", user.id)
+        .eq("kind", "workshop");
+
+      if (statusUpdateError) {
+        logSupabaseError("update.courses(workshop-create-status)", statusUpdateError);
+      }
+
       return { redirectTo: `/dashboard/courses/${newId}` };
     } catch (error: unknown) {
       logWorkshopSaveEvent("timeout_or_exception", {

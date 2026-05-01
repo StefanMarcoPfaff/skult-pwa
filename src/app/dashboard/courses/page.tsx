@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import {
   formatCourseLifecycleDate,
   getCourseStatusLabel,
+  resolveDashboardCourseStatus,
   type CourseStatus,
 } from "@/lib/course-lifecycle-shared";
 import {
@@ -11,7 +12,7 @@ import {
   getWorkshopCancellationPolicyValue,
 } from "@/lib/offer-policies";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { setCoursePublishStateAction } from "./[id]/actions";
+import { duplicateCourseAction, setCoursePublishStateAction } from "./[id]/actions";
 import { CourseCardShareButton } from "./CourseCardShareButton";
 
 type OfferRow = {
@@ -19,7 +20,7 @@ type OfferRow = {
   teacher_id: string;
   title: string;
   kind: string | null;
-  status: CourseStatus;
+  status: CourseStatus | null;
   is_published: boolean | null;
   location: string | null;
   starts_at: string | null;
@@ -32,11 +33,14 @@ type OfferRow = {
   pause_start_date: string | null;
   pause_end_date: string | null;
   stop_date: string | null;
+  ends_at?: string | null;
 };
 
 type SessionRow = {
   course_id: string;
 };
+
+type DashboardOfferView = "all" | "active" | "drafts" | "archive";
 
 const weekdayLabels: Record<number, string> = {
   0: "So",
@@ -72,6 +76,42 @@ function formatCourseSchedule(weekday: number | null, startTime: string | null, 
   return parts.length ? parts.join(" • ") : null;
 }
 
+function getOfferView(value: string | string[] | undefined): DashboardOfferView {
+  const selected = Array.isArray(value) ? value[0] : value;
+  if (selected === "active" || selected === "drafts" || selected === "archive") return selected;
+  return "all";
+}
+
+function isArchivedOffer(offer: OfferRow, referenceTime: number): boolean {
+  const status = resolveDashboardCourseStatus({
+    status: offer.status,
+    isPublished: offer.is_published,
+    endsAt: offer.ends_at ?? null,
+  });
+
+  if (status === "draft") return false;
+  if (status === "paused" || status === "stop_scheduled" || status === "ended") {
+    return true;
+  }
+
+  if ((offer.kind ?? "").toLowerCase() === "workshop" && offer.starts_at) {
+    const startsAt = new Date(offer.starts_at).getTime();
+    if (Number.isFinite(startsAt) && startsAt < referenceTime) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function buildTabHref(view: DashboardOfferView) {
+  return view === "all" ? "/dashboard/courses" : `/dashboard/courses?view=${view}`;
+}
+
+function getReferenceTime() {
+  return Date.now();
+}
+
 function ActionIcon(props: {
   title: string;
   label: string;
@@ -96,6 +136,7 @@ export default async function DashboardCoursesPage({
 }) {
   const sp = await searchParams;
   const savedParam = Array.isArray(sp.saved) ? sp.saved[0] : sp.saved;
+  const selectedView = getOfferView(sp.view);
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -107,7 +148,9 @@ export default async function DashboardCoursesPage({
   }
 
   const baseSelect =
-    "id,teacher_id,title,kind,status,is_published,location,starts_at,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,pause_start_date,pause_end_date,stop_date";
+    "id,teacher_id,title,kind,status,is_published,location,starts_at,ends_at,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,pause_start_date,pause_end_date,stop_date";
+  const fallbackSelect =
+    "id,teacher_id,title,kind,is_published,location,starts_at,ends_at,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy";
 
   let offersResult = await supabase
     .from("courses")
@@ -119,7 +162,16 @@ export default async function DashboardCoursesPage({
   if (offersResult.error) {
     offersResult = await supabase
       .from("courses")
-      .select(baseSelect)
+      .select(fallbackSelect)
+      .eq("teacher_id", user.id)
+      .order("created_at", { ascending: false })
+      .returns<OfferRow[]>();
+  }
+
+  if (offersResult.error) {
+    offersResult = await supabase
+      .from("courses")
+      .select(fallbackSelect)
       .eq("teacher_id", user.id)
       .order("starts_at", { ascending: true, nullsFirst: false })
       .returns<OfferRow[]>();
@@ -143,9 +195,37 @@ export default async function DashboardCoursesPage({
     sessionCountByCourseId.set(row.course_id, (sessionCountByCourseId.get(row.course_id) ?? 0) + 1);
   }
 
+  const referenceTime = getReferenceTime();
+  const draftOffers = offers.filter(
+    (offer) =>
+      resolveDashboardCourseStatus({
+        status: offer.status,
+        isPublished: offer.is_published,
+        endsAt: offer.ends_at ?? null,
+      }) === "draft"
+  );
+  const archivedOffers = offers.filter((offer) => isArchivedOffer(offer, referenceTime));
+  const activeOffers = offers.filter(
+    (offer) =>
+      resolveDashboardCourseStatus({
+        status: offer.status,
+        isPublished: offer.is_published,
+        endsAt: offer.ends_at ?? null,
+      }) !== "draft" && !isArchivedOffer(offer, referenceTime)
+  );
+
   const totalCount = offers.length;
-  const activeCount = offers.filter((o) => o.status !== "draft").length;
-  const draftCount = offers.filter((o) => o.status === "draft").length;
+  const activeCount = activeOffers.length;
+  const draftCount = draftOffers.length;
+  const archiveCount = archivedOffers.length;
+  const visibleOffers =
+    selectedView === "drafts"
+      ? draftOffers
+      : selectedView === "archive"
+        ? archivedOffers
+        : selectedView === "active"
+          ? activeOffers
+          : offers;
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-6">
@@ -160,7 +240,7 @@ export default async function DashboardCoursesPage({
         </Link>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-4">
         <div className="rounded-2xl border p-4">
           <p className="text-sm text-muted-foreground">Angebote gesamt</p>
           <p className="mt-1 text-2xl font-semibold">{totalCount}</p>
@@ -173,11 +253,50 @@ export default async function DashboardCoursesPage({
           <p className="text-sm text-muted-foreground">Entwuerfe</p>
           <p className="mt-1 text-2xl font-semibold">{draftCount}</p>
         </div>
+        <div className="rounded-2xl border p-4">
+          <p className="text-sm text-muted-foreground">Archiv</p>
+          <p className="mt-1 text-2xl font-semibold">{archiveCount}</p>
+        </div>
       </section>
+
+      <nav className="flex flex-wrap gap-2" aria-label="Angebotsfilter">
+        {[
+          { id: "all" as const, label: "Alle Angebote", count: totalCount },
+          { id: "active" as const, label: "Aktive Angebote", count: activeCount },
+          { id: "drafts" as const, label: "Entwuerfe", count: draftCount },
+          { id: "archive" as const, label: "Vergangene / gestoppte Angebote", count: archiveCount },
+        ].map((tab) => {
+          const isSelected = selectedView === tab.id;
+          return (
+            <Link
+              key={tab.id}
+              href={buildTabHref(tab.id)}
+              aria-current={isSelected ? "page" : undefined}
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
+                isSelected ? "border-foreground bg-foreground text-background" : "hover:border-foreground/30"
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs ${
+                  isSelected ? "bg-background/15 text-background" : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {tab.count}
+              </span>
+            </Link>
+          );
+        })}
+      </nav>
 
       {savedParam === "missing_policy" ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           Aktivieren nicht moeglich. Bitte hinterlege zuerst die Stornierungs- bzw. Kuendigungsbedingungen.
+        </p>
+      ) : null}
+      {savedParam === "copy_error" ? (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Das Angebot konnte nicht kopiert werden.
         </p>
       ) : null}
 
@@ -188,11 +307,26 @@ export default async function DashboardCoursesPage({
             Neues Angebot
           </Link>
         </section>
+      ) : visibleOffers.length === 0 ? (
+        <section className="rounded-2xl border p-6">
+          <p className="text-sm text-muted-foreground">
+            {selectedView === "active"
+              ? "Aktuell gibt es keine aktiven Angebote."
+              : selectedView === "drafts"
+                ? "Aktuell gibt es keine Entwuerfe."
+                : "Aktuell gibt es keine Angebote im Archiv."}
+          </p>
+        </section>
       ) : (
         <section className="grid gap-4 md:grid-cols-2">
-          {offers.map((offer) => {
+          {visibleOffers.map((offer) => {
             const kind = (offer.kind ?? "").toLowerCase();
-            const statusLabel = getCourseStatusLabel(offer.status);
+            const normalizedStatus = resolveDashboardCourseStatus({
+              status: offer.status,
+              isPublished: offer.is_published,
+              endsAt: offer.ends_at ?? null,
+            });
+            const statusLabel = getCourseStatusLabel(normalizedStatus);
             const pauseStartLabel = formatCourseLifecycleDate(offer.pause_start_date);
             const pauseEndLabel = formatCourseLifecycleDate(offer.pause_end_date);
             const stopDateLabel = formatCourseLifecycleDate(offer.stop_date);
@@ -217,15 +351,15 @@ export default async function DashboardCoursesPage({
             const publicHref = `/courses/${offer.id}`;
             const detailHref = `/dashboard/courses/${offer.id}`;
             const playIconClass =
-              offer.status === "active"
+              normalizedStatus === "active"
                 ? "border-green-200 text-green-700"
                 : "text-muted-foreground hover:text-foreground";
             const pauseIconClass =
-              offer.status === "paused" || offer.status === "pause_scheduled"
+              normalizedStatus === "paused" || normalizedStatus === "pause_scheduled"
                 ? "border-orange-200 text-orange-700"
                 : "text-muted-foreground hover:text-foreground";
             const stopIconClass =
-              offer.status === "stop_scheduled" || offer.status === "ended"
+              normalizedStatus === "stop_scheduled" || normalizedStatus === "ended"
                 ? "border-red-200 text-red-700"
                 : "text-muted-foreground hover:text-foreground";
 
@@ -240,7 +374,7 @@ export default async function DashboardCoursesPage({
                     </p>
                   </div>
                   <div className="relative z-10 flex items-center gap-2">
-                    {offer.status === "draft" ? (
+                    {normalizedStatus === "draft" ? (
                       <form action={setCoursePublishStateAction}>
                         <input type="hidden" name="course_id" value={offer.id} />
                         <input type="hidden" name="mode" value="play" />
@@ -293,6 +427,17 @@ export default async function DashboardCoursesPage({
                         </svg>
                       </ActionIcon>
                     </Link>
+                    <form action={duplicateCourseAction} className="relative z-10">
+                      <input type="hidden" name="course_id" value={offer.id} />
+                      <button type="submit" className="inline-flex" title="kopieren" aria-label="kopieren">
+                        <ActionIcon title="kopieren" label="kopieren">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+                            <rect x="9" y="9" width="10" height="10" rx="2" />
+                            <path d="M7 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1" />
+                          </svg>
+                        </ActionIcon>
+                      </button>
+                    </form>
                     <div className="relative z-10">
                       <CourseCardShareButton href={publicHref} />
                     </div>
@@ -307,7 +452,7 @@ export default async function DashboardCoursesPage({
                   {kind === "course" && pauseEndLabel ? <p>Pause endet: {pauseEndLabel}</p> : null}
                   {kind === "course" && stopDateLabel ? <p>Stopdatum: {stopDateLabel}</p> : null}
                   <p>{kind === "course" ? "Kursmodell" : "Stornierungsbedingungen"}: {policyLabel}</p>
-                  {offer.status === "draft" && isMissingPolicy ? (
+                  {normalizedStatus === "draft" && isMissingPolicy ? (
                     <p className="text-red-700">Vor der Aktivierung muss zuerst eine Regel hinterlegt sein.</p>
                   ) : null}
                 </div>
