@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 type CopyState = "idle" | "copied" | "error";
 
@@ -39,10 +39,18 @@ export function EmbedCodePanel({
   isEnabled,
   publicUrl,
   embedUrl,
+  title = "Teilen & Einbetten",
+  description = "Oeffentlichen Link und Embed-Code fuer deine Website, Linktree oder andere Kanaele.",
+  className = "mt-8 rounded-2xl border p-5",
+  footer,
 }: {
   isEnabled: boolean;
   publicUrl: string;
   embedUrl: string;
+  title?: string;
+  description?: string;
+  className?: string;
+  footer?: ReactNode;
 }) {
   const embedCode = `<iframe
   src="${embedUrl}"
@@ -53,23 +61,21 @@ export function EmbedCodePanel({
 </iframe>`;
 
   return (
-    <section className="mt-8 rounded-2xl border p-5">
+    <section className={className}>
       <div>
-        <h2 className="text-2xl font-semibold">Teilen & Einbetten</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Öffentlichen Link und Embed-Code für deine Website, Linktree oder andere Kanäle.
-        </p>
+        <h2 className="text-2xl font-semibold">{title}</h2>
+        <p className="mt-2 text-sm text-muted-foreground">{description}</p>
       </div>
 
       {!isEnabled ? (
         <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Einbetten ist erst möglich, wenn dein Angebot veröffentlicht und öffentlich sichtbar ist.
+          Einbetten ist erst moeglich, wenn dein Angebot veroeffentlicht und oeffentlich sichtbar ist.
         </p>
       ) : null}
 
       <div className={`mt-5 space-y-4 ${!isEnabled ? "opacity-50" : ""}`}>
         <div className="rounded-xl border p-4">
-          <p className="text-sm font-semibold">Öffentlicher Link</p>
+          <p className="text-sm font-semibold">Oeffentlicher Link</p>
           <code className="mt-2 block overflow-x-auto rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
             {publicUrl}
           </code>
@@ -82,7 +88,7 @@ export function EmbedCodePanel({
                 rel="noreferrer"
                 className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
               >
-                Vorschau öffnen
+                Vorschau oeffnen
               </a>
             </div>
           ) : null}
@@ -102,7 +108,7 @@ export function EmbedCodePanel({
                 rel="noreferrer"
                 className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
               >
-                Embed-Vorschau öffnen
+                Embed-Vorschau oeffnen
               </a>
             </div>
           ) : null}
@@ -120,6 +126,8 @@ export function EmbedCodePanel({
           ) : null}
         </div>
       </div>
+
+      {footer ? <div className="mt-5">{footer}</div> : null}
     </section>
   );
 }

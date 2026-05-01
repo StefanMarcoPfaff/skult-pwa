@@ -1,11 +1,14 @@
 "use client";
 
+import type { MouseEvent } from "react";
 import { useState } from "react";
 
 export function CourseCardShareButton({ href, className }: { href: string; className?: string }) {
   const [copied, setCopied] = useState(false);
 
-  async function handleClick() {
+  async function handleClick(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
     const absoluteHref =
       typeof window !== "undefined" ? new URL(href, window.location.origin).toString() : href;
     await navigator.clipboard.writeText(absoluteHref);
@@ -19,6 +22,7 @@ export function CourseCardShareButton({ href, className }: { href: string; class
       title={copied ? "Link kopiert" : "teilen"}
       aria-label={copied ? "Link kopiert" : "teilen"}
       onClick={handleClick}
+      onMouseDown={(event) => event.stopPropagation()}
       className={className ?? "inline-flex h-9 w-9 items-center justify-center rounded-full border bg-background text-muted-foreground transition hover:text-foreground"}
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">

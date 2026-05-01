@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { EmbedCodePanel } from "@/components/dashboard/EmbedCodePanel";
 import {
   formatCourseLifecycleDate,
   getNextPossiblePauseDate,
@@ -21,7 +20,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ConfirmIconAction } from "../ConfirmIconAction";
 import { OfferActionIcon, OfferActionItem } from "../OfferActionIcon";
-import { CourseCardShareButton } from "../CourseCardShareButton";
+import { ShareEmbedDialog } from "../ShareEmbedDialog";
 import {
   cancelWorkshopAction,
   duplicateCourseAction,
@@ -758,7 +757,20 @@ export default async function DashboardCourseDetailPage({
           </OfferActionItem>
 
           <OfferActionItem label="Teilen">
-            <CourseCardShareButton href={`/courses/${data.id}`} />
+            <ShareEmbedDialog
+              isEnabled={Boolean(publicOffer)}
+              publicUrl={publicUrl}
+              embedUrl={embedUrl}
+              triggerLabel="teilen"
+              trigger={
+                <OfferActionIcon title="teilen" label="teilen">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+                    <path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L10.7 5.22" />
+                    <path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.12a5 5 0 0 0 7.07 7.07l1.41-1.41" />
+                  </svg>
+                </OfferActionIcon>
+              }
+            />
           </OfferActionItem>
         </div>
       </section>
@@ -795,8 +807,6 @@ export default async function DashboardCourseDetailPage({
       </div>
 
       {data.description ? <p style={{ marginTop: 16, lineHeight: 1.6 }}>{data.description}</p> : null}
-
-      <EmbedCodePanel isEnabled={Boolean(publicOffer)} publicUrl={publicUrl} embedUrl={embedUrl} />
 
       {data.kind === "course" ? (
         <section className="mt-6 rounded-2xl border p-5">

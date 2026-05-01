@@ -364,8 +364,15 @@ export default async function DashboardCoursesPage({
                 : "text-muted-foreground hover:text-foreground";
 
             return (
-              <article key={offer.id} className="group relative rounded-2xl border p-5 transition hover:border-foreground/20 hover:shadow-sm">
-                <Link href={detailHref} aria-label={`${offer.title} ansehen`} className="absolute inset-0 rounded-2xl" />
+              <article
+                key={offer.id}
+                className="group relative rounded-2xl border p-5 transition hover:border-foreground/20 hover:shadow-sm focus-within:ring-2 focus-within:ring-foreground/20 cursor-pointer"
+              >
+                <Link
+                  href={detailHref}
+                  aria-label={`${offer.title} ansehen`}
+                  className="absolute inset-0 rounded-2xl focus-visible:outline-none"
+                />
                 <div className="flex items-start justify-between gap-3">
                   <div className="relative z-10">
                     <h2 className="text-lg font-semibold">{offer.title}</h2>
@@ -373,7 +380,11 @@ export default async function DashboardCoursesPage({
                       {kind === "course" ? "Kurs" : kind === "workshop" ? "Workshop" : "-"} • {statusLabel}
                     </p>
                   </div>
-                  <div className="relative z-10 flex items-center gap-2">
+                  <div
+                    className="relative z-10 flex items-center gap-2"
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     {normalizedStatus === "draft" ? (
                       <form action={setCoursePublishStateAction}>
                         <input type="hidden" name="course_id" value={offer.id} />
