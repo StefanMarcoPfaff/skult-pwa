@@ -17,6 +17,7 @@ import {
 import { getCourseTerminationModelValue, getWorkshopCancellationPolicyValue } from "@/lib/offer-policies";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { sendTrialCourseStopNotificationEmail } from "@/lib/trial-reservation-emails";
 import { sendWorkshopCancellationEmail } from "@/lib/workshop-booking-emails";
 
 type CourseOwnerRow = {
@@ -39,6 +40,9 @@ type RegistrationIntentSubscriptionRow = {
   last_name: string | null;
   email: string | null;
   stripe_subscription_id: string | null;
+  subscription_status: string | null;
+  course_pause_notification_sent_for_start_date: string | null;
+  course_stop_notification_sent_for_stop_date: string | null;
 };
 
 type TrialRecipientRow = {
@@ -48,6 +52,9 @@ type TrialRecipientRow = {
   email: string | null;
   converted_at: string | null;
   cancelled_at: string | null;
+  trial_starts_at: string | null;
+  trial_ends_at: string | null;
+  course_stop_notification_sent_for_stop_date: string | null;
 };
 
 type WorkshopBookingRefundRow = {
@@ -349,10 +356,13 @@ export async function scheduleCoursePauseAction(formData: FormData) {
 
   const { data: recipients } = await admin
     .from("course_registration_intents")
-    .select("id,first_name,last_name,email,stripe_subscription_id")
+    .select("id,first_name,last_name,email,stripe_subscription_id,subscription_status,course_pause_notification_sent_for_start_date")
     .eq("course_id", courseId)
     .eq("status", "checkout_completed")
     .returns<RegistrationIntentSubscriptionRow[]>();
+  const activeRecipients = (recipients ?? []).filter((recipient) =>
+    ["active", "pause_scheduled", "paused"].includes(recipient.subscription_status ?? "active")
+  );
 
   const pauseStartDateLabel = formatCourseLifecycleDate(pauseStartDate) ?? pauseStartDate;
   const pauseEndDateLabel = formatCourseLifecycleDate(pauseEndDate) ?? pauseEndDate;
@@ -360,7 +370,10 @@ export async function scheduleCoursePauseAction(formData: FormData) {
   const pauseEndExclusiveDateLabel =
     formatCourseLifecycleDate(getPreviousDate(pauseEndDate)) ?? pauseEndDateLabel;
 
-  for (const recipient of recipients ?? []) {
+  for (const recipient of activeRecipients) {
+    if (recipient.course_pause_notification_sent_for_start_date === pauseStartDate) {
+      continue;
+    }
     const recipientEmail = recipient.email?.trim();
     if (!recipientEmail) continue;
 
@@ -374,6 +387,10 @@ export async function scheduleCoursePauseAction(formData: FormData) {
         pauseEndDateLabel,
         pauseEndExclusiveDateLabel,
       });
+      await admin
+        .from("course_registration_intents")
+        .update({ course_pause_notification_sent_for_start_date: pauseStartDate })
+        .eq("id", recipient.id);
     } catch {
       // Keep the lifecycle state change even if one notification fails.
     }
@@ -423,14 +440,17 @@ export async function scheduleCourseStopAction(formData: FormData) {
 
   const { data: registrationIntents } = await admin
     .from("course_registration_intents")
-    .select("id,first_name,last_name,email,stripe_subscription_id")
+    .select("id,first_name,last_name,email,stripe_subscription_id,subscription_status,course_stop_notification_sent_for_stop_date")
     .eq("course_id", courseId)
     .eq("status", "checkout_completed")
     .returns<RegistrationIntentSubscriptionRow[]>();
+  const activeRegistrationIntents = (registrationIntents ?? []).filter((intent) =>
+    ["active", "pause_scheduled", "paused"].includes(intent.subscription_status ?? "active")
+  );
 
   const { data: trialUsers } = await admin
     .from("trial_reservations")
-    .select("id,first_name,last_name,email,converted_at,cancelled_at")
+    .select("id,first_name,last_name,email,converted_at,cancelled_at,trial_starts_at,trial_ends_at,course_stop_notification_sent_for_stop_date")
     .eq("course_id", courseId)
     .is("cancelled_at", null)
     .returns<TrialRecipientRow[]>();
@@ -440,9 +460,9 @@ export async function scheduleCourseStopAction(formData: FormData) {
   let hadSubscriptionErrors = false;
   const stopDateLabel = formatCourseLifecycleDate(stopDate) ?? stopDate;
 
-  for (const intent of registrationIntents ?? []) {
+  for (const intent of activeRegistrationIntents) {
     const recipientEmail = intent.email?.trim();
-    if (recipientEmail) {
+    if (recipientEmail && intent.course_stop_notification_sent_for_stop_date !== stopDate) {
       try {
         await sendCourseStopNotificationEmail({
           courseTitle: course.title ?? "Kurs",
@@ -450,6 +470,10 @@ export async function scheduleCourseStopAction(formData: FormData) {
           customerEmail: recipientEmail,
           stopDateLabel,
         });
+        await admin
+          .from("course_registration_intents")
+          .update({ course_stop_notification_sent_for_stop_date: stopDate })
+          .eq("id", intent.id);
       } catch {
         // Keep the lifecycle state change even if one notification fails.
       }
@@ -473,7 +497,7 @@ export async function scheduleCourseStopAction(formData: FormData) {
   }
 
   const participantEmails = new Set(
-    (registrationIntents ?? [])
+    activeRegistrationIntents
       .map((intent) => intent.email?.trim().toLowerCase())
       .filter((email): email is string => Boolean(email))
   );
@@ -481,14 +505,21 @@ export async function scheduleCourseStopAction(formData: FormData) {
   for (const trialUser of trialUsers ?? []) {
     const recipientEmail = trialUser.email?.trim();
     if (!recipientEmail || participantEmails.has(recipientEmail.toLowerCase())) continue;
+    if (trialUser.course_stop_notification_sent_for_stop_date === stopDate) continue;
 
     try {
-      await sendCourseStopNotificationEmail({
+      await sendTrialCourseStopNotificationEmail({
+        reservationId: trialUser.id,
         courseTitle: course.title ?? "Kurs",
         customerName: formatRecipientName(trialUser.first_name, trialUser.last_name),
         customerEmail: recipientEmail,
-        stopDateLabel,
+        trialStartsAt: trialUser.trial_starts_at,
+        trialEndsAt: trialUser.trial_ends_at,
       });
+      await admin
+        .from("trial_reservations")
+        .update({ course_stop_notification_sent_for_stop_date: stopDate })
+        .eq("id", trialUser.id);
     } catch {
       // Keep the lifecycle state change even if one notification fails.
     }

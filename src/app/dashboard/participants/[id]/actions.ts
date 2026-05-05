@@ -30,6 +30,7 @@ type ParticipantSubscriptionRow = {
   subscription_pause_start_date: string | null;
   subscription_pause_end_date: string | null;
   subscription_stop_date: string | null;
+  participant_pause_notification_sent_for_start_date: string | null;
 };
 
 type CourseOwnershipRow = {
@@ -68,7 +69,7 @@ async function loadParticipantSubscriptionContext(reservationId: string, teacher
   const { data: subscription } = await admin
     .from("course_registration_intents")
     .select(
-      "id,trial_reservation_id,course_id,first_name,last_name,email,stripe_subscription_id,status,subscription_status,subscription_pause_start_date,subscription_pause_end_date,subscription_stop_date"
+      "id,trial_reservation_id,course_id,first_name,last_name,email,stripe_subscription_id,status,subscription_status,subscription_pause_start_date,subscription_pause_end_date,subscription_stop_date,participant_pause_notification_sent_for_start_date"
     )
     .eq("trial_reservation_id", reservationId)
     .maybeSingle<ParticipantSubscriptionRow>();
@@ -139,7 +140,7 @@ export async function pauseParticipantSubscriptionAction(formData: FormData) {
   }
 
   const recipientEmail = subscription.email?.trim();
-  if (recipientEmail) {
+  if (recipientEmail && subscription.participant_pause_notification_sent_for_start_date !== pauseStartDate) {
     try {
       await sendParticipantPauseConfirmationEmail({
         courseTitle: course.title ?? "Kurs",
@@ -151,6 +152,10 @@ export async function pauseParticipantSubscriptionAction(formData: FormData) {
         pauseEndExclusiveDateLabel:
           formatCourseLifecycleDate(getPreviousDate(pauseEndDate)) ?? formatCourseLifecycleDate(pauseEndDate) ?? pauseEndDate,
       });
+      await admin
+        .from("course_registration_intents")
+        .update({ participant_pause_notification_sent_for_start_date: pauseStartDate })
+        .eq("id", subscription.id);
     } catch {
       // Keep pause state even if email delivery fails.
     }

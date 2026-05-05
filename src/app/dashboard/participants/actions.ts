@@ -2,12 +2,6 @@
 
 import { randomBytes } from "crypto";
 import { redirect } from "next/navigation";
-import {
-  getFirstDayOfNextMonthDate,
-  isFirstDayOfMonthDate,
-  isLastDayOfMonthDate,
-  toCourseLifecycleDate,
-} from "@/lib/course-lifecycle-shared";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";

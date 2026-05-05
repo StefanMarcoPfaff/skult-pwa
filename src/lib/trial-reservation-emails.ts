@@ -1,4 +1,5 @@
 import { sendResendEmail } from "@/lib/resend";
+import { getSiteUrl as getCanonicalSiteUrl } from "@/lib/site-url";
 import { shouldShowStudioLabel } from "@/lib/provider-profiles";
 import { buildCalendarUrl } from "@/lib/calendar";
 import { buildTicketQrCodeDataUrl, buildTicketViewUrl, buildTicketWalletUrl } from "@/lib/ticket-qr";
@@ -94,6 +95,15 @@ export type CourseEndingNotificationEmailData = {
   cancellationLabel: string | null;
   location: string | null;
   locationDetails: string | null;
+};
+
+export type TrialCourseStopNotificationEmailData = {
+  reservationId: string;
+  customerName: string;
+  customerEmail: string;
+  courseTitle: string;
+  trialStartsAt: string | null;
+  trialEndsAt: string | null;
 };
 
 export type CourseEndingProviderSummaryEmailData = {
@@ -1010,6 +1020,45 @@ export function prepareTrialRegistrationRejectedEmail(data: TrialRegistrationDec
   };
 }
 
+export function prepareTrialCourseStopNotificationEmail(data: TrialCourseStopNotificationEmailData) {
+  const offersUrl = `${getCanonicalSiteUrl()}/courses`;
+  const trialDate =
+    data.trialStartsAt && data.trialEndsAt
+      ? formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)
+      : null;
+
+  return {
+    to: data.customerEmail,
+    subject: `Deine Probestunde kann leider nicht stattfinden: ${data.courseTitle}`,
+    html: createHtmlEmail({
+      title: "Deine Probestunde kann leider nicht stattfinden",
+      greeting: data.customerName,
+      intro: `Der Kurs <b>${data.courseTitle}</b> endet und deshalb kann deine geplante Probestunde leider nicht stattfinden.`,
+      infoItems: [
+        { label: "Kurs", value: data.courseTitle },
+        { label: "Geplanter Termin", value: trialDate },
+      ],
+      nextSteps: [
+        "Schau dir gerne weitere passende Kurse und Workshops auf RESER an.",
+      ],
+      actions: [{ label: "Weitere Angebote auf RESER", href: offersUrl }],
+      footer: buildFooterBranding({ providerName: null, teacherName: null, providerType: null }),
+    }),
+    text: createTextEmail({
+      title: "Deine Probestunde kann leider nicht stattfinden",
+      greeting: data.customerName,
+      intro: `Der Kurs ${data.courseTitle} endet und deshalb kann deine geplante Probestunde leider nicht stattfinden.`,
+      infoItems: [
+        { label: "Kurs", value: data.courseTitle },
+        { label: "Geplanter Termin", value: trialDate },
+      ],
+      nextSteps: ["Schau dir gerne weitere passende Kurse und Workshops auf RESER an."],
+      actions: [{ label: "Weitere Angebote auf RESER", href: offersUrl }],
+      footer: buildFooterBranding({ providerName: null, teacherName: null, providerType: null }),
+    }),
+  };
+}
+
 export function prepareTeacherTrialDecisionReminderEmail(data: TeacherTrialDecisionReminderEmailData) {
   const footerHtml = renderReserFooterHtml();
   const footerText = renderReserFooterText();
@@ -1117,6 +1166,16 @@ export async function sendTrialRegistrationApprovedEmail(data: TrialRegistration
 
 export async function sendTrialRegistrationRejectedEmail(data: TrialRegistrationDecisionEmailData) {
   const email = prepareTrialRegistrationRejectedEmail(data);
+  return sendResendEmail({
+    to: email.to,
+    subject: email.subject,
+    html: email.html,
+    text: email.text,
+  });
+}
+
+export async function sendTrialCourseStopNotificationEmail(data: TrialCourseStopNotificationEmailData) {
+  const email = prepareTrialCourseStopNotificationEmail(data);
   return sendResendEmail({
     to: email.to,
     subject: email.subject,
