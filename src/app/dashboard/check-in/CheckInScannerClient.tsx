@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 type Props = {
   disabled?: boolean;
+  redirectPath?: string;
+  redirectParams?: Record<string, string | null | undefined>;
 };
 
 type ScannerState = "idle" | "starting" | "scanning" | "unsupported" | "error";
@@ -34,7 +36,11 @@ function extractToken(value: string): string | null {
   }
 }
 
-export default function CheckInScannerClient({ disabled }: Props) {
+export default function CheckInScannerClient({
+  disabled,
+  redirectPath = "/dashboard/check-in",
+  redirectParams,
+}: Props) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -86,7 +92,13 @@ export default function CheckInScannerClient({ disabled }: Props) {
       const token = rawValue ? extractToken(rawValue) : null;
       if (token) {
         streamRef.current?.getTracks().forEach((track) => track.stop());
-        router.push(`/dashboard/check-in?token=${encodeURIComponent(token)}`);
+        const params = new URLSearchParams();
+        params.set("token", token);
+        Object.entries(redirectParams ?? {}).forEach(([key, value]) => {
+          if (!value) return;
+          params.set(key, value);
+        });
+        router.push(`${redirectPath}?${params.toString()}`);
         return;
       }
     } catch {

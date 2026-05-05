@@ -1,7 +1,14 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { formatCourseLifecycleDate, toCourseLifecycleDate } from "@/lib/course-lifecycle-shared";
+import {
+  formatCourseLifecycleDate,
+  getFirstDayOfNextMonthDate,
+  getPreviousDate,
+  isFirstDayOfMonthDate,
+  isLastDayOfMonthDate,
+  toCourseLifecycleDate,
+} from "@/lib/course-lifecycle-shared";
 import {
   sendParticipantCancellationConfirmationEmail,
   sendParticipantPauseConfirmationEmail,
@@ -20,6 +27,9 @@ type ParticipantSubscriptionRow = {
   stripe_subscription_id: string | null;
   status: string | null;
   subscription_status: string | null;
+  subscription_pause_start_date: string | null;
+  subscription_pause_end_date: string | null;
+  subscription_stop_date: string | null;
 };
 
 type CourseOwnershipRow = {
@@ -36,8 +46,8 @@ function formatRecipientName(firstName: string | null, lastName: string | null):
   return [firstName, lastName].filter(Boolean).join(" ").trim() || "Kursteilnehmer*in";
 }
 
-function dateToResumeAtUnix(date: string): number {
-  return Math.floor(new Date(`${date}T00:00:00+01:00`).getTime() / 1000);
+function dateToEndUnix(date: string): number {
+  return Math.floor(new Date(`${date}T23:59:59.999+01:00`).getTime() / 1000);
 }
 
 async function requireTeacher() {
@@ -58,7 +68,7 @@ async function loadParticipantSubscriptionContext(reservationId: string, teacher
   const { data: subscription } = await admin
     .from("course_registration_intents")
     .select(
-      "id,trial_reservation_id,course_id,first_name,last_name,email,stripe_subscription_id,status,subscription_status"
+      "id,trial_reservation_id,course_id,first_name,last_name,email,stripe_subscription_id,status,subscription_status,subscription_pause_start_date,subscription_pause_end_date,subscription_stop_date"
     )
     .eq("trial_reservation_id", reservationId)
     .maybeSingle<ParticipantSubscriptionRow>();
@@ -84,40 +94,43 @@ async function loadParticipantSubscriptionContext(reservationId: string, teacher
 export async function pauseParticipantSubscriptionAction(formData: FormData) {
   const reservationId = String(formData.get("reservationId") || "").trim();
   const redirectTo = String(formData.get("redirect_to") || "").trim() || "/dashboard/participants";
-  const pauseStartDate = toCourseLifecycleDate(String(formData.get("pause_start_date") || "").trim());
+  const activeUntilDate = toCourseLifecycleDate(String(formData.get("active_until_date") || "").trim());
   const pauseEndDate = toCourseLifecycleDate(String(formData.get("pause_end_date") || "").trim());
+  const pauseStartDate = activeUntilDate ? getFirstDayOfNextMonthDate(activeUntilDate) : null;
 
-  if (!reservationId || !pauseStartDate || !pauseEndDate || pauseEndDate <= pauseStartDate) {
+  if (
+    !reservationId ||
+    !activeUntilDate ||
+    !pauseStartDate ||
+    !pauseEndDate ||
+    !isLastDayOfMonthDate(activeUntilDate) ||
+    !isFirstDayOfMonthDate(pauseEndDate) ||
+    pauseEndDate <= pauseStartDate
+  ) {
     redirect(withSavedParam(redirectTo, "participant_pause_invalid"));
   }
 
   const user = await requireTeacher();
   const { admin, subscription, course } = await loadParticipantSubscriptionContext(reservationId, user.id);
 
-  if (!subscription || !course || !subscription.stripe_subscription_id) {
+  if (
+    !subscription ||
+    !course ||
+    !subscription.stripe_subscription_id ||
+    !["active", "pause_scheduled", "paused"].includes(subscription.subscription_status ?? "active")
+  ) {
     redirect(withSavedParam(redirectTo, "participant_pause_invalid"));
-  }
-
-  const stripe = getStripe();
-  try {
-    await stripe.subscriptions.update(subscription.stripe_subscription_id, {
-      pause_collection: {
-        behavior: "void",
-        resumes_at: dateToResumeAtUnix(pauseEndDate),
-      },
-    });
-  } catch {
-    redirect(withSavedParam(redirectTo, "participant_pause_error"));
   }
 
   const { error } = await admin
     .from("course_registration_intents")
     .update({
-      subscription_status: "paused",
+      subscription_status: "pause_scheduled",
       subscription_pause_start_date: pauseStartDate,
       subscription_pause_end_date: pauseEndDate,
       subscription_cancel_scheduled_at: null,
       subscription_cancelled_at: null,
+      subscription_stop_date: null,
     })
     .eq("id", subscription.id);
 
@@ -132,37 +145,46 @@ export async function pauseParticipantSubscriptionAction(formData: FormData) {
         courseTitle: course.title ?? "Kurs",
         customerName: formatRecipientName(subscription.first_name, subscription.last_name),
         customerEmail: recipientEmail,
+        activeUntilDateLabel: formatCourseLifecycleDate(activeUntilDate) ?? activeUntilDate,
         pauseStartDateLabel: formatCourseLifecycleDate(pauseStartDate) ?? pauseStartDate,
         pauseEndDateLabel: formatCourseLifecycleDate(pauseEndDate) ?? pauseEndDate,
+        pauseEndExclusiveDateLabel:
+          formatCourseLifecycleDate(getPreviousDate(pauseEndDate)) ?? formatCourseLifecycleDate(pauseEndDate) ?? pauseEndDate,
       });
     } catch {
       // Keep pause state even if email delivery fails.
     }
   }
 
-  redirect(withSavedParam(redirectTo, "participant_paused"));
+  redirect(withSavedParam(redirectTo, "participant_pause_scheduled"));
 }
 
 export async function stopParticipantSubscriptionAction(formData: FormData) {
   const reservationId = String(formData.get("reservationId") || "").trim();
   const redirectTo = String(formData.get("redirect_to") || "").trim() || "/dashboard/participants";
+  const stopDate = toCourseLifecycleDate(String(formData.get("stop_date") || "").trim());
 
-  if (!reservationId) {
+  if (!reservationId || !stopDate || !isLastDayOfMonthDate(stopDate)) {
     redirect(withSavedParam(redirectTo, "participant_stop_invalid"));
   }
 
   const user = await requireTeacher();
   const { admin, subscription, course } = await loadParticipantSubscriptionContext(reservationId, user.id);
 
-  if (!subscription || !course || !subscription.stripe_subscription_id) {
+  if (
+    !subscription ||
+    !course ||
+    !subscription.stripe_subscription_id ||
+    !["active", "pause_scheduled", "paused"].includes(subscription.subscription_status ?? "active")
+  ) {
     redirect(withSavedParam(redirectTo, "participant_stop_invalid"));
   }
 
   const stripe = getStripe();
-  let cancellationDateLabel = "dem Ende des aktuellen Abrechnungszeitraums";
   try {
     await stripe.subscriptions.update(subscription.stripe_subscription_id, {
-      cancel_at_period_end: true,
+      cancel_at: dateToEndUnix(stopDate),
+      cancel_at_period_end: false,
     });
   } catch {
     redirect(withSavedParam(redirectTo, "participant_stop_error"));
@@ -175,6 +197,7 @@ export async function stopParticipantSubscriptionAction(formData: FormData) {
       subscription_pause_start_date: null,
       subscription_pause_end_date: null,
       subscription_cancel_scheduled_at: new Date().toISOString(),
+      subscription_stop_date: stopDate,
     })
     .eq("id", subscription.id);
 
@@ -189,7 +212,7 @@ export async function stopParticipantSubscriptionAction(formData: FormData) {
         courseTitle: course.title ?? "Kurs",
         customerName: formatRecipientName(subscription.first_name, subscription.last_name),
         customerEmail: recipientEmail,
-        cancellationDateLabel,
+        cancellationDateLabel: formatCourseLifecycleDate(stopDate) ?? stopDate,
       });
     } catch {
       // Keep cancellation state even if email delivery fails.

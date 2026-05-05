@@ -9,6 +9,54 @@ export type CourseSession = {
 export type Database = {
   public: {
     Tables: {
+      attendance_records: {
+        Row: {
+          id: string;
+          course_id: string;
+          session_id: string | null;
+          event_date: string | null;
+          ticket_id: string;
+          booking_id: string | null;
+          trial_reservation_id: string | null;
+          subscription_id: string | null;
+          checked_in_at: string;
+          checked_in_by: string | null;
+          method: "teacher_scan" | "participant_scan" | "manual";
+          room: string | null;
+          instructor_name: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          course_id: string;
+          session_id?: string | null;
+          event_date?: string | null;
+          ticket_id: string;
+          booking_id?: string | null;
+          trial_reservation_id?: string | null;
+          subscription_id?: string | null;
+          checked_in_at?: string;
+          checked_in_by?: string | null;
+          method: "teacher_scan" | "participant_scan" | "manual";
+          room?: string | null;
+          instructor_name?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<{
+          course_id: string;
+          session_id: string | null;
+          event_date: string | null;
+          ticket_id: string;
+          booking_id: string | null;
+          trial_reservation_id: string | null;
+          subscription_id: string | null;
+          checked_in_at: string;
+          checked_in_by: string | null;
+          method: "teacher_scan" | "participant_scan" | "manual";
+          room: string | null;
+          instructor_name: string | null;
+        }>;
+      };
       course_sessions: {
         Row: CourseSession;
         Insert: Omit<CourseSession, "id" | "created_at"> & {

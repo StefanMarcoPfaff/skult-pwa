@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { MailActionLink } from "@/components/dashboard/MailActionLink";
+import type { CourseStatus } from "@/lib/course-lifecycle-shared";
 import { ConfirmIconAction } from "../ConfirmIconAction";
 import { OfferActionIcon, OfferActionItem } from "../OfferActionIcon";
 import { ShareEmbedDialog } from "../ShareEmbedDialog";
+import { DISABLED_OFFER_ACTION_ICON_CLASS, getDisplayStatus } from "../display-status";
 import {
   cancelWorkshopAction,
-  duplicateCourseAction,
   scheduleCoursePauseAction,
   scheduleCourseStopAction,
   setCoursePublishStateAction,
@@ -26,26 +28,26 @@ type CourseDetailActionsProps = {
   embedUrl: string;
   publicOfferEnabled: boolean;
   publishBlockedForMissingPolicy: boolean;
+  contactMailHref: string | null;
 };
 
 export function CourseDetailActions(props: CourseDetailActionsProps) {
-  const playIconClass =
-    props.normalizedStatus === "active"
-      ? "border-green-200 text-green-700"
-      : "text-muted-foreground hover:text-foreground";
-  const pauseIconClass =
-    props.normalizedStatus === "paused" || props.normalizedStatus === "pause_scheduled"
-      ? "border-orange-200 text-orange-700"
-      : "text-muted-foreground hover:text-foreground";
-  const stopIconClass =
-    props.normalizedStatus === "stop_scheduled" || props.normalizedStatus === "ended"
-      ? "border-red-200 text-red-700"
-      : "text-muted-foreground hover:text-foreground";
+  const displayState = getDisplayStatus({
+    kind: props.kind,
+    status: props.normalizedStatus as CourseStatus,
+    isPublished: true,
+    endsAt: null,
+  });
+  const playActionDisabled = props.publishBlockedForMissingPolicy;
+  const playIconClassName =
+    props.normalizedStatus === "draft" && playActionDisabled
+      ? DISABLED_OFFER_ACTION_ICON_CLASS
+      : displayState.playClassName;
 
   return (
     <section className="mt-6 rounded-2xl border p-5">
       <div className="flex flex-wrap gap-4">
-        <OfferActionItem label={props.normalizedStatus === "draft" ? "Veroeffentlichen" : "Aktiv"}>
+        <OfferActionItem label="Play">
           {props.normalizedStatus === "draft" ? (
             <ConfirmIconAction
               action={setCoursePublishStateAction}
@@ -54,10 +56,10 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
               text="Moechtest du dieses Angebot jetzt veroeffentlichen? Danach ist es oeffentlich sichtbar und kann gebucht werden."
               cancelLabel="Nein, abbrechen"
               confirmLabel="Ja, veroeffentlichen"
-              disabled={props.publishBlockedForMissingPolicy}
+              disabled={playActionDisabled}
               triggerLabel="veroeffentlichen / starten"
               trigger={
-                <OfferActionIcon title="veroeffentlichen / starten" label="veroeffentlichen / starten" className={playIconClass}>
+                <OfferActionIcon title="veroeffentlichen / starten" label="veroeffentlichen / starten" className={playIconClassName} disabled={playActionDisabled}>
                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                     <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10-6.86a1 1 0 0 0 0-1.72l-10-6.86a1 1 0 0 0-1.5.86Z" />
                   </svg>
@@ -65,7 +67,12 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
               }
             />
           ) : (
-            <OfferActionIcon title="veroeffentlicht / aktiv" label="veroeffentlicht / aktiv" className={playIconClass}>
+            <OfferActionIcon
+              title="veroeffentlicht / aktiv"
+              label="veroeffentlicht / aktiv"
+              className={displayState.playClassName}
+              disabled={true}
+            >
               <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                 <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10-6.86a1 1 0 0 0 0-1.72l-10-6.86a1 1 0 0 0-1.5.86Z" />
               </svg>
@@ -83,9 +90,9 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
               initialPauseEndDate={props.pauseEndDate}
               action={scheduleCoursePauseAction}
               triggerTitle="pausieren"
-              triggerDisabled={!(props.normalizedStatus === "active" || props.normalizedStatus === "pause_scheduled")}
+              triggerDisabled={displayState.pauseDisabled}
               triggerContent={
-                <OfferActionIcon title="pausieren" label="pausieren" className={pauseIconClass}>
+                <OfferActionIcon title="pausieren" label="pausieren" className={displayState.pauseClassName} disabled={displayState.pauseDisabled}>
                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                     <path d="M7 5.5A1.5 1.5 0 0 1 8.5 4h1A1.5 1.5 0 0 1 11 5.5v13A1.5 1.5 0 0 1 9.5 20h-1A1.5 1.5 0 0 1 7 18.5v-13Zm6 0A1.5 1.5 0 0 1 14.5 4h1A1.5 1.5 0 0 1 17 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-1A1.5 1.5 0 0 1 13 18.5v-13Z" />
                   </svg>
@@ -95,7 +102,7 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
           </OfferActionItem>
         ) : null}
 
-        <OfferActionItem label={props.kind === "workshop" ? "Absagen" : "Stop"}>
+        <OfferActionItem label="Stop">
           {props.kind === "course" ? (
             <StopCourseModal
               courseId={props.courseId}
@@ -104,16 +111,16 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
               initialStopDate={props.stopDate}
               action={scheduleCourseStopAction}
               triggerTitle="beenden"
-              triggerDisabled={!["active", "pause_scheduled", "paused", "stop_scheduled"].includes(props.normalizedStatus)}
+              triggerDisabled={displayState.stopDisabled}
               triggerContent={
-                <OfferActionIcon title="beenden" label="beenden" className={stopIconClass}>
+                <OfferActionIcon title="beenden" label="beenden" className={displayState.stopClassName} disabled={displayState.stopDisabled}>
                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                     <path d="M7 7.5A1.5 1.5 0 0 1 8.5 6h7A1.5 1.5 0 0 1 17 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 16.5v-9Z" />
                   </svg>
                 </OfferActionIcon>
               }
             />
-          ) : props.normalizedStatus !== "ended" ? (
+          ) : !displayState.stopDisabled ? (
             <ConfirmIconAction
               action={cancelWorkshopAction}
               fields={{ course_id: props.courseId, redirect_to: props.redirectTo }}
@@ -123,7 +130,7 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
               confirmLabel="Ja, Workshop absagen"
               triggerLabel="workshop absagen"
               trigger={
-                <OfferActionIcon title="beenden" label="beenden" className={stopIconClass}>
+                <OfferActionIcon title="beenden" label="beenden" className={displayState.stopClassName}>
                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                     <path d="M7 7.5A1.5 1.5 0 0 1 8.5 6h7A1.5 1.5 0 0 1 17 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 16.5v-9Z" />
                   </svg>
@@ -131,7 +138,7 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
               }
             />
           ) : (
-            <OfferActionIcon title="beendet" label="beendet" className={stopIconClass}>
+            <OfferActionIcon title="beendet" label="beendet" className={displayState.stopClassName} disabled={true}>
               <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                 <path d="M7 7.5A1.5 1.5 0 0 1 8.5 6h7A1.5 1.5 0 0 1 17 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 16.5v-9Z" />
               </svg>
@@ -150,20 +157,6 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
           </Link>
         </OfferActionItem>
 
-        <OfferActionItem label="Kopieren">
-          <form action={duplicateCourseAction}>
-            <input type="hidden" name="course_id" value={props.courseId} />
-            <button type="submit" className="inline-flex" title="kopieren" aria-label="kopieren">
-              <OfferActionIcon title="kopieren" label="kopieren">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-                  <rect x="9" y="9" width="10" height="10" rx="2" />
-                  <path d="M7 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1" />
-                </svg>
-              </OfferActionIcon>
-            </button>
-          </form>
-        </OfferActionItem>
-
         <OfferActionItem label="Teilen">
           <ShareEmbedDialog
             isEnabled={props.publicOfferEnabled}
@@ -180,6 +173,28 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
             }
           />
         </OfferActionItem>
+
+        <OfferActionItem label="Check-in">
+          <Link href={`/dashboard/courses/${props.courseId}/check-in`} className="inline-flex">
+            <OfferActionIcon title="Check-in starten" label="Check-in starten">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+                <path d="M4 7h16" />
+                <path d="M7 4v6" />
+                <path d="M17 4v6" />
+                <rect x="4" y="6" width="16" height="14" rx="2" />
+                <path d="m9 14 2 2 4-4" />
+              </svg>
+            </OfferActionIcon>
+          </Link>
+        </OfferActionItem>
+
+        <MailActionLink
+          href={props.contactMailHref}
+          label="E-Mail"
+          title="Teilnehmer*innen per E-Mail kontaktieren"
+          disabledHint="Keine E-Mail-Adressen fuer dieses Angebot vorhanden"
+        />
+
       </div>
     </section>
   );

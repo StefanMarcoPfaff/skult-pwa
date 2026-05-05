@@ -2,6 +2,16 @@
 
 import type { ReactNode } from "react";
 import { useId, useRef } from "react";
+import { useFormStatus } from "react-dom";
+
+function ConfirmSubmitButton(props: { label: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={pending} className="rounded-xl border px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50">
+      {pending ? "Speichert..." : props.label}
+    </button>
+  );
+}
 
 export function ConfirmIconAction(props: {
   action: (formData: FormData) => void | Promise<void>;
@@ -53,9 +63,7 @@ export function ConfirmIconAction(props: {
               >
                 {props.cancelLabel}
               </button>
-              <button type="submit" className="rounded-xl border px-4 py-2 text-sm font-semibold">
-                {props.confirmLabel}
-              </button>
+              <ConfirmSubmitButton label={props.confirmLabel} />
             </div>
           </form>
         </div>

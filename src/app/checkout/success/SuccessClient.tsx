@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import QRCode from "react-qr-code";
+import { storeTicketQrToken } from "@/lib/ticket-device-store";
 import { buildTicketCheckInUrl } from "@/lib/ticket-qr";
 
 export type WorkshopSuccessData = {
@@ -49,7 +50,10 @@ export default function SuccessClient({ bookingData }: Props) {
     if (bookingData?.status === "paid" && bookingData.attendeeKey) {
       addTicketKeyToLocalStorage(bookingData.attendeeKey);
     }
-  }, [bookingData?.attendeeKey, bookingData?.status]);
+    if (bookingData?.status === "paid" && bookingData.qrToken) {
+      storeTicketQrToken(bookingData.qrToken);
+    }
+  }, [bookingData?.attendeeKey, bookingData?.qrToken, bookingData?.status]);
 
   const paid = bookingData?.status === "paid";
   const checkInUrl = bookingData?.qrToken ? buildTicketCheckInUrl(bookingData.qrToken) : null;

@@ -9,6 +9,7 @@ import {
   formatCourseLifecycleDate,
   getFirstDayOfNextMonthDate,
   getNextPossiblePauseDate,
+  getPreviousDate,
   isFirstDayOfMonthDate,
   isLastDayOfMonthDate,
   toCourseLifecycleDate,
@@ -296,23 +297,24 @@ export async function duplicateCourseAction(formData: FormData) {
 
 export async function scheduleCoursePauseAction(formData: FormData) {
   const courseId = String(formData.get("course_id") || "").trim();
-  const pauseStartDate = toCourseLifecycleDate(String(formData.get("pause_start_date") || "").trim());
+  const activeUntilDate = toCourseLifecycleDate(String(formData.get("active_until_date") || "").trim());
   const pauseEndDate = toCourseLifecycleDate(String(formData.get("pause_end_date") || "").trim());
+  const pauseStartDate = activeUntilDate ? getFirstDayOfNextMonthDate(activeUntilDate) : null;
   const redirectTo = String(formData.get("redirect_to") || "").trim();
   const targetPath = redirectTo || `/dashboard/courses/${courseId}`;
 
-  if (!courseId || !pauseStartDate || !pauseEndDate) {
+  if (!courseId || !activeUntilDate || !pauseStartDate || !pauseEndDate) {
     redirect(withSavedParam(targetPath, "pause_invalid"));
   }
 
   const nextPossiblePauseDate = getNextPossiblePauseDate();
-  const defaultResumeDate = getFirstDayOfNextMonthDate(pauseStartDate);
+  const defaultResumeDate = getFirstDayOfNextMonthDate(activeUntilDate);
 
   if (
-    !isLastDayOfMonthDate(pauseStartDate) ||
+    !isLastDayOfMonthDate(activeUntilDate) ||
     !isFirstDayOfMonthDate(pauseEndDate) ||
     pauseEndDate <= pauseStartDate ||
-    pauseStartDate < nextPossiblePauseDate ||
+    activeUntilDate < nextPossiblePauseDate ||
     (defaultResumeDate !== null && pauseEndDate < defaultResumeDate)
   ) {
     redirect(withSavedParam(targetPath, "pause_invalid"));
@@ -354,6 +356,9 @@ export async function scheduleCoursePauseAction(formData: FormData) {
 
   const pauseStartDateLabel = formatCourseLifecycleDate(pauseStartDate) ?? pauseStartDate;
   const pauseEndDateLabel = formatCourseLifecycleDate(pauseEndDate) ?? pauseEndDate;
+  const activeUntilDateLabel = formatCourseLifecycleDate(activeUntilDate) ?? activeUntilDate;
+  const pauseEndExclusiveDateLabel =
+    formatCourseLifecycleDate(getPreviousDate(pauseEndDate)) ?? pauseEndDateLabel;
 
   for (const recipient of recipients ?? []) {
     const recipientEmail = recipient.email?.trim();
@@ -364,8 +369,10 @@ export async function scheduleCoursePauseAction(formData: FormData) {
         courseTitle: course.title ?? "Kurs",
         customerName: formatRecipientName(recipient.first_name, recipient.last_name),
         customerEmail: recipientEmail,
+        activeUntilDateLabel,
         pauseStartDateLabel,
         pauseEndDateLabel,
+        pauseEndExclusiveDateLabel,
       });
     } catch {
       // Keep the lifecycle state change even if one notification fails.

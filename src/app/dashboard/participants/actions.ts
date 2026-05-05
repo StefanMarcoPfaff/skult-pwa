@@ -2,9 +2,16 @@
 
 import { randomBytes } from "crypto";
 import { redirect } from "next/navigation";
+import {
+  getFirstDayOfNextMonthDate,
+  isFirstDayOfMonthDate,
+  isLastDayOfMonthDate,
+  toCourseLifecycleDate,
+} from "@/lib/course-lifecycle-shared";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { cancelTrialReservationById } from "@/lib/trial-reservation-cancellation";
 import {
   sendTrialRegistrationApprovedEmail,
   sendTrialRegistrationRejectedEmail,
@@ -79,6 +86,10 @@ function logDecisionInfo(message: string, payload: Record<string, unknown>) {
 
 function generateRegistrationToken(): string {
   return randomBytes(24).toString("hex");
+}
+
+function withSavedParam(targetPath: string, value: string) {
+  return `${targetPath}${targetPath.includes("?") ? "&" : "?"}saved=${value}`;
 }
 
 async function requireTeacher() {
@@ -175,20 +186,25 @@ function canTakeDecision(reservation: ReservationMailRow): boolean {
 
 export async function approveTrialReservationAction(formData: FormData) {
   const reservationId = String(formData.get("reservationId") ?? "").trim();
+  const redirectTo = String(formData.get("redirect_to") ?? "").trim() || "/dashboard/participants";
   if (!reservationId) {
-    redirect("/dashboard/participants");
+    redirect(redirectTo);
   }
 
   const user = await requireTeacher();
   const { ok, admin, context } = await assertTeacherOwnsReservation(user.id, reservationId);
 
   if (!ok || !context || !canTakeDecision(context.reservation)) {
-    redirect(context?.reservation?.cancelled_at ? "/dashboard/participants?cancelled=1" : "/dashboard/participants");
+    redirect(
+      context?.reservation?.cancelled_at
+        ? withSavedParam(redirectTo, "cancelled")
+        : redirectTo
+    );
   }
 
   const checkedIn = await hasCheckedInTrialTicket(admin, reservationId);
   if (!checkedIn) {
-    redirect("/dashboard/participants?attendanceRequired=1");
+    redirect(withSavedParam(redirectTo, "attendance_required"));
   }
 
   const registrationToken = generateRegistrationToken();
@@ -225,7 +241,7 @@ export async function approveTrialReservationAction(formData: FormData) {
 
   if (error) {
     logDecisionError("approve-reservation", error);
-    redirect("/dashboard/participants");
+    redirect(redirectTo);
   }
 
   if (context.reservation.email) {
@@ -280,25 +296,30 @@ export async function approveTrialReservationAction(formData: FormData) {
     });
   }
 
-  redirect("/dashboard/participants?approved=1");
+  redirect(withSavedParam(redirectTo, "approved"));
 }
 
 export async function rejectTrialReservationAction(formData: FormData) {
   const reservationId = String(formData.get("reservationId") ?? "").trim();
+  const redirectTo = String(formData.get("redirect_to") ?? "").trim() || "/dashboard/participants";
   if (!reservationId) {
-    redirect("/dashboard/participants");
+    redirect(redirectTo);
   }
 
   const user = await requireTeacher();
   const { ok, admin, context } = await assertTeacherOwnsReservation(user.id, reservationId);
 
   if (!ok || !context || !canTakeDecision(context.reservation)) {
-    redirect(context?.reservation?.cancelled_at ? "/dashboard/participants?cancelled=1" : "/dashboard/participants");
+    redirect(
+      context?.reservation?.cancelled_at
+        ? withSavedParam(redirectTo, "cancelled")
+        : redirectTo
+    );
   }
 
   const checkedIn = await hasCheckedInTrialTicket(admin, reservationId);
   if (!checkedIn) {
-    redirect("/dashboard/participants?attendanceRequired=1");
+    redirect(withSavedParam(redirectTo, "attendance_required"));
   }
 
   const rejectedAt = new Date().toISOString();
@@ -320,7 +341,7 @@ export async function rejectTrialReservationAction(formData: FormData) {
 
   if (error) {
     logDecisionError("reject-reservation", error);
-    redirect("/dashboard/participants");
+    redirect(redirectTo);
   }
 
   if (context.reservation.email) {
@@ -344,5 +365,37 @@ export async function rejectTrialReservationAction(formData: FormData) {
     }
   }
 
-  redirect("/dashboard/participants?rejected=1");
+  redirect(withSavedParam(redirectTo, "rejected"));
+}
+
+export async function cancelTrialReservationAction(formData: FormData) {
+  const reservationId = String(formData.get("reservationId") ?? "").trim();
+  const redirectTo = String(formData.get("redirect_to") ?? "").trim() || "/dashboard/participants";
+
+  if (!reservationId) {
+    redirect(withSavedParam(redirectTo, "trial_cancel_invalid"));
+  }
+
+  const user = await requireTeacher();
+  const { ok, context } = await assertTeacherOwnsReservation(user.id, reservationId);
+
+  if (!ok || !context) {
+    redirect(withSavedParam(redirectTo, "trial_cancel_invalid"));
+  }
+
+  const result = await cancelTrialReservationById({
+    reservationId,
+    actorLabel: "teacher_dashboard",
+  });
+
+  if (!result.ok) {
+    redirect(
+      withSavedParam(
+        redirectTo,
+        result.reason === "already_cancelled" ? "cancelled" : "trial_cancel_error"
+      )
+    );
+  }
+
+  redirect(withSavedParam(redirectTo, "trial_cancelled"));
 }

@@ -146,6 +146,21 @@ export default async function DashboardPage({
             </Link>
           </div>
         </article>
+
+        <article className="rounded-2xl border p-5">
+          <h2 className="text-lg font-semibold">Anwesenheit</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Uebersicht ueber Check-ins, Methoden und noch nicht erfasste Teilnahmen.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href="/dashboard/attendance"
+              className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
+            >
+              Zur Attendance-Uebersicht
+            </Link>
+          </div>
+        </article>
       </section>
     </main>
   );

@@ -1,14 +1,20 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { formatCourseLifecycleDate, getBerlinTodayDate } from "@/lib/course-lifecycle-shared";
+import { MailActionLink } from "@/components/dashboard/MailActionLink";
+import { formatCourseLifecycleDate, getNextMonthEndDate } from "@/lib/course-lifecycle-shared";
+import { buildMailtoHref, buildParticipantMailSubject } from "@/lib/mailto";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
-  pauseParticipantSubscriptionAction,
-  stopParticipantSubscriptionAction,
-} from "./actions";
-import { ParticipantPauseModal, ParticipantStopModal } from "./ParticipantSubscriptionModal";
+  RegisteredParticipantLifecycleButtons,
+  TrialParticipantLifecycleButtons,
+  WorkshopParticipantLifecycleButtons,
+} from "../ParticipantLifecycleButtons";
+import {
+  getParticipantLifecycleDisplay,
+  getWorkshopParticipantLifecycleDisplay,
+} from "../participant-lifecycle";
 
 type SearchParams = {
   source?: string;
@@ -26,10 +32,9 @@ type TrialReservationRow = {
   decision_status: string | null;
   trial_starts_at: string | null;
   trial_ends_at: string | null;
-  approved_at: string | null;
-  rejected_at: string | null;
   registration_expires_at: string | null;
   converted_at: string | null;
+  cancelled_at?: string | null;
 };
 
 type CourseRow = {
@@ -40,7 +45,6 @@ type CourseRow = {
   instructor_name: string | null;
   price_cents: number | null;
   currency: string | null;
-  cancellation_model: string | null;
   location: string | null;
   location_details: string | null;
 };
@@ -60,6 +64,7 @@ type RegistrationIntentRow = {
   subscription_pause_start_date: string | null;
   subscription_pause_end_date: string | null;
   subscription_cancel_scheduled_at: string | null;
+  subscription_stop_date: string | null;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
@@ -82,7 +87,6 @@ type TrialTicketRow = {
 type WorkshopBookingRow = {
   id: string;
   course_id: string | null;
-  attendee_key: string | null;
   status: string | null;
   checked_in_at: string | null;
   created_at: string | null;
@@ -127,8 +131,9 @@ function formatAddress(parts: Array<string | null | undefined>): string {
 }
 
 function formatParticipantSubscriptionStatus(status: string | null): string {
+  if (status === "pause_scheduled") return "Pause geplant";
   if (status === "paused") return "Pausiert";
-  if (status === "cancel_scheduled") return "Beendet zum Periodenende";
+  if (status === "cancel_scheduled") return "Beendet zum Monatsende";
   if (status === "cancelled") return "Beendet";
   if (status === "active") return "Aktiv";
   if (status === "inactive") return "Inaktiv";
@@ -143,6 +148,48 @@ async function requireTeacherId() {
 
   if (!user) redirect("/login");
   return user.id;
+}
+
+function FlashMessages(props: { saved?: string }) {
+  return (
+    <>
+      {props.saved === "approved" ? (
+        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Der Teilnehmende wurde fuer die verbindliche Kursanmeldung freigegeben.
+        </p>
+      ) : null}
+      {props.saved === "rejected" ? (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Der Teilnehmende wurde freundlich abgelehnt.
+        </p>
+      ) : null}
+      {props.saved === "trial_cancelled" ? (
+        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Die Probestunde wurde storniert.
+        </p>
+      ) : null}
+      {props.saved === "participant_pause_scheduled" ? (
+        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Die Teilnahme wurde pausiert bzw. zur Pause vorgemerkt.
+        </p>
+      ) : null}
+      {props.saved === "participant_cancel_scheduled" ? (
+        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Die Kuendigung wurde gespeichert.
+        </p>
+      ) : null}
+      {props.saved === "attendance_required" ? (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Eine Freigabe oder Ablehnung ist erst nach erfolgreichem Check-in der Probestunde moeglich.
+        </p>
+      ) : null}
+      {props.saved?.includes("invalid") || props.saved?.includes("error") ? (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Die Aktion konnte nicht abgeschlossen werden.
+        </p>
+      ) : null}
+    </>
+  );
 }
 
 export default async function DashboardParticipantDetailPage({
@@ -160,7 +207,9 @@ export default async function DashboardParticipantDetailPage({
   if (source === "workshop") {
     const { data: booking } = await admin
       .from("bookings")
-      .select("id,course_id,attendee_key,status,checked_in_at,created_at,payment_provider,customer_first_name,customer_last_name,customer_email,customer_phone")
+      .select(
+        "id,course_id,status,checked_in_at,created_at,payment_provider,customer_first_name,customer_last_name,customer_email,customer_phone"
+      )
       .eq("id", id)
       .maybeSingle<WorkshopBookingRow>();
 
@@ -171,9 +220,7 @@ export default async function DashboardParticipantDetailPage({
     const [{ data: course }, { data: ticket }, { data: profile }] = await Promise.all([
       admin
         .from("courses")
-        .select(
-          "id,title,teacher_id,kind,instructor_name,price_cents,currency,cancellation_model,location,location_details"
-        )
+        .select("id,title,teacher_id,kind,instructor_name,price_cents,currency,location,location_details")
         .eq("id", booking.course_id)
         .maybeSingle<CourseRow>(),
       admin
@@ -194,45 +241,49 @@ export default async function DashboardParticipantDetailPage({
 
     const providerName =
       profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
+    const workshopMailHref = buildMailtoHref({
+      to: [booking.customer_email ?? ticket?.customer_email ?? null],
+      subject: buildParticipantMailSubject(course.title),
+    });
+    const lifecycle = getWorkshopParticipantLifecycleDisplay(booking.status === "paid");
 
     return (
       <main className="mx-auto max-w-3xl space-y-6 p-6">
         <Link href={`/dashboard/courses/${course.id}`} className="inline-flex text-sm font-semibold">
-          Zurück zum Angebot
+          Zurueck zum Angebot
         </Link>
 
-      {saved === "participant_paused" ? (
-        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Die Teilnahme wurde pausiert.
-        </p>
-      ) : null}
-      {saved === "participant_cancel_scheduled" ? (
-        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Die Teilnahme wurde zum Periodenende beendet.
-        </p>
-      ) : null}
-      {saved === "participant_pause_invalid" || saved === "participant_stop_invalid" ? (
-        <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Die Teilnahme konnte in diesem Zustand nicht geaendert werden.
-        </p>
-      ) : null}
-      {saved === "participant_pause_error" || saved === "participant_stop_error" ? (
-        <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Die Stripe-Aenderung fuer diese Teilnahme ist fehlgeschlagen.
-        </p>
-      ) : null}
+        <FlashMessages saved={saved} />
 
         <section className="rounded-2xl border p-6">
-          <h1 className="text-2xl font-semibold">
-            {participantName(
-              booking.customer_first_name,
-              booking.customer_last_name,
-              ticket?.customer_name ?? "Workshop-Teilnehmer*in"
-            )}
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Workshop-Teilnehmerdetail für {course.title ?? "Workshop"}.
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold">
+                {participantName(
+                  booking.customer_first_name,
+                  booking.customer_last_name,
+                  ticket?.customer_name ?? "Workshop-Teilnehmer*in"
+                )}
+              </h1>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Workshop-Teilnehmerdetail fuer {course.title ?? "Workshop"}.
+              </p>
+              <div className="mt-4">
+                <WorkshopParticipantLifecycleButtons
+                  playClassName={lifecycle.playClassName}
+                  pauseClassName={lifecycle.pauseClassName}
+                  stopClassName={lifecycle.stopClassName}
+                />
+              </div>
+            </div>
+            <MailActionLink
+              href={workshopMailHref}
+              label="E-Mail"
+              title="Teilnehmer*in per E-Mail kontaktieren"
+              disabledHint="Keine E-Mail-Adresse fuer diese Person vorhanden"
+            />
+          </div>
+
           <div className="mt-4 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2">
             <p>Name: <span className="font-medium text-foreground">{participantName(booking.customer_first_name, booking.customer_last_name, ticket?.customer_name ?? "Workshop-Teilnehmer*in")}</span></p>
             <p>E-Mail: <span className="font-medium text-foreground">{booking.customer_email ?? ticket?.customer_email ?? "-"}</span></p>
@@ -240,7 +291,6 @@ export default async function DashboardParticipantDetailPage({
             <p>Status: <span className="font-medium text-foreground">{ticket?.status ?? booking.status ?? "-"}</span></p>
             <p>Gebucht am: <span className="font-medium text-foreground">{formatDateTime(booking.created_at)}</span></p>
             <p>Check-in: <span className="font-medium text-foreground">{formatDateTime(ticket?.checked_in_at ?? booking.checked_in_at)}</span></p>
-            <p className="sm:col-span-2">Adresse: <span className="font-medium text-foreground">-</span></p>
             {booking.payment_provider ? <p>Zahlungsanbieter: <span className="font-medium text-foreground">{booking.payment_provider}</span></p> : null}
           </div>
         </section>
@@ -258,18 +308,6 @@ export default async function DashboardParticipantDetailPage({
             {course.location_details ? <p>Raum / Zusatzinfo: <span className="font-medium text-foreground">{course.location_details}</span></p> : null}
           </div>
         </section>
-
-        <section className="rounded-2xl border p-6">
-          <h2 className="text-xl font-semibold">Interne Vermerke</h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-              Notizen folgen später
-            </div>
-            <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-              Chat-Funktion folgt später
-            </div>
-          </div>
-        </section>
       </main>
     );
   }
@@ -277,7 +315,7 @@ export default async function DashboardParticipantDetailPage({
   const { data: reservation } = await admin
     .from("trial_reservations")
     .select(
-      "id,course_id,first_name,last_name,email,status,decision_status,trial_starts_at,trial_ends_at,approved_at,rejected_at,registration_expires_at,converted_at"
+      "id,course_id,first_name,last_name,email,status,decision_status,trial_starts_at,trial_ends_at,registration_expires_at,converted_at,cancelled_at"
     )
     .eq("id", id)
     .maybeSingle<TrialReservationRow>();
@@ -289,15 +327,13 @@ export default async function DashboardParticipantDetailPage({
   const [{ data: course }, { data: intent }, { data: ticket }, { data: profile }] = await Promise.all([
     admin
       .from("courses")
-      .select(
-        "id,title,teacher_id,kind,instructor_name,price_cents,currency,cancellation_model,location,location_details"
-      )
+      .select("id,title,teacher_id,kind,instructor_name,price_cents,currency,location,location_details")
       .eq("id", reservation.course_id)
       .maybeSingle<CourseRow>(),
     admin
       .from("course_registration_intents")
       .select(
-        "id,status,stripe_subscription_id,subscription_status,subscription_pause_start_date,subscription_pause_end_date,subscription_cancel_scheduled_at,first_name,last_name,email,phone,street_and_number,postal_code,city,country,notes,completed_at"
+        "id,status,stripe_subscription_id,subscription_status,subscription_pause_start_date,subscription_pause_end_date,subscription_cancel_scheduled_at,subscription_stop_date,first_name,last_name,email,phone,street_and_number,postal_code,city,country,notes,completed_at"
       )
       .eq("trial_reservation_id", reservation.id)
       .maybeSingle<RegistrationIntentRow>(),
@@ -319,27 +355,74 @@ export default async function DashboardParticipantDetailPage({
 
   const providerName =
     profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
-  const defaultPauseStartDate = getBerlinTodayDate();
   const pauseStartLabel = formatCourseLifecycleDate(intent?.subscription_pause_start_date ?? null);
   const pauseEndLabel = formatCourseLifecycleDate(intent?.subscription_pause_end_date ?? null);
+  const stopDateLabel = formatCourseLifecycleDate(intent?.subscription_stop_date ?? null);
+  const participantMailHref = buildMailtoHref({
+    to: [intent?.email ?? reservation.email ?? null],
+    subject: buildParticipantMailSubject(course.title),
+  });
+  const lifecycle = getParticipantLifecycleDisplay({
+    reservationCancelledAt: reservation.cancelled_at ?? null,
+    reservationDecisionStatus: reservation.decision_status,
+    trialTicketStatus: ticket?.status ?? null,
+    hasCompletedRegistration: Boolean(intent?.status === "checkout_completed" && intent?.stripe_subscription_id),
+    subscriptionStatus: intent?.subscription_status ?? null,
+  });
+  const defaultMonthEnd = getNextMonthEndDate();
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
-        <Link href={`/dashboard/courses/${course.id}`} className="inline-flex text-sm font-semibold">
-        Zurück zum Angebot
-        </Link>
+      <Link href={`/dashboard/courses/${course.id}`} className="inline-flex text-sm font-semibold">
+        Zurueck zum Angebot
+      </Link>
+
+      <FlashMessages saved={saved} />
 
       <section className="rounded-2xl border p-6">
-        <h1 className="text-2xl font-semibold">
-          {participantName(
-            intent?.first_name ?? reservation.first_name,
-            intent?.last_name ?? reservation.last_name,
-            "Teilnehmer*in"
-          )}
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Teilnehmerdetail für {course.title ?? "Kurs"}.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold">
+              {participantName(intent?.first_name ?? reservation.first_name, intent?.last_name ?? reservation.last_name, "Teilnehmer*in")}
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">Teilnehmerdetail fuer {course.title ?? "Kurs"}.</p>
+            <div className="mt-4">
+              {intent?.status === "checkout_completed" && intent?.stripe_subscription_id ? (
+                <RegisteredParticipantLifecycleButtons
+                  reservationId={reservation.id}
+                  redirectTo={`/dashboard/participants/${reservation.id}?source=trial`}
+                  defaultActiveUntilDate={defaultMonthEnd}
+                  defaultPauseEndDate={intent.subscription_pause_end_date}
+                  defaultStopDate={defaultMonthEnd}
+                  playClassName={lifecycle.playClassName}
+                  pauseClassName={lifecycle.pauseClassName}
+                  stopClassName={lifecycle.stopClassName}
+                  pauseDisabled={lifecycle.pauseDisabled}
+                  stopDisabled={lifecycle.stopDisabled}
+                />
+              ) : (
+                <TrialParticipantLifecycleButtons
+                  reservationId={reservation.id}
+                  redirectTo={`/dashboard/participants/${reservation.id}?source=trial`}
+                  playClassName={lifecycle.playClassName}
+                  pauseClassName={lifecycle.pauseClassName}
+                  stopClassName={lifecycle.stopClassName}
+                  playDisabled={lifecycle.playDisabled}
+                  stopDisabled={lifecycle.stopDisabled}
+                  showApprovalAction={lifecycle.playMode === "trial_checked_in"}
+                  showCancellationAction={lifecycle.playMode === "trial_checked_in" || lifecycle.playMode === "trial_reserved"}
+                />
+              )}
+            </div>
+          </div>
+          <MailActionLink
+            href={participantMailHref}
+            label="E-Mail"
+            title="Teilnehmer*in per E-Mail kontaktieren"
+            disabledHint="Keine E-Mail-Adresse fuer diese Person vorhanden"
+          />
+        </div>
+
         <div className="mt-4 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2">
           <p>Name: <span className="font-medium text-foreground">{participantName(intent?.first_name ?? reservation.first_name, intent?.last_name ?? reservation.last_name, "Teilnehmer*in")}</span></p>
           <p>E-Mail: <span className="font-medium text-foreground">{intent?.email ?? reservation.email ?? "-"}</span></p>
@@ -366,8 +449,6 @@ export default async function DashboardParticipantDetailPage({
           {formatPrice(course.price_cents, course.currency) ? (
             <p>Preis: <span className="font-medium text-foreground">{formatPrice(course.price_cents, course.currency)}</span></p>
           ) : null}
-          <p>Abrechnung: <span className="font-medium text-foreground">monatlich</span></p>
-          <p>Kursmodell: <span className="font-medium text-foreground">fortlaufend</span></p>
           {course.location ? <p>Ort: <span className="font-medium text-foreground">{course.location}</span></p> : null}
           {course.location_details ? <p>Raum / Zusatzinfo: <span className="font-medium text-foreground">{course.location_details}</span></p> : null}
           <p>Probestunde: <span className="font-medium text-foreground">{`${formatDateTime(reservation.trial_starts_at)} - ${formatDateTime(reservation.trial_ends_at)}`}</span></p>
@@ -384,42 +465,19 @@ export default async function DashboardParticipantDetailPage({
                 {formatParticipantSubscriptionStatus(intent.subscription_status)}
               </span>
             </p>
-            {pauseStartLabel ? (
-              <p>
-                Pause seit: <span className="font-medium text-foreground">{pauseStartLabel}</span>
-              </p>
-            ) : null}
-            {pauseEndLabel ? (
-              <p>
-                Pause bis: <span className="font-medium text-foreground">{pauseEndLabel}</span>
-              </p>
-            ) : null}
+            {pauseStartLabel ? <p>Pause ab: <span className="font-medium text-foreground">{pauseStartLabel}</span></p> : null}
+            {pauseEndLabel ? <p>Wieder aktiv ab: <span className="font-medium text-foreground">{pauseEndLabel}</span></p> : null}
+            {stopDateLabel ? <p>Teilnahme endet zum: <span className="font-medium text-foreground">{stopDateLabel}</span></p> : null}
             {intent.subscription_cancel_scheduled_at ? (
               <p>
-                Beendigung vorgemerkt am:{" "}
+                Kuendigung vorgemerkt am:{" "}
                 <span className="font-medium text-foreground">{formatDateTime(intent.subscription_cancel_scheduled_at)}</span>
               </p>
             ) : null}
           </div>
-          <div className="mt-4 flex flex-wrap gap-3">
-            {(intent.subscription_status ?? "active") !== "cancel_scheduled" ? (
-              <ParticipantPauseModal
-                reservationId={reservation.id}
-                redirectTo={`/dashboard/participants/${reservation.id}?source=trial`}
-                action={pauseParticipantSubscriptionAction}
-                defaultPauseStartDate={defaultPauseStartDate}
-                defaultPauseEndDate={intent.subscription_pause_end_date}
-                minimumPauseEndDate={defaultPauseStartDate}
-              />
-            ) : null}
-            {(intent.subscription_status ?? "active") !== "cancel_scheduled" ? (
-              <ParticipantStopModal
-                reservationId={reservation.id}
-                redirectTo={`/dashboard/participants/${reservation.id}?source=trial`}
-                action={stopParticipantSubscriptionAction}
-              />
-            ) : null}
-          </div>
+          <p className="mt-4 text-xs text-muted-foreground">
+            Zukuenftige Teilnehmer-Pausen werden in RESER termingenau vorgemerkt. Eine automatische Stripe-Pausierung fuer einen spaeteren Monat ist mit der aktuellen Architektur noch nicht robust geplant.
+          </p>
         </section>
       ) : null}
 
@@ -440,21 +498,9 @@ export default async function DashboardParticipantDetailPage({
           </div>
         ) : (
           <p className="mt-4 text-sm text-muted-foreground">
-            Für diese Person liegt noch keine verbindliche Registrierung im System vor.
+            Fuer diese Person liegt noch keine verbindliche Registrierung im System vor.
           </p>
         )}
-      </section>
-
-      <section className="rounded-2xl border p-6">
-        <h2 className="text-xl font-semibold">Interne Vermerke</h2>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-            Notizen folgen später
-          </div>
-          <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-            Chat-Funktion folgt später
-          </div>
-        </div>
       </section>
     </main>
   );

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import QRCode from "react-qr-code";
+import { TicketQrTokenSaver } from "@/components/tickets/TicketQrTokenSaver";
 import { buildTicketCheckInUrl } from "@/lib/ticket-qr";
 import { loadTicketByQrToken } from "@/lib/tickets";
 
@@ -35,6 +36,7 @@ export default async function TicketQrPage({
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
+      <TicketQrTokenSaver qrToken={lookup.ticket.qr_token} />
       <section className="rounded-2xl border p-6">
         <h1 className="text-3xl font-semibold">Dein Ticket</h1>
         <p className="mt-3 text-sm text-muted-foreground">

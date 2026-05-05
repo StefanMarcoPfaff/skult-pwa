@@ -78,6 +78,11 @@ export function getBerlinTodayDate(referenceDate: Date = new Date()): string {
   return formatDateParts(getTimeZoneDateParts(referenceDate, COURSE_BERLIN_TIME_ZONE));
 }
 
+export function getNextMonthEndDate(referenceDate: Date = new Date()): string {
+  const { year, month } = getTimeZoneDateParts(referenceDate, COURSE_BERLIN_TIME_ZONE);
+  return getLastDayOfMonthDate(year, month);
+}
+
 export function isFirstDayOfMonthDate(value: string): boolean {
   const parts = parseDateInput(value);
   return Boolean(parts && parts.day === 1);
@@ -112,8 +117,55 @@ export function getFirstDayOfNextMonthDate(value: string): string | null {
 }
 
 export function getNextPossiblePauseDate(referenceDate: Date = new Date()): string {
+  return getNextMonthEndDate(referenceDate);
+}
+
+export function getNextFirstOfMonthAfter(value: string): string | null {
+  return getFirstDayOfNextMonthDate(value);
+}
+
+export function getFutureMonthEndOptions(referenceDate: Date = new Date(), count = 12): string[] {
   const { year, month } = getTimeZoneDateParts(referenceDate, COURSE_BERLIN_TIME_ZONE);
-  return getLastDayOfMonthDate(year, month);
+  const options: string[] = [];
+
+  for (let offset = 0; offset < count; offset += 1) {
+    const totalMonth = month + offset;
+    const optionYear = year + Math.floor((totalMonth - 1) / 12);
+    const optionMonth = ((totalMonth - 1) % 12) + 1;
+    options.push(getLastDayOfMonthDate(optionYear, optionMonth));
+  }
+
+  return options;
+}
+
+export function getFutureFirstOfMonthOptions(startDate: string, count = 12): string[] {
+  const first = getNextFirstOfMonthAfter(startDate);
+  const startParts = first ? parseDateInput(first) : null;
+  if (!startParts) return [];
+
+  const options: string[] = [];
+  for (let offset = 0; offset < count; offset += 1) {
+    const totalMonth = startParts.month + offset;
+    const optionYear = startParts.year + Math.floor((totalMonth - 1) / 12);
+    const optionMonth = ((totalMonth - 1) % 12) + 1;
+    options.push(formatDateParts({ year: optionYear, month: optionMonth, day: 1 }));
+  }
+
+  return options;
+}
+
+export function getPreviousDate(value: string): string | null {
+  const parts = parseDateInput(value);
+  if (!parts) return null;
+
+  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  date.setUTCDate(date.getUTCDate() - 1);
+
+  return formatDateParts({
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth() + 1,
+    day: date.getUTCDate(),
+  });
 }
 
 export function formatCourseLifecycleDate(value: string | null): string | null {
@@ -177,7 +229,8 @@ export function resolveDashboardCourseStatus(input: {
 
 export function isCourseOpenForNewRegistrations(
   status: CourseStatus | null | undefined,
-  endsAt: string | null | undefined
+  endsAt: string | null | undefined,
+  referenceDate: Date = new Date()
 ): boolean {
   if (status === "draft" || status === "paused" || status === "ended") {
     return false;
@@ -185,7 +238,8 @@ export function isCourseOpenForNewRegistrations(
 
   if (!endsAt) return true;
   const parsed = new Date(endsAt).getTime();
-  return !Number.isNaN(parsed);
+  if (Number.isNaN(parsed)) return false;
+  return parsed >= referenceDate.getTime();
 }
 
 export function isCourseLifecyclePubliclyVisible(

@@ -7,8 +7,10 @@ type CourseLifecycleRecipientEmailData = {
 };
 
 type CoursePauseNotificationEmailData = CourseLifecycleRecipientEmailData & {
+  activeUntilDateLabel: string;
   pauseStartDateLabel: string;
   pauseEndDateLabel: string;
+  pauseEndExclusiveDateLabel: string;
 };
 
 type CourseStopNotificationEmailData = CourseLifecycleRecipientEmailData & {
@@ -22,12 +24,12 @@ export async function sendCoursePauseNotificationEmail(data: CoursePauseNotifica
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <p>Hallo ${data.customerName},</p>
-        <p>dein Kurs <strong>${data.courseTitle}</strong> pausiert vom ${data.pauseStartDateLabel} bis ${data.pauseEndDateLabel}.</p>
-        <p>In diesem Zeitraum erfolgen keine Abbuchungen.</p>
-        <p>Der Kurs startet wieder am ${data.pauseEndDateLabel}.</p>
+        <p>dein Kurs <strong>${data.courseTitle}</strong> pausiert vorübergehend.</p>
+        <p>Der Kurs läuft noch bis ${data.activeUntilDateLabel} und pausiert anschließend vom ${data.pauseStartDateLabel} bis ${data.pauseEndExclusiveDateLabel}.</p>
+        <p>Ab ${data.pauseEndDateLabel} geht es weiter. Während der Pause wird keine Kursgebühr abgebucht.</p>
       </div>
     `,
-    text: `Hallo ${data.customerName},\n\ndein Kurs ${data.courseTitle} pausiert vom ${data.pauseStartDateLabel} bis ${data.pauseEndDateLabel}.\nIn diesem Zeitraum erfolgen keine Abbuchungen.\nDer Kurs startet wieder am ${data.pauseEndDateLabel}.`,
+    text: `Hallo ${data.customerName},\n\ndein Kurs ${data.courseTitle} pausiert vorübergehend.\nDer Kurs läuft noch bis ${data.activeUntilDateLabel} und pausiert anschließend vom ${data.pauseStartDateLabel} bis ${data.pauseEndExclusiveDateLabel}.\nAb ${data.pauseEndDateLabel} geht es weiter. Während der Pause wird keine Kursgebühr abgebucht.`,
   });
 }
 
@@ -39,9 +41,9 @@ export async function sendCourseStopNotificationEmail(data: CourseStopNotificati
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <p>Hallo ${data.customerName},</p>
         <p>dein Kurs <strong>${data.courseTitle}</strong> endet zum ${data.stopDateLabel}.</p>
-        <p>Ab diesem Zeitpunkt finden keine weiteren Termine statt und es erfolgen keine weiteren Abbuchungen.</p>
+        <p>Ab dem Folgemonat wird keine Kursgebühr mehr abgebucht. Du findest weitere Kurse und Workshops auf RESER.</p>
       </div>
     `,
-    text: `Hallo ${data.customerName},\n\ndein Kurs ${data.courseTitle} endet zum ${data.stopDateLabel}.\nAb diesem Zeitpunkt finden keine weiteren Termine statt und es erfolgen keine weiteren Abbuchungen.`,
+    text: `Hallo ${data.customerName},\n\ndein Kurs ${data.courseTitle} endet zum ${data.stopDateLabel}.\nAb dem Folgemonat wird keine Kursgebühr mehr abgebucht. Du findest weitere Kurse und Workshops auf RESER.`,
   });
 }

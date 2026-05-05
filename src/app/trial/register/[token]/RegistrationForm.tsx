@@ -3,6 +3,7 @@
 import Link from "next/link";
 import QRCode from "react-qr-code";
 import { useActionState } from "react";
+import { TicketQrTokenSaver } from "@/components/tickets/TicketQrTokenSaver";
 import { LEGAL_LINKS } from "@/lib/legal";
 import { buildTicketCheckInUrl } from "@/lib/ticket-qr";
 import { submitTrialRegistrationAction } from "./actions";
@@ -54,6 +55,7 @@ export default function RegistrationForm({
 
   return (
     <form action={formAction} className="space-y-6">
+      <TicketQrTokenSaver qrToken={ticketQrToken ?? null} />
       <input type="hidden" name="token" value={token} />
 
       <section className="rounded-2xl border p-6">

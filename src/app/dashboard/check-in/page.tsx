@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { recordAttendanceForTicketToken } from "@/lib/attendance";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { loadTicketByQrToken } from "@/lib/tickets";
@@ -7,6 +9,7 @@ import CheckInScannerClient from "./CheckInScannerClient";
 type SearchParams = Record<string, string | string[] | undefined>;
 
 type CheckInState =
+  | "attendance_checked_in"
   | "workshop_checked_in"
   | "trial_checked_in"
   | "already_used"
@@ -23,14 +26,6 @@ type CheckInResult = {
   courseTitle: string | null;
   checkedInAt: string | null;
 };
-
-/*
- * MVP verification checklist:
- * 1. Open /dashboard/check-in?token=<qr_token> from a trial or workshop email.
- * 2. Confirm the first load checks the ticket in successfully.
- * 3. Refresh the page and confirm the result is clearly "already used".
- * 4. Confirm invalid, cancelled, and expired tokens return distinct states.
- */
 
 function isDev(): boolean {
   return process.env.NODE_ENV !== "production";
@@ -69,7 +64,7 @@ async function requireTeacher() {
   return user;
 }
 
-async function processTicketCheckIn(token: string, teacherId: string): Promise<CheckInResult> {
+async function processLegacyTicketCheckIn(token: string, teacherId: string): Promise<CheckInResult> {
   const lookup = await loadTicketByQrToken(token);
   if (!lookup) {
     logCheckInEvent("invalid", { token });
@@ -85,7 +80,6 @@ async function processTicketCheckIn(token: string, teacherId: string): Promise<C
   }
 
   if (lookup.teacherId && lookup.teacherId !== teacherId) {
-    logCheckInEvent("invalid", { ticketId: lookup.ticket.id, teacherId });
     return {
       state: "invalid",
       message: "invalid token",
@@ -98,7 +92,6 @@ async function processTicketCheckIn(token: string, teacherId: string): Promise<C
   }
 
   if (lookup.ticket.status === "checked_in") {
-    logCheckInEvent("already used", { ticketId: lookup.ticket.id });
     return {
       state: "already_used",
       message: "already used",
@@ -111,7 +104,6 @@ async function processTicketCheckIn(token: string, teacherId: string): Promise<C
   }
 
   if (lookup.ticket.status === "cancelled") {
-    logCheckInEvent("cancelled", { ticketId: lookup.ticket.id });
     return {
       state: "cancelled",
       message: "cancelled",
@@ -124,7 +116,6 @@ async function processTicketCheckIn(token: string, teacherId: string): Promise<C
   }
 
   if (lookup.ticket.status === "expired") {
-    logCheckInEvent("expired", { ticketId: lookup.ticket.id });
     return {
       state: "expired",
       message: "expired",
@@ -151,7 +142,6 @@ async function processTicketCheckIn(token: string, teacherId: string): Promise<C
     .maybeSingle<{ checked_in_at: string | null }>();
 
   if (error || !updated) {
-    logCheckInEvent("invalid", { ticketId: lookup.ticket.id, reason: "update_failed" });
     return {
       state: "invalid",
       message: "invalid token",
@@ -164,18 +154,67 @@ async function processTicketCheckIn(token: string, teacherId: string): Promise<C
   }
 
   const state = lookup.ticket.type === "trial" ? "trial_checked_in" : "workshop_checked_in";
-  const message = state === "trial_checked_in" ? "trial lesson attendance confirmed" : "workshop ticket checked in";
-  logCheckInEvent("success", { ticketId: lookup.ticket.id, state });
-
   return {
     state,
-    message,
+    message: state === "trial_checked_in" ? "trial lesson attendance confirmed" : "workshop ticket checked in",
     tone: "success",
     ticketType: lookup.ticket.type,
     customerName: lookup.ticket.customer_name,
     courseTitle: lookup.courseTitle,
     checkedInAt: updated.checked_in_at,
   };
+}
+
+async function processTicketCheckIn(
+  token: string,
+  teacherId: string,
+  context: {
+    courseId?: string;
+    sessionId?: string;
+    eventDate?: string;
+  }
+): Promise<CheckInResult> {
+  if (context.courseId && (context.sessionId || context.eventDate)) {
+    try {
+      const result = await recordAttendanceForTicketToken({
+        qrToken: token,
+        courseId: context.courseId,
+        sessionId: context.sessionId ?? null,
+        eventDate: context.eventDate ?? null,
+        checkedInBy: teacherId,
+        method: "teacher_scan",
+      });
+
+      return {
+        state: "attendance_checked_in",
+        message: result.alreadyRecorded ? "attendance already recorded" : "attendance checked in",
+        tone: result.alreadyRecorded ? "warning" : "success",
+        ticketType: "attendance",
+        customerName: result.ticket.customer_name,
+        courseTitle: null,
+        checkedInAt: result.attendance.checked_in_at,
+      };
+    } catch (error) {
+      logCheckInEvent("attendance_invalid", {
+        token,
+        courseId: context.courseId,
+        sessionId: context.sessionId ?? null,
+        eventDate: context.eventDate ?? null,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        state: "invalid",
+        message: "invalid token",
+        tone: "danger",
+        ticketType: null,
+        customerName: null,
+        courseTitle: null,
+        checkedInAt: null,
+      };
+    }
+  }
+
+  return processLegacyTicketCheckIn(token, teacherId);
 }
 
 function resultClasses(tone: CheckInResult["tone"]): string {
@@ -194,7 +233,12 @@ function getResultHint(result: CheckInResult): string | null {
 
   if (result.state === "cancelled") return "Dieses Ticket wurde storniert und kann nicht mehr verwendet werden.";
   if (result.state === "expired") return "Dieses Ticket ist abgelaufen und kann nicht mehr verwendet werden.";
-  if (result.state === "invalid") return "Kein gültiges Ticket für diesen Token gefunden.";
+  if (result.state === "invalid") return "Kein gueltiges Ticket fuer diesen Token gefunden.";
+  if (result.state === "attendance_checked_in") {
+    return result.checkedInAt
+      ? `Anwesenheit fuer diesen Termin gespeichert am ${formatDateTime(result.checkedInAt)}.`
+      : "Anwesenheit fuer diesen Termin gespeichert.";
+  }
   if (result.checkedInAt) return `Check-in gespeichert am ${formatDateTime(result.checkedInAt)}.`;
   return null;
 }
@@ -207,24 +251,47 @@ export default async function DashboardCheckInPage({
   const user = await requireTeacher();
   const sp = await searchParams;
   const token = getParam(sp, "token");
-  const result = token ? await processTicketCheckIn(token, user.id) : null;
+  const courseId = getParam(sp, "courseId");
+  const sessionId = getParam(sp, "sessionId");
+  const eventDate = getParam(sp, "eventDate");
+  const returnTo = getParam(sp, "returnTo");
+  const result = token
+    ? await processTicketCheckIn(token, user.id, {
+        courseId: courseId || undefined,
+        sessionId: sessionId || undefined,
+        eventDate: eventDate || undefined,
+      })
+    : null;
   const resultHint = result ? getResultHint(result) : null;
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
+      {returnTo ? (
+        <Link href={returnTo} className="inline-flex text-sm font-semibold">
+          Zurueck zum Termin-Check-in
+        </Link>
+      ) : null}
+
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold">Ticket-Check-in</h1>
         <p className="text-sm text-muted-foreground">
-          Scanne hier den QR-Code per Kamera oder prüfe den Token manuell als Fallback.
+          Scanne hier den QR-Code per Kamera oder pruefe den Token manuell als Fallback.
         </p>
       </header>
 
-      <CheckInScannerClient />
+      <CheckInScannerClient
+        redirectParams={{
+          courseId: courseId || undefined,
+          sessionId: sessionId || undefined,
+          eventDate: eventDate || undefined,
+          returnTo: returnTo || undefined,
+        }}
+      />
 
       <section className="rounded-2xl border p-4">
         <h2 className="text-base font-semibold">Manueller Fallback</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Wenn die Kamera auf diesem Gerät nicht verfügbar ist, kannst du den Token hier manuell
+          Wenn die Kamera auf diesem Geraet nicht verfuegbar ist, kannst du den Token hier manuell
           eingeben.
         </p>
         <form action="/dashboard/check-in" method="get" className="flex flex-col gap-3 sm:flex-row">
@@ -235,8 +302,12 @@ export default async function DashboardCheckInPage({
             placeholder="QR-Token eingeben"
             className="min-w-0 flex-1 rounded-xl border px-4 py-3 text-sm"
           />
+          {courseId ? <input type="hidden" name="courseId" value={courseId} /> : null}
+          {sessionId ? <input type="hidden" name="sessionId" value={sessionId} /> : null}
+          {eventDate ? <input type="hidden" name="eventDate" value={eventDate} /> : null}
+          {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
           <button type="submit" className="rounded-xl border px-4 py-3 text-sm font-semibold">
-            Ticket prüfen
+            Ticket pruefen
           </button>
         </form>
       </section>

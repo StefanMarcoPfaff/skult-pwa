@@ -1,6 +1,7 @@
 import Link from "next/link";
 import QRCode from "react-qr-code";
 import { createClient } from "@supabase/supabase-js";
+import { TicketQrTokenSaver } from "@/components/tickets/TicketQrTokenSaver";
 import { buildTicketCheckInUrl } from "@/lib/ticket-qr";
 
 export const runtime = "nodejs";
@@ -53,6 +54,7 @@ export default async function TicketPage({
 
   return (
     <main style={{ padding: 24, maxWidth: 820, margin: "0 auto" }}>
+      <TicketQrTokenSaver qrToken={ticket?.qr_token ?? null} />
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
         <div>
           <h1 style={{ fontSize: 44, fontWeight: 900, margin: 0 }}>Dein Ticket</h1>

@@ -4,8 +4,10 @@ type ParticipantSubscriptionPauseEmailData = {
   courseTitle: string;
   customerName: string;
   customerEmail: string;
+  activeUntilDateLabel: string;
   pauseStartDateLabel: string;
   pauseEndDateLabel: string;
+  pauseEndExclusiveDateLabel: string;
 };
 
 type ParticipantSubscriptionCancellationEmailData = {
@@ -24,12 +26,13 @@ export async function sendParticipantPauseConfirmationEmail(
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <p>Hallo ${data.customerName},</p>
-        <p>deine Teilnahme am Kurs <strong>${data.courseTitle}</strong> wurde pausiert.</p>
-        <p>Die Pause gilt vom ${data.pauseStartDateLabel} bis ${data.pauseEndDateLabel}.</p>
-        <p>In diesem Zeitraum erfolgen keine Abbuchungen. Danach wird die Teilnahme automatisch fortgesetzt.</p>
+        <p>deine Teilnahme am Kurs <strong>${data.courseTitle}</strong> pausiert vorübergehend.</p>
+        <p>Deine Teilnahme läuft noch bis ${data.activeUntilDateLabel}.</p>
+        <p>Vom ${data.pauseStartDateLabel} bis ${data.pauseEndExclusiveDateLabel} erfolgen keine Abbuchungen.</p>
+        <p>Ab ${data.pauseEndDateLabel} läuft dein Abo wieder weiter.</p>
       </div>
     `,
-    text: `Hallo ${data.customerName},\n\ndeine Teilnahme am Kurs ${data.courseTitle} wurde pausiert.\nDie Pause gilt vom ${data.pauseStartDateLabel} bis ${data.pauseEndDateLabel}.\nIn diesem Zeitraum erfolgen keine Abbuchungen. Danach wird die Teilnahme automatisch fortgesetzt.`,
+    text: `Hallo ${data.customerName},\n\ndeine Teilnahme am Kurs ${data.courseTitle} pausiert vorübergehend.\nDeine Teilnahme läuft noch bis ${data.activeUntilDateLabel}.\nVom ${data.pauseStartDateLabel} bis ${data.pauseEndExclusiveDateLabel} erfolgen keine Abbuchungen.\nAb ${data.pauseEndDateLabel} läuft dein Abo wieder weiter.`,
   });
 }
 
@@ -42,10 +45,10 @@ export async function sendParticipantCancellationConfirmationEmail(
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <p>Hallo ${data.customerName},</p>
-        <p>deine Teilnahme am Kurs <strong>${data.courseTitle}</strong> wurde zum Periodenende beendet.</p>
-        <p>Die Teilnahme endet nach dem bereits bezahlten Zeitraum am ${data.cancellationDateLabel}.</p>
+        <p>deine Teilnahme am Kurs <strong>${data.courseTitle}</strong> endet zum ${data.cancellationDateLabel}.</p>
+        <p>Ab dem Folgemonat wird keine Kursgebühr mehr abgebucht.</p>
       </div>
     `,
-    text: `Hallo ${data.customerName},\n\ndeine Teilnahme am Kurs ${data.courseTitle} wurde zum Periodenende beendet.\nDie Teilnahme endet nach dem bereits bezahlten Zeitraum am ${data.cancellationDateLabel}.`,
+    text: `Hallo ${data.customerName},\n\ndeine Teilnahme am Kurs ${data.courseTitle} endet zum ${data.cancellationDateLabel}.\nAb dem Folgemonat wird keine Kursgebühr mehr abgebucht.`,
   });
 }

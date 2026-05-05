@@ -3,8 +3,6 @@ import { redirect } from "next/navigation";
 import {
   formatCourseLifecycleDate,
   getNextPossiblePauseDate,
-  getCourseStatusLabel,
-  resolveDashboardCourseStatus,
   type CourseStatus,
 } from "@/lib/course-lifecycle-shared";
 import {
@@ -13,12 +11,20 @@ import {
   getWorkshopCancellationPolicySummary,
   getWorkshopCancellationPolicyValue,
 } from "@/lib/offer-policies";
+import {
+  buildMailtoHref,
+  buildOfferMailSubject,
+  buildParticipantMailSubject,
+  normalizeEmailRecipients,
+  shouldWarnAboutLargeMailingGroup,
+} from "@/lib/mailto";
 import { getProviderDisplayName, type ProviderType } from "@/lib/provider-profiles";
 import { getPublicCourseById } from "@/lib/public-offers";
 import { getSiteUrl } from "@/lib/site-url";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { CourseDetailActions } from "./CourseDetailActions";
+import { getDisplayStatus } from "../display-status";
 
 type Row = {
   id: string;
@@ -111,6 +117,7 @@ type CourseParticipantEntry = {
   statusLabel: string;
   checkInLabel: string;
   meta: string | null;
+  mailHref: string | null;
 };
 
 type WorkshopParticipantEntry = {
@@ -120,6 +127,7 @@ type WorkshopParticipantEntry = {
   statusLabel: string;
   checkInLabel: string;
   meta: string | null;
+  mailHref: string | null;
 };
 
 function formatDateTime(dt: string | null) {
@@ -137,6 +145,10 @@ function formatTrialMode(value: string | null): string {
 
 function formatName(firstName: string | null, lastName: string | null, fallback: string): string {
   return [firstName, lastName].filter(Boolean).join(" ").trim() || fallback;
+}
+
+function resolveCourseParticipantEmail(participant: TrialParticipantRow): string | null {
+  return participant.email;
 }
 
 function formatDateTimeRange(start: string | null, end: string | null): string | null {
@@ -200,12 +212,26 @@ function renderParticipantGroup(
                   </p>
                   {entry.meta ? <p>{entry.meta}</p> : null}
                 </div>
-                <Link
-                  href={`/dashboard/participants/${entry.id}?source=trial`}
-                  className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
-                >
-                  Details
-                </Link>
+                <div className="flex flex-wrap gap-2">
+                  {entry.mailHref ? (
+                    <a
+                      href={entry.mailHref}
+                      className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
+                    >
+                      E-Mail
+                    </a>
+                  ) : (
+                    <span className="inline-flex cursor-not-allowed rounded-xl border px-3 py-2 text-xs font-semibold text-muted-foreground opacity-60">
+                      E-Mail
+                    </span>
+                  )}
+                  <Link
+                    href={`/dashboard/participants/${entry.id}?source=trial`}
+                    className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
+                  >
+                    Details
+                  </Link>
+                </div>
               </div>
             </div>
           ))}
@@ -248,12 +274,26 @@ function renderWorkshopParticipantGroup(
                   </p>
                   {entry.meta ? <p>{entry.meta}</p> : null}
                 </div>
-                <Link
-                  href={`/dashboard/participants/${entry.id}?source=workshop`}
-                  className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
-                >
-                  Details
-                </Link>
+                <div className="flex flex-wrap gap-2">
+                  {entry.mailHref ? (
+                    <a
+                      href={entry.mailHref}
+                      className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
+                    >
+                      E-Mail
+                    </a>
+                  ) : (
+                    <span className="inline-flex cursor-not-allowed rounded-xl border px-3 py-2 text-xs font-semibold text-muted-foreground opacity-60">
+                      E-Mail
+                    </span>
+                  )}
+                  <Link
+                    href={`/dashboard/participants/${entry.id}?source=workshop`}
+                    className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
+                  >
+                    Details
+                  </Link>
+                </div>
               </div>
             </div>
           ))}
@@ -393,12 +433,15 @@ export default async function DashboardCourseDetailPage({
           organization_name: profile.organization_name,
         })
       : null;
-  const normalizedStatus = resolveDashboardCourseStatus({
+  const displayState = getDisplayStatus({
+    kind: data.kind,
     status: data.status,
-    isPublished: data.is_published,
-    endsAt: data.ends_at,
+    isPublished: data.is_published ?? null,
+    endsAt: data.ends_at ?? null,
+    startsAt: data.starts_at,
   });
-  const statusLabel = getCourseStatusLabel(normalizedStatus);
+  const normalizedStatus = displayState.normalizedStatus;
+  const statusLabel = displayState.currentStatusLabel;
   const pauseStartLabel = formatCourseLifecycleDate(data.pause_start_date);
   const pauseEndLabel = formatCourseLifecycleDate(data.pause_end_date);
   const stopDateLabel = formatCourseLifecycleDate(data.stop_date);
@@ -428,23 +471,30 @@ export default async function DashboardCourseDetailPage({
               const intent = intentByTrialReservationId.get(participant.id);
               return participant.converted_at || intent?.status === "checkout_completed";
             })
-            .map<CourseParticipantEntry>((participant) => ({
-              id: participant.id,
-              name: formatName(participant.first_name, participant.last_name, "Teilnehmer*in"),
-              email: participant.email,
-              statusLabel: "Verbindlich angemeldet",
-              checkInLabel:
-                ticketByTrialReservationId.get(participant.id)?.status === "checked_in"
-                  ? `Eingecheckt am ${formatDateTime(
-                      ticketByTrialReservationId.get(participant.id)?.checked_in_at ?? null
-                    )}`
-                  : ticketByTrialReservationId.get(participant.id)?.status === "issued"
-                    ? "Noch nicht eingecheckt"
-                    : "-",
-              meta: participant.converted_at
-                ? `Anmeldung abgeschlossen am ${formatDateTime(participant.converted_at)}`
-                : formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
-            })),
+            .map<CourseParticipantEntry>((participant) => {
+              const email = resolveCourseParticipantEmail(participant);
+              return {
+                id: participant.id,
+                name: formatName(participant.first_name, participant.last_name, "Teilnehmer*in"),
+                email,
+                statusLabel: "Verbindlich angemeldet",
+                checkInLabel:
+                  ticketByTrialReservationId.get(participant.id)?.status === "checked_in"
+                    ? `Eingecheckt am ${formatDateTime(
+                        ticketByTrialReservationId.get(participant.id)?.checked_in_at ?? null
+                      )}`
+                    : ticketByTrialReservationId.get(participant.id)?.status === "issued"
+                      ? "Noch nicht eingecheckt"
+                      : "-",
+                meta: participant.converted_at
+                  ? `Anmeldung abgeschlossen am ${formatDateTime(participant.converted_at)}`
+                  : formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
+                mailHref: buildMailtoHref({
+                  to: email ? [email] : [],
+                  subject: buildParticipantMailSubject(data.title),
+                }),
+              };
+            }),
           attendedApproved: (trialParticipants ?? [])
             .filter((participant) => {
               const ticket = ticketByTrialReservationId.get(participant.id);
@@ -452,33 +502,47 @@ export default async function DashboardCourseDetailPage({
               const isConverted = participant.converted_at || intent?.status === "checkout_completed";
               return !isConverted && participant.decision_status === "approved" && ticket?.status === "checked_in";
             })
-            .map<CourseParticipantEntry>((participant) => ({
-              id: participant.id,
-              name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
-              email: participant.email,
-              statusLabel: "Freigegeben, noch nicht angemeldet",
-              checkInLabel: `Eingecheckt am ${formatDateTime(
-                ticketByTrialReservationId.get(participant.id)?.checked_in_at ?? null
-              )}`,
-              meta: participant.registration_expires_at
-                ? `Freigegeben bis ${formatDateTime(participant.registration_expires_at)}`
-                : formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
-            })),
+            .map<CourseParticipantEntry>((participant) => {
+              const email = resolveCourseParticipantEmail(participant);
+              return {
+                id: participant.id,
+                name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
+                email,
+                statusLabel: "Freigegeben, noch nicht angemeldet",
+                checkInLabel: `Eingecheckt am ${formatDateTime(
+                  ticketByTrialReservationId.get(participant.id)?.checked_in_at ?? null
+                )}`,
+                meta: participant.registration_expires_at
+                  ? `Freigegeben bis ${formatDateTime(participant.registration_expires_at)}`
+                  : formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
+                mailHref: buildMailtoHref({
+                  to: email ? [email] : [],
+                  subject: buildParticipantMailSubject(data.title),
+                }),
+              };
+            }),
           attendedPending: (trialParticipants ?? [])
             .filter((participant) => {
               const ticket = ticketByTrialReservationId.get(participant.id);
               return participant.decision_status === "pending" && ticket?.status === "checked_in";
             })
-            .map<CourseParticipantEntry>((participant) => ({
-              id: participant.id,
-              name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
-              email: participant.email,
-              statusLabel: "Teilgenommen, Entscheidung offen",
-              checkInLabel: `Eingecheckt am ${formatDateTime(
-                ticketByTrialReservationId.get(participant.id)?.checked_in_at ?? null
-              )}`,
-              meta: formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
-            })),
+            .map<CourseParticipantEntry>((participant) => {
+              const email = resolveCourseParticipantEmail(participant);
+              return {
+                id: participant.id,
+                name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
+                email,
+                statusLabel: "Teilgenommen, Entscheidung offen",
+                checkInLabel: `Eingecheckt am ${formatDateTime(
+                  ticketByTrialReservationId.get(participant.id)?.checked_in_at ?? null
+                )}`,
+                meta: formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
+                mailHref: buildMailtoHref({
+                  to: email ? [email] : [],
+                  subject: buildParticipantMailSubject(data.title),
+                }),
+              };
+            }),
           notYetAttended: (trialParticipants ?? [])
             .filter((participant) => {
               const ticket = ticketByTrialReservationId.get(participant.id);
@@ -486,17 +550,24 @@ export default async function DashboardCourseDetailPage({
               const isConverted = participant.converted_at || intent?.status === "checkout_completed";
               return !isConverted && ticket?.status !== "checked_in";
             })
-            .map<CourseParticipantEntry>((participant) => ({
-              id: participant.id,
-              name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
-              email: participant.email,
-              statusLabel: "Noch nicht teilgenommen",
-              checkInLabel:
-                ticketByTrialReservationId.get(participant.id)?.status === "issued"
-                  ? "Ticket ausgestellt, noch nicht eingecheckt"
-                  : "Noch nicht eingecheckt",
-              meta: formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
-            })),
+            .map<CourseParticipantEntry>((participant) => {
+              const email = resolveCourseParticipantEmail(participant);
+              return {
+                id: participant.id,
+                name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
+                email,
+                statusLabel: "Noch nicht teilgenommen",
+                checkInLabel:
+                  ticketByTrialReservationId.get(participant.id)?.status === "issued"
+                    ? "Ticket ausgestellt, noch nicht eingecheckt"
+                    : "Noch nicht eingecheckt",
+                meta: formatDateTimeRange(participant.trial_starts_at, participant.trial_ends_at),
+                mailHref: buildMailtoHref({
+                  to: email ? [email] : [],
+                  subject: buildParticipantMailSubject(data.title),
+                }),
+              };
+            }),
         }
       : null;
 
@@ -509,6 +580,7 @@ export default async function DashboardCourseDetailPage({
     data.kind === "workshop"
       ? (workshopBookings ?? []).map<WorkshopParticipantEntry>((booking) => {
           const ticket = workshopTicketByBookingId.get(booking.id);
+          const email = booking.customer_email ?? ticket?.customer_email ?? null;
           return {
             id: booking.id,
             name: formatName(
@@ -516,16 +588,35 @@ export default async function DashboardCourseDetailPage({
               booking.customer_last_name,
               ticket?.customer_name || "Workshop-Gast"
             ),
-            email: booking.customer_email ?? ticket?.customer_email ?? null,
+            email,
             statusLabel: booking.status === "paid" ? "Gebucht" : booking.status ?? "-",
             checkInLabel:
               ticket?.checked_in_at ?? booking.checked_in_at
                 ? `Eingecheckt am ${formatDateTime(ticket?.checked_in_at ?? booking.checked_in_at)}`
                 : "Noch nicht eingecheckt",
             meta: booking.created_at ? `Gebucht am ${formatDateTime(booking.created_at)}` : null,
+            mailHref: buildMailtoHref({
+              to: email ? [email] : [],
+              subject: buildParticipantMailSubject(data.title),
+            }),
           };
         })
       : [];
+
+  const offerRecipientEmails =
+    data.kind === "workshop"
+      ? normalizeEmailRecipients(workshopParticipants.map((entry) => entry.email))
+      : normalizeEmailRecipients([
+          ...(groupedCourseParticipants?.firmlyRegistered.map((entry) => entry.email) ?? []),
+          ...(groupedCourseParticipants?.attendedApproved.map((entry) => entry.email) ?? []),
+          ...(groupedCourseParticipants?.attendedPending.map((entry) => entry.email) ?? []),
+          ...(groupedCourseParticipants?.notYetAttended.map((entry) => entry.email) ?? []),
+        ]);
+  const contactMailHref = buildMailtoHref({
+    bcc: offerRecipientEmails,
+    subject: buildOfferMailSubject(data.kind, data.title),
+  });
+  const showOfferMailWarning = shouldWarnAboutLargeMailingGroup(offerRecipientEmails.length, contactMailHref);
 
   return (
     <main style={{ padding: 24, maxWidth: 820 }}>
@@ -546,11 +637,6 @@ export default async function DashboardCourseDetailPage({
       {savedParam === "play_started" ? (
         <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
           Angebot wurde aktiviert.
-        </p>
-      ) : null}
-      {savedParam === "copy_error" ? (
-        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Das Angebot konnte nicht kopiert werden.
         </p>
       ) : null}
       {savedParam === "missing_policy" ? (
@@ -617,11 +703,18 @@ export default async function DashboardCourseDetailPage({
         embedUrl={embedUrl}
         publicOfferEnabled={Boolean(publicOffer)}
         publishBlockedForMissingPolicy={publishBlockedForMissingPolicy}
+        contactMailHref={contactMailHref}
       />
 
       {normalizedStatus === "draft" && publishBlockedForMissingPolicy ? (
         <p className="mt-3 text-sm text-red-700">
           Dieses Angebot kann erst aktiviert werden, wenn die passende Stornierungs- bzw. Kuendigungsregel gesetzt ist.
+        </p>
+      ) : null}
+      {showOfferMailWarning ? (
+        <p className="mt-3 text-sm text-amber-700">
+          Bei sehr grossen Gruppen kann dein E-Mail-Programm die Empfaengerliste moeglicherweise
+          nicht vollstaendig uebernehmen.
         </p>
       ) : null}
 

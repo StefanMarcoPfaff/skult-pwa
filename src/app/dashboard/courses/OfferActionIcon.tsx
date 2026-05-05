@@ -4,13 +4,17 @@ export function OfferActionIcon(props: {
   title: string;
   label: string;
   className?: string;
+  disabled?: boolean;
   children: ReactNode;
 }) {
   return (
     <span
       title={props.title}
       aria-label={props.label}
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-full border bg-background transition ${props.className ?? "text-muted-foreground hover:text-foreground"}`}
+      aria-disabled={props.disabled ? "true" : undefined}
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition ${
+        props.className ?? "border-slate-200 bg-background text-muted-foreground hover:text-foreground"
+      } ${props.disabled ? "cursor-not-allowed" : ""}`}
     >
       {props.children}
     </span>

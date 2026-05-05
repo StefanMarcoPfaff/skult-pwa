@@ -2,20 +2,21 @@
 
 import type { ReactNode } from "react";
 import { useId, useRef, useState } from "react";
-import { getFirstDayOfNextMonthDate } from "@/lib/course-lifecycle-shared";
+import { useFormStatus } from "react-dom";
+import {
+  getFutureFirstOfMonthOptions,
+  getFutureMonthEndOptions,
+  getNextFirstOfMonthAfter,
+  getNextMonthEndDate,
+} from "@/lib/course-lifecycle-shared";
 
-function validateLastDayOfMonth(value: string): boolean {
-  if (!value) return false;
-  const parsed = new Date(`${value}T00:00:00Z`);
-  if (Number.isNaN(parsed.getTime())) return false;
-  return new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth() + 1, 0)).getUTCDate() === parsed.getUTCDate();
-}
-
-function validateFirstDayOfMonth(value: string): boolean {
-  if (!value) return false;
-  const parsed = new Date(`${value}T00:00:00Z`);
-  if (Number.isNaN(parsed.getTime())) return false;
-  return parsed.getUTCDate() === 1;
+function ModalSubmitButton(props: { label: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={pending} className="rounded-xl border px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50">
+      {pending ? "Speichert..." : props.label}
+    </button>
+  );
 }
 
 export function PauseCourseModal(props: {
@@ -31,13 +32,16 @@ export function PauseCourseModal(props: {
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  const [pauseStartDate, setPauseStartDate] = useState(
-    props.initialPauseStartDate || props.nextPossiblePauseDate
-  );
+  const defaultActiveUntilDate = props.initialPauseStartDate
+    ? getNextMonthEndDate(new Date(`${props.initialPauseStartDate}T00:00:00+01:00`))
+    : props.nextPossiblePauseDate;
+  const [activeUntilDate, setActiveUntilDate] = useState(defaultActiveUntilDate);
   const [pauseEndDate, setPauseEndDate] = useState(
-    props.initialPauseEndDate || getFirstDayOfNextMonthDate(props.initialPauseStartDate || props.nextPossiblePauseDate) || ""
+    props.initialPauseEndDate || getNextFirstOfMonthAfter(defaultActiveUntilDate) || ""
   );
-  const minimumResumeDate = getFirstDayOfNextMonthDate(pauseStartDate) || "";
+  const minimumResumeDate = getNextFirstOfMonthAfter(activeUntilDate) || "";
+  const monthEndOptions = getFutureMonthEndOptions(new Date(), 12);
+  const resumeOptions = getFutureFirstOfMonthOptions(activeUntilDate, 12);
 
   return (
     <>
@@ -56,55 +60,58 @@ export function PauseCourseModal(props: {
       <dialog ref={dialogRef} aria-labelledby={titleId} className="w-full max-w-lg rounded-2xl border p-0 backdrop:bg-black/30">
         <div className="space-y-4 p-6">
           <div className="space-y-2">
-            <h3 id={titleId} className="text-lg font-semibold">Kurspause planen</h3>
+            <h3 id={titleId} className="text-lg font-semibold">Moechtest du dieses Angebot pausieren?</h3>
             <p className="text-sm text-muted-foreground">
-              Naechstmoeglicher Pausenstart: {props.nextPossiblePauseDate}. Der Pausenstart muss immer am Monatsende liegen, das Wiederaufnahmedatum am Monatsersten.
+              Waehle, bis wann der Kurs noch laeuft, und ab wann er wieder startet. Pausen werden monatsweise geplant.
             </p>
           </div>
           <form action={props.action} className="space-y-4">
             <input type="hidden" name="course_id" value={props.courseId} />
             <input type="hidden" name="redirect_to" value={props.redirectTo} />
             <label className="block space-y-1 text-sm">
-              <span className="font-medium">Pausenstart</span>
+              <span className="font-medium">Kurs laeuft noch bis</span>
               <input
                 type="date"
-                name="pause_start_date"
+                name="active_until_date"
                 min={props.nextPossiblePauseDate}
-                value={pauseStartDate}
+                list={`course-pause-month-ends-${props.courseId}`}
+                value={activeUntilDate}
                 onChange={(event) => {
                   const nextValue = event.target.value;
-                  setPauseStartDate(nextValue);
-                  const nextResumeDate = getFirstDayOfNextMonthDate(nextValue) || "";
+                  setActiveUntilDate(nextValue);
+                  const nextResumeDate = getNextFirstOfMonthAfter(nextValue) || "";
                   if (!pauseEndDate || pauseEndDate < nextResumeDate) {
                     setPauseEndDate(nextResumeDate);
                   }
-                  event.target.setCustomValidity(
-                    validateLastDayOfMonth(nextValue) ? "" : "Das Pausendatum muss der letzte Tag eines Monats sein."
-                  );
                 }}
                 className="w-full rounded-xl border px-3 py-2"
                 required
               />
+              <datalist id={`course-pause-month-ends-${props.courseId}`}>
+                {monthEndOptions.map((option) => (
+                  <option key={option} value={option} />
+                ))}
+              </datalist>
             </label>
             <label className="block space-y-1 text-sm">
-              <span className="font-medium">Wiederaufnahme</span>
+              <span className="font-medium">Kurs startet wieder am</span>
               <input
                 type="date"
                 name="pause_end_date"
                 min={minimumResumeDate}
+                list={`course-pause-month-starts-${props.courseId}`}
                 value={pauseEndDate}
                 onChange={(event) => {
-                  const nextValue = event.target.value;
-                  setPauseEndDate(nextValue);
-                  const valid =
-                    validateFirstDayOfMonth(nextValue) && (!minimumResumeDate || nextValue >= minimumResumeDate);
-                  event.target.setCustomValidity(
-                    valid ? "" : "Das Wiederaufnahmedatum muss ein Monatserster nach dem Pausenstart sein."
-                  );
+                  setPauseEndDate(event.target.value);
                 }}
                 className="w-full rounded-xl border px-3 py-2"
                 required
               />
+              <datalist id={`course-pause-month-starts-${props.courseId}`}>
+                {resumeOptions.map((option) => (
+                  <option key={option} value={option} />
+                ))}
+              </datalist>
             </label>
             <div className="flex justify-end gap-3">
               <button
@@ -114,9 +121,7 @@ export function PauseCourseModal(props: {
               >
                 Abbrechen
               </button>
-              <button type="submit" className="rounded-xl border px-4 py-2 text-sm font-semibold">
-                Pause speichern
-              </button>
+              <ModalSubmitButton label="Pause speichern" />
             </div>
           </form>
         </div>
@@ -156,31 +161,33 @@ export function StopCourseModal(props: {
       <dialog ref={dialogRef} aria-labelledby={titleId} className="w-full max-w-lg rounded-2xl border p-0 backdrop:bg-black/30">
         <div className="space-y-4 p-6">
           <div className="space-y-2">
-            <h3 id={titleId} className="text-lg font-semibold">Kursstopp planen</h3>
+            <h3 id={titleId} className="text-lg font-semibold">Moechtest du dieses Angebot stoppen?</h3>
             <p className="text-sm text-muted-foreground">
-              Bitte waehle den letzten Tag eines Monats als Enddatum. Der Kurs wird sofort aus der Veroeffentlichung genommen.
+              Waehle den letzten Kurstag. Das Angebot wird danach nicht mehr oeffentlich buchbar sein.
             </p>
           </div>
           <form action={props.action} className="space-y-4">
             <input type="hidden" name="course_id" value={props.courseId} />
             <input type="hidden" name="redirect_to" value={props.redirectTo} />
             <label className="block space-y-1 text-sm">
-              <span className="font-medium">Enddatum</span>
+              <span className="font-medium">Letzter Kurstag</span>
               <input
                 type="date"
                 name="stop_date"
                 min={props.nextPossibleStopDate}
+                list={`course-stop-month-ends-${props.courseId}`}
                 value={stopDate}
                 onChange={(event) => {
-                  const nextValue = event.target.value;
-                  setStopDate(nextValue);
-                  event.target.setCustomValidity(
-                    validateLastDayOfMonth(nextValue) ? "" : "Das Enddatum muss der letzte Tag eines Monats sein."
-                  );
+                  setStopDate(event.target.value);
                 }}
                 className="w-full rounded-xl border px-3 py-2"
                 required
               />
+              <datalist id={`course-stop-month-ends-${props.courseId}`}>
+                {getFutureMonthEndOptions(new Date(), 12).map((option) => (
+                  <option key={option} value={option} />
+                ))}
+              </datalist>
             </label>
             <div className="flex justify-end gap-3">
               <button
@@ -190,9 +197,7 @@ export function StopCourseModal(props: {
               >
                 Abbrechen
               </button>
-              <button type="submit" className="rounded-xl border px-4 py-2 text-sm font-semibold">
-                Stopp speichern
-              </button>
+              <ModalSubmitButton label="Kurs stoppen" />
             </div>
           </form>
         </div>

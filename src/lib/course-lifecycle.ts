@@ -77,10 +77,57 @@ export async function runCourseLifecycleJob(referenceDate: Date = new Date()) {
     endedCount += 1;
   }
 
+  const { data: resumedParticipants, error: participantResumeError } = await admin
+    .from("course_registration_intents")
+    .update({
+      subscription_status: "active",
+      subscription_pause_start_date: null,
+      subscription_pause_end_date: null,
+    })
+    .in("subscription_status", ["pause_scheduled", "paused"])
+    .lte("subscription_pause_end_date", today)
+    .select("id");
+
+  if (participantResumeError) {
+    throw new Error(`participant resume transition failed: ${participantResumeError.message}`);
+  }
+
+  const { data: pausedParticipants, error: participantPauseError } = await admin
+    .from("course_registration_intents")
+    .update({
+      subscription_status: "paused",
+    })
+    .eq("subscription_status", "pause_scheduled")
+    .lte("subscription_pause_start_date", today)
+    .select("id");
+
+  if (participantPauseError) {
+    throw new Error(`participant pause transition failed: ${participantPauseError.message}`);
+  }
+
+  const { data: cancelledParticipants, error: participantCancelError } = await admin
+    .from("course_registration_intents")
+    .update({
+      subscription_status: "cancelled",
+      subscription_cancelled_at: new Date().toISOString(),
+      subscription_pause_start_date: null,
+      subscription_pause_end_date: null,
+    })
+    .eq("subscription_status", "cancel_scheduled")
+    .lte("subscription_stop_date", today)
+    .select("id");
+
+  if (participantCancelError) {
+    throw new Error(`participant cancellation transition failed: ${participantCancelError.message}`);
+  }
+
   return {
     processedDate: today,
     resumedCount: resumedCourses?.length ?? 0,
     pausedCount: pausedCourses?.length ?? 0,
     endedCount,
+    resumedParticipantsCount: resumedParticipants?.length ?? 0,
+    pausedParticipantsCount: pausedParticipants?.length ?? 0,
+    cancelledParticipantsCount: cancelledParticipants?.length ?? 0,
   };
 }
