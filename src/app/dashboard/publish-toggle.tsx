@@ -34,7 +34,7 @@ export default function PublishToggle({
         cursor: pending ? "not-allowed" : "pointer",
       }}
     >
-      {pending ? "â€¦" : isPublished ? "Verbergen" : "Veröffentlichen"}
+      {pending ? "?" : isPublished ? "Verbergen" : "Ver?ffentlichen"}
     </button>
   );
 }

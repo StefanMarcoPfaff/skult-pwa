@@ -205,17 +205,17 @@ function FlashMessages(props: { saved: string | null }) {
     <>
       {props.saved === "approved" ? (
         <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Der ProbeschÃƒÂ¼ler wurde fÃƒÂ¼r die Anmeldung freigegeben.
+          Der Probeschüler wurde für die Anmeldung freigegeben.
         </p>
       ) : null}
       {props.saved === "rejected" ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Der ProbeschÃƒÂ¼ler wurde freundlich abgesagt.
+          Der Probeschüler wurde freundlich abgesagt.
         </p>
       ) : null}
       {props.saved === "attendance_required" ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Eine Entscheidung ist erst mÃƒÂ¶glich, nachdem das Probestunden-Ticket eingecheckt wurde.
+          Eine Entscheidung ist erst möglich, nachdem das Probestunden-Ticket eingecheckt wurde.
         </p>
       ) : null}
       {props.saved === "cancelled" ? (
@@ -240,7 +240,7 @@ function FlashMessages(props: { saved: string | null }) {
       ) : null}
       {props.saved === "participant_cancel_scheduled" ? (
         <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Die KÃƒÂ¼ndigung wurde gespeichert.
+          Die Kündigung wurde gespeichert.
         </p>
       ) : null}
     </>
@@ -655,7 +655,7 @@ export default async function DashboardParticipantsPage({
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold">Teilnehmer*innen</h1>
         <p className="text-sm text-muted-foreground">
-          Hier siehst du Probestunden, verbindliche Anmeldungen, Workshop-Buchungen und Check-ins fÃƒÂ¼r deine Angebote.
+          Hier siehst du Probestunden, verbindliche Anmeldungen, Workshop-Buchungen und Check-ins für deine Angebote.
         </p>
       </header>
 

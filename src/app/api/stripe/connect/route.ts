@@ -68,11 +68,11 @@ function getUserFacingConnectErrorMessage(error: unknown): string {
     /no such account/i.test(message) ||
     /account.*not found/i.test(message)
   ) {
-    return "Das hinterlegte Stripe-Konto war nicht mehr gÃ¼ltig. Bitte starte das Stripe-Onboarding erneut.";
+    return "Das hinterlegte Stripe-Konto war nicht mehr g?ltig. Bitte starte das Stripe-Onboarding erneut.";
   }
 
   if (/return_url|refresh_url|url/i.test(message)) {
-    return "Stripe-Onboarding konnte wegen einer ungÃ¼ltigen RÃ¼ckleitungs-URL nicht gestartet werden.";
+    return "Stripe-Onboarding konnte wegen einer ung?ltigen R?ckleitungs-URL nicht gestartet werden.";
   }
 
   return "Stripe-Onboarding konnte derzeit nicht gestartet werden. Bitte versuche es erneut.";

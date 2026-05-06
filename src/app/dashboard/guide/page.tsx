@@ -17,12 +17,12 @@ function GuideSection(props: { title: string; items: Array<string | ReactNode> }
 export default function DashboardGuidePage() {
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-6">
-      <Link href="/dashboard" className="inline-flex text-sm font-semibold">{"Zur\u00fcck zum Dashboard"}</Link>
+      <Link href="/dashboard" className="inline-flex text-sm font-semibold">{"Zurück zum Dashboard"}</Link>
 
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold">Kurz-Anleitung</h1>
         <p className="max-w-3xl text-sm text-muted-foreground">
-          {"Ein schneller \u00dcberblick zu RESER, deinen Angeboten, Teilnehmenden, Check-ins und den wichtigsten Symbolen."}
+          {"Ein schneller Überblick zu RESER, deinen Angeboten, Teilnehmenden, Check-ins und den wichtigsten Symbolen."}
         </p>
       </header>
 
@@ -30,9 +30,9 @@ export default function DashboardGuidePage() {
         <GuideSection
           title="1. Erste Schritte"
           items={[
-            "Profil ausf\u00fcllen und Zahlungsdaten hinterlegen.",
-            "Angebot anlegen und alle Angaben kurz pr\u00fcfen.",
-            "Angebot ver\u00f6ffentlichen und den Link teilen.",
+            "Profil ausfüllen und Zahlungsdaten hinterlegen.",
+            "Angebot anlegen und alle Angaben kurz prüfen.",
+            "Angebot veröffentlichen und den Link teilen.",
           ]}
         />
         <GuideSection
@@ -45,24 +45,24 @@ export default function DashboardGuidePage() {
         <GuideSection
           title="3. Symbole bei Angeboten"
           items={[
-            <>? = {"ver\u00f6ffentlichen oder aktivieren."}</>,
-            <>? = Kurs pausieren.</>,
-            <>? = Kurs stoppen oder Workshop absagen.</>,
-            <>?? = bearbeiten.</>,
-            <>??? = Anwesenheit erfassen.</>,
-            <>?? = Teilnehmer*innen anschreiben.</>,
-            <>?? = Link oder Embed-Code kopieren.</>,
+            <>{"\u25B6"} = {"veröffentlichen oder aktivieren."}</>,
+            <>{"\u23F8"} = Kurs pausieren.</>,
+            <>{"\u23F9"} = Kurs stoppen oder Workshop absagen.</>,
+            <>{"\u270F\uFE0F"} = bearbeiten.</>,
+            <>{"\uD83C\uDF9F\uFE0F"} = Anwesenheit erfassen.</>,
+            <>{"\u2709\uFE0F"} = Teilnehmer*innen anschreiben.</>,
+            <>{"\uD83D\uDD17"} = Link oder Embed-Code kopieren.</>,
           ]}
         />
         <GuideSection
           title="4. Symbole bei Teilnehmenden"
           items={[
-            <>? = Probestunde freigeben oder aktive Teilnahme anzeigen.</>,
-            <>? = Teilnahme pausieren.</>,
-            <>? = {"ablehnen, k\u00fcndigen oder absagen."}</>,
-            <>?? = Daten bearbeiten.</>,
-            <>??? = Teilnehmer*in einchecken.</>,
-            <>?? = Person anschreiben.</>,
+            <>{"\u25B6"} = Probestunde freigeben oder aktive Teilnahme anzeigen.</>,
+            <>{"\u23F8"} = Teilnahme pausieren.</>,
+            <>{"\u23F9"} = {"ablehnen, kündigen oder absagen."}</>,
+            <>{"\u270F\uFE0F"} = Daten bearbeiten.</>,
+            <>{"\uD83C\uDF9F\uFE0F"} = Teilnehmer*in einchecken.</>,
+            <>{"\u2709\uFE0F"} = Person anschreiben.</>,
           ]}
         />
         <GuideSection
@@ -78,15 +78,15 @@ export default function DashboardGuidePage() {
           items={[
             "Workshops werden direkt bezahlt.",
             "Kurse laufen monatlich.",
-            "Kurs-Pausen und K\u00fcndigungen werden durch Dozent*innen gesteuert.",
+            "Kurs-Pausen und Kündigungen werden durch Dozent*innen gesteuert.",
           ]}
         />
         <GuideSection
           title="7. Teilen & Einbetten"
           items={[
-            "\u00d6ffentlichen Link nutzen.",
-            "Embed-Code f\u00fcr die eigene Website kopieren.",
-            "Teilen und Einbetten ist nur bei ver\u00f6ffentlichten Angeboten aktiv.",
+            "Öffentlichen Link nutzen.",
+            "Embed-Code für die eigene Website kopieren.",
+            "Teilen und Einbetten ist nur bei veröffentlichten Angeboten aktiv.",
           ]}
         />
       </section>

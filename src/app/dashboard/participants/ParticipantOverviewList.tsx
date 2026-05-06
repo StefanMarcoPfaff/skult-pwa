@@ -113,7 +113,7 @@ function getStatusBadge(status: ParticipantStatusSource, checkedInAt: string | n
   if (status.kind === "trial") {
     if (status.cancelledAt || status.decisionStatus === "rejected") {
       return {
-        label: "gekÃ¼ndigt / gestoppt",
+        label: "gek?ndigt / gestoppt",
         className: "border-red-200 bg-red-50 text-red-700",
       };
     }
@@ -148,7 +148,7 @@ function getStatusBadge(status: ParticipantStatusSource, checkedInAt: string | n
 
     if (status.subscriptionStatus === "cancel_scheduled" || status.subscriptionStatus === "cancelled") {
       return {
-        label: "gekÃ¼ndigt / gestoppt",
+        label: "gek?ndigt / gestoppt",
         className: "border-red-200 bg-red-50 text-red-700",
       };
     }
@@ -181,7 +181,7 @@ function getStatusBadge(status: ParticipantStatusSource, checkedInAt: string | n
   }
 
   return {
-    label: "gekÃ¼ndigt / gestoppt",
+        label: "gek?ndigt / gestoppt",
     className: "border-red-200 bg-red-50 text-red-700",
   };
 }
@@ -347,11 +347,11 @@ function CheckInAction(props: {
             <div className="grid gap-3">
               <Link href={resolvedCheckIn.scanHref} className="rounded-2xl border p-4 text-sm transition hover:border-foreground/30">
                 <p className="font-semibold">Teilnehmer-QR scannen</p>
-                <p className="mt-1 text-muted-foreground">Scanner fÃ¼r den passenden Termin Ã¶ffnen.</p>
+                <p className="mt-1 text-muted-foreground">Scanner f?r den passenden Termin ?ffnen.</p>
               </Link>
               <Link href={resolvedCheckIn.showHref} className="rounded-2xl border p-4 text-sm transition hover:border-foreground/30">
                 <p className="font-semibold">Termin-QR anzeigen</p>
-                <p className="mt-1 text-muted-foreground">Session-QR fÃ¼r Selbst-Check-in anzeigen.</p>
+                <p className="mt-1 text-muted-foreground">Session-QR f?r Selbst-Check-in anzeigen.</p>
               </Link>
               <button
                 type="button"
@@ -361,7 +361,7 @@ function CheckInAction(props: {
               >
                 <p className="font-semibold">{pending ? "Speichert..." : "Manuell einchecken"}</p>
                 <p className="mt-1 text-muted-foreground">
-                  FÃ¼r diese konkrete Person direkt als anwesend markieren.
+                  F?r diese konkrete Person direkt als anwesend markieren.
                 </p>
               </button>
             </div>
@@ -373,7 +373,7 @@ function CheckInAction(props: {
               className="rounded-xl border px-4 py-2 text-sm"
               onClick={() => dialogRef.current?.close()}
             >
-              SchlieÃŸen
+              Schlie?en
             </button>
           </div>
         </div>
@@ -502,7 +502,7 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
                   <MailActionLink
                     href={item.mailHref}
                     title="E-Mail"
-                    disabledHint="Keine E-Mail-Adresse fÃ¼r diese Person vorhanden"
+                    disabledHint="Keine E-Mail-Adresse f?r diese Person vorhanden"
                     showLabel={false}
                   />
                 </ActionItem>

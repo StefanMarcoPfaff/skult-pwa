@@ -525,7 +525,7 @@ export function prepareTeacherTrialReservationNotification(data: TrialReservatio
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
         ${locationLine}
         ${dateLine}
-        <p>Eine erfolgreiche Probestunde kann später in eine reguläre Anmeldung übergehen.</p>
+        <p>Eine erfolgreiche Probestunde kann sp?ter in eine regul?re Anmeldung ?bergehen.</p>
         ${footerHtml}
       </div>
     `,
@@ -535,7 +535,7 @@ export function prepareTeacherTrialReservationNotification(data: TrialReservatio
       `E-Mail: ${data.customerEmail}`,
       data.location ? `Ort: ${data.location}` : null,
       `Termin: ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}`,
-      "Hinweis: Diese Probestunde kann später in eine reguläre Anmeldung übergehen.",
+      "Hinweis: Diese Probestunde kann sp?ter in eine regul?re Anmeldung ?bergehen.",
       "",
       footerText,
     ]
@@ -961,10 +961,10 @@ export function prepareCourseEndingProviderSummaryEmail(data: CourseEndingProvid
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
         <h2>Kursstopp-Benachrichtigung versendet</h2>
-        <p>Die Benachrichtigung Ã¼ber das Kursende wurde an die betroffenen Teilnehmer versendet.</p>
+        <p>Die Benachrichtigung ?ber das Kursende wurde an die betroffenen Teilnehmer versendet.</p>
         <p><b>Kurs:</b> ${data.courseTitle}</p>
         <p><b>Letzter Kurstag:</b> ${endDate}</p>
-        <p><b>Anzahl EmpfÃ¤nger:</b> ${data.recipientCount}</p>
+        <p><b>Anzahl Empf?nger:</b> ${data.recipientCount}</p>
         ${
           maskedRecipients.length > 0
             ? `<div><p><b>Benachrichtigte E-Mail-Adressen:</b></p><ul>${maskedRecipients
@@ -977,10 +977,10 @@ export function prepareCourseEndingProviderSummaryEmail(data: CourseEndingProvid
     `,
     text: [
       "Kursstopp-Benachrichtigung versendet",
-      "Die Benachrichtigung Ã¼ber das Kursende wurde an die betroffenen Teilnehmer versendet.",
+      "Die Benachrichtigung ?ber das Kursende wurde an die betroffenen Teilnehmer versendet.",
       `Kurs: ${data.courseTitle}`,
       `Letzter Kurstag: ${endDate}`,
-      `Anzahl EmpfÃ¤nger: ${data.recipientCount}`,
+      `Anzahl Empf?nger: ${data.recipientCount}`,
       maskedRecipients.length > 0 ? "Benachrichtigte E-Mail-Adressen:" : "Benachrichtigte E-Mail-Adressen: Keine",
       ...maskedRecipients,
       "",
@@ -1000,7 +1000,7 @@ export function prepareTrialRegistrationRejectedEmail(data: TrialRegistrationDec
       infoItems: [{ label: "Kurs", value: data.courseTitle }],
       nextSteps: [
         "Nach dem Termin wurde entschieden, dass die aktuelle Gruppe im Moment leider nicht der richtige Rahmen ist.",
-        "Wenn es zu einem späteren Zeitpunkt besser passt, freuen wir uns sehr über ein Wiedersehen.",
+        "Wenn es zu einem sp?teren Zeitpunkt besser passt, freuen wir uns sehr ?ber ein Wiedersehen.",
       ],
       actions: [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
       footer: buildFooterBranding(data),
@@ -1012,7 +1012,7 @@ export function prepareTrialRegistrationRejectedEmail(data: TrialRegistrationDec
       infoItems: [{ label: "Kurs", value: data.courseTitle }],
       nextSteps: [
         "Nach dem Termin wurde entschieden, dass die aktuelle Gruppe im Moment leider nicht der richtige Rahmen ist.",
-        "Wenn es zu einem späteren Zeitpunkt besser passt, freuen wir uns sehr über ein Wiedersehen.",
+        "Wenn es zu einem sp?teren Zeitpunkt besser passt, freuen wir uns sehr ?ber ein Wiedersehen.",
       ],
       actions: [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
       footer: buildFooterBranding(data),

@@ -455,11 +455,11 @@ export default async function DashboardAttendancePage({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-2">
           <Link href="/dashboard" className="inline-flex text-sm font-medium underline underline-offset-4">
-            ZurÃƒÂ¼ck zum Dashboard
+            Zur?ck zum Dashboard
           </Link>
           <h1 className="text-3xl font-semibold">Anwesenheit & Check-ins</h1>
           <p className="text-sm text-muted-foreground">
-            Interne ÃƒÅ“bersicht ÃƒÂ¼ber Anwesenheiten, Check-in-Methode und nicht erfasste Teilnahmen.
+            Interne ?bersicht ?ber Anwesenheiten, Check-in-Methode und nicht erfasste Teilnahmen.
           </p>
         </div>
       </div>
@@ -537,7 +537,7 @@ export default async function DashboardAttendancePage({
               Filter anwenden
             </button>
             <Link href="/dashboard/attendance" className="rounded-xl border px-4 py-2 text-sm font-semibold">
-              Zurücksetzen
+              Zur?cksetzen
             </Link>
           </div>
         </form>
