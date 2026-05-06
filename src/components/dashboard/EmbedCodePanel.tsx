@@ -40,7 +40,7 @@ export function EmbedCodePanel({
   publicUrl,
   embedUrl,
   title = "Teilen & Einbetten",
-  description = "Oeffentlichen Link und Embed-Code fuer deine Website, Linktree oder andere Kanaele.",
+  description = "Öffentlichen Link und Embed-Code für deine Website, Linktree oder andere Kanäle.",
   className = "mt-8 rounded-2xl border p-5",
   footer,
 }: {
@@ -69,7 +69,7 @@ export function EmbedCodePanel({
 
       {!isEnabled ? (
         <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Einbetten ist erst moeglich, wenn dein Angebot veroeffentlicht und oeffentlich sichtbar ist.
+          Einbetten ist erst m?glich, wenn dein Angebot ver?ffentlicht und ?ffentlich sichtbar ist.
         </p>
       ) : null}
 
@@ -88,7 +88,7 @@ export function EmbedCodePanel({
                 rel="noreferrer"
                 className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
               >
-                Vorschau oeffnen
+                Vorschau ?ffnen
               </a>
             </div>
           ) : null}
@@ -108,7 +108,7 @@ export function EmbedCodePanel({
                 rel="noreferrer"
                 className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
               >
-                Embed-Vorschau oeffnen
+                Embed-Vorschau ?ffnen
               </a>
             </div>
           ) : null}

@@ -379,7 +379,7 @@ export default async function DashboardAttendancePage({
       if (!ticket) continue;
       candidates.push({
         ticketId: ticket.id,
-        participantName: formatName(reservation.first_name, reservation.last_name, ticket.customer_name || "Probeschueler*in"),
+        participantName: formatName(reservation.first_name, reservation.last_name, ticket.customer_name || "Probeschüler*in"),
         participantEmail: reservation.email ?? ticket.customer_email ?? null,
         kind: "trial",
         eventDate: event.eventDate,
@@ -455,11 +455,11 @@ export default async function DashboardAttendancePage({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-2">
           <Link href="/dashboard" className="inline-flex text-sm font-medium underline underline-offset-4">
-            Zurueck zum Dashboard
+            ZurÃƒÂ¼ck zum Dashboard
           </Link>
           <h1 className="text-3xl font-semibold">Anwesenheit & Check-ins</h1>
           <p className="text-sm text-muted-foreground">
-            Interne Uebersicht ueber Anwesenheiten, Check-in-Methode und nicht erfasste Teilnahmen.
+            Interne ÃƒÅ“bersicht ÃƒÂ¼ber Anwesenheiten, Check-in-Methode und nicht erfasste Teilnahmen.
           </p>
         </div>
       </div>
@@ -537,7 +537,7 @@ export default async function DashboardAttendancePage({
               Filter anwenden
             </button>
             <Link href="/dashboard/attendance" className="rounded-xl border px-4 py-2 text-sm font-semibold">
-              Zuruecksetzen
+              Zurücksetzen
             </Link>
           </div>
         </form>
@@ -546,7 +546,7 @@ export default async function DashboardAttendancePage({
       <section className="rounded-2xl border">
         <div className="flex items-center justify-between border-b px-5 py-4">
           <h2 className="text-lg font-semibold">Treffer</h2>
-          <span className="text-sm text-muted-foreground">{filteredRows.length} Eintraege</span>
+          <span className="text-sm text-muted-foreground">{filteredRows.length} Einträge</span>
         </div>
 
         {filteredRows.length === 0 ? (

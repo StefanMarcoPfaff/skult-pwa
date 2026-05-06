@@ -448,7 +448,7 @@ export default async function DashboardPage({
           <div className="space-y-2">
             <h1 className="text-4xl font-semibold tracking-tight">Dashboard</h1>
             <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-              Verwalte Angebote, Teilnehmende, Check-ins, Anwesenheiten und Einnahmen in einer klaren Uebersicht.
+              Verwalte Angebote, Teilnehmende, Check-ins, Anwesenheiten und Einnahmen in einer klaren Ãœbersicht.
             </p>
             <p className="text-sm text-muted-foreground">
               Eingeloggt als <span className="font-medium text-foreground">{user.email}</span>
@@ -485,7 +485,7 @@ export default async function DashboardPage({
           href="/dashboard/courses"
           title="Meine Angebote"
           description="Verwalte deine Kurse und Workshops und lege neue Angebote an."
-          footerLabel="Veroeffentlichte Angebote"
+          footerLabel="VerÃ¶ffentlichte Angebote"
           footerValue={String(publishedOffersCount)}
           tone="green"
           icon={
@@ -498,7 +498,7 @@ export default async function DashboardPage({
         <DashboardNavCard
           href="/dashboard/participants"
           title="Teilnehmende"
-          description="Hier siehst du, wer sich fuer deine Kurse und Workshops angemeldet hat."
+          description="Hier siehst du, wer sich fÃ¼r deine Kurse und Workshops angemeldet hat."
           footerLabel="Aktive Teilnehmende"
           footerValue={String(activeParticipantsCount)}
           tone="blue"
@@ -515,7 +515,7 @@ export default async function DashboardPage({
         <DashboardNavCard
           href="/dashboard/attendance"
           title="Anwesenheiten"
-          description="Uebersicht ueber Check-ins, Anwesenheiten und offene Teilnahmen."
+          description="Ãœbersicht Ã¼ber Check-ins, Anwesenheiten und offene Teilnahmen."
           footerLabel="Ausstehende Check-ins"
           footerValue={String(openCheckInsCount)}
           tone="orange"
@@ -531,7 +531,7 @@ export default async function DashboardPage({
         <DashboardNavCard
           href="/dashboard/revenue"
           title="Einnahmen"
-          description="Uebersicht ueber deine bisherigen Einnahmen und Umsaetze."
+          description="Ãœbersicht Ã¼ber deine bisherigen Einnahmen und UmsÃ¤tze."
           footerLabel="Einnahmen diesen Monat"
           footerValue={formatCurrency(currentMonthRevenueCents)}
           tone="neutral"
@@ -548,9 +548,9 @@ export default async function DashboardPage({
         <DashboardNavCard
           href="/dashboard/profile"
           title="Profil"
-          description="Bearbeite deine persoenlichen Angaben, Beschreibung und Auszahlungsdaten."
+          description="Bearbeite deine persÃ¶nlichen Angaben, Beschreibung und Auszahlungsdaten."
           footerLabel="Profilstatus"
-          footerValue={profileComplete ? "Profil vollstaendig" : "Profil unvollstaendig"}
+          footerValue={profileComplete ? "Profil vollstÃ¤ndig" : "Profil unvollstÃ¤ndig"}
           tone="neutral"
           icon={
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
@@ -563,7 +563,7 @@ export default async function DashboardPage({
         <DashboardNavCard
           href="/dashboard/guide"
           title="Kurz-Anleitung"
-          description="Hier findest du eine schnelle Erklaerung zu RESER, deinen Angeboten, Teilnehmenden, Check-ins und den wichtigsten Symbolen."
+          description="Hier findest du eine schnelle ErklÃ¤rung zu RESER, deinen Angeboten, Teilnehmenden, Check-ins und den wichtigsten Symbolen."
           footerLabel="Hilfe & Funktionen"
           footerValue="Anleitung"
           tone="neutral"

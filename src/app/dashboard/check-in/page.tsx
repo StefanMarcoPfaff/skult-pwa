@@ -233,11 +233,11 @@ function getResultHint(result: CheckInResult): string | null {
 
   if (result.state === "cancelled") return "Dieses Ticket wurde storniert und kann nicht mehr verwendet werden.";
   if (result.state === "expired") return "Dieses Ticket ist abgelaufen und kann nicht mehr verwendet werden.";
-  if (result.state === "invalid") return "Kein gueltiges Ticket fuer diesen Token gefunden.";
+  if (result.state === "invalid") return "Kein gültiges Ticket für diesen Token gefunden.";
   if (result.state === "attendance_checked_in") {
     return result.checkedInAt
-      ? `Anwesenheit fuer diesen Termin gespeichert am ${formatDateTime(result.checkedInAt)}.`
-      : "Anwesenheit fuer diesen Termin gespeichert.";
+      ? `Anwesenheit für diesen Termin gespeichert am ${formatDateTime(result.checkedInAt)}.`
+      : "Anwesenheit für diesen Termin gespeichert.";
   }
   if (result.checkedInAt) return `Check-in gespeichert am ${formatDateTime(result.checkedInAt)}.`;
   return null;
@@ -268,14 +268,14 @@ export default async function DashboardCheckInPage({
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       {returnTo ? (
         <Link href={returnTo} className="inline-flex text-sm font-semibold">
-          Zurueck zum Termin-Check-in
+          Zurück zum Termin-Check-in
         </Link>
       ) : null}
 
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold">Ticket-Check-in</h1>
         <p className="text-sm text-muted-foreground">
-          Scanne hier den QR-Code per Kamera oder pruefe den Token manuell als Fallback.
+          Scanne hier den QR-Code per Kamera oder prüfe den Token manuell als Fallback.
         </p>
       </header>
 
@@ -291,7 +291,7 @@ export default async function DashboardCheckInPage({
       <section className="rounded-2xl border p-4">
         <h2 className="text-base font-semibold">Manueller Fallback</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Wenn die Kamera auf diesem Geraet nicht verfuegbar ist, kannst du den Token hier manuell
+          Wenn die Kamera auf diesem Gerät nicht verfügbar ist, kannst du den Token hier manuell
           eingeben.
         </p>
         <form action="/dashboard/check-in" method="get" className="flex flex-col gap-3 sm:flex-row">
@@ -307,7 +307,7 @@ export default async function DashboardCheckInPage({
           {eventDate ? <input type="hidden" name="eventDate" value={eventDate} /> : null}
           {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
           <button type="submit" className="rounded-xl border px-4 py-3 text-sm font-semibold">
-            Ticket pruefen
+            Ticket prüfen
           </button>
         </form>
       </section>

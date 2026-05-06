@@ -230,22 +230,22 @@ export default async function DashboardRevenuePage({
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-6">
       <Link href="/dashboard" className="inline-flex text-sm font-semibold">
-        Zurueck zum Dashboard
+        ZurÃ¼ck zum Dashboard
       </Link>
 
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold">Einnahmen</h1>
         <p className="max-w-3xl text-sm text-muted-foreground">
-          Uebersicht ueber erfasste Umsaetze pro Angebot und Monat. Netto bedeutet hier aktuell:
-          Brutto minus RESER-Plattformgebuehr auf Basis der im System gespeicherten Kurs- und Workshoppreise.
+          Ãœbersicht Ã¼ber erfasste UmsÃ¤tze pro Angebot und Monat. Netto bedeutet hier aktuell:
+          Brutto minus RESER-PlattformgebÃ¼hr auf Basis der im System gespeicherten Kurs- und Workshoppreise.
         </p>
       </header>
 
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <p className="font-semibold">Datenstand</p>
         <p className="mt-1">
-          Wiederkehrende Stripe-Folgebuchungen, Stripe-Gebuehren, Transfer-Auszahlungen und Payout-Timing werden
-          aktuell noch nicht vollstaendig persistiert. Die Netto-Werte bilden deshalb bestaetigte Erstzahlungen und
+          Wiederkehrende Stripe-Folgebuchungen, Stripe-GebÃ¼hren, Transfer-Auszahlungen und Payout-Timing werden
+          aktuell noch nicht vollstÃ¤ndig persistiert. Die Netto-Werte bilden deshalb bestÃ¤tigte Erstzahlungen und
           bezahlte Workshop-Buchungen ab.
         </p>
       </div>
@@ -292,7 +292,7 @@ export default async function DashboardRevenuePage({
           <h2 className="text-xl font-semibold">Einnahmen pro Angebot</h2>
           <div className="mt-4 space-y-3">
             {offers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Fuer den aktuellen Filter wurden noch keine Einnahmen erfasst.</p>
+              <p className="text-sm text-muted-foreground">FÃ¼r den aktuellen Filter wurden noch keine Einnahmen erfasst.</p>
             ) : (
               offers.map(([courseId, offer]) => (
                 <article key={courseId} className="rounded-2xl border p-4">
@@ -310,8 +310,8 @@ export default async function DashboardRevenuePage({
                   </div>
                   <div className="mt-3 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
                     <p>Brutto: <span className="font-medium text-foreground">{formatCurrency(offer.grossCents)}</span></p>
-                    <p>Plattformgebuehr: <span className="font-medium text-foreground">{formatCurrency(offer.feeCents)}</span></p>
-                    <p>Angebot: <Link href={`/dashboard/courses/${courseId}`} className="font-medium text-foreground underline underline-offset-4">oeffnen</Link></p>
+                    <p>PlattformgebÃ¼hr: <span className="font-medium text-foreground">{formatCurrency(offer.feeCents)}</span></p>
+                    <p>Angebot: <Link href={`/dashboard/courses/${courseId}`} className="font-medium text-foreground underline underline-offset-4">Ã¶ffnen</Link></p>
                   </div>
                 </article>
               ))
@@ -331,7 +331,7 @@ export default async function DashboardRevenuePage({
                     <div>
                       <p className="font-semibold">{formatMonthLabel(monthKey)}</p>
                       <p className="text-sm text-muted-foreground">
-                        Brutto {formatCurrency(entry.grossCents)} | Gebuehr {formatCurrency(entry.feeCents)}
+                        Brutto {formatCurrency(entry.grossCents)} | GebÃ¼hr {formatCurrency(entry.feeCents)}
                       </p>
                     </div>
                     <p className="text-lg font-semibold">{formatCurrency(entry.payoutCents)}</p>

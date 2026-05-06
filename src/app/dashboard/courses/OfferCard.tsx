@@ -75,13 +75,13 @@ export function OfferCard(props: OfferCardProps) {
             <ConfirmIconAction
               action={setCoursePublishStateAction}
               fields={{ course_id: props.id, mode: "play", redirect_to: "/dashboard/courses" }}
-              title="Moechtest du dieses Angebot veroeffentlichen?"
-              text="Nach der Veroeffentlichung ist dein Angebot oeffentlich sichtbar und kann gebucht werden."
+              title="Möchtest du dieses Angebot veröffentlichen?"
+              text="Nach der Veröffentlichung ist dein Angebot öffentlich sichtbar und kann gebucht werden."
               cancelLabel="Nein, abbrechen"
-              confirmLabel="Ja, veroeffentlichen"
-              triggerLabel="veroeffentlichen / starten"
+              confirmLabel="Ja, veröffentlichen"
+              triggerLabel="veröffentlichen / starten"
               trigger={
-                <OfferActionIcon title="veroeffentlichen / starten" label="veroeffentlichen / starten" className={props.playIconClass}>
+                <OfferActionIcon title="veröffentlichen / starten" label="veröffentlichen / starten" className={props.playIconClass}>
                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                     <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10-6.86a1 1 0 0 0 0-1.72l-10-6.86a1 1 0 0 0-1.5.86Z" />
                   </svg>
@@ -91,8 +91,8 @@ export function OfferCard(props: OfferCardProps) {
           ) : (
             <span className="inline-flex">
               <OfferActionIcon
-                title="veroeffentlichen / starten"
-                label="veroeffentlichen / starten"
+                title="veröffentlichen / starten"
+                label="veröffentlichen / starten"
                 className={props.playIconClass}
                 disabled={true}
               >
@@ -159,7 +159,7 @@ export function OfferCard(props: OfferCardProps) {
           <MailActionLink
             href={props.mailHref}
             title="Teilnehmer*innen per E-Mail kontaktieren"
-            disabledHint="Keine E-Mail-Adressen fuer dieses Angebot vorhanden"
+            disabledHint="Keine E-Mail-Adressen für dieses Angebot vorhanden"
             showLabel={false}
           />
         </div>
@@ -180,8 +180,8 @@ export function OfferCard(props: OfferCardProps) {
         ) : null}
         {props.showMailWarning ? (
           <p className="text-amber-700">
-            Bei sehr grossen Gruppen kann dein E-Mail-Programm die Empfaengerliste moeglicherweise
-            nicht vollstaendig uebernehmen.
+            Bei sehr gro?en Gruppen kann dein E-Mail-Programm die Empf?ngerliste m?glicherweise
+            nicht vollst?ndig uebernehmen.
           </p>
         ) : null}
       </div>

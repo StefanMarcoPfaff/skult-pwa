@@ -68,8 +68,8 @@ export function TrialParticipantLifecycleButtons(props: {
           <ConfirmIconAction
             action={approveTrialReservationAction}
             fields={{ reservationId: props.reservationId, redirect_to: props.redirectTo }}
-            title="Teilnehmenden fuer Kurs freigeben?"
-            text="Der Teilnehmende erhaelt eine E-Mail mit dem Link zur verbindlichen Kursanmeldung."
+          title="Teilnehmenden fÃƒÂ¼r Kurs freigeben?"
+          text="Der Teilnehmende erhÃƒÂ¤lt eine E-Mail mit dem Link zur verbindlichen Kursanmeldung."
             cancelLabel="Nein, abbrechen"
             confirmLabel="Ja, freigeben"
             triggerLabel="freigeben"
@@ -100,7 +100,7 @@ export function TrialParticipantLifecycleButtons(props: {
             title={props.showApprovalAction ? "Teilnehmenden ablehnen?" : "Probestunde absagen?"}
             text={
               props.showApprovalAction
-                ? "Der Teilnehmende erhaelt eine freundliche Absage und kann andere Angebote auf RESER entdecken."
+              ? "Der Teilnehmende erhÃƒÂ¤lt eine freundliche Absage und kann andere Angebote auf RESER entdecken."
                 : "Die Probestunde wird storniert und die bestehende Absage-Mail wird versendet."
             }
             cancelLabel="Nein, abbrechen"
@@ -168,9 +168,9 @@ export function RegisteredParticipantLifecycleButtons(props: {
         )}
       </IconSlot>
 
-      <IconSlot label="Kündigen">
+      <IconSlot label="KÃƒÂ¼ndigen">
         {props.stopDisabled ? (
-          <DisabledAction title="Kündigen" className={props.stopClassName}>
+          <DisabledAction title="KÃƒÂ¼ndigen" className={props.stopClassName}>
             <StopGlyph />
           </DisabledAction>
         ) : (
@@ -179,9 +179,9 @@ export function RegisteredParticipantLifecycleButtons(props: {
             redirectTo={props.redirectTo}
             action={stopParticipantSubscriptionAction}
             defaultStopDate={props.defaultStopDate}
-            triggerTitle="kuendigen"
+            triggerTitle="kündigen"
             triggerContent={
-              <OfferActionIcon title="Kündigen" label="Kündigen" className={props.stopClassName}>
+              <OfferActionIcon title="KÃƒÂ¼ndigen" label="KÃƒÂ¼ndigen" className={props.stopClassName}>
                 <StopGlyph />
               </OfferActionIcon>
             }

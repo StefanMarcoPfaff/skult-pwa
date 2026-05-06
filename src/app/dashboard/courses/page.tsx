@@ -79,9 +79,9 @@ function formatCourseSchedule(weekday: number | null, startTime: string | null, 
     weekday !== null && Number.isInteger(weekday) && weekdayLabels[weekday] ? weekdayLabels[weekday] : null;
   const recurrenceLabel =
     recurrence === "weekly"
-      ? "woechentlich"
+      ? "wöchentlich"
       : recurrence === "biweekly"
-        ? "14-taegig"
+        ? "14-tägig"
         : recurrence === "monthly"
           ? "monatlich"
           : recurrence;
@@ -241,11 +241,11 @@ export default async function DashboardCoursesPage({
           <p className="mt-1 text-2xl font-semibold">{totalCount}</p>
         </div>
         <div className="rounded-2xl border p-4">
-          <p className="text-sm text-muted-foreground">Aktiv / veroeffentlicht</p>
+          <p className="text-sm text-muted-foreground">Aktiv / veröffentlicht</p>
           <p className="mt-1 text-2xl font-semibold">{activeCount}</p>
         </div>
         <div className="rounded-2xl border p-4">
-          <p className="text-sm text-muted-foreground">Entwuerfe / pausiert</p>
+          <p className="text-sm text-muted-foreground">Entwürfe / pausiert</p>
           <p className="mt-1 text-2xl font-semibold">{draftCount}</p>
         </div>
         <div className="rounded-2xl border p-4">
@@ -259,13 +259,13 @@ export default async function DashboardCoursesPage({
           { id: "all" as const, label: "Alle Angebote", count: totalCount, tone: "neutral" as const },
           {
             id: "active" as const,
-            label: "Aktive / veroeffentlichte Angebote",
+            label: "Aktive / veröffentlichte Angebote",
             count: activeCount,
             tone: "green" as const,
           },
           {
             id: "drafts" as const,
-            label: "Entwuerfe / pausierte Angebote",
+            label: "Entwürfe / pausierte Angebote",
             count: draftCount,
             tone: "orange" as const,
           },
@@ -321,7 +321,7 @@ export default async function DashboardCoursesPage({
 
       {savedParam === "missing_policy" ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Aktivieren nicht moeglich. Bitte hinterlege zuerst die Stornierungs- bzw. Kuendigungsbedingungen.
+          Aktivieren nicht möglich. Bitte hinterlege zuerst die Stornierungs- bzw. Kündigungsbedingungen.
         </p>
       ) : null}
 
@@ -338,7 +338,7 @@ export default async function DashboardCoursesPage({
             {selectedView === "active"
               ? "Aktuell gibt es keine aktiven Angebote."
               : selectedView === "drafts"
-                ? "Aktuell gibt es keine Entwuerfe oder pausierten Angebote."
+                ? "Aktuell gibt es keine Entwürfe oder pausierten Angebote."
                 : "Aktuell gibt es keine Angebote im Archiv."}
           </p>
         </section>
