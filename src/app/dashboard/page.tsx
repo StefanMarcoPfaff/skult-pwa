@@ -181,22 +181,6 @@ function isProfileComplete(profile: ProfileRow | null) {
   return true;
 }
 
-function DashboardStatCard(props: { label: string; value: string; tone?: "neutral" | "green" | "blue" }) {
-  const toneClass =
-    props.tone === "green"
-      ? "border-green-200 bg-green-50/70"
-      : props.tone === "blue"
-        ? "border-blue-200 bg-blue-50/70"
-        : "border-slate-200 bg-white";
-
-  return (
-    <div className={`rounded-2xl border p-4 ${toneClass}`}>
-      <p className="text-sm text-muted-foreground">{props.label}</p>
-      <p className="mt-1 text-2xl font-semibold">{props.value}</p>
-    </div>
-  );
-}
-
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -461,9 +445,6 @@ export default async function DashboardPage({
     <main className="mx-auto max-w-6xl space-y-8 p-6">
       <header className="flex flex-wrap items-start justify-between gap-5">
         <div className="space-y-3">
-          <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-slate-600">
-            Dozent*innen-Dashboard
-          </div>
           <div className="space-y-2">
             <h1 className="text-4xl font-semibold tracking-tight">Dashboard</h1>
             <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -478,18 +459,16 @@ export default async function DashboardPage({
         <div className="flex items-start gap-3">
           <Link
             href="/dashboard/check-in"
-            className="inline-flex min-w-20 flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center transition hover:border-foreground/20 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
+            className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-foreground transition hover:border-foreground/20 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
           >
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
-                <path d="M4 7h16" />
-                <path d="M7 4v6" />
-                <path d="M17 4v6" />
-                <rect x="4" y="6" width="16" height="14" rx="2" />
-                <path d="m9 14 2 2 4-4" />
-              </svg>
-            </span>
-            <span className="text-xs font-medium text-muted-foreground">Check-in</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+              <path d="M4 7h16" />
+              <path d="M7 4v6" />
+              <path d="M17 4v6" />
+              <rect x="4" y="6" width="16" height="14" rx="2" />
+              <path d="m9 14 2 2 4-4" />
+            </svg>
+            <span>Check-in</span>
           </Link>
           <LogoutButton />
         </div>
@@ -500,17 +479,6 @@ export default async function DashboardPage({
           Profil gespeichert.
         </p>
       ) : null}
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <DashboardStatCard label="Angebote gesamt" value={String(offerRows.length)} />
-        <DashboardStatCard label="Veroeffentlichte Angebote" value={String(publishedOffersCount)} tone="green" />
-        <DashboardStatCard
-          label="Profilstatus"
-          value={profileComplete ? "Profil vollstaendig" : "Profil unvollstaendig"}
-          tone="blue"
-        />
-        <DashboardStatCard label="Einnahmen diesen Monat" value={formatCurrency(currentMonthRevenueCents)} />
-      </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
         <DashboardNavCard
