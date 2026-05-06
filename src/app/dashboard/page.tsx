@@ -591,6 +591,22 @@ export default async function DashboardPage({
             </svg>
           }
         />
+
+        <DashboardNavCard
+          href="/dashboard/guide"
+          title="Kurz-Anleitung"
+          description="Hier findest du eine schnelle Erklaerung zu RESER, deinen Angeboten, Teilnehmenden, Check-ins und den wichtigsten Symbolen."
+          footerLabel="Hilfe & Funktionen"
+          footerValue="Anleitung"
+          tone="neutral"
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+              <circle cx="12" cy="12" r="8" />
+              <path d="M12 16v.01" />
+              <path d="M10.8 9.3a1.8 1.8 0 1 1 2.7 1.56c-.9.5-1.5.94-1.5 2.14" />
+            </svg>
+          }
+        />
       </section>
     </main>
   );

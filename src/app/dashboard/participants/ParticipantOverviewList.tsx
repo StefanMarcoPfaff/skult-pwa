@@ -206,6 +206,30 @@ function ActionZone(props: { children: ReactNode }) {
   );
 }
 
+function ActionItem(props: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex min-w-14 flex-col items-center gap-2 text-center">
+      {props.children}
+      <span className="text-[11px] font-medium leading-4 text-muted-foreground sm:hidden">{props.label}</span>
+    </div>
+  );
+}
+
+function EditAction(props: { href: string }) {
+  return (
+    <ActionItem label="Bearbeiten">
+      <Link href={props.href} className="inline-flex" title="Bearbeiten" aria-label="Bearbeiten">
+        <OfferActionIcon title="Bearbeiten" label="Bearbeiten">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+            <path d="m4 20 4.5-1 9-9a2.12 2.12 0 1 0-3-3l-9 9L4 20Z" />
+            <path d="M13.5 6.5 17.5 10.5" />
+          </svg>
+        </OfferActionIcon>
+      </Link>
+    </ActionItem>
+  );
+}
+
 function CheckInGlyph() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
@@ -283,14 +307,14 @@ function CheckInAction(props: {
           isDone ? "bereits eingecheckt" : !checkIn.enabled ? checkIn.disabledReason ?? "nicht eincheckbar" : "einchecken"
         }
         aria-label={
-          isDone ? "bereits eingecheckt" : !checkIn.enabled ? checkIn.disabledReason ?? "nicht eincheckbar" : "einchecken"
+          isDone ? "bereits eingecheckt" : !checkIn.enabled ? checkIn.disabledReason ?? "nicht eincheckbar" : "Einchecken"
         }
       >
         <OfferActionIcon
           title={
-            isDone ? "bereits eingecheckt" : !checkIn.enabled ? checkIn.disabledReason ?? "nicht eincheckbar" : "einchecken"
+            isDone ? "bereits eingecheckt" : !checkIn.enabled ? checkIn.disabledReason ?? "nicht eincheckbar" : "Einchecken"
           }
-          label="einchecken"
+          label="Einchecken"
           className={className}
           disabled={disabled}
         >
@@ -440,7 +464,7 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
             onClick={() => handleNavigate(item.detailHref)}
             onKeyDown={(event) => handleKeyDown(event, item.detailHref)}
           >
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.9fr)_auto] lg:items-center">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] lg:items-center">
               <div className="min-w-0 space-y-2">
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -466,21 +490,22 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
                 {item.decisionInfo ? <p>{item.decisionInfo}</p> : null}
               </div>
 
-              <div className="space-y-1 text-sm text-muted-foreground">
-                <p className="font-medium text-foreground">Aktionen</p>
-                <p>Zeile oder Karte oeffnet die Detailseite.</p>
-                <p>Icons rechts steuern Mail, Status und Check-in.</p>
-              </div>
-
               <ActionZone>
-                <MailActionLink
-                  href={item.mailHref}
-                  title="Teilnehmer*in per E-Mail kontaktieren"
-                  disabledHint="Keine E-Mail-Adresse fuer diese Person vorhanden"
-                  showLabel={false}
-                />
-                <CheckInAction item={item} checkedInAt={checkedInAt} onCheckedIn={handleCheckedIn} />
                 <LifecycleActions action={item.lifecycleAction} />
+                <EditAction href={item.detailHref} />
+                {item.checkIn ? (
+                  <ActionItem label="Einchecken">
+                    <CheckInAction item={item} checkedInAt={checkedInAt} onCheckedIn={handleCheckedIn} />
+                  </ActionItem>
+                ) : null}
+                <ActionItem label="E-Mail">
+                  <MailActionLink
+                    href={item.mailHref}
+                    title="E-Mail"
+                    disabledHint="Keine E-Mail-Adresse fuer diese Person vorhanden"
+                    showLabel={false}
+                  />
+                </ActionItem>
               </ActionZone>
             </div>
           </article>

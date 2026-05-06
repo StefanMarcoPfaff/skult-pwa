@@ -31,6 +31,15 @@ function StopGlyph() {
   );
 }
 
+function IconSlot(props: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex min-w-14 flex-col items-center gap-2 text-center">
+      {props.children}
+      <span className="text-[11px] font-medium leading-4 text-muted-foreground sm:hidden">{props.label}</span>
+    </div>
+  );
+}
+
 function DisabledAction(props: { title: string; className: string; children: ReactNode }) {
   return (
     <span className="inline-flex">
@@ -54,55 +63,65 @@ export function TrialParticipantLifecycleButtons(props: {
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {props.showApprovalAction && !props.playDisabled ? (
-        <ConfirmIconAction
-          action={approveTrialReservationAction}
-          fields={{ reservationId: props.reservationId, redirect_to: props.redirectTo }}
-          title="Teilnehmenden fuer Kurs freigeben?"
-          text="Der Teilnehmende erhaelt eine E-Mail mit dem Link zur verbindlichen Kursanmeldung."
-          cancelLabel="Nein, abbrechen"
-          confirmLabel="Ja, freigeben"
-          triggerLabel="freigeben"
-          trigger={
-            <OfferActionIcon title="freigeben" label="freigeben" className={props.playClassName}>
-              <PlayGlyph />
-            </OfferActionIcon>
-          }
-        />
-      ) : (
-        <DisabledAction title="freigeben" className={props.playClassName}>
-          <PlayGlyph />
-        </DisabledAction>
-      )}
+      <IconSlot label="Freigeben">
+        {props.showApprovalAction && !props.playDisabled ? (
+          <ConfirmIconAction
+            action={approveTrialReservationAction}
+            fields={{ reservationId: props.reservationId, redirect_to: props.redirectTo }}
+            title="Teilnehmenden fuer Kurs freigeben?"
+            text="Der Teilnehmende erhaelt eine E-Mail mit dem Link zur verbindlichen Kursanmeldung."
+            cancelLabel="Nein, abbrechen"
+            confirmLabel="Ja, freigeben"
+            triggerLabel="freigeben"
+            trigger={
+              <OfferActionIcon title="Freigeben" label="Freigeben" className={props.playClassName}>
+                <PlayGlyph />
+              </OfferActionIcon>
+            }
+          />
+        ) : (
+          <DisabledAction title="Freigeben" className={props.playClassName}>
+            <PlayGlyph />
+          </DisabledAction>
+        )}
+      </IconSlot>
 
-      <DisabledAction title="pausieren" className={props.pauseClassName}>
-        <PauseGlyph />
-      </DisabledAction>
-
-      {props.showCancellationAction && !props.stopDisabled ? (
-        <ConfirmIconAction
-          action={props.showApprovalAction ? rejectTrialReservationAction : cancelTrialReservationAction}
-          fields={{ reservationId: props.reservationId, redirect_to: props.redirectTo }}
-          title={props.showApprovalAction ? "Teilnehmenden ablehnen?" : "Probestunde absagen?"}
-          text={
-            props.showApprovalAction
-              ? "Der Teilnehmende erhaelt eine freundliche Absage und kann andere Angebote auf RESER entdecken."
-              : "Die Probestunde wird storniert und die bestehende Absage-Mail wird versendet."
-          }
-          cancelLabel="Nein, abbrechen"
-          confirmLabel={props.showApprovalAction ? "Ja, ablehnen" : "Ja, Probestunde absagen"}
-          triggerLabel={props.showApprovalAction ? "ablehnen" : "Probestunde absagen"}
-          trigger={
-            <OfferActionIcon title="stop" label="stop" className={props.stopClassName}>
-              <StopGlyph />
-            </OfferActionIcon>
-          }
-        />
-      ) : (
-        <DisabledAction title="stop" className={props.stopClassName}>
-          <StopGlyph />
+      <IconSlot label="Pausieren">
+        <DisabledAction title="Pausieren" className={props.pauseClassName}>
+          <PauseGlyph />
         </DisabledAction>
-      )}
+      </IconSlot>
+
+      <IconSlot label={props.showApprovalAction ? "Ablehnen" : "Absagen"}>
+        {props.showCancellationAction && !props.stopDisabled ? (
+          <ConfirmIconAction
+            action={props.showApprovalAction ? rejectTrialReservationAction : cancelTrialReservationAction}
+            fields={{ reservationId: props.reservationId, redirect_to: props.redirectTo }}
+            title={props.showApprovalAction ? "Teilnehmenden ablehnen?" : "Probestunde absagen?"}
+            text={
+              props.showApprovalAction
+                ? "Der Teilnehmende erhaelt eine freundliche Absage und kann andere Angebote auf RESER entdecken."
+                : "Die Probestunde wird storniert und die bestehende Absage-Mail wird versendet."
+            }
+            cancelLabel="Nein, abbrechen"
+            confirmLabel={props.showApprovalAction ? "Ja, ablehnen" : "Ja, Probestunde absagen"}
+            triggerLabel={props.showApprovalAction ? "ablehnen" : "Probestunde absagen"}
+            trigger={
+              <OfferActionIcon
+                title={props.showApprovalAction ? "Ablehnen" : "Absagen"}
+                label={props.showApprovalAction ? "Ablehnen" : "Absagen"}
+                className={props.stopClassName}
+              >
+                <StopGlyph />
+              </OfferActionIcon>
+            }
+          />
+        ) : (
+          <DisabledAction title={props.showApprovalAction ? "Ablehnen" : "Absagen"} className={props.stopClassName}>
+            <StopGlyph />
+          </DisabledAction>
+        )}
+      </IconSlot>
     </div>
   );
 }
@@ -121,48 +140,54 @@ export function RegisteredParticipantLifecycleButtons(props: {
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <DisabledAction title="aktiv" className={props.playClassName}>
-        <PlayGlyph />
-      </DisabledAction>
-
-      {props.pauseDisabled ? (
-        <DisabledAction title="pausieren" className={props.pauseClassName}>
-          <PauseGlyph />
+      <IconSlot label="Aktiv">
+        <DisabledAction title="Aktiv" className={props.playClassName}>
+          <PlayGlyph />
         </DisabledAction>
-      ) : (
-        <ParticipantPauseModal
-          reservationId={props.reservationId}
-          redirectTo={props.redirectTo}
-          action={pauseParticipantSubscriptionAction}
-          defaultActiveUntilDate={props.defaultActiveUntilDate}
-          defaultPauseEndDate={props.defaultPauseEndDate}
-          triggerTitle="pausieren"
-          triggerContent={
-            <OfferActionIcon title="pausieren" label="pausieren" className={props.pauseClassName}>
-              <PauseGlyph />
-            </OfferActionIcon>
-          }
-        />
-      )}
+      </IconSlot>
 
-      {props.stopDisabled ? (
-        <DisabledAction title="kuendigen" className={props.stopClassName}>
-          <StopGlyph />
-        </DisabledAction>
-      ) : (
-        <ParticipantStopModal
-          reservationId={props.reservationId}
-          redirectTo={props.redirectTo}
-          action={stopParticipantSubscriptionAction}
-          defaultStopDate={props.defaultStopDate}
-          triggerTitle="kuendigen"
-          triggerContent={
-            <OfferActionIcon title="kuendigen" label="kuendigen" className={props.stopClassName}>
-              <StopGlyph />
-            </OfferActionIcon>
-          }
-        />
-      )}
+      <IconSlot label="Pausieren">
+        {props.pauseDisabled ? (
+          <DisabledAction title="Pausieren" className={props.pauseClassName}>
+            <PauseGlyph />
+          </DisabledAction>
+        ) : (
+          <ParticipantPauseModal
+            reservationId={props.reservationId}
+            redirectTo={props.redirectTo}
+            action={pauseParticipantSubscriptionAction}
+            defaultActiveUntilDate={props.defaultActiveUntilDate}
+            defaultPauseEndDate={props.defaultPauseEndDate}
+            triggerTitle="pausieren"
+            triggerContent={
+              <OfferActionIcon title="Pausieren" label="Pausieren" className={props.pauseClassName}>
+                <PauseGlyph />
+              </OfferActionIcon>
+            }
+          />
+        )}
+      </IconSlot>
+
+      <IconSlot label="Kündigen">
+        {props.stopDisabled ? (
+          <DisabledAction title="Kündigen" className={props.stopClassName}>
+            <StopGlyph />
+          </DisabledAction>
+        ) : (
+          <ParticipantStopModal
+            reservationId={props.reservationId}
+            redirectTo={props.redirectTo}
+            action={stopParticipantSubscriptionAction}
+            defaultStopDate={props.defaultStopDate}
+            triggerTitle="kuendigen"
+            triggerContent={
+              <OfferActionIcon title="Kündigen" label="Kündigen" className={props.stopClassName}>
+                <StopGlyph />
+              </OfferActionIcon>
+            }
+          />
+        )}
+      </IconSlot>
     </div>
   );
 }
@@ -174,15 +199,21 @@ export function WorkshopParticipantLifecycleButtons(props: {
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <DisabledAction title="aktiv" className={props.playClassName}>
-        <PlayGlyph />
-      </DisabledAction>
-      <DisabledAction title="pausieren" className={props.pauseClassName}>
-        <PauseGlyph />
-      </DisabledAction>
-      <DisabledAction title="stop" className={props.stopClassName}>
-        <StopGlyph />
-      </DisabledAction>
+      <IconSlot label="Aktiv">
+        <DisabledAction title="Aktiv" className={props.playClassName}>
+          <PlayGlyph />
+        </DisabledAction>
+      </IconSlot>
+      <IconSlot label="Pausieren">
+        <DisabledAction title="Pausieren" className={props.pauseClassName}>
+          <PauseGlyph />
+        </DisabledAction>
+      </IconSlot>
+      <IconSlot label="Absagen">
+        <DisabledAction title="Absagen" className={props.stopClassName}>
+          <StopGlyph />
+        </DisabledAction>
+      </IconSlot>
     </div>
   );
 }
