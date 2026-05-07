@@ -240,7 +240,7 @@ export default async function DashboardCourseCheckInPage({
   let manualEntries: ManualAttendanceEntry[] = [];
 
   if (mode === "manual") {
-    if (course.kind === "workshop") {
+    if (course.kind === "workshop" || course.kind === "exclusive_offer") {
       const { data: bookings } = await admin
         .from("bookings")
         .select("id,customer_first_name,customer_last_name,customer_email,created_at")
@@ -278,10 +278,10 @@ export default async function DashboardCourseCheckInPage({
             name: formatName(
               booking.customer_first_name,
               booking.customer_last_name,
-              ticket.customer_name || "Workshop-Teilnehmer*in"
+              ticket.customer_name || "Teilnehmer*in"
             ),
             email: booking.customer_email ?? ticket.customer_email ?? null,
-            typeLabel: "Workshop-Buchung",
+            typeLabel: "Einmalangebot-Buchung",
             meta: booking.created_at ? `Gebucht am ${formatDateTime(booking.created_at)}` : null,
             legacyCheckedInAt: ticket.checked_in_at,
             attendanceCheckedInAt: attendanceMap.get(ticket.id)?.checked_in_at ?? null,
@@ -427,7 +427,7 @@ export default async function DashboardCourseCheckInPage({
             className={`rounded-2xl border p-4 text-sm ${mode === "scan" ? "border-foreground bg-muted" : ""}`}
           >
             <p className="font-semibold">Teilnehmer-QR scannen</p>
-            <p className="mt-2 text-muted-foreground">Dozent*in scannt das persoenliche Ticket vor Ort.</p>
+            <p className="mt-2 text-muted-foreground">Anbietende scannen das persönliche Ticket vor Ort.</p>
           </Link>
           <Link
             href={buildModeHref(basePath, selectedEvent, "show")}

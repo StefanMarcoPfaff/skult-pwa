@@ -8,6 +8,7 @@ import { OfferActionIcon, OfferActionItem } from "../OfferActionIcon";
 import { ShareEmbedDialog } from "../ShareEmbedDialog";
 import { DISABLED_OFFER_ACTION_ICON_CLASS, getDisplayStatus } from "../display-status";
 import {
+  archiveCourseAction,
   cancelWorkshopAction,
   scheduleCoursePauseAction,
   scheduleCourseStopAction,
@@ -27,9 +28,22 @@ type CourseDetailActionsProps = {
   publicUrl: string;
   embedUrl: string;
   publicOfferEnabled: boolean;
+  visibilityLabel: string;
   publishBlockedForMissingPolicy: boolean;
   contactMailHref: string | null;
+  archiveAllowed: boolean;
+  archiveReason: string;
 };
+
+function ArchiveGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M4 7h16" />
+      <path d="M6 7h12v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7Z" />
+      <path d="M9 7V5h6v2" />
+    </svg>
+  );
+}
 
 export function CourseDetailActions(props: CourseDetailActionsProps) {
   const displayState = getDisplayStatus({
@@ -47,19 +61,19 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
   return (
     <section className="mt-6 rounded-2xl border p-5">
       <div className="flex flex-wrap gap-4">
-        <OfferActionItem label="Play">
+        <OfferActionItem label="Start">
           {props.normalizedStatus === "draft" ? (
             <ConfirmIconAction
               action={setCoursePublishStateAction}
               fields={{ course_id: props.courseId, mode: "play" }}
-              title="Angebot veroeffentlichen?"
-              text="Moechtest du dieses Angebot jetzt veroeffentlichen? Danach ist es oeffentlich sichtbar und kann gebucht werden."
+              title="Angebot aktivieren?"
+              text={`Möchtest du dieses Angebot jetzt aktivieren? Danach ist es buchbar. Aktuelle Sichtbarkeit: ${props.visibilityLabel}.`}
               cancelLabel="Nein, abbrechen"
-              confirmLabel="Ja, veroeffentlichen"
+              confirmLabel="Ja, aktivieren"
               disabled={playActionDisabled}
-              triggerLabel="veroeffentlichen / starten"
+              triggerLabel="aktivieren / starten"
               trigger={
-                <OfferActionIcon title="veroeffentlichen / starten" label="veroeffentlichen / starten" className={playIconClassName} disabled={playActionDisabled}>
+                <OfferActionIcon title="aktivieren / starten" label="aktivieren / starten" className={playIconClassName} disabled={playActionDisabled}>
                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                     <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10-6.86a1 1 0 0 0 0-1.72l-10-6.86a1 1 0 0 0-1.5.86Z" />
                   </svg>
@@ -68,8 +82,8 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
             />
           ) : (
             <OfferActionIcon
-              title="veroeffentlicht / aktiv"
-              label="veroeffentlicht / aktiv"
+              title="aktiv / buchbar"
+              label="aktiv / buchbar"
               className={displayState.playClassName}
               disabled={true}
             >
@@ -124,11 +138,11 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
             <ConfirmIconAction
               action={cancelWorkshopAction}
               fields={{ course_id: props.courseId, redirect_to: props.redirectTo }}
-              title="Workshop absagen?"
-              text="Wenn du diesen Workshop absagst, wird er nicht mehr oeffentlich angezeigt. Bereits angemeldete Teilnehmer*innen erhalten eine Nachricht. Falls Zahlungen vorliegen, muessen Rueckerstattungen gemaess der bestehenden Refund-Logik ausgeloest werden."
+              title="Einmaliges Angebot absagen?"
+              text="Wenn du dieses einmalige Angebot absagst, wird es nicht mehr öffentlich angezeigt. Bereits angemeldete Teilnehmer*innen erhalten eine Nachricht. Falls Zahlungen vorliegen, müssen Rückerstattungen gemäß der bestehenden Refund-Logik ausgelöst werden."
               cancelLabel="Nein, abbrechen"
-              confirmLabel="Ja, Workshop absagen"
-              triggerLabel="workshop absagen"
+              confirmLabel="Ja, absagen"
+              triggerLabel="absagen"
               trigger={
                 <OfferActionIcon title="beenden" label="beenden" className={displayState.stopClassName}>
                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
@@ -142,6 +156,34 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
               <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                 <path d="M7 7.5A1.5 1.5 0 0 1 8.5 6h7A1.5 1.5 0 0 1 17 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 16.5v-9Z" />
               </svg>
+            </OfferActionIcon>
+          )}
+        </OfferActionItem>
+
+        <OfferActionItem label="Archiv">
+          {props.archiveAllowed ? (
+            <ConfirmIconAction
+              action={archiveCourseAction}
+              fields={{ course_id: props.courseId, redirect_to: props.redirectTo }}
+              title="Angebot archivieren?"
+              text="Das Angebot bleibt historisch erhalten und wird nur aus den aktiven Übersichten entfernt."
+              cancelLabel="Nein, abbrechen"
+              confirmLabel="Ja, archivieren"
+              triggerLabel="archivieren"
+              trigger={
+                <OfferActionIcon title="archivieren" label="archivieren">
+                  <ArchiveGlyph />
+                </OfferActionIcon>
+              }
+            />
+          ) : (
+            <OfferActionIcon
+              title={props.archiveReason}
+              label="archivieren"
+              className="border-slate-200 bg-slate-100 text-slate-400"
+              disabled={true}
+            >
+              <ArchiveGlyph />
             </OfferActionIcon>
           )}
         </OfferActionItem>
@@ -192,9 +234,8 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
           href={props.contactMailHref}
           label="E-Mail"
           title="Teilnehmer*innen per E-Mail kontaktieren"
-          disabledHint="Keine E-Mail-Adressen fuer dieses Angebot vorhanden"
+          disabledHint="Keine E-Mail-Adressen für dieses Angebot vorhanden"
         />
-
       </div>
     </section>
   );

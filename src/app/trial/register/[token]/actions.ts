@@ -162,10 +162,10 @@ export async function submitTrialRegistrationAction(
     (!isCourseOpenForNewRegistrations(course?.status, course?.ends_at ?? null) ||
       isCourseClosedForNewRegistrations(course?.ends_at ?? null))
   ) {
-    return { error: "Dieser Kurs nimmt keine neuen verbindlichen Anmeldungen mehr an." };
+    return { error: "Dieses laufende Angebot nimmt keine neuen verbindlichen Anmeldungen mehr an." };
   }
   if (existingIntent?.status !== "checkout_completed" && availability.isSoldOut) {
-    return { error: "Dieser Kurs ist aktuell ausgebucht." };
+    return { error: "Dieses laufende Angebot ist aktuell ausgebucht." };
   }
 
   if (existingIntent?.status === "checkout_completed") {

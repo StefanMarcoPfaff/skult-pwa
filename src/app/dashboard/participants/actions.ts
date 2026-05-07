@@ -1,7 +1,9 @@
 "use server";
 
 import { randomBytes } from "crypto";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getParticipantArchiveEligibility } from "@/app/dashboard/archive-rules";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -21,6 +23,7 @@ type ReservationMailRow = {
   decision_status: string | null;
   trial_ends_at: string | null;
   cancelled_at: string | null;
+  archived_at?: string | null;
 };
 
 type CourseMailRow = {
@@ -102,7 +105,7 @@ async function requireTeacher() {
 async function loadReservationContext(admin: ReturnType<typeof createSupabaseAdmin>, reservationId: string) {
   const { data: reservation, error: reservationError } = await admin
     .from("trial_reservations")
-    .select("id,course_id,first_name,last_name,email,status,decision_status,trial_ends_at,cancelled_at")
+    .select("id,course_id,first_name,last_name,email,status,decision_status,trial_ends_at,cancelled_at,archived_at")
     .eq("id", reservationId)
     .maybeSingle<ReservationMailRow>();
 
@@ -392,4 +395,142 @@ export async function cancelTrialReservationAction(formData: FormData) {
   }
 
   redirect(withSavedParam(redirectTo, "trial_cancelled"));
+}
+
+export async function archiveParticipantAction(formData: FormData) {
+  const participantId = String(formData.get("participant_id") ?? "").trim();
+  const source = String(formData.get("source") ?? "").trim();
+  const redirectTo = String(formData.get("redirect_to") ?? "").trim() || "/dashboard/participants";
+
+  if (!participantId || (source !== "trial" && source !== "registered" && source !== "workshop")) {
+    redirect(withSavedParam(redirectTo, "participant_archive_invalid"));
+  }
+
+  const user = await requireTeacher();
+  const admin = createSupabaseAdmin();
+  const archivedAt = new Date().toISOString();
+
+  if (source === "workshop") {
+    const { data: booking } = await admin
+      .from("bookings")
+      .select("id,course_id,status,checked_in_at,refunded_at,stripe_refund_id,archived_at")
+      .eq("id", participantId)
+      .maybeSingle<{
+        id: string;
+        course_id: string | null;
+        status: string | null;
+        checked_in_at: string | null;
+        refunded_at: string | null;
+        stripe_refund_id: string | null;
+        archived_at: string | null;
+      }>();
+
+    if (!booking?.course_id) {
+      redirect(withSavedParam(redirectTo, "participant_archive_invalid"));
+    }
+
+    const { data: course } = await admin
+      .from("courses")
+      .select("teacher_id")
+      .eq("id", booking.course_id)
+      .maybeSingle<{ teacher_id: string | null }>();
+
+    const eligibility = getParticipantArchiveEligibility({
+      source: "workshop",
+      archivedAt: booking.archived_at,
+      bookingStatus: booking.status,
+      checkedInAt: booking.checked_in_at,
+      refundedAt: booking.refunded_at,
+      stripeRefundId: booking.stripe_refund_id,
+    });
+
+    if (!course || course.teacher_id !== user.id || !eligibility.allowed) {
+      redirect(withSavedParam(redirectTo, "participant_archive_invalid"));
+    }
+
+    const { error } = await admin.from("bookings").update({ archived_at: archivedAt }).eq("id", booking.id);
+    if (error) {
+      redirect(withSavedParam(redirectTo, "participant_archive_error"));
+    }
+
+    revalidatePath("/dashboard/participants");
+    redirect(withSavedParam("/dashboard/participants", "participant_archived"));
+  }
+
+  const { ok, context } = await assertTeacherOwnsReservation(user.id, participantId);
+  if (!ok || !context) {
+    redirect(withSavedParam(redirectTo, "participant_archive_invalid"));
+  }
+
+  if (source === "trial") {
+    const checkedIn = await hasCheckedInTrialTicket(admin, participantId);
+    const { data: completedIntent } = await admin
+      .from("course_registration_intents")
+      .select("id,status")
+      .eq("trial_reservation_id", participantId)
+      .eq("status", "checkout_completed")
+      .maybeSingle<{ id: string; status: string | null }>();
+
+    const eligibility = getParticipantArchiveEligibility({
+      source: "trial",
+      archivedAt: context.reservation.archived_at ?? null,
+      decisionStatus: context.reservation.decision_status,
+      cancelledAt: context.reservation.cancelled_at,
+      checkedInAt: checkedIn ? new Date().toISOString() : null,
+      hasCompletedRegistration: Boolean(completedIntent),
+    });
+
+    if (!eligibility.allowed) {
+      redirect(withSavedParam(redirectTo, "participant_archive_invalid"));
+    }
+
+    const { error } = await admin.from("trial_reservations").update({ archived_at: archivedAt }).eq("id", participantId);
+    if (error) {
+      redirect(withSavedParam(redirectTo, "participant_archive_error"));
+    }
+
+    revalidatePath("/dashboard/participants");
+    redirect(withSavedParam("/dashboard/participants", "participant_archived"));
+  }
+
+  const { data: subscription } = await admin
+    .from("course_registration_intents")
+    .select("id,status,subscription_status,stripe_subscription_id,completed_at,archived_at")
+    .eq("trial_reservation_id", participantId)
+    .maybeSingle<{
+      id: string;
+      status: string | null;
+      subscription_status: string | null;
+      stripe_subscription_id: string | null;
+      completed_at: string | null;
+      archived_at: string | null;
+    }>();
+
+  const eligibility = getParticipantArchiveEligibility({
+    source: "registered",
+    archivedAt: subscription?.archived_at ?? null,
+    subscriptionStatus: subscription?.subscription_status ?? null,
+    stripeSubscriptionId: subscription?.stripe_subscription_id ?? null,
+    completedAt: subscription?.completed_at ?? null,
+  });
+
+  if (!subscription || subscription.status !== "checkout_completed" || !eligibility.allowed) {
+    redirect(withSavedParam(redirectTo, "participant_archive_invalid"));
+  }
+
+  const { error: reservationError } = await admin
+    .from("trial_reservations")
+    .update({ archived_at: archivedAt })
+    .eq("id", participantId);
+  const { error: intentError } = await admin
+    .from("course_registration_intents")
+    .update({ archived_at: archivedAt })
+    .eq("id", subscription.id);
+
+  if (reservationError || intentError) {
+    redirect(withSavedParam(redirectTo, "participant_archive_error"));
+  }
+
+  revalidatePath("/dashboard/participants");
+  redirect(withSavedParam("/dashboard/participants", "participant_archived"));
 }

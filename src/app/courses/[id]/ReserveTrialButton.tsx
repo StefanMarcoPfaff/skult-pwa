@@ -24,8 +24,8 @@ export default function ReserveTrialButton({
         <h3 className="font-semibold text-foreground">Hinweis zur Probestunde</h3>
         <p className="mt-2 text-muted-foreground">
           Die erste Probestunde ist kostenlos und unverbindlich. Nach der Buchung erhältst du dein
-          Ticket per E-Mail. Dieses wird vor Ort vom Dozenten gescannt. Nach der Probestunde kann
-          der Dozent dir die verbindliche Anmeldung freigeben. Den Anmeldelink erhältst du
+          Ticket per E-Mail. Dieses wird vor Ort gescannt. Nach dem Probetermin kann
+          die Leitung dir die verbindliche Anmeldung freigeben. Den Anmeldelink erhältst du
           anschließend per E-Mail.
         </p>
       </section>

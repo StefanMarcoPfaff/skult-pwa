@@ -179,7 +179,7 @@ export async function finalizeWorkshopBookingBySession(
   const customerName =
     [booking.customer_first_name, booking.customer_last_name].filter(Boolean).join(" ").trim() ||
     stripeName ||
-    "Workshop-Gast";
+    "Gast";
   const customerEmail = booking.customer_email?.trim() || stripeEmail;
 
   await admin
@@ -245,7 +245,7 @@ export async function finalizeWorkshopBookingBySession(
 
       const result = await sendWorkshopCustomerBookingConfirmationEmail({
         bookingId: booking.id,
-        workshopTitle: course?.title ?? "Workshop",
+        workshopTitle: course?.title ?? "Angebot",
         providerType: providerContact.providerType,
         providerName: providerContact.providerName,
         teacherName: course?.instructor_name ?? null,
@@ -332,7 +332,7 @@ export async function finalizeWorkshopBookingBySession(
 
         const result = await sendWorkshopBookingNotificationEmail({
           bookingId: booking.id,
-          workshopTitle: course?.title ?? "Workshop",
+          workshopTitle: course?.title ?? "Angebot",
           providerType: providerContact.providerType,
           providerName: providerContact.providerName,
           teacherName: providerContact.providerContactName,
@@ -394,7 +394,7 @@ export async function finalizeWorkshopBookingBySession(
     status: "paid",
     attendeeKey: booking.attendee_key,
     ticket,
-    workshopTitle: course?.title ?? "Workshop",
+    workshopTitle: course?.title ?? "Angebot",
     customerName,
     customerEmail,
     location: course?.location ?? null,

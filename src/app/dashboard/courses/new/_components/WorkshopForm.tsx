@@ -32,7 +32,11 @@ export type WorkshopFormValues = {
   instructor_name?: string;
   workshop_storno_policy?: WorkshopStornoPolicy;
   sessions?: Array<{ starts_at: string; ends_at: string }>;
+  visibility?: "public" | "private_link";
+  internal_note?: string;
 };
+
+type SinglePaymentOfferKind = "workshop" | "exclusive_offer";
 
 function createEmptySession(): SessionInput {
   return {
@@ -64,19 +68,22 @@ function formatCurrency(cents: number, currency: string): string {
 export default function WorkshopForm({
   initialValues,
   submitActionOverride,
-  submitLabel = "Workshop erstellen",
+  submitLabel = "Einmaliges Angebot erstellen",
   providerType,
   providerDisplayName,
+  offerKind = "workshop",
 }: {
   initialValues?: WorkshopFormValues;
   submitActionOverride?: (formData: FormData) => Promise<{ error?: string; redirectTo?: string } | void>;
   submitLabel?: string;
   providerType: ProviderType;
   providerDisplayName: string;
+  offerKind?: SinglePaymentOfferKind;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const workshopCurrency = getWorkshopCheckoutCurrency();
+  const isExclusiveOffer = offerKind === "exclusive_offer";
   const [error, setError] = useState<string | null>(null);
   const [priceEur, setPriceEur] = useState(initialValues?.price_eur ?? "");
   const [currency] = useState(workshopCurrency);
@@ -140,7 +147,7 @@ export default function WorkshopForm({
     }
 
     if (providerType === "studio_provider" && !instructorName) {
-      setError("Bitte gib den Dozenten fuer diesen Workshop an.");
+      setError("Bitte gib die Leitung fuer dieses einmalige Angebot an.");
       return;
     }
 
@@ -191,7 +198,7 @@ export default function WorkshopForm({
             setTimeout(
               () =>
                 resolve({
-                  error: "Das Speichern des Workshops dauert zu lange. Bitte versuche es erneut.",
+                  error: "Das Speichern des einmaligen Angebots dauert zu lange. Bitte versuche es erneut.",
                 }),
               25000
             )
@@ -211,13 +218,14 @@ export default function WorkshopForm({
         console.error("[workshop-form] submit failed", {
           message: submitError instanceof Error ? submitError.message : String(submitError),
         });
-        setError("Beim Speichern des Workshops ist ein Fehler aufgetreten. Bitte versuche es erneut.");
+        setError("Beim Speichern des einmaligen Angebots ist ein Fehler aufgetreten. Bitte versuche es erneut.");
       }
     });
   };
 
   return (
     <form action={submitAction} className="space-y-4">
+      <input type="hidden" name="offer_kind" value={offerKind} readOnly />
       <input type="hidden" name="sessions_json" value={JSON.stringify(sessionsAsISO)} readOnly />
       <input type="hidden" name="price_cents" value={priceCentsOrEmpty} readOnly />
 
@@ -239,7 +247,7 @@ export default function WorkshopForm({
             name="location"
             defaultValue={initialValues?.location ?? ""}
             className="w-full rounded-xl border px-3 py-2 text-sm"
-            placeholder="z. B. Studio Mitte"
+            placeholder="z. B. Treffpunkt Innenstadt"
           />
         </label>
       </div>
@@ -261,8 +269,36 @@ export default function WorkshopForm({
           rows={4}
           defaultValue={initialValues?.description ?? ""}
           className="w-full rounded-xl border px-3 py-2 text-sm"
-          placeholder="Kurzbeschreibung fuer die Angebotsseite."
+          placeholder={isExclusiveOffer ? "Kurzbeschreibung fuer die individuelle Buchungsseite." : "Kurzbeschreibung fuer die Angebotsseite."}
         />
+      </label>
+
+      {isExclusiveOffer ? (
+        <label className="block space-y-1">
+          <span className="text-sm font-medium">Interne Notiz</span>
+          <textarea
+            name="internal_note"
+            rows={3}
+            defaultValue={initialValues?.internal_note ?? ""}
+            className="w-full rounded-xl border px-3 py-2 text-sm"
+            placeholder="Nur intern sichtbar, z. B. Anlass, Konditionen oder Kund*innen-Kontext."
+          />
+        </label>
+      ) : null}
+
+      <label className="block space-y-1">
+        <span className="text-sm font-medium">Sichtbarkeit *</span>
+        <select
+          name="visibility"
+          defaultValue={initialValues?.visibility ?? (isExclusiveOffer ? "private_link" : "public")}
+          className="w-full rounded-xl border px-3 py-2 text-sm"
+        >
+          <option value="public">Öffentlich sichtbar</option>
+          <option value="private_link">Nur per Link sichtbar</option>
+        </select>
+        <span className="block text-xs text-muted-foreground">
+          Aktiv bedeutet buchbar. Sichtbarkeit steuert nur, ob das Angebot öffentlich gelistet wird oder nur über den direkten Link erreichbar ist.
+        </span>
       </label>
 
       {providerType === "studio_provider" ? (
@@ -277,19 +313,19 @@ export default function WorkshopForm({
           </label>
 
           <label className="space-y-1">
-            <span className="text-sm font-medium">Dozent: *</span>
+            <span className="text-sm font-medium">Leitung: *</span>
             <input
               name="instructor_name"
               required
               defaultValue={initialValues?.instructor_name ?? ""}
               className="w-full rounded-xl border px-3 py-2 text-sm"
-              placeholder="Name der Workshopleitung"
+              placeholder={isExclusiveOffer ? "Name der Ansprechperson oder Leitung" : "Name der Leitung"}
             />
           </label>
         </div>
       ) : (
         <label className="block space-y-1">
-          <span className="text-sm font-medium">Dozent:</span>
+          <span className="text-sm font-medium">Leitung:</span>
           <input
             name="instructor_name"
             value={providerDisplayName}
@@ -321,16 +357,20 @@ export default function WorkshopForm({
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <span className="text-sm font-medium">Termine *</span>
-            <p className="text-xs text-muted-foreground">Jeder Termin benoetigt Start- und Endzeit.</p>
+            <span className="text-sm font-medium">{isExclusiveOffer ? "Termin / Zeitraum *" : "Termine *"}</span>
+            <p className="text-xs text-muted-foreground">
+              {isExclusiveOffer ? "Lege Start und Ende fuer den exklusiven Termin fest." : "Jeder Termin benoetigt Start- und Endzeit."}
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setSessions((prev) => [...prev, createEmptySession()])}
-            className="rounded-lg border px-3 py-1 text-xs font-semibold"
-          >
-            Termin hinzufuegen
-          </button>
+          {!isExclusiveOffer ? (
+            <button
+              type="button"
+              onClick={() => setSessions((prev) => [...prev, createEmptySession()])}
+              className="rounded-lg border px-3 py-1 text-xs font-semibold"
+            >
+              Termin hinzufuegen
+            </button>
+          ) : null}
         </div>
 
         <div className="space-y-3">
@@ -340,16 +380,18 @@ export default function WorkshopForm({
               <div key={session.id} className="space-y-2 rounded-xl border p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs font-semibold text-muted-foreground">Termin {index + 1}</p>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSessions((prev) => prev.filter((item) => item.id !== session.id))
-                    }
-                    disabled={sessions.length === 1}
-                    className="text-xs font-semibold text-red-600 disabled:opacity-40"
-                  >
-                    Entfernen
-                  </button>
+                  {!isExclusiveOffer ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSessions((prev) => prev.filter((item) => item.id !== session.id))
+                      }
+                      disabled={sessions.length === 1}
+                      className="text-xs font-semibold text-red-600 disabled:opacity-40"
+                    >
+                      Entfernen
+                    </button>
+                  ) : null}
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -396,7 +438,7 @@ export default function WorkshopForm({
       </div>
 
       <label className="space-y-1">
-        <span className="text-sm font-medium">Kapazitaet (maximale Personenanzahl)</span>
+        <span className="text-sm font-medium">Maximale Teilnehmerzahl</span>
         <input
           type="number"
           name="capacity"
@@ -409,7 +451,7 @@ export default function WorkshopForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-1">
-          <span className="text-sm font-medium">Preis pro Person (EUR)</span>
+          <span className="text-sm font-medium">{isExclusiveOffer ? "Preis (EUR)" : "Preis pro Person (EUR)"}</span>
           <input
             type="number"
             name="price_eur"
@@ -438,7 +480,7 @@ export default function WorkshopForm({
         <p className="font-medium">Preisaufteilung</p>
         <div className="mt-3 space-y-1 text-muted-foreground">
           <div className="flex items-center justify-between gap-4">
-            <span>Workshoppreis pro Kunde</span>
+            <span>{isExclusiveOffer ? "Angebotspreis" : "Preis pro Person"}</span>
             <span>{formatCurrency(priceBreakdown.grossCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
@@ -457,7 +499,7 @@ export default function WorkshopForm({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Workshop-Checkout ist aktuell nur in {workshopCurrency} aktiviert.
+        Checkout fuer Einmalangebote ist aktuell nur in {workshopCurrency} aktiviert.
       </p>
 
       {error ? (

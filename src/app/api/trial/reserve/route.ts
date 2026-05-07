@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { isPubliclyVisibleOffer } from "@/lib/public-offer-visibility";
+import { isDirectlyAccessibleOffer } from "@/lib/public-offer-visibility";
 import { sendResendEmail } from "@/lib/resend";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -15,36 +15,37 @@ export async function POST(req: Request) {
     const admin = createSupabaseAdmin();
     const { data: course, error: courseErr } = await admin
       .from("courses")
-      .select("id, kind, title, location, starts_at, ends_at, is_published, status")
+      .select("id, kind, title, location, starts_at, ends_at, is_published, status, visibility")
       .eq("id", courseId)
       .single();
 
     if (courseErr || !course) {
-      return NextResponse.json({ ok: false, error: "Kurs nicht gefunden" }, { status: 404 });
+      return NextResponse.json({ ok: false, error: "Laufendes Angebot nicht gefunden" }, { status: 404 });
     }
     if (!course.is_published) {
-      return NextResponse.json({ ok: false, error: "Kurs ist nicht veroeffentlicht" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Das laufende Angebot ist nicht veroeffentlicht" }, { status: 400 });
     }
     if (course.kind !== "course") {
-      return NextResponse.json({ ok: false, error: "Nur fuer Kurse (Probestunde)" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Nur fuer laufende Angebote mit Probetermin" }, { status: 400 });
     }
     if (
-      !isPubliclyVisibleOffer({
+      !isDirectlyAccessibleOffer({
         kind: course.kind,
         status: course.status,
         isPublished: course.is_published,
+        visibility: course.visibility,
         startsAt: course.starts_at,
         endsAt: course.ends_at,
       })
     ) {
       return NextResponse.json(
-        { ok: false, error: "Dieser Kurs ist oeffentlich nicht mehr verfuegbar." },
+        { ok: false, error: "Dieses Angebot ist nicht mehr direkt buchbar." },
         { status: 404 }
       );
     }
     if (!course.starts_at) {
       return NextResponse.json(
-        { ok: false, error: "Fuer V1 braucht der Kurs ein Startdatum (Probestunde-Termin)." },
+        { ok: false, error: "Fuer V1 braucht das laufende Angebot ein Startdatum (Probetermin)." },
         { status: 400 }
       );
     }
@@ -82,7 +83,7 @@ export async function POST(req: Request) {
           <p>Hier ist dein Ticket (QR-Code):</p>
           <p><a href="${ticketUrl}">${ticketUrl}</a></p>
           <p style="margin-top: 18px;">
-            Wichtig: Bitte zeige das Ticket bei der Probestunde vor (Dozent*in scannt den QR-Code).
+            Wichtig: Bitte zeige das Ticket beim Probetermin vor.
           </p>
           <p>Liebe Gruesse<br/>RESER</p>
         </div>

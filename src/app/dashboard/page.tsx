@@ -484,8 +484,8 @@ export default async function DashboardPage({
         <DashboardNavCard
           href="/dashboard/courses"
           title="Meine Angebote"
-          description="Verwalte deine Kurse und Workshops und lege neue Angebote an."
-          footerLabel="Veröffentlichte Angebote"
+          description="Verwalte deine laufenden und einmaligen Angebote und lege neue Angebote an."
+          footerLabel="Aktive Angebote"
           footerValue={String(publishedOffersCount)}
           tone="green"
           icon={
@@ -498,7 +498,7 @@ export default async function DashboardPage({
         <DashboardNavCard
           href="/dashboard/participants"
           title="Teilnehmende"
-          description="Hier siehst du, wer sich für deine Kurse und Workshops angemeldet hat."
+          description="Hier siehst du, wer sich für deine Angebote angemeldet hat."
           footerLabel="Aktive Teilnehmende"
           footerValue={String(activeParticipantsCount)}
           tone="blue"

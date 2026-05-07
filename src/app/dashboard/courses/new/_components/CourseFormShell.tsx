@@ -38,7 +38,7 @@ export default async function CourseFormShell() {
     <div className="space-y-4 rounded-2xl border p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold">Kurs anlegen</h2>
+          <h2 className="text-lg font-semibold">Laufendes Angebot anlegen</h2>
           <p className="text-sm text-muted-foreground">
             Wiederkehrendes Angebot mit Wochentag, Uhrzeit und Rhythmus. Der erste Termin
             wird automatisch berechnet.

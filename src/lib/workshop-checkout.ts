@@ -21,8 +21,8 @@ export function getWorkshopCheckoutCurrencyError(value: string | null | undefine
   const normalized = normalizeCurrencyCode(value);
 
   if (!normalized) {
-    return "Dieser Workshop hat keine gültige Währung hinterlegt und ist aktuell nicht checkout-fähig.";
+    return "Dieses einmalige Angebot hat keine gültige Währung hinterlegt und ist aktuell nicht checkout-fähig.";
   }
 
-  return `Dieser Workshop ist aktuell nur für Zahlungen in EUR checkout-fähig. Hinterlegt ist derzeit ${normalized}.`;
+  return `Dieses einmalige Angebot ist aktuell nur für Zahlungen in EUR checkout-fähig. Hinterlegt ist derzeit ${normalized}.`;
 }

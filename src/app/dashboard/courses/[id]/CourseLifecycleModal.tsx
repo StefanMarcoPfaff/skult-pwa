@@ -62,14 +62,14 @@ export function PauseCourseModal(props: {
           <div className="space-y-2">
             <h3 id={titleId} className="text-lg font-semibold">Moechtest du dieses Angebot pausieren?</h3>
             <p className="text-sm text-muted-foreground">
-              Waehle, bis wann der Kurs noch laeuft, und ab wann er wieder startet. Pausen werden monatsweise geplant.
+              Waehle, bis wann das laufende Angebot noch laeuft, und ab wann es wieder startet. Pausen werden monatsweise geplant.
             </p>
           </div>
           <form action={props.action} className="space-y-4">
             <input type="hidden" name="course_id" value={props.courseId} />
             <input type="hidden" name="redirect_to" value={props.redirectTo} />
             <label className="block space-y-1 text-sm">
-              <span className="font-medium">Kurs laeuft noch bis</span>
+              <span className="font-medium">Laufendes Angebot läuft noch bis</span>
               <input
                 type="date"
                 name="active_until_date"
@@ -94,7 +94,7 @@ export function PauseCourseModal(props: {
               </datalist>
             </label>
             <label className="block space-y-1 text-sm">
-              <span className="font-medium">Kurs startet wieder am</span>
+              <span className="font-medium">Laufendes Angebot startet wieder am</span>
               <input
                 type="date"
                 name="pause_end_date"
@@ -163,14 +163,14 @@ export function StopCourseModal(props: {
           <div className="space-y-2">
             <h3 id={titleId} className="text-lg font-semibold">Moechtest du dieses Angebot stoppen?</h3>
             <p className="text-sm text-muted-foreground">
-              Waehle den letzten Kurstag. Das Angebot wird danach nicht mehr oeffentlich buchbar sein.
+              Waehle den letzten Angebotstag. Das Angebot wird danach nicht mehr oeffentlich buchbar sein.
             </p>
           </div>
           <form action={props.action} className="space-y-4">
             <input type="hidden" name="course_id" value={props.courseId} />
             <input type="hidden" name="redirect_to" value={props.redirectTo} />
             <label className="block space-y-1 text-sm">
-              <span className="font-medium">Letzter Kurstag</span>
+              <span className="font-medium">Letzter Angebotstag</span>
               <input
                 type="date"
                 name="stop_date"
@@ -197,7 +197,7 @@ export function StopCourseModal(props: {
               >
                 Abbrechen
               </button>
-              <ModalSubmitButton label="Kurs stoppen" />
+              <ModalSubmitButton label="Laufendes Angebot stoppen" />
             </div>
           </form>
         </div>

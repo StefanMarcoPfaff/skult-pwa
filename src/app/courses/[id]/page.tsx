@@ -121,6 +121,9 @@ export default async function CourseDetailPage({
   const description = asString(data.description) ?? asString(data.subtitle);
   const location = asString(data.location);
   const price = formatPrice(data);
+  const isSinglePaymentOffer = kind === "workshop" || kind === "exclusive_offer";
+  const offerKindLabel =
+    kind === "exclusive_offer" ? "Exklusiv-Angebot" : kind === "workshop" ? "einmaliges Angebot" : "laufendes Angebot";
 
   const weekday = asNumber(data.weekday);
   const startTime = asString(data.start_time);
@@ -185,17 +188,17 @@ export default async function CourseDetailPage({
   const occupiedSeats =
     kind === "course"
       ? await loadOccupiedCourseSeats(id)
-      : kind === "workshop"
+      : isSinglePaymentOffer
         ? await loadOccupiedWorkshopSeats(id)
         : 0;
   const availability = buildOfferAvailability(capacity, occupiedSeats, {
     isBookable:
       kind === "course" ? !courseClosedForNewRegistrations : isWorkshopBookable(startsAt, endsAt),
   });
-  const workshopCanBook = kind === "workshop" ? isWorkshopBookable(startsAt, endsAt) : false;
+  const workshopCanBook = isSinglePaymentOffer ? isWorkshopBookable(startsAt, endsAt) : false;
 
   let sessions: SessionRow[] = [];
-  if (kind === "workshop") {
+  if (isSinglePaymentOffer) {
     const { data: sessionData } = await supabase
       .from("course_sessions")
       .select("id,course_id,starts_at,ends_at")
@@ -226,7 +229,7 @@ export default async function CourseDetailPage({
 
       <header className="space-y-2">
         <h1 className="text-3xl font-black">{title}</h1>
-        <p className="text-sm text-muted-foreground">{kind === "workshop" ? "Workshop" : "Kurs"}</p>
+        <p className="text-sm text-muted-foreground">{offerKindLabel}</p>
       </header>
 
       <section className="rounded-2xl border p-4 text-sm text-muted-foreground">
@@ -261,7 +264,7 @@ export default async function CourseDetailPage({
             {profilePhotoUrl ? (
               <Image
                 src={profilePhotoUrl}
-                alt={profileHeading ?? "Dozent*in"}
+                alt={profileHeading ?? "Anbietende"}
                 width={96}
                 height={96}
                 className="h-24 w-24 rounded-2xl object-cover"
@@ -293,9 +296,9 @@ export default async function CourseDetailPage({
         </section>
       ) : null}
 
-      {kind === "workshop" ? (
+      {isSinglePaymentOffer ? (
         <section className="space-y-3">
-          <h2 className="text-xl font-semibold">Termine</h2>
+          <h2 className="text-xl font-semibold">{kind === "exclusive_offer" ? "Termin / Zeitraum" : "Termine"}</h2>
           <div className="rounded-2xl border p-4 text-sm text-muted-foreground">
             {sessions.length > 0 ? (
               <ul className="space-y-2">
@@ -306,7 +309,7 @@ export default async function CourseDetailPage({
             ) : startsAt ? (
               <p>{formatSessionLine(startsAt, null)}</p>
             ) : (
-              <p>Termine folgen in Kürze.</p>
+              <p>Termindetails folgen in Kürze.</p>
             )}
           </div>
 
@@ -319,16 +322,20 @@ export default async function CourseDetailPage({
             ) : null}
             {!workshopCanBook ? (
               <p className="text-sm text-muted-foreground">
-                Dieser Workshop ist nicht mehr buchbar.
+                Dieses Angebot ist nicht mehr buchbar.
               </p>
             ) : availability.isSoldOut ? (
-              <SoldOutInquiryForm courseId={id} offerLabel="Workshop" />
+              <SoldOutInquiryForm
+                courseId={id}
+                offerLabel={kind === "exclusive_offer" ? "Exklusiv-Angebot" : "einmaliges Angebot"}
+              />
             ) : (
               <PayButton
                 courseId={id}
                 teacherName={profileHeading ?? publicCourse?.instructor_name ?? providerLabel}
                 priceLabel={price}
                 stornoPolicyLabel={workshopPolicyLabel}
+                offerLabel={kind === "exclusive_offer" ? "Exklusiv-Angebot" : "einmaliges Angebot"}
               />
             )}
           </div>
@@ -336,13 +343,13 @@ export default async function CourseDetailPage({
       ) : (
         <section className="space-y-3 rounded-2xl border p-4">
           <h3 className="text-base font-semibold">
-            {availability.isSoldOut ? "Anfragen" : "Kostenlose Probestunde reservieren"}
+            {availability.isSoldOut ? "Anfragen" : "Kostenlosen Probetermin reservieren"}
           </h3>
           {courseEndLabel ? (
             <p className="text-sm text-muted-foreground">
               {courseAlreadyEnded
-                ? `Dieser Kurs wurde am ${courseEndLabel} beendet.`
-                : `Dieser Kurs endet am ${courseEndLabel}. Neue Probestunden und neue verbindliche Anmeldungen sind nicht mehr möglich.`}
+                ? `Dieses laufende Angebot wurde am ${courseEndLabel} beendet.`
+                : `Dieses laufende Angebot endet am ${courseEndLabel}. Neue Probetermine und neue verbindliche Anmeldungen sind nicht mehr möglich.`}
             </p>
           ) : null}
           {capacity !== null ? (
@@ -350,17 +357,17 @@ export default async function CourseDetailPage({
           ) : null}
           {reserved === "1" ? (
             <p className="text-sm text-green-700">
-              Herzlichen Glückwunsch! Du hast dich erfolgreich zur Probestunde angemeldet. Wir melden uns in Kürze mit allen weiteren Informationen bei dir.
+              Deine Reservierung für den Probetermin war erfolgreich. Wir melden uns in Kürze mit allen weiteren Informationen bei dir.
             </p>
           ) : availability.isSoldOut ? (
-            <SoldOutInquiryForm courseId={id} offerLabel="Kurs" />
+            <SoldOutInquiryForm courseId={id} offerLabel="Laufendes Angebot" />
           ) : courseClosedForNewRegistrations ? (
             <p className="text-sm text-muted-foreground">
-              Für diesen Kurs sind aktuell keine neuen Probestunden oder Neuanmeldungen mehr möglich.
+              Für dieses laufende Angebot sind aktuell keine neuen Probetermine oder Neuanmeldungen mehr möglich.
             </p>
           ) : trialSlots.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Aktuell sind keine Probestunden-Termine verfügbar.
+              Aktuell sind keine Probetermin-Slots verfügbar.
             </p>
           ) : (
             <ReserveTrialButton courseId={id} trialSlots={trialSlots} />

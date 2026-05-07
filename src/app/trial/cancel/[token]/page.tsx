@@ -67,7 +67,7 @@ export default async function TrialCancelPage({
           Dieser Stornierungslink ist ungültig oder die Reservierung wurde nicht gefunden.
         </p>
         <Link href="/courses" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
-          Zu den Kursen
+          Zu den Angeboten
         </Link>
       </main>
     );
@@ -87,7 +87,7 @@ export default async function TrialCancelPage({
           Diese Probestunden-Reservierung wurde bereits storniert.
         </p>
         <Link href="/courses" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
-          Zu den Kursen
+          Zu den Angeboten
         </Link>
       </main>
     );
@@ -101,7 +101,7 @@ export default async function TrialCancelPage({
           Deine Probestunden-Reservierung wurde storniert. Eine Bestätigung wurde per E-Mail versendet.
         </p>
         <Link href="/courses" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
-          Zu den Kursen
+          Zu den Angeboten
         </Link>
       </main>
     );
@@ -117,7 +117,7 @@ export default async function TrialCancelPage({
 
         <div className="mt-5 space-y-2 rounded-2xl border bg-muted/20 p-4 text-sm text-muted-foreground">
           <p>
-            Kurs: <span className="font-medium text-foreground">{course?.title ?? "Kurs"}</span>
+            Laufendes Angebot: <span className="font-medium text-foreground">{course?.title ?? "Laufendes Angebot"}</span>
           </p>
           <p>
             Name:{" "}

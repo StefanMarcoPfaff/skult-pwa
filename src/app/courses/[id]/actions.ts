@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
-import { isPubliclyVisibleOffer } from "@/lib/public-offer-visibility";
+import { isDirectlyAccessibleOffer } from "@/lib/public-offer-visibility";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
@@ -25,6 +25,8 @@ type CourseLiteTrialRow = {
   kind: string | null;
   is_published: boolean | null;
   is_publicly_visible: boolean | null;
+  visibility: string | null;
+  status: string | null;
   capacity: number | null;
   weekday: number | null;
   start_time: string | null;
@@ -247,34 +249,35 @@ export async function reserveTrialAction(
 
   const { data: course, error: courseError } = await supabase
     .from("courses_lite")
-    .select("id,kind,is_published,is_publicly_visible,capacity,weekday,start_time,duration_minutes,recurrence_type,trial_mode,starts_at,ends_at")
+    .select("id,kind,is_published,is_publicly_visible,visibility,status,capacity,weekday,start_time,duration_minutes,recurrence_type,trial_mode,starts_at,ends_at")
     .eq("id", courseId)
     .eq("is_published", true)
-    .eq("is_publicly_visible", true)
     .maybeSingle<CourseLiteTrialRow>();
 
   if (courseError || !course || course.kind !== "course") {
     logReservationError("load-course", courseError);
-    return { error: "Kurs nicht gefunden." };
+    return { error: "Laufendes Angebot nicht gefunden." };
   }
   if (
-    !isPubliclyVisibleOffer({
+    !isDirectlyAccessibleOffer({
       kind: course.kind,
+      status: course.status,
       isPublished: course.is_published,
+      visibility: course.visibility,
       startsAt: course.starts_at,
       endsAt: course.ends_at,
     })
   ) {
-    return { error: "Dieser Kurs ist öffentlich nicht mehr verfügbar." };
+    return { error: "Dieses Angebot ist nicht mehr buchbar." };
   }
 
   if (isCourseClosedForNewRegistrations(course.ends_at)) {
-    return { error: "Dieser Kurs nimmt keine neuen Probestunden oder Neuanmeldungen mehr an." };
+    return { error: "Dieses laufende Angebot nimmt keine neuen Probetermine oder Neuanmeldungen mehr an." };
   }
 
   const availability = buildOfferAvailability(course.capacity, await loadOccupiedCourseSeats(courseId));
   if (availability.isSoldOut) {
-    return { error: "Dieser Kurs ist aktuell ausgebucht." };
+    return { error: "Dieses laufende Angebot ist aktuell ausgebucht." };
   }
 
   const availableSlots =
@@ -325,7 +328,7 @@ export async function reserveTrialAction(
   if (existing) {
     return {
       error:
-        "Für diesen Kurs liegt bereits eine Probestunden-Anfrage mit dieser E-Mail-Adresse vor.",
+        "Für dieses laufende Angebot liegt bereits eine Probetermin-Anfrage mit dieser E-Mail-Adresse vor.",
     };
   }
 
@@ -352,7 +355,7 @@ export async function reserveTrialAction(
     if (isDuplicateReservationError(insertError)) {
       return {
         error:
-          "Für diesen Kurs liegt bereits eine Probestunden-Anfrage mit dieser E-Mail-Adresse vor.",
+          "Für dieses laufende Angebot liegt bereits eine Probetermin-Anfrage mit dieser E-Mail-Adresse vor.",
       };
     }
     return { error: formatReservationError(insertError) };

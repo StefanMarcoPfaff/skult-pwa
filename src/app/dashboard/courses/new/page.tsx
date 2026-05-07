@@ -1,11 +1,12 @@
-﻿import KindPicker from "./_components/KindPicker";
+import KindPicker from "./_components/KindPicker";
 import WorkshopFormShell from "./_components/WorkshopFormShell";
 import CourseFormShell from "./_components/CourseFormShell";
+import ExclusiveOfferFormShell from "./_components/ExclusiveOfferFormShell";
 
-type CourseKind = "workshop" | "course";
+type CourseKind = "workshop" | "course" | "exclusive_offer";
 
 function isCourseKind(value: unknown): value is CourseKind {
-  return value === "workshop" || value === "course";
+  return value === "workshop" || value === "course" || value === "exclusive_offer";
 }
 
 export default async function NewCoursePage({
@@ -20,16 +21,16 @@ export default async function NewCoursePage({
   return (
     <div className="space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">Neuen Kurs/Workshop anlegen</h1>
+        <h1 className="text-2xl font-semibold">Neues Angebot anlegen</h1>
         <p className="text-sm text-muted-foreground">
-          Schritt 1: Wähle, ob du einen Workshop (einmalig) oder einen Kurs
-          (wiederkehrend) erstellst.
+          Schritt 1: Wähle, ob du ein laufendes Angebot, ein einmaliges Angebot oder ein Exklusiv-Angebot erstellst.
         </p>
       </header>
 
       {!kind && <KindPicker />}
       {kind === "workshop" && <WorkshopFormShell />}
       {kind === "course" && <CourseFormShell />}
+      {kind === "exclusive_offer" && <ExclusiveOfferFormShell />}
     </div>
   );
 }

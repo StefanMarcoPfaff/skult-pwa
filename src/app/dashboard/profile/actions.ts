@@ -64,7 +64,7 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     if (!first_name) return { error: "Vorname ist erforderlich." };
     if (!last_name) return { error: "Nachname ist erforderlich." };
     if (provider_type_raw === "studio_provider" && !organization_name) {
-      return { error: "Anbietername ist fuer Studios und Anbieter erforderlich." };
+      return { error: "Ein Organisationsname ist fuer Organisationen erforderlich." };
     }
     if (intro_video_url && !/^https?:\/\//i.test(intro_video_url)) {
       return { error: "Bitte gib einen gueltigen Video-Link mit http:// oder https:// an." };

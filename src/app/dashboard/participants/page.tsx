@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
+import { getParticipantArchiveEligibility } from "@/app/dashboard/archive-rules";
 import { formatCourseLifecycleDate, getNextMonthEndDate } from "@/lib/course-lifecycle-shared";
 import { buildMailtoHref, buildParticipantMailSubject } from "@/lib/mailto";
+import { getOfferKindLabel } from "@/lib/offer-ui";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getParticipantLifecycleDisplay, getWorkshopParticipantLifecycleDisplay } from "./participant-lifecycle";
 import { ParticipantOverviewList, type ParticipantOverviewItem } from "./ParticipantOverviewList";
+import { getParticipantLifecycleDisplay, getWorkshopParticipantLifecycleDisplay } from "./participant-lifecycle";
 
 type CourseRow = {
   id: string;
@@ -39,6 +41,7 @@ type TrialReservationRow = {
   registration_expires_at: string | null;
   converted_at: string | null;
   cancelled_at: string | null;
+  archived_at: string | null;
 };
 
 type RegistrationIntentRow = {
@@ -54,6 +57,7 @@ type RegistrationIntentRow = {
   last_name: string | null;
   email: string | null;
   completed_at: string | null;
+  archived_at: string | null;
 };
 
 type BookingRow = {
@@ -65,6 +69,9 @@ type BookingRow = {
   customer_first_name: string | null;
   customer_last_name: string | null;
   customer_email: string | null;
+  refunded_at: string | null;
+  stripe_refund_id: string | null;
+  archived_at: string | null;
 };
 
 type TicketLookupRow = {
@@ -196,7 +203,6 @@ function getTrialEvent(reservation: TrialReservationRow, course: CourseRow, sess
     return { sessionId: sameDaySession.id, eventDate: reservationDate };
   }
 
-  if (course.kind === "workshop") return { sessionId: null, eventDate: reservationDate };
   return { sessionId: null, eventDate: reservationDate };
 }
 
@@ -205,32 +211,32 @@ function FlashMessages(props: { saved: string | null }) {
     <>
       {props.saved === "approved" ? (
         <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Der Probeschüler wurde für die Anmeldung freigegeben.
+          Die Person wurde für die Anmeldung freigegeben.
         </p>
       ) : null}
       {props.saved === "rejected" ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Der Probeschüler wurde freundlich abgesagt.
+          Die Person wurde freundlich abgesagt.
         </p>
       ) : null}
       {props.saved === "attendance_required" ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Eine Entscheidung ist erst möglich, nachdem das Probestunden-Ticket eingecheckt wurde.
+          Eine Entscheidung ist erst möglich, nachdem das Probetraining eingecheckt wurde.
         </p>
       ) : null}
       {props.saved === "cancelled" ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Diese Probestunden-Reservierung wurde bereits storniert und kann nicht mehr freigegeben werden.
+          Diese Probeteilnahme wurde bereits storniert und kann nicht mehr freigegeben werden.
         </p>
       ) : null}
       {props.saved === "trial_cancelled" ? (
         <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Die Probestunde wurde storniert und die Benachrichtigungen wurden versendet.
+          Die Probeteilnahme wurde storniert und die Benachrichtigungen wurden versendet.
         </p>
       ) : null}
       {props.saved === "trial_cancel_invalid" || props.saved === "trial_cancel_error" ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Die Probestunde konnte nicht storniert werden.
+          Die Probeteilnahme konnte nicht storniert werden.
         </p>
       ) : null}
       {props.saved === "participant_pause_scheduled" ? (
@@ -241,6 +247,11 @@ function FlashMessages(props: { saved: string | null }) {
       {props.saved === "participant_cancel_scheduled" ? (
         <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
           Die Kündigung wurde gespeichert.
+        </p>
+      ) : null}
+      {props.saved === "participant_archived" ? (
+        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Die Teilnahme wurde archiviert.
         </p>
       ) : null}
     </>
@@ -265,6 +276,7 @@ async function loadParticipantItems(
     .from("courses")
     .select("id,title,kind,instructor_name,location,starts_at,ends_at")
     .eq("teacher_id", user.id)
+    .is("archived_at", null)
     .returns<CourseRow[]>();
 
   const courses = ownCourses ?? [];
@@ -282,29 +294,30 @@ async function loadParticipantItems(
     admin
       .from("trial_reservations")
       .select(
-        "id,course_id,first_name,last_name,email,status,decision_status,approved_at,rejected_at,decision_taken_at,trial_starts_at,trial_ends_at,registration_expires_at,converted_at,cancelled_at"
+        "id,course_id,first_name,last_name,email,status,decision_status,approved_at,rejected_at,decision_taken_at,trial_starts_at,trial_ends_at,registration_expires_at,converted_at,cancelled_at,archived_at"
       )
       .in("course_id", courseIds)
       .returns<TrialReservationRow[]>(),
     admin
       .from("course_registration_intents")
       .select(
-        "id,course_id,trial_reservation_id,status,stripe_subscription_id,subscription_status,subscription_pause_end_date,subscription_stop_date,first_name,last_name,email,completed_at"
+        "id,course_id,trial_reservation_id,status,stripe_subscription_id,subscription_status,subscription_pause_end_date,subscription_stop_date,first_name,last_name,email,completed_at,archived_at"
       )
       .in("course_id", courseIds)
       .returns<RegistrationIntentRow[]>(),
     admin
       .from("bookings")
-      .select("id,course_id,status,checked_in_at,created_at,customer_first_name,customer_last_name,customer_email")
+      .select(
+        "id,course_id,status,checked_in_at,created_at,customer_first_name,customer_last_name,customer_email,refunded_at,stripe_refund_id,archived_at"
+      )
       .in("course_id", courseIds)
-      .eq("status", "paid")
       .returns<BookingRow[]>(),
   ]);
 
   const sessions = sessionsResult.data ?? [];
-  const reservations = reservationsResult.data ?? [];
-  const intents = intentsResult.data ?? [];
-  const bookings = bookingsResult.data ?? [];
+  const reservations = (reservationsResult.data ?? []).filter((reservation) => !reservation.archived_at);
+  const intents = (intentsResult.data ?? []).filter((intent) => !intent.archived_at);
+  const bookings = (bookingsResult.data ?? []).filter((booking) => !booking.archived_at);
 
   const trialReservationIds = reservations.map((reservation) => reservation.id);
   const subscriptionIds = intents
@@ -389,7 +402,7 @@ async function loadParticipantItems(
   );
 
   const defaultMonthEnd = getNextMonthEndDate();
-  const itemsWithSortDate: Array<ParticipantOverviewItem & { sortDate: string }> = [];
+  const items: ParticipantOverviewItem[] = [];
 
   for (const reservation of reservations) {
     if (completedIntentByReservationId.has(reservation.id)) continue;
@@ -421,15 +434,23 @@ async function loadParticipantItems(
       !checkedInAt &&
       !reservation.cancelled_at &&
       reservation.decision_status !== "rejected";
+    const archiveEligibility = getParticipantArchiveEligibility({
+      source: "trial",
+      archivedAt: reservation.archived_at,
+      decisionStatus: reservation.decision_status,
+      cancelledAt: reservation.cancelled_at,
+      checkedInAt,
+      hasCompletedRegistration: false,
+    });
 
-    itemsWithSortDate.push({
+    items.push({
       id: `trial-${reservation.id}`,
       detailHref: `/dashboard/participants/${reservation.id}?source=trial`,
-      displayName: participantName(reservation.first_name, reservation.last_name, "Probeschüler*in"),
+      displayName: participantName(reservation.first_name, reservation.last_name, "Probeteilnahme"),
       email: reservation.email,
       offerTitle: course.title,
-      offerKindLabel: course.kind === "workshop" ? "Workshop" : "Kurs",
-      sourceLabel: "Probestunde",
+      offerKindLabel: getOfferKindLabel(course.kind),
+      sourceLabel: "Probeteilnahme",
       metaLabel:
         reservation.trial_starts_at && reservation.trial_ends_at
           ? `${formatDateTime(reservation.trial_starts_at)} - ${formatDateTime(reservation.trial_ends_at)}`
@@ -448,6 +469,15 @@ async function loadParticipantItems(
         decisionStatus: reservation.decision_status,
         cancelledAt: reservation.cancelled_at,
       },
+      statusLabel: trialNeedsDecision
+        ? "Entscheidung offen"
+        : reservation.cancelled_at || reservation.decision_status === "rejected"
+          ? "Gekündigt / gestoppt"
+          : reservation.decision_status === "approved"
+            ? "Aktiv"
+            : checkedInAt
+              ? "Eingecheckt"
+              : "Nicht eingecheckt",
       mailHref,
       lifecycleAction: {
         kind: "trial",
@@ -481,6 +511,15 @@ async function loadParticipantItems(
               checkedInAt,
             }
           : null,
+      archiveAction: {
+        participantId: reservation.id,
+        source: "trial",
+        redirectTo: "/dashboard/participants",
+        title: "Teilnahme archivieren?",
+        text: "Die Probeteilnahme bleibt historisch erhalten und wird nur aus den aktiven Übersichten entfernt.",
+        allowed: archiveEligibility.allowed,
+        reason: archiveEligibility.reason,
+      },
       sortDate: reservation.trial_starts_at ?? reservation.trial_ends_at ?? "",
     });
   }
@@ -509,14 +548,21 @@ async function loadParticipantItems(
       Boolean(ticket && event) &&
       !checkedInAt &&
       ["active", "pause_scheduled"].includes(intent.subscription_status ?? "active");
+    const archiveEligibility = getParticipantArchiveEligibility({
+      source: "registered",
+      archivedAt: intent.archived_at,
+      subscriptionStatus: intent.subscription_status,
+      stripeSubscriptionId: intent.stripe_subscription_id,
+      completedAt: intent.completed_at,
+    });
 
-    itemsWithSortDate.push({
+    items.push({
       id: `registered-${intent.id}`,
       detailHref: `/dashboard/participants/${intent.trial_reservation_id}?source=trial`,
       displayName: participantName(intent.first_name, intent.last_name, "Teilnehmer*in"),
       email: intent.email,
       offerTitle: course.title,
-      offerKindLabel: "Kurs",
+      offerKindLabel: getOfferKindLabel(course.kind),
       sourceLabel: "Verbindliche Anmeldung",
       metaLabel: intent.completed_at ? `Angemeldet am ${formatDateTime(intent.completed_at)}` : null,
       decisionInfo:
@@ -530,6 +576,14 @@ async function loadParticipantItems(
         kind: "registered",
         subscriptionStatus: intent.subscription_status,
       },
+      statusLabel:
+        intent.subscription_status === "pause_scheduled" || intent.subscription_status === "paused"
+          ? "Pausiert"
+          : intent.subscription_status === "cancel_scheduled" || intent.subscription_status === "cancelled"
+            ? "Gekündigt / gestoppt"
+            : checkedInAt
+              ? "Eingecheckt"
+              : "Aktiv",
       mailHref,
       lifecycleAction: {
         kind: "registered",
@@ -564,6 +618,15 @@ async function loadParticipantItems(
               checkedInAt,
             }
           : null,
+      archiveAction: {
+        participantId: intent.trial_reservation_id,
+        source: "registered",
+        redirectTo: "/dashboard/participants",
+        title: "Teilnahme archivieren?",
+        text: "Die Teilnahme bleibt historisch erhalten und wird nur aus den aktiven Übersichten entfernt.",
+        allowed: archiveEligibility.allowed,
+        reason: archiveEligibility.reason,
+      },
       sortDate: intent.completed_at ?? "",
     });
   }
@@ -587,15 +650,23 @@ async function loadParticipantItems(
       to: booking.customer_email ? [booking.customer_email] : [],
       subject: buildParticipantMailSubject(course.title),
     });
+    const archiveEligibility = getParticipantArchiveEligibility({
+      source: "workshop",
+      archivedAt: booking.archived_at,
+      bookingStatus: booking.status,
+      checkedInAt,
+      refundedAt: booking.refunded_at,
+      stripeRefundId: booking.stripe_refund_id,
+    });
 
-    itemsWithSortDate.push({
+    items.push({
       id: `workshop-${booking.id}`,
       detailHref: `/dashboard/participants/${booking.id}?source=workshop`,
-      displayName: participantName(booking.customer_first_name, booking.customer_last_name, "Workshop-Teilnehmer*in"),
+      displayName: participantName(booking.customer_first_name, booking.customer_last_name, "Teilnehmer*in"),
       email: booking.customer_email,
       offerTitle: course.title,
-      offerKindLabel: "Workshop",
-      sourceLabel: "Workshop-Buchung",
+      offerKindLabel: getOfferKindLabel(course.kind),
+      sourceLabel: "Buchung",
       metaLabel: booking.created_at ? `Gebucht am ${formatDateTime(booking.created_at)}` : null,
       decisionInfo: null,
       highlight: false,
@@ -603,6 +674,7 @@ async function loadParticipantItems(
         kind: "workshop",
         bookingStatus: booking.status,
       },
+      statusLabel: checkedInAt ? "Eingecheckt" : booking.status === "paid" ? "Aktiv" : "Gekündigt / gestoppt",
       mailHref,
       lifecycleAction: {
         kind: "workshop",
@@ -626,21 +698,27 @@ async function loadParticipantItems(
               checkedInAt,
             }
           : null,
+      archiveAction: {
+        participantId: booking.id,
+        source: "workshop",
+        redirectTo: "/dashboard/participants",
+        title: "Teilnahme archivieren?",
+        text: "Die Buchung bleibt historisch erhalten und wird nur aus den aktiven Übersichten entfernt.",
+        allowed: archiveEligibility.allowed,
+        reason: archiveEligibility.reason,
+      },
       sortDate: booking.created_at ?? "",
     });
   }
 
-  itemsWithSortDate.sort((left, right) => {
+  items.sort((left, right) => {
     const leftPriority = left.highlight ? 0 : 1;
     const rightPriority = right.highlight ? 0 : 1;
     if (leftPriority !== rightPriority) return leftPriority - rightPriority;
     return right.sortDate.localeCompare(left.sortDate);
   });
 
-  return {
-    saved,
-    items: itemsWithSortDate.map(({ sortDate: _sortDate, ...item }) => item),
-  };
+  return { saved, items };
 }
 
 export default async function DashboardParticipantsPage({
@@ -655,7 +733,7 @@ export default async function DashboardParticipantsPage({
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold">Teilnehmer*innen</h1>
         <p className="text-sm text-muted-foreground">
-          Hier siehst du Probestunden, verbindliche Anmeldungen, Workshop-Buchungen und Check-ins für deine Angebote.
+          Hier siehst du Probeteilnahmen, verbindliche Anmeldungen, Buchungen und Check-ins für deine Angebote.
         </p>
       </header>
 
@@ -663,7 +741,7 @@ export default async function DashboardParticipantsPage({
 
       {items.length === 0 ? (
         <section className="rounded-2xl border p-6">
-          <p className="text-sm text-muted-foreground">Bisher liegen noch keine Teilnehmer*innen oder Probestunden vor.</p>
+          <p className="text-sm text-muted-foreground">Bisher liegen noch keine Teilnehmer*innen oder Probeteilnahmen vor.</p>
         </section>
       ) : (
         <ParticipantOverviewList items={items} />

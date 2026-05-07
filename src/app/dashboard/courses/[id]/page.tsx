@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { getOfferArchiveEligibility } from "@/app/dashboard/archive-rules";
 import {
   formatCourseLifecycleDate,
   getNextPossiblePauseDate,
@@ -21,6 +22,7 @@ import {
 import { getProviderDisplayName, type ProviderType } from "@/lib/provider-profiles";
 import { getPublicCourseById } from "@/lib/public-offers";
 import { getSiteUrl } from "@/lib/site-url";
+import { getOfferVisibilityLabel } from "@/lib/offer-ui";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { CourseDetailActions } from "./CourseDetailActions";
@@ -37,6 +39,7 @@ type Row = {
   kind: string | null;
   status: CourseStatus | null;
   is_published: boolean | null;
+  visibility: string | null;
   trial_mode: string | null;
   instructor_name: string | null;
   cancellation_model: string | null;
@@ -46,6 +49,7 @@ type Row = {
   pause_start_date: string | null;
   pause_end_date: string | null;
   stop_date: string | null;
+  archived_at?: string | null;
 };
 
 type SessionRow = {
@@ -75,6 +79,8 @@ type TrialParticipantRow = {
   registration_expires_at: string | null;
   converted_at: string | null;
   converted_registration_intent_id: string | null;
+  cancelled_at?: string | null;
+  archived_at?: string | null;
 };
 
 type TrialTicketRow = {
@@ -87,6 +93,8 @@ type RegistrationIntentRow = {
   id: string;
   trial_reservation_id: string;
   status: string | null;
+  subscription_status?: string | null;
+  archived_at?: string | null;
 };
 
 type WorkshopBookingRow = {
@@ -100,6 +108,9 @@ type WorkshopBookingRow = {
   customer_last_name: string | null;
   customer_email: string | null;
   customer_phone: string | null;
+  refunded_at?: string | null;
+  stripe_refund_id?: string | null;
+  archived_at?: string | null;
 };
 
 type WorkshopTicketRow = {
@@ -140,7 +151,7 @@ function formatDateTime(dt: string | null) {
 
 function formatTrialMode(value: string | null): string {
   if (value === "manual") return "Nur an ausgewaehlten Terminen";
-  return "An jedem Termin moeglich";
+  return "An jedem Termin möglich";
 }
 
 function formatName(firstName: string | null, lastName: string | null, fallback: string): string {
@@ -328,6 +339,7 @@ export default async function DashboardCourseDetailPage({
     .from("courses")
     .select(
       "id,title,description,location,location_details,starts_at,capacity,kind,status,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,pause_start_date,pause_end_date,stop_date"
+      + ",archived_at,visibility"
     )
     .eq("id", id)
     .eq("teacher_id", user.id)
@@ -337,7 +349,7 @@ export default async function DashboardCourseDetailPage({
     courseResponse = await supabase
       .from("courses")
       .select(
-        "id,title,description,location,location_details,starts_at,capacity,kind,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at"
+        "id,title,description,location,location_details,starts_at,capacity,kind,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,archived_at,visibility"
       )
       .eq("id", id)
       .eq("teacher_id", user.id)
@@ -364,9 +376,10 @@ export default async function DashboardCourseDetailPage({
       ? await admin
           .from("trial_reservations")
           .select(
-            "id,course_id,first_name,last_name,email,decision_status,approved_at,trial_starts_at,trial_ends_at,registration_expires_at,converted_at,converted_registration_intent_id"
+            "id,course_id,first_name,last_name,email,decision_status,approved_at,trial_starts_at,trial_ends_at,registration_expires_at,converted_at,converted_registration_intent_id,cancelled_at,archived_at"
           )
           .eq("course_id", id)
+          .is("archived_at", null)
           .order("trial_starts_at", { ascending: false })
           .returns<TrialParticipantRow[]>()
       : { data: [] as TrialParticipantRow[] };
@@ -382,26 +395,26 @@ export default async function DashboardCourseDetailPage({
             .returns<TrialTicketRow[]>(),
           admin
             .from("course_registration_intents")
-            .select("id,trial_reservation_id,status")
+            .select("id,trial_reservation_id,status,subscription_status,archived_at")
             .in("trial_reservation_id", trialReservationIds)
             .returns<RegistrationIntentRow[]>(),
         ])
       : [{ data: [] as TrialTicketRow[] }, { data: [] as RegistrationIntentRow[] }];
 
   const { data: workshopBookings } =
-    data?.kind === "workshop"
+    data?.kind === "workshop" || data?.kind === "exclusive_offer"
       ? await admin
           .from("bookings")
-          .select("id,course_id,status,attendee_key,checked_in_at,created_at,customer_first_name,customer_last_name,customer_email,customer_phone")
+          .select("id,course_id,status,attendee_key,checked_in_at,created_at,customer_first_name,customer_last_name,customer_email,customer_phone,refunded_at,stripe_refund_id,archived_at")
           .eq("course_id", id)
-          .eq("status", "paid")
+          .is("archived_at", null)
           .order("created_at", { ascending: false })
           .returns<WorkshopBookingRow[]>()
       : { data: [] as WorkshopBookingRow[] };
 
   const workshopBookingIds = (workshopBookings ?? []).map((booking) => booking.id);
   const { data: workshopTickets } =
-    data?.kind === "workshop" && workshopBookingIds.length > 0
+    (data?.kind === "workshop" || data?.kind === "exclusive_offer") && workshopBookingIds.length > 0
       ? await admin
           .from("tickets")
           .select("booking_id,customer_name,customer_email,status,checked_in_at")
@@ -413,7 +426,7 @@ export default async function DashboardCourseDetailPage({
     return (
       <main style={{ padding: 24 }}>
         <Link href="/dashboard/courses" style={{ fontWeight: 700 }}>
-          Zurueck
+          Zurück
         </Link>
         <p style={{ marginTop: 16, fontSize: 18, fontWeight: 800 }}>Nicht gefunden</p>
       </main>
@@ -451,7 +464,7 @@ export default async function DashboardCourseDetailPage({
   const nextPossiblePauseDate = getNextPossiblePauseDate();
   const publishBlockedForMissingPolicy =
     (data.kind === "course" && !getCourseTerminationModelValue({ termination_model: data.cancellation_model })) ||
-    (data.kind === "workshop" &&
+    (data.kind !== "course" &&
       !getWorkshopCancellationPolicyValue({ cancellation_policy: data.workshop_storno_policy }));
 
   const ticketByTrialReservationId = new Map(
@@ -506,7 +519,7 @@ export default async function DashboardCourseDetailPage({
               const email = resolveCourseParticipantEmail(participant);
               return {
                 id: participant.id,
-                name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
+                name: formatName(participant.first_name, participant.last_name, "Probeteilnahme"),
                 email,
                 statusLabel: "Freigegeben, noch nicht angemeldet",
                 checkInLabel: `Eingecheckt am ${formatDateTime(
@@ -530,7 +543,7 @@ export default async function DashboardCourseDetailPage({
               const email = resolveCourseParticipantEmail(participant);
               return {
                 id: participant.id,
-                name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
+                name: formatName(participant.first_name, participant.last_name, "Probeteilnahme"),
                 email,
                 statusLabel: "Teilgenommen, Entscheidung offen",
                 checkInLabel: `Eingecheckt am ${formatDateTime(
@@ -554,7 +567,7 @@ export default async function DashboardCourseDetailPage({
               const email = resolveCourseParticipantEmail(participant);
               return {
                 id: participant.id,
-                name: formatName(participant.first_name, participant.last_name, "Probeschueler*in"),
+                name: formatName(participant.first_name, participant.last_name, "Probeteilnahme"),
                 email,
                 statusLabel: "Noch nicht teilgenommen",
                 checkInLabel:
@@ -577,7 +590,7 @@ export default async function DashboardCourseDetailPage({
       .map((ticket) => [ticket.booking_id as string, ticket])
   );
   const workshopParticipants =
-    data.kind === "workshop"
+    data.kind === "workshop" || data.kind === "exclusive_offer"
       ? (workshopBookings ?? []).map<WorkshopParticipantEntry>((booking) => {
           const ticket = workshopTicketByBookingId.get(booking.id);
           const email = booking.customer_email ?? ticket?.customer_email ?? null;
@@ -586,7 +599,7 @@ export default async function DashboardCourseDetailPage({
             name: formatName(
               booking.customer_first_name,
               booking.customer_last_name,
-              ticket?.customer_name || "Workshop-Gast"
+              ticket?.customer_name || "Gast"
             ),
             email,
             statusLabel: booking.status === "paid" ? "Gebucht" : booking.status ?? "-",
@@ -604,7 +617,7 @@ export default async function DashboardCourseDetailPage({
       : [];
 
   const offerRecipientEmails =
-    data.kind === "workshop"
+    data.kind === "workshop" || data.kind === "exclusive_offer"
       ? normalizeEmailRecipients(workshopParticipants.map((entry) => entry.email))
       : normalizeEmailRecipients([
           ...(groupedCourseParticipants?.firmlyRegistered.map((entry) => entry.email) ?? []),
@@ -617,16 +630,38 @@ export default async function DashboardCourseDetailPage({
     subject: buildOfferMailSubject(data.kind, data.title),
   });
   const showOfferMailWarning = shouldWarnAboutLargeMailingGroup(offerRecipientEmails.length, contactMailHref);
+  const archiveEligibility = getOfferArchiveEligibility({
+    kind: data.kind,
+    status: data.status,
+    startsAt: data.starts_at,
+    endsAt: data.ends_at,
+    archivedAt: data.archived_at ?? null,
+    activeTrialCount: (trialParticipants ?? []).filter(
+      (participant) => !participant.archived_at && !participant.cancelled_at && participant.decision_status !== "rejected"
+    ).length,
+    activeRegistrationCount: (registrationIntents ?? []).filter(
+      (intent) =>
+        !intent.archived_at &&
+        intent.status === "checkout_completed" &&
+        ["active", "pause_scheduled", "paused", "cancel_scheduled"].includes(intent.subscription_status ?? "active")
+    ).length,
+    activeBookingCount: (workshopBookings ?? []).filter(
+      (booking) => !booking.archived_at && booking.status === "paid" && !booking.refunded_at && !booking.stripe_refund_id
+    ).length,
+    openPaymentCount: (workshopBookings ?? []).filter(
+      (booking) => !booking.archived_at && booking.status === "paid" && !booking.refunded_at && !booking.stripe_refund_id
+    ).length,
+  });
 
   return (
     <main style={{ padding: 24, maxWidth: 820 }}>
       <Link href="/dashboard/courses" style={{ fontWeight: 700 }}>
-        Zurueck
+        Zurück
       </Link>
 
       <h1 style={{ marginTop: 16, fontSize: 32, fontWeight: 900 }}>{data.title}</h1>
       <p className="mt-3 text-sm text-muted-foreground">
-        Dies ist deine interne Vorschau. Pruefe die Angaben, passe sie bei Bedarf an und aktiviere das Angebot erst danach.
+        Dies ist deine interne Vorschau. Prüfe die Angaben, passe sie bei Bedarf an und aktiviere das Angebot erst danach.
       </p>
 
       {savedParam === "1" ? (
@@ -641,42 +676,42 @@ export default async function DashboardCourseDetailPage({
       ) : null}
       {savedParam === "missing_policy" ? (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Aktivieren nicht moeglich. Bitte hinterlege zuerst die Stornierungs- bzw. Kuendigungsbedingungen.
+          Aktivieren nicht möglich. Bitte hinterlege zuerst die Stornierungs- bzw. Kündigungsbedingungen.
         </p>
       ) : null}
       {savedParam === "pause_scheduled" ? (
         <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Kurspause wurde geplant.
+          Pause für das laufende Angebot wurde geplant.
         </p>
       ) : null}
       {savedParam === "stop_scheduled" ? (
         <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Kursstopp wurde geplant.
+          Stopp für das laufende Angebot wurde geplant.
         </p>
       ) : null}
       {savedParam === "stop_partial" ? (
         <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          Kursstopp wurde geplant. Mindestens ein bestehendes Abo konnte noch nicht automatisch synchronisiert werden.
+          Stopp für das laufende Angebot wurde geplant. Mindestens ein bestehendes Abo konnte noch nicht automatisch synchronisiert werden.
         </p>
       ) : null}
       {savedParam === "workshop_cancelled" ? (
         <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Workshop wurde abgesagt, Rueckerstattungen wurden angestossen.
+          Das einmalige Angebot wurde abgesagt, Rückerstattungen wurden angestoßen.
         </p>
       ) : null}
       {savedParam === "workshop_cancel_partial" ? (
         <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          Workshop wurde deaktiviert, aber mindestens eine Rueckerstattung ist fehlgeschlagen.
+          Das einmalige Angebot wurde deaktiviert, aber mindestens eine Rückerstattung ist fehlgeschlagen.
         </p>
       ) : null}
       {savedParam === "play_invalid" || savedParam === "pause_invalid" || savedParam === "stop_invalid" ? (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Diese Statusaenderung ist fuer den Kurs aktuell nicht zulaessig.
+          Diese Statusänderung ist für dieses Angebot aktuell nicht zulässig.
         </p>
       ) : null}
       {savedParam === "workshop_cancel_invalid" ? (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Der Workshop konnte in diesem Zustand nicht abgesagt werden.
+          Das einmalige Angebot konnte in diesem Zustand nicht abgesagt werden.
         </p>
       ) : null}
       {savedParam === "play_error" || savedParam === "pause_error" || savedParam === "stop_error" ? (
@@ -686,7 +721,7 @@ export default async function DashboardCourseDetailPage({
       ) : null}
       {savedParam === "workshop_cancel_error" ? (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Die Workshop-Absage konnte nicht abgeschlossen werden.
+          Die Absage des einmaligen Angebots konnte nicht abgeschlossen werden.
         </p>
       ) : null}
 
@@ -702,43 +737,47 @@ export default async function DashboardCourseDetailPage({
         publicUrl={publicUrl}
         embedUrl={embedUrl}
         publicOfferEnabled={Boolean(publicOffer)}
+        visibilityLabel={getOfferVisibilityLabel(data.visibility)}
         publishBlockedForMissingPolicy={publishBlockedForMissingPolicy}
         contactMailHref={contactMailHref}
+        archiveAllowed={archiveEligibility.allowed}
+        archiveReason={archiveEligibility.reason}
       />
 
       {normalizedStatus === "draft" && publishBlockedForMissingPolicy ? (
         <p className="mt-3 text-sm text-red-700">
-          Dieses Angebot kann erst aktiviert werden, wenn die passende Stornierungs- bzw. Kuendigungsregel gesetzt ist.
+          Dieses Angebot kann erst aktiviert werden, wenn die passende Stornierungs- bzw. Kündigungsregel gesetzt ist.
         </p>
       ) : null}
       {showOfferMailWarning ? (
         <p className="mt-3 text-sm text-amber-700">
-          Bei sehr grossen Gruppen kann dein E-Mail-Programm die Empfaengerliste moeglicherweise
-          nicht vollstaendig uebernehmen.
+          Bei sehr großen Gruppen kann dein E-Mail-Programm die Empfängerliste möglicherweise
+          nicht vollständig übernehmen.
         </p>
       ) : null}
 
       <div style={{ marginTop: 10, opacity: 0.8 }}>
         <div>Art: {data.kind ?? "-"}</div>
         <div>Status: {statusLabel}</div>
-        <div>Veroeffentlicht: {data.is_published ? "Ja" : "Nein"}</div>
+        <div>Veröffentlicht: {data.is_published ? "Ja" : "Nein"}</div>
+        <div>Sichtbarkeit: {getOfferVisibilityLabel(data.visibility)}</div>
         {data.kind === "course" ? <div>Probestunden-Regel: {formatTrialMode(data.trial_mode)}</div> : null}
         {providerLabel ? <div>Anbieter: {providerLabel}</div> : null}
-        {data.instructor_name ? <div>Dozent: {data.instructor_name}</div> : null}
+        {data.instructor_name ? <div>Leitung: {data.instructor_name}</div> : null}
         {data.kind === "course" ? (
           <>
             <div>Abrechnung: monatlich</div>
-            <div>Kursmodell: fortlaufend</div>
-            <div>Kuendigung: {COURSE_CANCELLATION_SUMMARY}</div>
+            <div>Modell: fortlaufend</div>
+            <div>Kündigung: {COURSE_CANCELLATION_SUMMARY}</div>
           </>
         ) : null}
         {data.kind === "course" && pauseStartLabel ? <div>Pausenstart: {pauseStartLabel}</div> : null}
         {data.kind === "course" && pauseEndLabel ? <div>Pause endet: {pauseEndLabel}</div> : null}
         {data.kind === "course" && stopDateLabel ? <div>Stopdatum: {stopDateLabel}</div> : null}
-        {data.kind === "workshop" ? <div>Stornierungsbedingungen: {workshopPolicyLabel}</div> : null}
+        {data.kind !== "course" ? <div>Stornierungsbedingungen: {workshopPolicyLabel}</div> : null}
         {data.location ? <div>Ort: {data.location}</div> : null}
         {data.location_details ? <div>Raum / Zusatzinfo: {data.location_details}</div> : null}
-        {data.kind === "course" && data.starts_at ? <div>Kursstart: {formatDateTime(data.starts_at)}</div> : null}
+        {data.kind === "course" && data.starts_at ? <div>Start des laufenden Angebots: {formatDateTime(data.starts_at)}</div> : null}
         {data.kind !== "course" && data.starts_at ? <div>Start: {formatDateTime(data.starts_at)}</div> : null}
         {data.capacity !== null ? <div>Plaetze: {data.capacity}</div> : null}
       </div>
@@ -747,7 +786,7 @@ export default async function DashboardCourseDetailPage({
 
       {data.kind === "course" ? (
         <section className="mt-6 rounded-2xl border p-5">
-          <h2 className="text-lg font-semibold">Kursstatus steuern</h2>
+          <h2 className="text-lg font-semibold">Status steuern</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             Pausen beginnen am letzten Tag eines Monats und enden am ersten Tag eines Monats. Stopps enden am letzten Tag eines Monats.
           </p>
@@ -761,9 +800,9 @@ export default async function DashboardCourseDetailPage({
         </section>
       ) : null}
 
-      {data.kind === "workshop" ? (
+      {data.kind === "workshop" || data.kind === "exclusive_offer" ? (
         <section style={{ marginTop: 24 }}>
-          <h2 style={{ fontSize: 22, fontWeight: 800 }}>Termine</h2>
+          <h2 style={{ fontSize: 22, fontWeight: 800 }}>{data.kind === "exclusive_offer" ? "Termin / Zeitraum" : "Termine"}</h2>
           <div style={{ marginTop: 8, borderTop: "1px solid #ddd", paddingTop: 12 }}>
             {sessions && sessions.length > 0 ? (
               sessions.map((session) => (
@@ -803,23 +842,23 @@ export default async function DashboardCourseDetailPage({
       {data.kind === "course" && groupedCourseParticipants ? (
         <section className="mt-8 space-y-4">
           <div>
-            <h2 className="text-2xl font-semibold">Teilnehmeruebersicht</h2>
+            <h2 className="text-2xl font-semibold">Teilnehmerübersicht</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Hier siehst du den aktuellen Stand der verbindlichen Anmeldungen und Probeschueler fuer diesen Kurs.
+              Hier siehst du den aktuellen Stand der verbindlichen Anmeldungen und Probeteilnahmen für dieses laufende Angebot.
             </p>
           </div>
 
           {renderParticipantGroup(
             "Fest angemeldete Teilnehmer",
-            "Diese Personen haben die verbindliche Kursanmeldung erfolgreich abgeschlossen.",
+            "Diese Personen haben die verbindliche Anmeldung zum laufenden Angebot erfolgreich abgeschlossen.",
             groupedCourseParticipants.firmlyRegistered
           )}
 
           <section className="rounded-2xl border p-5">
             <div>
-              <h3 className="text-lg font-semibold">Probeschueler Status unterteilt</h3>
+              <h3 className="text-lg font-semibold">Probeteilnahmen nach Status</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Probeschueler werden nach ihrem aktuellen Fortschritt im Aufnahmeprozess gruppiert.
+                Probeteilnahmen werden nach ihrem aktuellen Fortschritt im Aufnahmeprozess gruppiert.
               </p>
             </div>
             <div className="mt-5 space-y-4">
@@ -843,17 +882,19 @@ export default async function DashboardCourseDetailPage({
         </section>
       ) : null}
 
-      {data.kind === "workshop" ? (
+      {data.kind === "workshop" || data.kind === "exclusive_offer" ? (
         <section className="mt-8 space-y-4">
           <div>
-            <h2 className="text-2xl font-semibold">Workshop-Teilnehmer</h2>
+            <h2 className="text-2xl font-semibold">
+              {data.kind === "exclusive_offer" ? "Teilnehmende im Exklusiv-Angebot" : "Teilnehmende im einmaligen Angebot"}
+            </h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Alle gebuchten Teilnehmer dieses Workshops mit aktuellem Status und Check-in-Stand.
+              Alle gebuchten Teilnehmenden dieses Angebots mit aktuellem Status und Check-in-Stand.
             </p>
           </div>
           {renderWorkshopParticipantGroup(
             "Alle gebuchten Teilnehmer",
-            "Diese Liste zeigt alle bezahlten Workshop-Buchungen.",
+            "Diese Liste zeigt alle bezahlten Buchungen dieses Angebots.",
             workshopParticipants
           )}
         </section>

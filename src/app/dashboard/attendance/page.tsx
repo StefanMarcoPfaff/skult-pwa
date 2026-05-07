@@ -90,7 +90,7 @@ type AttendanceViewRow = {
   date: string;
   time: string;
   offerTitle: string;
-  offerKind: "Kurs" | "Workshop";
+  offerKind: "laufendes Angebot" | "einmaliges Angebot";
   participantName: string;
   participantEmail: string | null;
   instructorName: string;
@@ -147,14 +147,14 @@ function formatName(firstName: string | null, lastName: string | null, fallback:
 }
 
 function mapMethodLabel(method: AttendanceRow["method"] | null): string | null {
-  if (method === "teacher_scan") return "Dozent scannt";
+  if (method === "teacher_scan") return "Anbietende scannen";
   if (method === "participant_scan") return "Teilnehmer scannt";
   if (method === "manual") return "manuell";
   return null;
 }
 
-function normalizeKind(kind: string | null): "Kurs" | "Workshop" {
-  return String(kind ?? "").toLowerCase() === "workshop" ? "Workshop" : "Kurs";
+function normalizeKind(kind: string | null): "laufendes Angebot" | "einmaliges Angebot" {
+  return String(kind ?? "").toLowerCase() === "workshop" ? "einmaliges Angebot" : "laufendes Angebot";
 }
 
 function isoDateFromDateInput(value: string): string | null {
@@ -204,7 +204,7 @@ export default async function DashboardAttendancePage({
   ]);
 
   const providerDisplayName =
-    profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : user.email ?? "Dozent*in";
+    profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : user.email ?? "Anbietende";
 
   const visibleCourses = (courses ?? []).filter((course) => !offerFilter || course.id === offerFilter);
   const courseIds = visibleCourses.map((course) => course.id);
@@ -353,12 +353,12 @@ export default async function DashboardAttendancePage({
           rowKey: `${event.sessionId ?? event.eventDate}::${ticket.id}`,
           date: formatDate(event.startsAt ?? event.eventDate),
           time: formatTime(event.startsAt),
-          offerTitle: course.title ?? "Workshop",
+          offerTitle: course.title ?? "Einmaliges Angebot",
           offerKind: kindLabel,
           participantName: formatName(
             booking.customer_first_name,
             booking.customer_last_name,
-            ticket.customer_name || "Workshop-Teilnehmer*in"
+            ticket.customer_name || "Teilnehmer*in eines einmaligen Angebots"
           ),
           participantEmail: booking.customer_email ?? ticket.customer_email ?? null,
           instructorName,
@@ -406,7 +406,7 @@ export default async function DashboardAttendancePage({
         rowKey: `${event.sessionId ?? event.eventDate}::${candidate.ticketId}`,
         date: formatDate(event.startsAt ?? event.eventDate),
         time: formatTime(event.startsAt),
-        offerTitle: course.title ?? "Kurs",
+        offerTitle: course.title ?? "Laufendes Angebot",
         offerKind: kindLabel,
         participantName: candidate.participantName,
         participantEmail: candidate.participantEmail,
@@ -432,7 +432,7 @@ export default async function DashboardAttendancePage({
       if (methodFilter) {
         const methodValue =
           methodFilter === "teacher_scan"
-            ? "Dozent scannt"
+            ? "Anbietende scannen"
             : methodFilter === "participant_scan"
               ? "Teilnehmer scannt"
               : methodFilter === "manual"
@@ -455,11 +455,11 @@ export default async function DashboardAttendancePage({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-2">
           <Link href="/dashboard" className="inline-flex text-sm font-medium underline underline-offset-4">
-            Zur?ck zum Dashboard
+            Zurück zum Dashboard
           </Link>
           <h1 className="text-3xl font-semibold">Anwesenheit & Check-ins</h1>
           <p className="text-sm text-muted-foreground">
-            Interne ?bersicht ?ber Anwesenheiten, Check-in-Methode und nicht erfasste Teilnahmen.
+            Interne Übersicht über Anwesenheiten, Check-in-Methode und nicht erfasste Teilnahmen.
           </p>
         </div>
       </div>
@@ -475,7 +475,7 @@ export default async function DashboardAttendancePage({
             <input type="date" name="to" defaultValue={to ?? ""} className="w-full rounded-xl border px-3 py-2" />
           </label>
           <label className="space-y-1 text-sm">
-            <span className="font-medium">Kurs / Workshop</span>
+            <span className="font-medium">Angebot</span>
             <select name="offer" defaultValue={offerFilter} className="w-full rounded-xl border px-3 py-2">
               <option value="">Alle Angebote</option>
               {(courses ?? []).map((course) => (
@@ -486,7 +486,7 @@ export default async function DashboardAttendancePage({
             </select>
           </label>
           <label className="space-y-1 text-sm">
-            <span className="font-medium">Dozent*in</span>
+            <span className="font-medium">Anbietende</span>
             <input
               type="text"
               name="instructor"
@@ -519,7 +519,7 @@ export default async function DashboardAttendancePage({
             <span className="font-medium">Check-in-Methode</span>
             <select name="method" defaultValue={methodFilter} className="w-full rounded-xl border px-3 py-2">
               <option value="">Alle Methoden</option>
-              <option value="teacher_scan">Dozent scannt</option>
+              <option value="teacher_scan">Anbietende scannen</option>
               <option value="participant_scan">Teilnehmer scannt</option>
               <option value="manual">manuell</option>
             </select>
@@ -537,7 +537,7 @@ export default async function DashboardAttendancePage({
               Filter anwenden
             </button>
             <Link href="/dashboard/attendance" className="rounded-xl border px-4 py-2 text-sm font-semibold">
-              Zur?cksetzen
+              Zurücksetzen
             </Link>
           </div>
         </form>
@@ -562,7 +562,7 @@ export default async function DashboardAttendancePage({
                   <th className="px-4 py-3 font-semibold">Typ</th>
                   <th className="px-4 py-3 font-semibold">Teilnehmer*in</th>
                   <th className="px-4 py-3 font-semibold">E-Mail</th>
-                  <th className="px-4 py-3 font-semibold">Dozent*in</th>
+                  <th className="px-4 py-3 font-semibold">Anbietende</th>
                   <th className="px-4 py-3 font-semibold">Raum / Ort</th>
                   <th className="px-4 py-3 font-semibold">Check-in-Methode</th>
                   <th className="px-4 py-3 font-semibold">Check-in-Zeitpunkt</th>

@@ -44,7 +44,7 @@ export function getDisplayStatus(input: OfferStatusInput) {
   } else if (
     normalizedStatus === "stop_scheduled" ||
     normalizedStatus === "ended" ||
-    (String(input.kind ?? "").toLowerCase() === "workshop" &&
+    (["workshop", "exclusive_offer"].includes(String(input.kind ?? "").toLowerCase()) &&
       input.startsAt &&
       Number.isFinite(new Date(input.startsAt).getTime()) &&
       new Date(input.startsAt).getTime() < Date.now())

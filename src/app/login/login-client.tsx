@@ -70,7 +70,7 @@ export default function LoginClient() {
     <main style={{ maxWidth: 520, margin: "0 auto", padding: "48px 16px" }}>
       <h1 style={{ fontSize: 48, fontWeight: 800, marginBottom: 16 }}>Login</h1>
       <p style={{ marginBottom: 20, color: "#555", lineHeight: 1.5 }}>
-        Für Lehrer*innen und Anbieter. Wenn du noch keinen Zugang hast, registriere dich zuerst.
+        Für Anbietende. Wenn du noch keinen Zugang hast, registriere dich zuerst.
       </p>
 
       <button
@@ -133,7 +133,7 @@ export default function LoginClient() {
             Passwort vergessen?
           </Link>
           <Link href="/signup" style={{ textDecoration: "underline" }}>
-            Als Lehrer*in registrieren
+            Als Anbietende registrieren
           </Link>
         </div>
 

@@ -31,7 +31,7 @@ export default function TrialReserve({ courseId }: { courseId: string }) {
 
   return (
     <div style={{ border: "1px solid #eee", borderRadius: 16, padding: 16, marginTop: 16 }}>
-      <h3 style={{ marginTop: 0 }}>Kostenlose Probestunde reservieren</h3>
+      <h3 style={{ marginTop: 0 }}>Kostenlosen Probetermin reservieren</h3>
 
       <label style={{ display: "grid", gap: 6 }}>
         <span style={{ fontWeight: 800 }}>E-Mail</span>
@@ -60,12 +60,12 @@ export default function TrialReserve({ courseId }: { courseId: string }) {
           cursor: busy ? "not-allowed" : "pointer",
         }}
       >
-        {busy ? "…" : "Probestunde reservieren"}
+        {busy ? "…" : "Probetermin reservieren"}
       </button>
 
       {msg && <p style={{ marginTop: 10, color: "crimson" }}>{msg}</p>}
       <p style={{ marginTop: 10, opacity: 0.75 }}>
-        Du bekommst ein Ticket mit QR-Code per Mail (für Dozent*innen-Scan).
+        Du bekommst ein Ticket mit QR-Code per Mail (für den Check-in vor Ort).
       </p>
     </div>
   );

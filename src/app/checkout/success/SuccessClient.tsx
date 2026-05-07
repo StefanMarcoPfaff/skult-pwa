@@ -70,8 +70,8 @@ export default function SuccessClient({ bookingData }: Props) {
           </p>
         ) : paid ? (
           <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-            <p>Deine Zahlung wurde bestätigt und dein Workshop-Ticket ist bereit.</p>
-            <p>Alle weiteren Informationen zu deinem Workshop erhältst du per E-Mail.</p>
+            <p>Deine Zahlung wurde bestätigt und dein Ticket ist bereit.</p>
+            <p>Alle weiteren Informationen zu deinem Angebot erhältst du per E-Mail.</p>
           </div>
         ) : (
           <p className="mt-3 text-base text-muted-foreground">
@@ -82,7 +82,7 @@ export default function SuccessClient({ bookingData }: Props) {
 
       {paid && bookingData ? (
         <section className="rounded-2xl border p-6">
-          <h2 className="text-xl font-semibold">{bookingData.workshopTitle ?? "Workshop"}</h2>
+          <h2 className="text-xl font-semibold">{bookingData.workshopTitle ?? "Angebot"}</h2>
           <div className="mt-4 space-y-2 text-sm text-muted-foreground">
             {bookingData.providerType === "studio_provider" && bookingData.providerName ? (
               <p>
@@ -92,7 +92,7 @@ export default function SuccessClient({ bookingData }: Props) {
             ) : null}
             {bookingData.instructorName ? (
               <p>
-                Dozent*in:{" "}
+                Anbietende:{" "}
                 <span className="font-medium text-foreground">{bookingData.instructorName}</span>
               </p>
             ) : null}
@@ -125,7 +125,7 @@ export default function SuccessClient({ bookingData }: Props) {
 
       {paid && bookingData?.qrToken && checkInUrl ? (
         <section className="rounded-2xl border p-6">
-          <h2 className="text-xl font-semibold">Dein Workshop-Ticket</h2>
+          <h2 className="text-xl font-semibold">Dein Ticket</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             Bitte zeige diesen QR-Code beim Einlass vor.
           </p>
@@ -144,7 +144,7 @@ export default function SuccessClient({ bookingData }: Props) {
         </Link>
 
         <Link href="/courses" className="inline-flex rounded-xl border px-4 py-3 text-sm font-semibold">
-          Alle Kurse
+          Alle Angebote
         </Link>
       </div>
     </main>

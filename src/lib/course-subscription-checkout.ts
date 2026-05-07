@@ -26,10 +26,10 @@ export function getCourseSubscriptionCheckoutCurrencyError(
   const normalized = normalizeCurrencyCode(value);
 
   if (!normalized) {
-    return "Dieser Kurs hat keine gueltige Waehrung hinterlegt und ist aktuell nicht checkout-faehig.";
+    return "Dieses laufende Angebot hat keine gueltige Waehrung hinterlegt und ist aktuell nicht checkout-faehig.";
   }
 
-  return `Dieser Kurs ist aktuell nur fuer Subscription-Checkout in EUR freigegeben. Hinterlegt ist derzeit ${normalized}.`;
+  return `Dieses laufende Angebot ist aktuell nur fuer Subscription-Checkout in EUR freigegeben. Hinterlegt ist derzeit ${normalized}.`;
 }
 
 function getTimeZoneParts(referenceDate: Date, timeZone: string) {

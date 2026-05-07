@@ -1,10 +1,12 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useId, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
+import { ConfirmIconAction } from "@/app/dashboard/courses/ConfirmIconAction";
 import { OfferActionIcon } from "@/app/dashboard/courses/OfferActionIcon";
 import { MailActionLink } from "@/components/dashboard/MailActionLink";
+import { archiveParticipantAction } from "./actions";
 import {
   RegisteredParticipantLifecycleButtons,
   TrialParticipantLifecycleButtons,
@@ -82,6 +84,16 @@ type ParticipantCheckIn = {
   checkedInAt: string | null;
 };
 
+type ParticipantArchiveAction = {
+  participantId: string;
+  source: "trial" | "registered" | "workshop";
+  redirectTo: string;
+  title: string;
+  text: string;
+  allowed: boolean;
+  reason: string;
+};
+
 export type ParticipantOverviewItem = {
   id: string;
   detailHref: string;
@@ -94,9 +106,12 @@ export type ParticipantOverviewItem = {
   decisionInfo: string | null;
   highlight: boolean;
   status: ParticipantStatusSource;
+  statusLabel: string;
   mailHref: string | null;
   lifecycleAction: ParticipantLifecycleAction;
   checkIn: ParticipantCheckIn | null;
+  archiveAction: ParticipantArchiveAction;
+  sortDate: string;
 };
 
 function formatDateTime(value: string | null): string {
@@ -113,7 +128,7 @@ function getStatusBadge(status: ParticipantStatusSource, checkedInAt: string | n
   if (status.kind === "trial") {
     if (status.cancelledAt || status.decisionStatus === "rejected") {
       return {
-        label: "gek?ndigt / gestoppt",
+        label: "Gekündigt / gestoppt",
         className: "border-red-200 bg-red-50 text-red-700",
       };
     }
@@ -127,13 +142,13 @@ function getStatusBadge(status: ParticipantStatusSource, checkedInAt: string | n
 
     if (status.decisionStatus === "approved") {
       return {
-        label: "verbindlich angemeldet",
+        label: "Aktiv",
         className: "border-green-200 bg-green-50 text-green-700",
       };
     }
 
     return {
-      label: "Probestunde",
+      label: "Nicht eingecheckt",
       className: "border-slate-200 bg-slate-50 text-slate-700",
     };
   }
@@ -141,47 +156,47 @@ function getStatusBadge(status: ParticipantStatusSource, checkedInAt: string | n
   if (status.kind === "registered") {
     if (status.subscriptionStatus === "paused" || status.subscriptionStatus === "pause_scheduled") {
       return {
-        label: "pausiert",
+        label: "Pausiert",
         className: "border-orange-200 bg-orange-50 text-orange-800",
       };
     }
 
     if (status.subscriptionStatus === "cancel_scheduled" || status.subscriptionStatus === "cancelled") {
       return {
-        label: "gek?ndigt / gestoppt",
+        label: "Gekündigt / gestoppt",
         className: "border-red-200 bg-red-50 text-red-700",
       };
     }
 
     if (checkedInAt) {
       return {
-        label: "eingecheckt",
+        label: "Eingecheckt",
         className: "border-emerald-200 bg-emerald-50 text-emerald-700",
       };
     }
 
     return {
-      label: "verbindlich angemeldet",
+      label: "Aktiv",
       className: "border-green-200 bg-green-50 text-green-700",
     };
   }
 
   if (checkedInAt) {
     return {
-      label: "eingecheckt",
+      label: "Eingecheckt",
       className: "border-emerald-200 bg-emerald-50 text-emerald-700",
     };
   }
 
   if (status.bookingStatus === "paid") {
     return {
-      label: "verbindlich angemeldet",
+      label: "Aktiv",
       className: "border-green-200 bg-green-50 text-green-700",
     };
   }
 
   return {
-        label: "gek?ndigt / gestoppt",
+    label: "Gekündigt / gestoppt",
     className: "border-red-200 bg-red-50 text-red-700",
   };
 }
@@ -227,6 +242,54 @@ function EditAction(props: { href: string }) {
         </OfferActionIcon>
       </Link>
     </ActionItem>
+  );
+}
+
+function ArchiveGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M4 7h16" />
+      <path d="M6 7h12v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7Z" />
+      <path d="M9 7V5h6v2" />
+    </svg>
+  );
+}
+
+function ArchiveAction(props: { action: ParticipantArchiveAction }) {
+  if (!props.action.allowed) {
+    return (
+      <span className="inline-flex" title={props.action.reason} aria-label={props.action.reason}>
+        <OfferActionIcon
+          title={props.action.reason}
+          label="Archivieren"
+          className="border-slate-200 bg-slate-100 text-slate-400"
+          disabled={true}
+        >
+          <ArchiveGlyph />
+        </OfferActionIcon>
+      </span>
+    );
+  }
+
+  return (
+    <ConfirmIconAction
+      action={archiveParticipantAction}
+      fields={{
+        participant_id: props.action.participantId,
+        source: props.action.source,
+        redirect_to: props.action.redirectTo,
+      }}
+      title={props.action.title}
+      text={props.action.text}
+      cancelLabel="Nein, abbrechen"
+      confirmLabel="Ja, archivieren"
+      triggerLabel="archivieren"
+      trigger={
+        <OfferActionIcon title="Archivieren" label="Archivieren">
+          <ArchiveGlyph />
+        </OfferActionIcon>
+      }
+    />
   );
 }
 
@@ -303,17 +366,11 @@ function CheckInAction(props: {
         disabled={disabled}
         onClick={() => dialogRef.current?.showModal()}
         className="disabled:cursor-not-allowed"
-        title={
-          isDone ? "bereits eingecheckt" : !checkIn.enabled ? checkIn.disabledReason ?? "nicht eincheckbar" : "einchecken"
-        }
-        aria-label={
-          isDone ? "bereits eingecheckt" : !checkIn.enabled ? checkIn.disabledReason ?? "nicht eincheckbar" : "Einchecken"
-        }
+        title={isDone ? "Bereits eingecheckt" : !checkIn.enabled ? checkIn.disabledReason ?? "Nicht eincheckbar" : "Einchecken"}
+        aria-label={isDone ? "Bereits eingecheckt" : !checkIn.enabled ? checkIn.disabledReason ?? "Nicht eincheckbar" : "Einchecken"}
       >
         <OfferActionIcon
-          title={
-            isDone ? "bereits eingecheckt" : !checkIn.enabled ? checkIn.disabledReason ?? "nicht eincheckbar" : "Einchecken"
-          }
+          title={isDone ? "Bereits eingecheckt" : !checkIn.enabled ? checkIn.disabledReason ?? "Nicht eincheckbar" : "Einchecken"}
           label="Einchecken"
           className={className}
           disabled={disabled}
@@ -347,11 +404,11 @@ function CheckInAction(props: {
             <div className="grid gap-3">
               <Link href={resolvedCheckIn.scanHref} className="rounded-2xl border p-4 text-sm transition hover:border-foreground/30">
                 <p className="font-semibold">Teilnehmer-QR scannen</p>
-                <p className="mt-1 text-muted-foreground">Scanner f?r den passenden Termin ?ffnen.</p>
+                <p className="mt-1 text-muted-foreground">Scanner für den passenden Termin öffnen.</p>
               </Link>
               <Link href={resolvedCheckIn.showHref} className="rounded-2xl border p-4 text-sm transition hover:border-foreground/30">
                 <p className="font-semibold">Termin-QR anzeigen</p>
-                <p className="mt-1 text-muted-foreground">Session-QR f?r Selbst-Check-in anzeigen.</p>
+                <p className="mt-1 text-muted-foreground">Session-QR für Selbst-Check-in anzeigen.</p>
               </Link>
               <button
                 type="button"
@@ -360,9 +417,7 @@ function CheckInAction(props: {
                 className="rounded-2xl border p-4 text-left text-sm transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <p className="font-semibold">{pending ? "Speichert..." : "Manuell einchecken"}</p>
-                <p className="mt-1 text-muted-foreground">
-                  F?r diese konkrete Person direkt als anwesend markieren.
-                </p>
+                <p className="mt-1 text-muted-foreground">Für diese konkrete Person direkt als anwesend markieren.</p>
               </button>
             </div>
           )}
@@ -373,7 +428,7 @@ function CheckInAction(props: {
               className="rounded-xl border px-4 py-2 text-sm"
               onClick={() => dialogRef.current?.close()}
             >
-              Schlie?en
+              Schließen
             </button>
           </div>
         </div>
@@ -427,6 +482,9 @@ function LifecycleActions(props: { action: ParticipantLifecycleAction }) {
 
 export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[] }) {
   const router = useRouter();
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("date");
   const [checkedInById, setCheckedInById] = useState<Record<string, string | null>>(
     Object.fromEntries(props.items.map((item) => [item.id, item.checkIn?.checkedInAt ?? null]))
   );
@@ -445,9 +503,93 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
     setCheckedInById((current) => ({ ...current, [id]: checkedInAt }));
   }
 
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleItems = props.items
+    .filter((item) => {
+      const checkedInAt = checkedInById[item.id] ?? null;
+      const haystack = [item.displayName, item.email ?? ""].join(" ").toLowerCase();
+      if (normalizedQuery && !haystack.includes(normalizedQuery)) return false;
+
+      if (statusFilter === "all") return true;
+      if (statusFilter === "not_checked_in") return !checkedInAt;
+      if (statusFilter === "checked_in") return Boolean(checkedInAt);
+      if (statusFilter === "decision_open") {
+        return item.status.kind === "trial" && (item.status.decisionStatus ?? "pending") === "pending" && Boolean(checkedInAt);
+      }
+      if (statusFilter === "active") {
+        if (item.status.kind === "registered") return (item.status.subscriptionStatus ?? "active") === "active";
+        if (item.status.kind === "workshop") return item.status.bookingStatus === "paid";
+        return item.status.kind === "trial" && item.status.decisionStatus === "approved";
+      }
+      if (statusFilter === "paused") {
+        return item.status.kind === "registered" && ["paused", "pause_scheduled"].includes(item.status.subscriptionStatus ?? "");
+      }
+      if (statusFilter === "stopped") {
+        if (item.status.kind === "trial") return Boolean(item.status.cancelledAt) || item.status.decisionStatus === "rejected";
+        if (item.status.kind === "registered") return ["cancel_scheduled", "cancelled", "inactive"].includes(item.status.subscriptionStatus ?? "");
+        return item.status.bookingStatus !== "paid";
+      }
+      return true;
+    })
+    .sort((left, right) => {
+      if (sortBy === "name") {
+        return left.displayName.localeCompare(right.displayName, "de");
+      }
+      if (sortBy === "status") {
+        return left.statusLabel.localeCompare(right.statusLabel, "de") || right.sortDate.localeCompare(left.sortDate);
+      }
+      if (sortBy === "offer") {
+        return left.offerTitle.localeCompare(right.offerTitle, "de") || left.displayName.localeCompare(right.displayName, "de");
+      }
+
+      const leftPriority = left.highlight ? 0 : 1;
+      const rightPriority = right.highlight ? 0 : 1;
+      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+      return right.sortDate.localeCompare(left.sortDate);
+    });
+
   return (
     <section className="space-y-3">
-      {props.items.map((item) => {
+      <div className="grid gap-3 rounded-2xl border p-4 md:grid-cols-[minmax(0,1.4fr)_220px_220px]">
+        <label className="grid gap-2 text-sm">
+          <span className="font-medium">Suche</span>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Name oder E-Mail"
+            className="rounded-xl border px-3 py-2"
+          />
+        </label>
+        <label className="grid gap-2 text-sm">
+          <span className="font-medium">Filter</span>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-xl border px-3 py-2">
+            <option value="all">Alle</option>
+            <option value="not_checked_in">Nicht eingecheckt</option>
+            <option value="checked_in">Eingecheckt</option>
+            <option value="decision_open">Entscheidung offen</option>
+            <option value="active">Aktiv</option>
+            <option value="paused">Pausiert</option>
+            <option value="stopped">Gekündigt / gestoppt</option>
+          </select>
+        </label>
+        <label className="grid gap-2 text-sm">
+          <span className="font-medium">Sortierung</span>
+          <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="rounded-xl border px-3 py-2">
+            <option value="name">Name</option>
+            <option value="date">Datum</option>
+            <option value="status">Status</option>
+            <option value="offer">Kurs / Angebot</option>
+          </select>
+        </label>
+      </div>
+
+      {visibleItems.length === 0 ? (
+        <section className="rounded-2xl border p-6">
+          <p className="text-sm text-muted-foreground">Für die aktuelle Suche oder Filterung wurden keine Teilnahmen gefunden.</p>
+        </section>
+      ) : null}
+
+      {visibleItems.map((item) => {
         const checkedInAt = checkedInById[item.id] ?? null;
         const badge = getStatusBadge(item.status, checkedInAt);
         const checkInSummary = getCheckInSummary(item, checkedInAt);
@@ -455,9 +597,9 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
         return (
           <article
             key={item.id}
-            className={`group rounded-2xl border p-4 transition focus-within:ring-2 focus-within:ring-foreground/20 hover:border-foreground/20 hover:shadow-sm ${
+            className={`group cursor-pointer rounded-2xl border p-4 transition focus-within:ring-2 focus-within:ring-foreground/20 hover:border-foreground/20 hover:shadow-sm ${
               item.highlight ? "border-amber-200 bg-amber-50/40" : ""
-            } cursor-pointer`}
+            }`}
             tabIndex={0}
             role="link"
             aria-label={`${item.displayName} ansehen`}
@@ -493,6 +635,9 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
               <ActionZone>
                 <LifecycleActions action={item.lifecycleAction} />
                 <EditAction href={item.detailHref} />
+                <ActionItem label="Archiv">
+                  <ArchiveAction action={item.archiveAction} />
+                </ActionItem>
                 {item.checkIn ? (
                   <ActionItem label="Einchecken">
                     <CheckInAction item={item} checkedInAt={checkedInAt} onCheckedIn={handleCheckedIn} />
@@ -502,7 +647,7 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
                   <MailActionLink
                     href={item.mailHref}
                     title="E-Mail"
-                    disabledHint="Keine E-Mail-Adresse f?r diese Person vorhanden"
+                    disabledHint="Keine E-Mail-Adresse für diese Person vorhanden"
                     showLabel={false}
                   />
                 </ActionItem>

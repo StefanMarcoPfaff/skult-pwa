@@ -155,7 +155,7 @@ export default async function DashboardRevenuePage({
       id: `subscription-${intent.id}`,
       courseId: course.id,
       offerTitle: course.title,
-      kindLabel: "Kurs",
+      kindLabel: "laufendes Angebot",
       recognizedAt: intent.completed_at,
       sourceLabel: "Erstanmeldung",
       grossCents: price.grossCents,
@@ -177,7 +177,7 @@ export default async function DashboardRevenuePage({
       id: `booking-${booking.id}`,
       courseId: course.id,
       offerTitle: course.title,
-      kindLabel: "Workshop",
+      kindLabel: "einmaliges Angebot",
       recognizedAt: booking.created_at,
       sourceLabel: "Bezahlte Buchung",
       grossCents: price.grossCents,
@@ -230,23 +230,23 @@ export default async function DashboardRevenuePage({
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-6">
       <Link href="/dashboard" className="inline-flex text-sm font-semibold">
-        Zur?ck zum Dashboard
+        Zurück zum Dashboard
       </Link>
 
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold">Einnahmen</h1>
         <p className="max-w-3xl text-sm text-muted-foreground">
-          ?bersicht ?ber erfasste Ums?tze pro Angebot und Monat. Netto bedeutet hier aktuell:
-          Brutto minus RESER-Plattformgeb?hr auf Basis der im System gespeicherten Kurs- und Workshoppreise.
+          Übersicht über erfasste Umsätze pro Angebot und Monat. Netto bedeutet hier aktuell:
+          Brutto minus RESER-Plattformgebühr auf Basis der im System gespeicherten Preise für laufende und einmalige Angebote.
         </p>
       </header>
 
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <p className="font-semibold">Datenstand</p>
         <p className="mt-1">
-          Wiederkehrende Stripe-Folgebuchungen, Stripe-Geb?hren, Transfer-Auszahlungen und Payout-Timing werden
-          aktuell noch nicht vollst?ndig persistiert. Die Netto-Werte bilden deshalb best?tigte Erstzahlungen und
-          bezahlte Workshop-Buchungen ab.
+          Wiederkehrende Stripe-Folgebuchungen, Stripe-Gebühren, Transfer-Auszahlungen und Payout-Timing werden
+          aktuell noch nicht vollständig persistiert. Die Netto-Werte bilden deshalb bestätigte Erstzahlungen und
+          bezahlte Buchungen ab.
         </p>
       </div>
 
@@ -292,7 +292,7 @@ export default async function DashboardRevenuePage({
           <h2 className="text-xl font-semibold">Einnahmen pro Angebot</h2>
           <div className="mt-4 space-y-3">
             {offers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">F?r den aktuellen Filter wurden noch keine Einnahmen erfasst.</p>
+              <p className="text-sm text-muted-foreground">Für den aktuellen Filter wurden noch keine Einnahmen erfasst.</p>
             ) : (
               offers.map(([courseId, offer]) => (
                 <article key={courseId} className="rounded-2xl border p-4">
@@ -310,8 +310,8 @@ export default async function DashboardRevenuePage({
                   </div>
                   <div className="mt-3 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
                     <p>Brutto: <span className="font-medium text-foreground">{formatCurrency(offer.grossCents)}</span></p>
-                    <p>Plattformgeb?hr: <span className="font-medium text-foreground">{formatCurrency(offer.feeCents)}</span></p>
-                    <p>Angebot: <Link href={`/dashboard/courses/${courseId}`} className="font-medium text-foreground underline underline-offset-4">?ffnen</Link></p>
+                    <p>Plattformgebühr: <span className="font-medium text-foreground">{formatCurrency(offer.feeCents)}</span></p>
+                    <p>Angebot: <Link href={`/dashboard/courses/${courseId}`} className="font-medium text-foreground underline underline-offset-4">Öffnen</Link></p>
                   </div>
                 </article>
               ))
@@ -331,7 +331,7 @@ export default async function DashboardRevenuePage({
                     <div>
                       <p className="font-semibold">{formatMonthLabel(monthKey)}</p>
                       <p className="text-sm text-muted-foreground">
-                        Brutto {formatCurrency(entry.grossCents)} | Geb?hr {formatCurrency(entry.feeCents)}
+                        Brutto {formatCurrency(entry.grossCents)} | Gebühr {formatCurrency(entry.feeCents)}
                       </p>
                     </div>
                     <p className="text-lg font-semibold">{formatCurrency(entry.payoutCents)}</p>

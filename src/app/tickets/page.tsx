@@ -28,7 +28,7 @@ export default function TicketsPage() {
     <main style={{ padding: 24, maxWidth: 820, margin: "0 auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
         <h1 style={{ fontSize: 44, fontWeight: 900, margin: 0 }}>Meine Tickets</h1>
-        <Link href="/courses">Alle Kurse</Link>
+        <Link href="/courses">Alle Angebote</Link>
       </div>
 
       {uniqueKeys.length === 0 ? (

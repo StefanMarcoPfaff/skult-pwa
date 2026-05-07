@@ -60,17 +60,17 @@ export default function RegistrationForm({
 
       <section className="rounded-2xl border p-6">
         <h1 className="text-2xl font-semibold">
-          {completedRegistration ? "Deine Anmeldedaten" : "Verbindliche Kursanmeldung"}
+          {completedRegistration ? "Deine Anmeldedaten" : "Verbindliche Anmeldung zum laufenden Angebot"}
         </h1>
         {completedRegistration ? (
           <p className="mt-3 text-sm text-muted-foreground">
-            Hier siehst du die von dir übermittelten Anmeldedaten für diesen Kurs. Alle weiteren Informationen erhältst du per E-Mail.
+            Hier siehst du die von dir übermittelten Anmeldedaten für dieses laufende Angebot. Alle weiteren Informationen erhältst du per E-Mail.
           </p>
         ) : null}
         <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-          <p>Kurs: <span className="font-medium text-foreground">{course.title}</span></p>
+          <p>Laufendes Angebot: <span className="font-medium text-foreground">{course.title}</span></p>
           {course.providerType === "studio_provider" && course.providerName ? <p>Anbieter: <span className="font-medium text-foreground">{course.providerName}</span></p> : null}
-          {course.instructorName ? <p>Dozent: <span className="font-medium text-foreground">{course.instructorName}</span></p> : null}
+          {course.instructorName ? <p>Leitung: <span className="font-medium text-foreground">{course.instructorName}</span></p> : null}
           {course.priceLabel ? <p>Preis: <span className="font-medium text-foreground">{course.priceLabel}</span></p> : null}
           <p>Abrechnung: <span className="font-medium text-foreground">monatlich ab Buchungsdatum</span></p>
           <p>Kündigung: <span className="font-medium text-foreground">monatlich zum Ende des Abrechnungszeitraums möglich.</span></p>
@@ -83,11 +83,11 @@ export default function RegistrationForm({
 
       {completedRegistration ? (
         <section className="rounded-2xl border p-6">
-          <h2 className="text-xl font-semibold">Dein Kursticket</h2>
+          <h2 className="text-xl font-semibold">Dein Ticket</h2>
           {ticketCheckInUrl ? (
             <>
               <p className="mt-2 text-sm text-muted-foreground">
-                Dieses Ticket wird künftig für Anwesenheit und Check-in im Kurs verwendet.
+                Dieses Ticket wird künftig für Anwesenheit und Check-in verwendet.
               </p>
               <div className="mt-4 inline-block rounded-2xl border bg-white p-4">
                 <QRCode value={ticketCheckInUrl} size={220} />
@@ -95,7 +95,7 @@ export default function RegistrationForm({
             </>
           ) : (
             <p className="mt-2 text-sm text-muted-foreground">
-              Dein Kursticket wird gerade vorbereitet. Bitte rufe diese Seite gleich noch einmal auf.
+              Dein Ticket wird gerade vorbereitet. Bitte rufe diese Seite gleich noch einmal auf.
             </p>
           )}
         </section>
@@ -238,11 +238,11 @@ export default function RegistrationForm({
               ) : null}
               {course.instructorName ? (
                 <p>
-                  Dozent: <span className="font-medium text-foreground">{course.instructorName}</span>
+                  Leitung: <span className="font-medium text-foreground">{course.instructorName}</span>
                 </p>
               ) : course.providerName ? (
                 <p>
-                  Dozent: <span className="font-medium text-foreground">{course.providerName}</span>
+                  Organisation: <span className="font-medium text-foreground">{course.providerName}</span>
                 </p>
               ) : null}
               <p>Abrechnung: <span className="font-medium text-foreground">monatlich ab Buchungsdatum</span></p>
@@ -255,7 +255,7 @@ export default function RegistrationForm({
           </p>
           <label className="flex items-start gap-3">
             <input type="checkbox" name="binding_registration_confirmed" required className="mt-1" />
-            <span>Ich melde mich hiermit verbindlich für den Kurs an.</span>
+            <span>Ich melde mich hiermit verbindlich für das laufende Angebot an.</span>
           </label>
           <label className="flex items-start gap-3">
             <input type="checkbox" name="agb_accepted" required className="mt-1" />
@@ -297,7 +297,7 @@ export default function RegistrationForm({
                 target="_blank"
                 className="underline underline-offset-4"
               >
-                rechtlichen Hinweis zur Kurskündigung
+                rechtlichen Hinweis zur Kündigung laufender Angebote
               </Link>
               .
             </span>

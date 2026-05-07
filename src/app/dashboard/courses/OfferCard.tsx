@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { KeyboardEvent } from "react";
 import { MailActionLink } from "@/components/dashboard/MailActionLink";
 import { ConfirmIconAction } from "./ConfirmIconAction";
-import { setCoursePublishStateAction } from "./[id]/actions";
+import { archiveCourseAction, setCoursePublishStateAction } from "./[id]/actions";
 import { CourseCardShareButton } from "./CourseCardShareButton";
 import { OfferActionIcon } from "./OfferActionIcon";
 
@@ -14,6 +14,7 @@ export type OfferCardProps = {
   title: string;
   kindLabel: string;
   statusLabel: string;
+  visibilityLabel: string;
   location: string | null;
   workshopTiming: string | null;
   courseTiming: string | null;
@@ -35,7 +36,19 @@ export type OfferCardProps = {
   stopDisabled: boolean;
   mailHref: string | null;
   showMailWarning: boolean;
+  archiveAllowed: boolean;
+  archiveReason: string;
 };
+
+function ArchiveGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M4 7h16" />
+      <path d="M6 7h12v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7Z" />
+      <path d="M9 7V5h6v2" />
+    </svg>
+  );
+}
 
 export function OfferCard(props: OfferCardProps) {
   const router = useRouter();
@@ -75,13 +88,13 @@ export function OfferCard(props: OfferCardProps) {
             <ConfirmIconAction
               action={setCoursePublishStateAction}
               fields={{ course_id: props.id, mode: "play", redirect_to: "/dashboard/courses" }}
-              title="Möchtest du dieses Angebot veröffentlichen?"
-              text="Nach der Veröffentlichung ist dein Angebot öffentlich sichtbar und kann gebucht werden."
+              title="Möchtest du dieses Angebot aktivieren?"
+              text="Nach der Aktivierung ist dein Angebot buchbar. Die Sichtbarkeit in Listen richtet sich nach der gewählten Sichtbarkeitseinstellung."
               cancelLabel="Nein, abbrechen"
-              confirmLabel="Ja, veröffentlichen"
-              triggerLabel="veröffentlichen / starten"
+              confirmLabel="Ja, aktivieren"
+              triggerLabel="aktivieren / starten"
               trigger={
-                <OfferActionIcon title="veröffentlichen / starten" label="veröffentlichen / starten" className={props.playIconClass}>
+                <OfferActionIcon title="aktivieren / starten" label="aktivieren / starten" className={props.playIconClass}>
                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                     <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10-6.86a1 1 0 0 0 0-1.72l-10-6.86a1 1 0 0 0-1.5.86Z" />
                   </svg>
@@ -91,8 +104,8 @@ export function OfferCard(props: OfferCardProps) {
           ) : (
             <span className="inline-flex">
               <OfferActionIcon
-                title="veröffentlichen / starten"
-                label="veröffentlichen / starten"
+                title="aktivieren / starten"
+                label="aktivieren / starten"
                 className={props.playIconClass}
                 disabled={true}
               >
@@ -136,6 +149,33 @@ export function OfferCard(props: OfferCardProps) {
               </OfferActionIcon>
             </Link>
           )}
+          {props.archiveAllowed ? (
+            <ConfirmIconAction
+              action={archiveCourseAction}
+              fields={{ course_id: props.id, redirect_to: "/dashboard/courses" }}
+              title="Angebot archivieren?"
+              text="Das Angebot bleibt historisch erhalten und wird nur aus den aktiven Übersichten entfernt."
+              cancelLabel="Nein, abbrechen"
+              confirmLabel="Ja, archivieren"
+              triggerLabel="archivieren"
+              trigger={
+                <OfferActionIcon title="archivieren" label="archivieren">
+                  <ArchiveGlyph />
+                </OfferActionIcon>
+              }
+            />
+          ) : (
+            <span className="inline-flex" title={props.archiveReason} aria-label={props.archiveReason}>
+              <OfferActionIcon
+                title={props.archiveReason}
+                label="archivieren"
+                className="border-slate-200 bg-slate-100 text-slate-400"
+                disabled={true}
+              >
+                <ArchiveGlyph />
+              </OfferActionIcon>
+            </span>
+          )}
           <Link href={props.editHref} className="inline-flex" title="bearbeiten" aria-label="bearbeiten">
             <OfferActionIcon title="bearbeiten" label="bearbeiten">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
@@ -167,6 +207,7 @@ export function OfferCard(props: OfferCardProps) {
 
       <div className="mt-3 space-y-1 text-sm text-muted-foreground">
         {props.location ? <p>Ort: {props.location}</p> : null}
+        <p>Sichtbarkeit: {props.visibilityLabel}</p>
         {props.workshopTiming ? <p>{props.workshopTiming}</p> : null}
         {props.courseTiming ? <p>{props.courseTiming}</p> : null}
         {props.pauseStartLabel ? <p>Pausenstart: {props.pauseStartLabel}</p> : null}
@@ -180,8 +221,7 @@ export function OfferCard(props: OfferCardProps) {
         ) : null}
         {props.showMailWarning ? (
           <p className="text-amber-700">
-            Bei sehr gro?en Gruppen kann dein E-Mail-Programm die Empf?ngerliste m?glicherweise
-            nicht vollst?ndig uebernehmen.
+            Bei sehr großen Gruppen kann dein E-Mail-Programm die Empfängerliste möglicherweise nicht vollständig übernehmen.
           </p>
         ) : null}
       </div>

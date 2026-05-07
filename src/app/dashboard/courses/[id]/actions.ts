@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getOfferArchiveEligibility } from "@/app/dashboard/archive-rules";
 import { sendCoursePauseNotificationEmail, sendCourseStopNotificationEmail } from "@/lib/course-lifecycle-emails";
 import { getStripe } from "@/lib/stripe";
 import {
@@ -27,11 +28,14 @@ type CourseOwnerRow = {
   teacher_id: string;
   status: CourseStatus;
   is_published: boolean | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
   pause_start_date: string | null;
   pause_end_date: string | null;
   stop_date: string | null;
   cancellation_model: string | null;
   workshop_storno_policy: string | null;
+  archived_at?: string | null;
 };
 
 type RegistrationIntentSubscriptionRow = {
@@ -88,6 +92,8 @@ type CourseCopySourceRow = {
   instructor_name: string | null;
   cancellation_model: string | null;
   workshop_storno_policy: string | null;
+  visibility: string | null;
+  internal_note: string | null;
   price_cents: number | null;
   currency: string | null;
 };
@@ -130,7 +136,7 @@ async function requireOwnedCourse(courseId: string) {
   const { data: course } = await admin
     .from("courses")
     .select(
-      "id,title,kind,teacher_id,status,is_published,pause_start_date,pause_end_date,stop_date,cancellation_model,workshop_storno_policy"
+      "id,title,kind,teacher_id,status,is_published,starts_at,ends_at,pause_start_date,pause_end_date,stop_date,cancellation_model,workshop_storno_policy,archived_at"
     )
     .eq("id", courseId)
     .eq("teacher_id", user.id)
@@ -156,7 +162,7 @@ export async function setCoursePublishStateAction(formData: FormData) {
   }
 
   const missingWorkshopPolicy =
-    course.kind === "workshop" &&
+    course.kind !== "course" &&
     !getWorkshopCancellationPolicyValue({ cancellation_policy: course.workshop_storno_policy });
   const missingCoursePolicy =
     course.kind === "course" &&
@@ -198,6 +204,7 @@ export async function duplicateCourseAction(formData: FormData) {
     .from("courses")
     .select(
       "id,teacher_id,kind,title,description,location,location_details,capacity,starts_at,weekday,start_time,duration_minutes,recurrence_type,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,price_cents,currency"
+        .replace("price_cents,currency", "visibility,internal_note,price_cents,currency")
     )
     .eq("id", courseId)
     .eq("teacher_id", user.id)
@@ -226,6 +233,8 @@ export async function duplicateCourseAction(formData: FormData) {
       instructor_name: sourceCourse.instructor_name,
       cancellation_model: sourceCourse.cancellation_model,
       workshop_storno_policy: sourceCourse.workshop_storno_policy,
+      visibility: sourceCourse.visibility,
+      internal_note: sourceCourse.internal_note,
       price_cents: sourceCourse.price_cents,
       currency: sourceCourse.currency,
       status: "draft",
@@ -244,7 +253,7 @@ export async function duplicateCourseAction(formData: FormData) {
     redirect(withSavedParam(`/dashboard/courses/${courseId}`, "copy_error"));
   }
 
-  if (sourceCourse.kind === "workshop") {
+  if (sourceCourse.kind === "workshop" || sourceCourse.kind === "exclusive_offer") {
     const { data: sessions } = await admin
       .from("course_sessions")
       .select("starts_at,ends_at")
@@ -539,7 +548,7 @@ export async function cancelWorkshopAction(formData: FormData) {
 
   const { admin, user, course } = await requireOwnedCourse(courseId);
 
-  if (!course || course.kind !== "workshop") {
+  if (!course || (course.kind !== "workshop" && course.kind !== "exclusive_offer")) {
     redirect(withSavedParam(targetPath, "workshop_cancel_invalid"));
   }
 
@@ -551,7 +560,7 @@ export async function cancelWorkshopAction(formData: FormData) {
     })
     .eq("id", courseId)
     .eq("teacher_id", user.id)
-    .eq("kind", "workshop");
+    .in("kind", ["workshop", "exclusive_offer"]);
 
   if (unpublishError) {
     redirect(withSavedParam(targetPath, "workshop_cancel_error"));
@@ -639,4 +648,87 @@ export async function cancelWorkshopAction(formData: FormData) {
   }
 
   redirect(withSavedParam(targetPath, hadRefundErrors ? "workshop_cancel_partial" : "workshop_cancelled"));
+}
+
+export async function archiveCourseAction(formData: FormData) {
+  const courseId = String(formData.get("course_id") || "").trim();
+  const redirectTo = String(formData.get("redirect_to") || "").trim();
+  const targetPath = redirectTo || "/dashboard/courses";
+
+  if (!courseId) {
+    redirect(withSavedParam(targetPath, "offer_archive_invalid"));
+  }
+
+  const { admin, user, course } = await requireOwnedCourse(courseId);
+
+  if (!course) {
+    redirect(withSavedParam(targetPath, "offer_archive_invalid"));
+  }
+
+  const [{ data: reservations }, { data: intents }, { data: bookings }] = await Promise.all([
+    admin
+      .from("trial_reservations")
+      .select("id,decision_status,cancelled_at,archived_at")
+      .eq("course_id", courseId),
+    admin
+      .from("course_registration_intents")
+      .select("id,status,subscription_status,archived_at")
+      .eq("course_id", courseId),
+    admin
+      .from("bookings")
+      .select("id,status,refunded_at,stripe_refund_id,archived_at")
+      .eq("course_id", courseId),
+  ]);
+
+  const activeTrialCount = (reservations ?? []).filter(
+    (reservation) =>
+      !reservation.archived_at &&
+      !reservation.cancelled_at &&
+      reservation.decision_status !== "rejected"
+  ).length;
+  const activeRegistrationCount = (intents ?? []).filter(
+    (intent) =>
+      !intent.archived_at &&
+      intent.status === "checkout_completed" &&
+      ["active", "pause_scheduled", "paused", "cancel_scheduled"].includes(intent.subscription_status ?? "active")
+  ).length;
+  const activeBookingCount = (bookings ?? []).filter(
+    (booking) =>
+      !booking.archived_at &&
+      booking.status === "paid" &&
+      !booking.refunded_at &&
+      !booking.stripe_refund_id
+  ).length;
+  const openPaymentCount = activeBookingCount;
+
+  const eligibility = getOfferArchiveEligibility({
+    kind: course.kind,
+    status: course.status,
+    startsAt: course.starts_at ?? null,
+    endsAt: course.ends_at ?? null,
+    archivedAt: course.archived_at ?? null,
+    activeTrialCount,
+    activeRegistrationCount,
+    activeBookingCount,
+    openPaymentCount,
+  });
+
+  if (!eligibility.allowed) {
+    redirect(withSavedParam(targetPath, "offer_archive_invalid"));
+  }
+
+  const archivedAt = new Date().toISOString();
+  const { error } = await admin
+    .from("courses")
+    .update({ archived_at: archivedAt, is_published: false })
+    .eq("id", courseId)
+    .eq("teacher_id", user.id);
+
+  if (error) {
+    redirect(withSavedParam(targetPath, "offer_archive_error"));
+  }
+
+  revalidatePath("/dashboard/courses");
+  revalidatePath(`/dashboard/courses/${courseId}`);
+  redirect(withSavedParam("/dashboard/courses", "offer_archived"));
 }

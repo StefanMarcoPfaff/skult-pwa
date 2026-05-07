@@ -3,9 +3,9 @@
 import type { ReactNode } from "react";
 import { ConfirmIconAction } from "@/app/dashboard/courses/ConfirmIconAction";
 import { OfferActionIcon } from "@/app/dashboard/courses/OfferActionIcon";
-import { approveTrialReservationAction, cancelTrialReservationAction, rejectTrialReservationAction } from "./actions";
 import { ParticipantPauseModal, ParticipantStopModal } from "./[id]/ParticipantSubscriptionModal";
 import { pauseParticipantSubscriptionAction, stopParticipantSubscriptionAction } from "./[id]/actions";
+import { approveTrialReservationAction, cancelTrialReservationAction, rejectTrialReservationAction } from "./actions";
 
 function PlayGlyph() {
   return (
@@ -68,8 +68,8 @@ export function TrialParticipantLifecycleButtons(props: {
           <ConfirmIconAction
             action={approveTrialReservationAction}
             fields={{ reservationId: props.reservationId, redirect_to: props.redirectTo }}
-          title="Teilnehmenden für Kurs freigeben?"
-          text="Der Teilnehmende erh?lt eine E-Mail mit dem Link zur verbindlichen Kursanmeldung."
+            title="Teilnahme für ein laufendes Angebot freigeben?"
+            text="Die Person erhält eine E-Mail mit dem Link zur verbindlichen Anmeldung."
             cancelLabel="Nein, abbrechen"
             confirmLabel="Ja, freigeben"
             triggerLabel="freigeben"
@@ -97,15 +97,15 @@ export function TrialParticipantLifecycleButtons(props: {
           <ConfirmIconAction
             action={props.showApprovalAction ? rejectTrialReservationAction : cancelTrialReservationAction}
             fields={{ reservationId: props.reservationId, redirect_to: props.redirectTo }}
-            title={props.showApprovalAction ? "Teilnehmenden ablehnen?" : "Probestunde absagen?"}
+            title={props.showApprovalAction ? "Teilnahme ablehnen?" : "Probeteilnahme absagen?"}
             text={
               props.showApprovalAction
-              ? "Der Teilnehmende erh?lt eine freundliche Absage und kann andere Angebote auf RESER entdecken."
-                : "Die Probestunde wird storniert und die bestehende Absage-Mail wird versendet."
+                ? "Die Person erhält eine freundliche Absage und kann andere Angebote auf RESER entdecken."
+                : "Die Probeteilnahme wird storniert und die bestehende Absage-Mail wird versendet."
             }
             cancelLabel="Nein, abbrechen"
-            confirmLabel={props.showApprovalAction ? "Ja, ablehnen" : "Ja, Probestunde absagen"}
-            triggerLabel={props.showApprovalAction ? "ablehnen" : "Probestunde absagen"}
+            confirmLabel={props.showApprovalAction ? "Ja, ablehnen" : "Ja, absagen"}
+            triggerLabel={props.showApprovalAction ? "ablehnen" : "absagen"}
             trigger={
               <OfferActionIcon
                 title={props.showApprovalAction ? "Ablehnen" : "Absagen"}
@@ -168,9 +168,9 @@ export function RegisteredParticipantLifecycleButtons(props: {
         )}
       </IconSlot>
 
-      <IconSlot label="K?ndigen">
+      <IconSlot label="Kündigen">
         {props.stopDisabled ? (
-          <DisabledAction title="K?ndigen" className={props.stopClassName}>
+          <DisabledAction title="Kündigen" className={props.stopClassName}>
             <StopGlyph />
           </DisabledAction>
         ) : (
@@ -179,9 +179,9 @@ export function RegisteredParticipantLifecycleButtons(props: {
             redirectTo={props.redirectTo}
             action={stopParticipantSubscriptionAction}
             defaultStopDate={props.defaultStopDate}
-            triggerTitle="k?ndigen"
+            triggerTitle="kündigen"
             triggerContent={
-              <OfferActionIcon title="K?ndigen" label="K?ndigen" className={props.stopClassName}>
+              <OfferActionIcon title="Kündigen" label="Kündigen" className={props.stopClassName}>
                 <StopGlyph />
               </OfferActionIcon>
             }

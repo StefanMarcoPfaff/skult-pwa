@@ -55,9 +55,9 @@ function buildProviderInfoItems(input: {
 }): InfoItem[] {
   return [
     ...(shouldShowStudioLabel(input.providerType)
-      ? [{ label: "Anbieter / Studio", value: input.providerName }]
+      ? [{ label: "Organisation", value: input.providerName }]
       : []),
-    { label: "Dozent", value: input.teacherName },
+    { label: "Anbietende", value: input.teacherName },
   ];
 }
 
@@ -251,21 +251,21 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
           startsAt: data.startsAt,
           endsAt: data.endsAt,
           location: data.location,
-          description: data.providerName ?? data.teacherName ?? "Workshop",
-          filename: `workshop-${data.workshopTitle}`,
+          description: data.providerName ?? data.teacherName ?? "Angebot",
+          filename: `angebot-${data.workshopTitle}`,
         })
       : null;
 
   return {
     to: data.customerEmail,
-    subject: `Deine Workshop-Buchung war erfolgreich 🎉 ${data.workshopTitle}`,
+    subject: `Deine Buchung war erfolgreich 🎉 ${data.workshopTitle}`,
     html:
       createHtmlEmail({
-        title: "Deine Workshop-Buchung war erfolgreich 🎉",
+        title: "Deine Buchung war erfolgreich 🎉",
         greeting: data.customerName,
         intro: `Deine Buchung für <b>${data.workshopTitle}</b> ist erfolgreich abgeschlossen. Deine Zahlung wurde bestätigt.`,
         infoItems: [
-          { label: "Workshop", value: data.workshopTitle },
+          { label: "Angebot", value: data.workshopTitle },
           ...buildProviderInfoItems(data),
           { label: "Preis", value: data.priceLabel },
           { label: "Stornierungsbedingungen", value: data.stornoPolicyLabel },
@@ -284,24 +284,24 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
           { label: "Ticket ansehen", href: ticketUrl },
           ...(calendarUrl ? [{ label: "Im Kalender speichern", href: calendarUrl }] : []),
           { label: "Ins Wallet speichern", href: walletUrl },
-          { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
+          { label: "Zu den Angeboten", href: buildAbsoluteUrl("/courses") },
         ],
         support: `
           <div style="margin: 24px 0 0;">
             <p style="margin: 0 0 10px;"><b>Dein Ticket</b></p>
             <p style="margin: 0 0 14px;">Bitte zeige dieses Ticket beim Einlass vor.</p>
-            <p style="margin: 0 0 14px;"><img src="${qrDataUrl}" alt="QR-Ticket für den Workshop" width="180" height="180" /></p>
+            <p style="margin: 0 0 14px;"><img src="${qrDataUrl}" alt="QR-Ticket für das Angebot" width="180" height="180" /></p>
           </div>
           <p style="margin: 18px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>
         `,
         footer: buildFooterBranding(data),
       }),
     text: createTextEmail({
-      title: "Deine Workshop-Buchung war erfolgreich 🎉",
+      title: "Deine Buchung war erfolgreich 🎉",
       greeting: data.customerName,
       intro: `Deine Buchung für ${data.workshopTitle} ist erfolgreich abgeschlossen. Deine Zahlung wurde bestätigt.`,
       infoItems: [
-        { label: "Workshop", value: data.workshopTitle },
+        { label: "Angebot", value: data.workshopTitle },
         ...buildProviderInfoItems(data),
         { label: "Preis", value: data.priceLabel },
         { label: "Stornierungsbedingungen", value: data.stornoPolicyLabel },
@@ -317,7 +317,7 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
         { label: "Ticket ansehen", href: ticketUrl },
         ...(calendarUrl ? [{ label: "Im Kalender speichern", href: calendarUrl }] : []),
         { label: "Ins Wallet speichern", href: walletUrl },
-        { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
+        { label: "Zu den Angeboten", href: buildAbsoluteUrl("/courses") },
       ],
       support: `Ticket-Link: ${ticketUrl}`,
       footer: buildFooterBranding(data),
@@ -331,11 +331,11 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
 
   return {
     to: data.teacherEmail ?? "",
-    subject: `Neue Workshop-Anmeldung: ${data.workshopTitle}`,
+    subject: `Neue Buchung: ${data.workshopTitle}`,
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2>Neue Workshop-Anmeldung</h2>
-        <p><b>${data.customerName}</b> hat den Workshop <b>${data.workshopTitle}</b> gebucht und bezahlt.</p>
+        <h2>Neue Buchung</h2>
+        <p><b>${data.customerName}</b> hat das Angebot <b>${data.workshopTitle}</b> gebucht und bezahlt.</p>
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
         ${data.customerPhone ? `<p><b>Telefon:</b> ${data.customerPhone}</p>` : ""}
         ${data.providerName ? `<p><b>Anbieter:</b> ${data.providerName}</p>` : ""}
@@ -351,8 +351,8 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
       </div>
     `,
     text: [
-      `Neue Workshop-Anmeldung: ${data.workshopTitle}`,
-      `${data.customerName} hat den Workshop gebucht und bezahlt.`,
+      `Neue Buchung: ${data.workshopTitle}`,
+      `${data.customerName} hat das Angebot gebucht und bezahlt.`,
       `E-Mail: ${data.customerEmail}`,
       data.customerPhone ? `Telefon: ${data.customerPhone}` : null,
       data.providerName ? `Anbieter: ${data.providerName}` : null,
@@ -407,14 +407,14 @@ export async function sendWorkshopCancellationEmail(input: {
 }) {
   return sendResendEmail({
     to: input.customerEmail,
-    subject: "Workshop abgesagt",
+    subject: "Angebot abgesagt",
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <p>Hallo ${input.customerName},</p>
-        <p>der Workshop wurde abgesagt.</p>
+        <p>das Angebot wurde abgesagt.</p>
         <p>Der Betrag wird automatisch zurueckerstattet.</p>
       </div>
     `,
-    text: `Hallo ${input.customerName},\n\nder Workshop wurde abgesagt.\nDer Betrag wird automatisch zurueckerstattet.`,
+    text: `Hallo ${input.customerName},\n\ndas Angebot wurde abgesagt.\nDer Betrag wird automatisch zurueckerstattet.`,
   });
 }

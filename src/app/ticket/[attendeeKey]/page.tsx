@@ -79,9 +79,9 @@ export default async function TicketPage({
           border: "1px solid #e5e5e5",
         }}
       >
-        <div style={{ fontSize: 14, letterSpacing: 0.3, color: "#666" }}>Workshop</div>
+        <div style={{ fontSize: 14, letterSpacing: 0.3, color: "#666" }}>Angebot</div>
         <div style={{ fontSize: 24, fontWeight: 800, marginTop: 6 }}>
-          {typeof course?.title === "string" ? course.title : "Workshop"}
+          {typeof course?.title === "string" ? course.title : "Angebot"}
         </div>
 
         <div style={{ marginTop: 10, color: "#444", lineHeight: 1.5 }}>
@@ -118,7 +118,7 @@ export default async function TicketPage({
             Dieser QR-Code ist nur zur Ansicht. Der Check-in wird ausschließlich vom Team vor Ort ausgelöst.
           </div>
 
-          <Link href="/courses">Alle Kurse</Link>
+          <Link href="/courses">Alle Angebote</Link>
         </div>
       </div>
     </main>

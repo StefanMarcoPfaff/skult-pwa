@@ -70,7 +70,7 @@ export default function ResetPasswordUpdateClient() {
     <main style={{ maxWidth: 520, margin: "0 auto", padding: "48px 16px" }}>
       <h1 style={{ fontSize: 40, fontWeight: 800, marginBottom: 16 }}>Neues Passwort</h1>
       <p style={{ marginBottom: 20, color: "#555", lineHeight: 1.5 }}>
-        Vergib ein neues Passwort für deinen Lehrer*innen- oder Anbieterzugang.
+        Vergib ein neues Passwort für deinen Zugang als Anbietende.
       </p>
 
       {ready ? (

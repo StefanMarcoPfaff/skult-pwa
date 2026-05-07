@@ -23,7 +23,7 @@ export default function Home() {
 
           <div className="mx-auto max-w-2xl space-y-4 text-base leading-7 text-slate-600 sm:text-lg">
             <p>
-              Finde inspirierende Kurse und Workshops in deiner Nähe, probiere sie aus und buche direkt online.
+              Finde inspirierende Angebote in deiner Nähe, probiere sie aus und buche direkt online.
             </p>
             <p>
               Oder erstelle eigene Angebote und erreiche genau die Menschen, die danach suchen.
@@ -36,13 +36,13 @@ export default function Home() {
             href="/courses"
             className="inline-flex items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
           >
-            Kurse & Workshops entdecken
+            Angebote entdecken
           </Link>
           <Link
             href="/login"
             className="inline-flex items-center justify-center rounded-full border border-slate-300 px-6 py-3 text-sm font-semibold text-slate-900 transition hover:border-slate-400 hover:bg-slate-50"
           >
-            Als Dozent starten
+            Als Anbietende starten
           </Link>
         </div>
       </div>

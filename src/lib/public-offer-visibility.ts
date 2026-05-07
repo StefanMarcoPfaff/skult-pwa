@@ -2,6 +2,7 @@ type PublicOfferVisibilityInput = {
   kind: string | null | undefined;
   status?: string | null;
   isPublished?: boolean | null;
+  visibility?: string | null;
   startsAt?: string | null;
   endsAt?: string | null;
   now?: number;
@@ -13,7 +14,11 @@ function parseTimestamp(value: string | null | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function isPubliclyVisibleOffer(input: PublicOfferVisibilityInput): boolean {
+export function normalizeOfferVisibility(value: string | null | undefined): "public" | "private_link" {
+  return String(value ?? "").toLowerCase() === "private_link" ? "private_link" : "public";
+}
+
+export function isDirectlyAccessibleOffer(input: PublicOfferVisibilityInput): boolean {
   if (input.isPublished === false) return false;
 
   const kind = (input.kind ?? "").toLowerCase();
@@ -22,11 +27,11 @@ export function isPubliclyVisibleOffer(input: PublicOfferVisibilityInput): boole
   const startsAt = parseTimestamp(input.startsAt);
   const endsAt = parseTimestamp(input.endsAt);
 
-  if (status === "draft" || status === "paused" || status === "ended") {
+  if (status && status !== "active") {
     return false;
   }
 
-  if (kind === "workshop") {
+  if (kind === "workshop" || kind === "exclusive_offer") {
     return startsAt !== null && startsAt >= now;
   }
 
@@ -37,4 +42,8 @@ export function isPubliclyVisibleOffer(input: PublicOfferVisibilityInput): boole
   }
 
   return false;
+}
+
+export function isPubliclyVisibleOffer(input: PublicOfferVisibilityInput): boolean {
+  return normalizeOfferVisibility(input.visibility) === "public" && isDirectlyAccessibleOffer(input);
 }

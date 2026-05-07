@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { buildOfferAvailability, loadOccupiedWorkshopSeats } from "@/lib/public-offer-availability";
+import { isDirectlyAccessibleOffer } from "@/lib/public-offer-visibility";
 import { getStripe } from "@/lib/stripe";
 import {
   buildDestinationPaymentIntentData,
@@ -77,7 +78,7 @@ export async function POST(req: Request) {
 
     if (!agbAccepted || !privacyAccepted || !workshopStornoAccepted) {
       return NextResponse.json(
-        { error: "Bitte bestätige AGB, Datenschutz und die Workshop-Stornoregelung." },
+        { error: "Bitte bestätige AGB, Datenschutz und die Stornoregelung." },
         { status: 400 }
       );
     }
@@ -86,7 +87,7 @@ export async function POST(req: Request) {
 
     const { data: course, error: courseErr } = await supabase
       .from("courses_lite")
-      .select("id,title,price_type,price_cents,currency,offer_type,capacity,starts_at,ends_at")
+      .select("id,title,price_type,price_cents,currency,offer_type,capacity,starts_at,ends_at,is_published,status,visibility")
       .eq("id", courseId)
       .single();
 
@@ -94,12 +95,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Nicht gefunden" }, { status: 404 });
     }
 
-    if (course.offer_type !== "workshop") {
-      return NextResponse.json({ error: "Checkout nur für Workshops (V1)" }, { status: 400 });
+    if (course.offer_type !== "workshop" && course.offer_type !== "exclusive_offer") {
+      return NextResponse.json({ error: "Checkout nur für Einmalangebote (V1)" }, { status: 400 });
+    }
+
+    if (
+      !isDirectlyAccessibleOffer({
+        kind: course.offer_type,
+        status: typeof course.status === "string" ? course.status : null,
+        isPublished: typeof course.is_published === "boolean" ? course.is_published : true,
+        visibility: typeof course.visibility === "string" ? course.visibility : null,
+        startsAt: typeof course.starts_at === "string" ? course.starts_at : null,
+        endsAt: typeof course.ends_at === "string" ? course.ends_at : null,
+      })
+    ) {
+      return NextResponse.json({ error: "Dieses Angebot ist nicht buchbar." }, { status: 400 });
     }
 
     if (course.price_type !== "paid" || !course.price_cents || course.price_cents <= 0) {
-      return NextResponse.json({ error: "Workshop nicht paid konfiguriert" }, { status: 400 });
+      return NextResponse.json({ error: "Angebot nicht paid konfiguriert" }, { status: 400 });
     }
 
     if (!isWorkshopCheckoutCurrencySupported(course.currency)) {
@@ -127,10 +141,10 @@ export async function POST(req: Request) {
       }
     );
     if (!workshopCanBook) {
-      return NextResponse.json({ error: "Dieser Workshop ist nicht mehr buchbar." }, { status: 400 });
+      return NextResponse.json({ error: "Dieses Angebot ist nicht mehr buchbar." }, { status: 400 });
     }
     if (availability.isSoldOut) {
-      return NextResponse.json({ error: "Dieser Workshop ist aktuell ausgebucht." }, { status: 400 });
+      return NextResponse.json({ error: "Dieses Angebot ist aktuell ausgebucht." }, { status: 400 });
     }
 
     const { data: ownerCourse, error: ownerCourseError } = await supabase
@@ -142,7 +156,7 @@ export async function POST(req: Request) {
 
     if (ownerCourseError || !ownerCourse?.teacher_id) {
       return NextResponse.json(
-        { error: "Der Dozent hat noch keine Zahlungsdaten hinterlegt." },
+        { error: "Die Anbietenden haben noch keine Zahlungsdaten hinterlegt." },
         { status: 400 }
       );
     }
@@ -155,7 +169,7 @@ export async function POST(req: Request) {
 
     if (teacherProfileError || !teacherProfile?.stripe_account_id) {
       return NextResponse.json(
-        { error: "Der Dozent hat noch keine Zahlungsdaten hinterlegt." },
+        { error: "Die Anbietenden haben noch keine Zahlungsdaten hinterlegt." },
         { status: 400 }
       );
     }
@@ -173,7 +187,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error:
-            "Die hinterlegten Stripe-Zahlungsdaten des Dozenten sind nicht mehr gültig. Bitte Stripe-Onboarding erneut starten.",
+            "Die hinterlegten Stripe-Zahlungsdaten der Anbietenden sind nicht mehr gültig. Bitte Stripe-Onboarding erneut starten.",
         },
         { status: 400 }
       );
@@ -188,7 +202,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error:
-            "Das verbundene Stripe-Konto des Dozenten ist noch nicht für Destination Charges mit card_payments und transfers freigeschaltet.",
+            "Das verbundene Stripe-Konto der Anbietenden ist noch nicht für Destination Charges mit card_payments und transfers freigeschaltet.",
         },
         { status: 400 }
       );
@@ -234,7 +248,7 @@ export async function POST(req: Request) {
           price_data: {
             currency: workshopCurrency.toLowerCase(),
             unit_amount: course.price_cents,
-            product_data: { name: course.title || "Workshop" },
+            product_data: { name: course.title || "Angebot" },
           },
           quantity: 1,
         },

@@ -69,13 +69,13 @@ export function EmbedCodePanel({
 
       {!isEnabled ? (
         <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Einbetten ist erst m?glich, wenn dein Angebot ver?ffentlicht und ?ffentlich sichtbar ist.
+          Teilen und Einbetten ist erst möglich, wenn dein Angebot aktiv und direkt buchbar ist.
         </p>
       ) : null}
 
       <div className={`mt-5 space-y-4 ${!isEnabled ? "opacity-50" : ""}`}>
         <div className="rounded-xl border p-4">
-          <p className="text-sm font-semibold">Oeffentlicher Link</p>
+          <p className="text-sm font-semibold">Öffentlicher Link</p>
           <code className="mt-2 block overflow-x-auto rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
             {publicUrl}
           </code>
@@ -88,7 +88,7 @@ export function EmbedCodePanel({
                 rel="noreferrer"
                 className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
               >
-                Vorschau ?ffnen
+                Vorschau öffnen
               </a>
             </div>
           ) : null}
@@ -108,7 +108,7 @@ export function EmbedCodePanel({
                 rel="noreferrer"
                 className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
               >
-                Embed-Vorschau ?ffnen
+                Embed-Vorschau öffnen
               </a>
             </div>
           ) : null}

@@ -4,7 +4,7 @@ import PublicFooter from "./PublicFooter";
 
 export const metadata: Metadata = {
   title: "RESER",
-  description: "RESER vermittelt Kurse und Workshops und macht Buchungen direkt online möglich.",
+  description: "RESER vermittelt Angebote und macht Buchungen direkt online möglich.",
 };
 
 export default function RootLayout({

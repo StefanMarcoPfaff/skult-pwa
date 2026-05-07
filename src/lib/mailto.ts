@@ -48,7 +48,13 @@ export function shouldWarnAboutLargeMailingGroup(recipientCount: number, href: s
 }
 
 export function buildOfferMailSubject(kind: string | null, title: string | null): string {
-  const kindLabel = String(kind ?? "").toLowerCase() === "workshop" ? "Workshop" : "Kurs";
+  const normalized = String(kind ?? "").toLowerCase();
+  const kindLabel =
+    normalized === "exclusive_offer"
+      ? "Exklusiv-Angebot"
+      : normalized === "workshop"
+        ? "einmaliges Angebot"
+        : "laufendes Angebot";
   return `Information zu deinem ${kindLabel}: ${title?.trim() || kindLabel}`;
 }
 

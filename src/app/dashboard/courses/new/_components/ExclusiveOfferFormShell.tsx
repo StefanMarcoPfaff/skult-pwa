@@ -11,7 +11,7 @@ type ProfileRow = {
   organization_name: string | null;
 };
 
-export default async function WorkshopFormShell() {
+export default async function ExclusiveOfferFormShell() {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -38,9 +38,9 @@ export default async function WorkshopFormShell() {
     <div className="space-y-4 rounded-2xl border p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold">Einmaliges Angebot anlegen</h2>
+          <h2 className="text-lg font-semibold">Exklusiv-Angebot anlegen</h2>
           <p className="text-sm text-muted-foreground">
-            Einmaliger Termin mit festem Startzeitpunkt, optionaler Kapazität und Preis.
+            Individuelles Einmalangebot mit Termin oder Zeitraum. Standardmäßig nur per Link sichtbar.
           </p>
         </div>
         <Link href="/dashboard/courses/new" className="text-sm underline underline-offset-4">
@@ -48,7 +48,11 @@ export default async function WorkshopFormShell() {
         </Link>
       </div>
 
-      <WorkshopForm providerType={providerType} providerDisplayName={providerDisplayName} />
+      <WorkshopForm
+        providerType={providerType}
+        providerDisplayName={providerDisplayName}
+        offerKind="exclusive_offer"
+      />
     </div>
   );
 }

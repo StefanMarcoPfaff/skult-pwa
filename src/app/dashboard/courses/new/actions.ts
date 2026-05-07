@@ -35,6 +35,14 @@ type TrialSlotInsert = {
   source_type: "manual";
 };
 
+function parseOfferVisibility(value: FormDataEntryValue | null): "public" | "private_link" {
+  return value === "private_link" ? "private_link" : "public";
+}
+
+function parseSinglePaymentOfferKind(value: FormDataEntryValue | null): "workshop" | "exclusive_offer" {
+  return value === "exclusive_offer" ? "exclusive_offer" : "workshop";
+}
+
 function parseOptionalInt(value: FormDataEntryValue | null): number | null {
   if (value === null) return null;
   const s = String(value).trim();
@@ -267,6 +275,9 @@ async function createOrUpdateWorkshop(
   const price_cents = parseOptionalInt(formData.get("price_cents"));
   const currency = normalizeWorkshopCurrency(String(formData.get("currency") || ""));
   const workshop_storno_policy = String(formData.get("workshop_storno_policy") || "").trim();
+  const offerKind = parseSinglePaymentOfferKind(formData.get("offer_kind"));
+  const visibility = parseOfferVisibility(formData.get("visibility"));
+  const internal_note = parseOptionalString(formData.get("internal_note"));
   const sessions = parseSessionsJson(formData);
   if (!sessions) return { error: "Bitte fuege mindestens einen gueltigen Termin hinzu (Ende nach Start)." };
   if (!isWorkshopStornoPolicy(workshop_storno_policy)) {
@@ -285,25 +296,74 @@ async function createOrUpdateWorkshop(
   const providerType = providerProfileResult.profile?.provider_type ?? "independent_teacher";
   const providerDisplayName = getProviderDisplayName(providerType, providerProfileResult.profile ?? {});
   if (!providerDisplayName) {
-    return { error: "Bitte vervollstaendige zuerst dein Profil, damit der Anbietername verfuegbar ist." };
+    return { error: "Bitte vervollstaendige zuerst dein Profil, damit dein öffentlicher Profilname verfügbar ist." };
   }
 
   const instructorInput = parseOptionalString(formData.get("instructor_name"));
   const instructor_name = providerType === "studio_provider" ? instructorInput : providerDisplayName;
   if (!instructor_name) {
-    return { error: "Bitte gib einen Dozenten fuer diesen Workshop an." };
+    return { error: "Bitte gib eine verantwortliche Person fuer dieses Angebot an." };
   }
 
   logWorkshopSaveEvent("start", {
     mode: options.mode,
     courseId: options.mode === "update" ? options.courseId : null,
     teacherId: user.id,
+    offerKind,
     sessionCount: sessions.length,
     hasLocation: Boolean(location),
     hasPrice: price_cents !== null,
   });
 
   if (options.mode === "create") {
+    if (offerKind === "exclusive_offer") {
+      const firstSessionStart = sessions[0]?.starts_at ?? null;
+      const lastSessionEnd = sessions[sessions.length - 1]?.ends_at ?? null;
+      const { data: inserted, error: insertError } = await supabase
+        .from("courses")
+        .insert({
+          teacher_id: user.id,
+          kind: "exclusive_offer",
+          title,
+          description,
+          location,
+          location_details,
+          instructor_name,
+          workshop_storno_policy,
+          capacity,
+          price_cents,
+          currency,
+          visibility,
+          internal_note,
+          starts_at: firstSessionStart,
+          ends_at: lastSessionEnd,
+          status: "draft",
+          is_published: false,
+        })
+        .select("id")
+        .single<{ id: string }>();
+
+      if (insertError || !inserted) {
+        logSupabaseError("insert.courses(exclusive-offer)", insertError);
+        return { error: formatUserSupabaseError(insertError) };
+      }
+
+      const { error: sessionInsertError } = await supabase.from("course_sessions").insert(
+        sessions.map((session) => ({
+          course_id: inserted.id,
+          starts_at: session.starts_at,
+          ends_at: session.ends_at,
+        }))
+      );
+
+      if (sessionInsertError) {
+        logSupabaseError("insert.course_sessions(exclusive-offer)", sessionInsertError);
+        return { error: formatUserSupabaseError(sessionInsertError) };
+      }
+
+      return { redirectTo: `/dashboard/courses/${inserted.id}` };
+    }
+
     try {
       const { data, error } = await withTimeout(
         "rpc.create_workshop_with_sessions",
@@ -334,6 +394,8 @@ async function createOrUpdateWorkshop(
         .update({
           status: "draft",
           is_published: false,
+          visibility,
+          internal_note,
         })
         .eq("id", newId)
         .eq("teacher_id", user.id)
@@ -363,6 +425,7 @@ async function createOrUpdateWorkshop(
   const firstSessionStart = sessions[0]?.starts_at ?? null;
 
   try {
+    const lastSessionEnd = sessions[sessions.length - 1]?.ends_at ?? null;
     const { error: updateCourseError } = await withTimeout(
       "update.courses(workshop)",
       supabase
@@ -378,10 +441,13 @@ async function createOrUpdateWorkshop(
           price_cents,
           currency,
           starts_at: firstSessionStart,
+          ends_at: offerKind === "exclusive_offer" ? lastSessionEnd : null,
+          visibility,
+          internal_note,
         })
         .eq("id", options.courseId)
         .eq("teacher_id", user.id)
-        .eq("kind", "workshop")
+        .eq("kind", offerKind)
     );
 
     if (updateCourseError) {
@@ -452,6 +518,7 @@ async function createOrUpdateCourse(
   const duration_minutes = parseOptionalInt(formData.get("duration_minutes"));
   const recurrence_type = String(formData.get("recurrence_type") || "").trim();
   const trial_mode = String(formData.get("trial_mode") || "all_sessions").trim().toLowerCase();
+  const visibility = parseOfferVisibility(formData.get("visibility"));
   const selectedTrialSlotStarts = parseIsoDateTimeList(formData.getAll("trial_slot_starts_at"));
   const cancellation_model = "monthly";
 
@@ -524,14 +591,14 @@ async function createOrUpdateCourse(
   const providerType = providerProfileResult.profile?.provider_type ?? "independent_teacher";
   const providerDisplayName = getProviderDisplayName(providerType, providerProfileResult.profile ?? {});
   if (!providerDisplayName) {
-    return { error: "Bitte vervollstaendige zuerst dein Profil, damit der Anbietername verfuegbar ist." };
+    return { error: "Bitte vervollstaendige zuerst dein Profil, damit dein öffentlicher Profilname verfügbar ist." };
   }
 
   const instructorInput = parseOptionalString(formData.get("instructor_name"));
   const instructor_name = providerType === "studio_provider" ? instructorInput : providerDisplayName;
 
   if (!instructor_name) {
-    return { error: "Bitte gib einen Dozenten fuer diesen Kurs an." };
+    return { error: "Bitte gib eine zuständige Person für dieses laufende Angebot an." };
   }
 
   if (options.mode === "create") {
@@ -557,6 +624,7 @@ async function createOrUpdateCourse(
         currency,
         status: "draft",
         is_published: false,
+        visibility,
       })
       .select("id")
       .single();
@@ -604,6 +672,7 @@ async function createOrUpdateCourse(
       starts_at,
       price_cents,
       currency,
+      visibility,
     })
     .eq("id", options.courseId)
     .eq("teacher_id", user.id)

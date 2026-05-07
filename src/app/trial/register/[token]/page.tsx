@@ -107,7 +107,7 @@ export default async function TrialRegistrationTokenPage({
             Dieser Anmeldelink ist ungueltig oder bereits abgelaufen.
           </p>
           <Link href="/courses" className="mt-4 inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
-            Zu den Kursen
+            Zu den Angeboten
           </Link>
         </section>
       </main>
@@ -140,9 +140,9 @@ export default async function TrialRegistrationTokenPage({
   const stopDateLabel = formatCourseLifecycleDate(course?.stop_date ?? null);
   const checkoutError =
     error === "course_unavailable"
-      ? "Dieser Kurs ist aktuell nicht fuer die Online-Anmeldung verfuegbar."
+      ? "Dieses laufende Angebot ist aktuell nicht fuer die Online-Anmeldung verfuegbar."
         : error === "course_ending"
-        ? `Dieser Kurs endet am ${stopDateLabel ?? formatCourseEndDate(course?.ends_at ?? null) ?? "dem geplanten Termin"} und nimmt keine neuen verbindlichen Anmeldungen mehr an.`
+        ? `Dieses laufende Angebot endet am ${stopDateLabel ?? formatCourseEndDate(course?.ends_at ?? null) ?? "dem geplanten Termin"} und nimmt keine neuen verbindlichen Anmeldungen mehr an.`
         : error === "provider_payment_missing"
           ? "Der Anbieter hat noch keine vollstaendigen Zahlungsdaten hinterlegt."
           : error === "provider_payment_incomplete"
@@ -163,7 +163,7 @@ export default async function TrialRegistrationTokenPage({
       <RegistrationForm
         token={token}
         course={{
-          title: course?.title ?? "Kurs",
+          title: course?.title ?? "Laufendes Angebot",
           providerName,
           providerType: profile?.provider_type ?? null,
           instructorName: course?.instructor_name ?? null,

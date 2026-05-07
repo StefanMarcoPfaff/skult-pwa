@@ -76,9 +76,9 @@ export async function submitOfferInquiryAction(
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <h2>Neue Anfrage zu deinem Angebot</h2>
         <p>Zu <b>${course.title ?? "deinem Angebot"}</b> ist eine neue Anfrage eingegangen.</p>
-        <p><b>Art:</b> ${course.kind === "workshop" ? "Workshop" : "Kurs"}</p>
+        <p><b>Art:</b> ${course.kind === "workshop" ? "Einmaliges Angebot" : course.kind === "exclusive_offer" ? "Exklusiv-Angebot" : "Laufendes Angebot"}</p>
         ${providerName ? `<p><b>Anbieter:</b> ${providerName}</p>` : ""}
-        ${course.instructor_name ? `<p><b>Dozent*in:</b> ${course.instructor_name}</p>` : ""}
+        ${course.instructor_name ? `<p><b>Leitung:</b> ${course.instructor_name}</p>` : ""}
         <p><b>Name:</b> ${firstName} ${lastName}</p>
         <p><b>E-Mail:</b> ${email}</p>
         ${message ? `<p><b>Nachricht:</b><br/>${message.replace(/\n/g, "<br/>")}</p>` : ""}
@@ -87,9 +87,9 @@ export async function submitOfferInquiryAction(
     text: [
       "Neue Anfrage zu deinem Angebot",
       `Titel: ${course.title ?? "dein Angebot"}`,
-      `Art: ${course.kind === "workshop" ? "Workshop" : "Kurs"}`,
+      `Art: ${course.kind === "workshop" ? "Einmaliges Angebot" : course.kind === "exclusive_offer" ? "Exklusiv-Angebot" : "Laufendes Angebot"}`,
       providerName ? `Anbieter: ${providerName}` : null,
-      course.instructor_name ? `Dozent*in: ${course.instructor_name}` : null,
+      course.instructor_name ? `Leitung: ${course.instructor_name}` : null,
       `Name: ${firstName} ${lastName}`,
       `E-Mail: ${email}`,
       message ? `Nachricht: ${message}` : null,

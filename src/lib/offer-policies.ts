@@ -1,7 +1,7 @@
 type MaybeRecord = Record<string, unknown> | null | undefined;
 
 export const WORKSHOP_POLICY_FALLBACK =
-  "Es gelten die individuell festgelegten Bedingungen des Dozenten";
+  "Es gelten die individuell festgelegten Bedingungen der Anbietenden";
 
 export const COURSE_POLICY_FALLBACK =
   "Monatlich zum Ende des Abrechnungszeitraums möglich.";

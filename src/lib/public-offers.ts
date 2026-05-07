@@ -2,7 +2,7 @@ import "server-only";
 import { getProviderDisplayName, type ProviderType } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { isPubliclyVisibleOffer } from "@/lib/public-offer-visibility";
+import { isDirectlyAccessibleOffer, isPubliclyVisibleOffer } from "@/lib/public-offer-visibility";
 
 type Row = Record<string, unknown>;
 
@@ -30,9 +30,9 @@ function isHttpUrl(value: string | null): value is string {
   return Boolean(value && /^https?:\/\//i.test(value));
 }
 
-export function getPublicOfferKind(row: Row): "workshop" | "course" | null {
+export function getPublicOfferKind(row: Row): "workshop" | "course" | "exclusive_offer" | null {
   const raw = (asString(row.offer_type) ?? asString(row.kind) ?? "").toLowerCase();
-  if (raw === "workshop" || raw === "course") return raw;
+  if (raw === "workshop" || raw === "course" || raw === "exclusive_offer") return raw;
   return null;
 }
 
@@ -63,6 +63,7 @@ export async function isOfferPubliclyVisible(row: Row): Promise<boolean> {
     kind,
     status: asString(row.status),
     isPublished: typeof row.is_published === "boolean" ? row.is_published : true,
+    visibility: asString(row.visibility),
     startsAt: asString(row.starts_at),
     endsAt: asString(row.ends_at),
   });
@@ -80,7 +81,7 @@ export async function isOfferPubliclyVisible(row: Row): Promise<boolean> {
 
 export type PublicOfferDetails = {
   offer: Row;
-  kind: "workshop" | "course";
+  kind: "workshop" | "course" | "exclusive_offer";
   publicCourse: PublicCourseRow | null;
   publicProfile: PublicProfileRow | null;
   providerLabel: string | null;
@@ -98,7 +99,6 @@ export async function getPublicCourseById(id: string): Promise<PublicOfferDetail
     .select("*")
     .eq("id", id)
     .eq("is_published", true)
-    .eq("is_publicly_visible", true)
     .maybeSingle<Row>();
 
   if (response.error) {
@@ -115,7 +115,16 @@ export async function getPublicCourseById(id: string): Promise<PublicOfferDetail
     return null;
   }
 
-  if (!(await isOfferPubliclyVisible(offer))) {
+  if (
+    !isDirectlyAccessibleOffer({
+      kind,
+      status: asString(offer.status),
+      isPublished: typeof offer.is_published === "boolean" ? offer.is_published : true,
+      visibility: asString(offer.visibility),
+      startsAt: asString(offer.starts_at),
+      endsAt: asString(offer.ends_at),
+    })
+  ) {
     return null;
   }
 

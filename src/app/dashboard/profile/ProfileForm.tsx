@@ -78,8 +78,8 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
             onChange={(event) => setProviderType(event.target.value as ProviderType)}
             className="w-full rounded-xl border px-3 py-2 text-sm"
           >
-            <option value="independent_teacher">Selbststaendige Lehrkraft</option>
-            <option value="studio_provider">Studio / Anbieter</option>
+            <option value="independent_teacher">Einzelanbieter*in</option>
+            <option value="studio_provider">Organisation</option>
           </select>
         </label>
 
@@ -106,13 +106,13 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
 
       {providerType === "studio_provider" ? (
         <label className="block space-y-1">
-          <span className="text-sm font-medium">Anbietername *</span>
+          <span className="text-sm font-medium">Organisationsname *</span>
           <input
             name="organization_name"
             required
             defaultValue={initialValues.organization_name}
             className="w-full rounded-xl border px-3 py-2 text-sm"
-            placeholder="z. B. Studio Keramik Nord"
+            placeholder="z. B. Keramik Nord"
           />
         </label>
       ) : (

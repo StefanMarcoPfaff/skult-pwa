@@ -155,7 +155,7 @@ function FlashMessages(props: { saved?: string }) {
     <>
       {props.saved === "approved" ? (
         <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Der Teilnehmende wurde fuer die verbindliche Kursanmeldung freigegeben.
+          Die Person wurde für die verbindliche Anmeldung freigegeben.
         </p>
       ) : null}
       {props.saved === "rejected" ? (
@@ -165,7 +165,7 @@ function FlashMessages(props: { saved?: string }) {
       ) : null}
       {props.saved === "trial_cancelled" ? (
         <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Die Probestunde wurde storniert.
+          Die Probeteilnahme wurde storniert.
         </p>
       ) : null}
       {props.saved === "participant_pause_scheduled" ? (
@@ -175,12 +175,12 @@ function FlashMessages(props: { saved?: string }) {
       ) : null}
       {props.saved === "participant_cancel_scheduled" ? (
         <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Die Kuendigung wurde gespeichert.
+          Die Kündigung wurde gespeichert.
         </p>
       ) : null}
       {props.saved === "attendance_required" ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Eine Freigabe oder Ablehnung ist erst nach erfolgreichem Check-in der Probestunde moeglich.
+          Eine Freigabe oder Ablehnung ist erst nach erfolgreichem Check-in der Probeteilnahme möglich.
         </p>
       ) : null}
       {props.saved?.includes("invalid") || props.saved?.includes("error") ? (
@@ -250,7 +250,7 @@ export default async function DashboardParticipantDetailPage({
     return (
       <main className="mx-auto max-w-3xl space-y-6 p-6">
         <Link href={`/dashboard/courses/${course.id}`} className="inline-flex text-sm font-semibold">
-          Zurueck zum Angebot
+          Zurück zum Angebot
         </Link>
 
         <FlashMessages saved={saved} />
@@ -262,11 +262,11 @@ export default async function DashboardParticipantDetailPage({
                 {participantName(
                   booking.customer_first_name,
                   booking.customer_last_name,
-                  ticket?.customer_name ?? "Workshop-Teilnehmer*in"
+                  ticket?.customer_name ?? "Teilnehmer*in"
                 )}
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">
-                Workshop-Teilnehmerdetail fuer {course.title ?? "Workshop"}.
+                Teilnehmerdetail für {course.title ?? "einmaliges Angebot"}.
               </p>
               <div className="mt-4">
                 <WorkshopParticipantLifecycleButtons
@@ -280,12 +280,12 @@ export default async function DashboardParticipantDetailPage({
               href={workshopMailHref}
               label="E-Mail"
               title="Teilnehmer*in per E-Mail kontaktieren"
-              disabledHint="Keine E-Mail-Adresse fuer diese Person vorhanden"
+              disabledHint="Keine E-Mail-Adresse für diese Person vorhanden"
             />
           </div>
 
           <div className="mt-4 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2">
-            <p>Name: <span className="font-medium text-foreground">{participantName(booking.customer_first_name, booking.customer_last_name, ticket?.customer_name ?? "Workshop-Teilnehmer*in")}</span></p>
+            <p>Name: <span className="font-medium text-foreground">{participantName(booking.customer_first_name, booking.customer_last_name, ticket?.customer_name ?? "Teilnehmer*in")}</span></p>
             <p>E-Mail: <span className="font-medium text-foreground">{booking.customer_email ?? ticket?.customer_email ?? "-"}</span></p>
             <p>Telefon: <span className="font-medium text-foreground">{booking.customer_phone ?? "-"}</span></p>
             <p>Status: <span className="font-medium text-foreground">{ticket?.status ?? booking.status ?? "-"}</span></p>
@@ -296,11 +296,11 @@ export default async function DashboardParticipantDetailPage({
         </section>
 
         <section className="rounded-2xl border p-6">
-          <h2 className="text-xl font-semibold">Workshop-Kontext</h2>
+          <h2 className="text-xl font-semibold">Angebotskontext</h2>
           <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-            <p>Titel: <span className="font-medium text-foreground">{course.title ?? "Workshop"}</span></p>
+            <p>Titel: <span className="font-medium text-foreground">{course.title ?? "einmaliges Angebot"}</span></p>
             {providerName ? <p>Anbieter: <span className="font-medium text-foreground">{providerName}</span></p> : null}
-            {course.instructor_name ? <p>Dozent: <span className="font-medium text-foreground">{course.instructor_name}</span></p> : null}
+            {course.instructor_name ? <p>Leitung: <span className="font-medium text-foreground">{course.instructor_name}</span></p> : null}
             {formatPrice(course.price_cents, course.currency) ? (
               <p>Preis: <span className="font-medium text-foreground">{formatPrice(course.price_cents, course.currency)}</span></p>
             ) : null}
@@ -374,7 +374,7 @@ export default async function DashboardParticipantDetailPage({
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       <Link href={`/dashboard/courses/${course.id}`} className="inline-flex text-sm font-semibold">
-        Zurueck zum Angebot
+        Zurück zum Angebot
       </Link>
 
       <FlashMessages saved={saved} />
@@ -385,7 +385,7 @@ export default async function DashboardParticipantDetailPage({
             <h1 className="text-2xl font-semibold">
               {participantName(intent?.first_name ?? reservation.first_name, intent?.last_name ?? reservation.last_name, "Teilnehmer*in")}
             </h1>
-            <p className="mt-2 text-sm text-muted-foreground">Teilnehmerdetail fuer {course.title ?? "Kurs"}.</p>
+            <p className="mt-2 text-sm text-muted-foreground">Teilnehmerdetail für {course.title ?? "laufendes Angebot"}.</p>
             <div className="mt-4">
               {intent?.status === "checkout_completed" && intent?.stripe_subscription_id ? (
                 <RegisteredParticipantLifecycleButtons
@@ -419,7 +419,7 @@ export default async function DashboardParticipantDetailPage({
             href={participantMailHref}
             label="E-Mail"
             title="Teilnehmer*in per E-Mail kontaktieren"
-            disabledHint="Keine E-Mail-Adresse fuer diese Person vorhanden"
+            disabledHint="Keine E-Mail-Adresse für diese Person vorhanden"
           />
         </div>
 
@@ -441,17 +441,17 @@ export default async function DashboardParticipantDetailPage({
       </section>
 
       <section className="rounded-2xl border p-6">
-        <h2 className="text-xl font-semibold">Kurs-Kontext</h2>
+        <h2 className="text-xl font-semibold">Angebotskontext</h2>
         <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-          <p>Titel: <span className="font-medium text-foreground">{course.title ?? "Kurs"}</span></p>
+          <p>Titel: <span className="font-medium text-foreground">{course.title ?? "laufendes Angebot"}</span></p>
           {providerName ? <p>Anbieter: <span className="font-medium text-foreground">{providerName}</span></p> : null}
-          {course.instructor_name ? <p>Dozent: <span className="font-medium text-foreground">{course.instructor_name}</span></p> : null}
+          {course.instructor_name ? <p>Leitung: <span className="font-medium text-foreground">{course.instructor_name}</span></p> : null}
           {formatPrice(course.price_cents, course.currency) ? (
             <p>Preis: <span className="font-medium text-foreground">{formatPrice(course.price_cents, course.currency)}</span></p>
           ) : null}
           {course.location ? <p>Ort: <span className="font-medium text-foreground">{course.location}</span></p> : null}
           {course.location_details ? <p>Raum / Zusatzinfo: <span className="font-medium text-foreground">{course.location_details}</span></p> : null}
-          <p>Probestunde: <span className="font-medium text-foreground">{`${formatDateTime(reservation.trial_starts_at)} - ${formatDateTime(reservation.trial_ends_at)}`}</span></p>
+          <p>Probeteilnahme: <span className="font-medium text-foreground">{`${formatDateTime(reservation.trial_starts_at)} - ${formatDateTime(reservation.trial_ends_at)}`}</span></p>
         </div>
       </section>
 
@@ -460,7 +460,7 @@ export default async function DashboardParticipantDetailPage({
           <h2 className="text-xl font-semibold">Teilnahme steuern</h2>
           <div className="mt-4 space-y-2 text-sm text-muted-foreground">
             <p>
-              Subscriptionstatus:{" "}
+              Teilnahmestatus:{" "}
               <span className="font-medium text-foreground">
                 {formatParticipantSubscriptionStatus(intent.subscription_status)}
               </span>
@@ -470,13 +470,13 @@ export default async function DashboardParticipantDetailPage({
             {stopDateLabel ? <p>Teilnahme endet zum: <span className="font-medium text-foreground">{stopDateLabel}</span></p> : null}
             {intent.subscription_cancel_scheduled_at ? (
               <p>
-                Kuendigung vorgemerkt am:{" "}
+                Kündigung vorgemerkt am:{" "}
                 <span className="font-medium text-foreground">{formatDateTime(intent.subscription_cancel_scheduled_at)}</span>
               </p>
             ) : null}
           </div>
           <p className="mt-4 text-xs text-muted-foreground">
-            Zukuenftige Teilnehmer-Pausen werden in RESER termingenau vorgemerkt. Eine automatische Stripe-Pausierung fuer einen spaeteren Monat ist mit der aktuellen Architektur noch nicht robust geplant.
+            Zukünftige Teilnehmer-Pausen werden in RESER termingenau vorgemerkt. Eine automatische Stripe-Pausierung für einen späteren Monat ist mit der aktuellen Architektur noch nicht robust geplant.
           </p>
         </section>
       ) : null}

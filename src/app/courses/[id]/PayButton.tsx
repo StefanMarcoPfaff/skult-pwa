@@ -10,6 +10,7 @@ type PayButtonProps = {
   priceLabel?: string | null;
   stornoPolicyLabel?: string | null;
   disabled?: boolean;
+  offerLabel?: string;
 };
 
 export function PayButton({
@@ -18,6 +19,7 @@ export function PayButton({
   priceLabel,
   stornoPolicyLabel,
   disabled,
+  offerLabel = "einmaliges Angebot",
 }: PayButtonProps) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -134,7 +136,7 @@ export function PayButton({
           ) : null}
           {teacherName ? (
             <p>
-              Dozent: <span className="font-medium text-foreground">{teacherName}</span>
+              Leitung: <span className="font-medium text-foreground">{teacherName}</span>
             </p>
           ) : null}
           <p>
@@ -142,6 +144,9 @@ export function PayButton({
             <span className="font-medium text-foreground">
               {stornoPolicyLabel}
             </span>
+          </p>
+          <p>
+            Angebot: <span className="font-medium text-foreground">{offerLabel}</span>
           </p>
         </div>
       </section>
@@ -210,7 +215,7 @@ export function PayButton({
               target="_blank"
               className="underline underline-offset-4"
             >
-              rechtlichen Hinweis zur Workshop-Stornierung
+              rechtlichen Hinweis zur Stornierung einmaliger Angebote
             </Link>
             .
           </span>

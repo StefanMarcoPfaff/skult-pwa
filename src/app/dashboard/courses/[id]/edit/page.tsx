@@ -30,6 +30,8 @@ type OfferRow = {
   workshop_storno_policy: string | null;
   price_cents: number | null;
   currency: string | null;
+  visibility: "public" | "private_link" | null;
+  internal_note: string | null;
 };
 
 type SessionRow = {
@@ -87,8 +89,7 @@ export default async function EditOfferPage({
   const { data, error } = await supabase
     .from("courses")
     .select(
-      "id,teacher_id,title,description,location,location_details,capacity,kind,starts_at,weekday,start_time,duration_minutes,recurrence_type,trial_mode,instructor_name,cancellation_model,price_cents,currency"
-        .replace("cancellation_model,price_cents", "cancellation_model,workshop_storno_policy,price_cents")
+      "id,teacher_id,title,description,location,location_details,capacity,kind,starts_at,weekday,start_time,duration_minutes,recurrence_type,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,price_cents,currency,visibility,internal_note"
     )
     .eq("id", id)
     .eq("teacher_id", user.id)
@@ -144,6 +145,7 @@ export default async function EditOfferPage({
     capacity: data.capacity !== null ? String(data.capacity) : "",
     price_eur: toPriceEur(data.price_cents),
     currency: data.currency ?? "EUR",
+    visibility: data.visibility ?? "public",
   };
 
   const workshopInitialValues: WorkshopFormValues = {
@@ -162,6 +164,8 @@ export default async function EditOfferPage({
         starts_at: session.starts_at as string,
         ends_at: session.ends_at as string,
       })),
+    visibility: data.visibility ?? "public",
+    internal_note: data.internal_note ?? "",
   };
 
   return (
@@ -197,6 +201,7 @@ export default async function EditOfferPage({
             submitActionOverride={updateWorkshopAction.bind(null, id)}
             providerType={providerType}
             providerDisplayName={providerDisplayName}
+            offerKind={data.kind === "exclusive_offer" ? "exclusive_offer" : "workshop"}
           />
         )}
       </div>

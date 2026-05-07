@@ -32,7 +32,7 @@ export default async function TrialRegistrationCancelPage({
             Zurück zur Anmeldung
           </Link>
           <Link href="/courses" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
-            Zu den Kursen
+            Zu den Angeboten
           </Link>
         </div>
       </section>

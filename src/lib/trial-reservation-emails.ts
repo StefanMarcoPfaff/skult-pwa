@@ -293,9 +293,9 @@ function buildProviderInfoItems(input: {
 }): InfoItem[] {
   return [
     ...(shouldShowStudioLabel(input.providerType)
-      ? [{ label: "Anbieter / Studio", value: input.providerName }]
+      ? [{ label: "Organisation", value: input.providerName }]
       : []),
-    { label: "Dozent", value: input.instructorName },
+    { label: "Leitung", value: input.instructorName },
   ];
 }
 
@@ -407,7 +407,7 @@ export async function prepareCustomerTrialReservationConfirmation(data: TrialRes
     startsAt: data.trialStartsAt,
     endsAt: data.trialEndsAt,
     location: data.location,
-    description: data.teacherName ? `Dozent: ${data.teacherName}` : "Kostenlose Probestunde",
+    description: data.teacherName ? `Leitung: ${data.teacherName}` : "Kostenlose Probestunde",
     filename: `probestunde-${data.courseTitle}`,
   });
 
@@ -420,8 +420,8 @@ export async function prepareCustomerTrialReservationConfirmation(data: TrialRes
         greeting: data.customerName,
         intro: `Deine Reservierung für <b>${data.courseTitle}</b> war erfolgreich. Alle wichtigen Informationen findest du hier auf einen Blick.`,
         infoItems: [
-          { label: "Kurs", value: data.courseTitle },
-          { label: "Dozent", value: data.teacherName },
+          { label: "Laufendes Angebot", value: data.courseTitle },
+          { label: "Leitung", value: data.teacherName },
           { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
           { label: "Ort", value: data.location },
         ],
@@ -433,7 +433,7 @@ export async function prepareCustomerTrialReservationConfirmation(data: TrialRes
           ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
           { label: "Im Kalender speichern", href: calendarUrl },
           ...(walletUrl ? [{ label: "Ins Wallet speichern", href: walletUrl }] : []),
-          { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
+          { label: "Zu meinen Angeboten", href: buildAbsoluteUrl("/courses") },
           { label: "Reservierung stornieren", href: data.cancelUrl },
         ],
         support: `${qrLines.html}<p style="margin: 18px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>`,
@@ -444,8 +444,8 @@ export async function prepareCustomerTrialReservationConfirmation(data: TrialRes
       greeting: data.customerName,
       intro: `Deine Reservierung für ${data.courseTitle} war erfolgreich. Alle wichtigen Informationen findest du hier auf einen Blick.`,
       infoItems: [
-        { label: "Kurs", value: data.courseTitle },
-        { label: "Dozent", value: data.teacherName },
+        { label: "Laufendes Angebot", value: data.courseTitle },
+        { label: "Leitung", value: data.teacherName },
         { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
         { label: "Ort", value: data.location },
       ],
@@ -458,7 +458,7 @@ export async function prepareCustomerTrialReservationConfirmation(data: TrialRes
         ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
         { label: "Im Kalender speichern", href: calendarUrl },
         ...(walletUrl ? [{ label: "Ins Wallet speichern", href: walletUrl }] : []),
-        { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
+        { label: "Zu meinen Angeboten", href: buildAbsoluteUrl("/courses") },
         { label: "Reservierung stornieren", href: data.cancelUrl },
       ],
       footer: buildFooterBranding(data),
@@ -475,8 +475,8 @@ export function prepareCustomerTrialReservationReminder(data: TrialReservationEm
       greeting: data.customerName,
       intro: `Morgen findet deine reservierte Probestunde für <b>${data.courseTitle}</b> statt.`,
       infoItems: [
-        { label: "Kurs", value: data.courseTitle },
-        { label: "Dozent", value: data.teacherName },
+        { label: "Laufendes Angebot", value: data.courseTitle },
+        { label: "Leitung", value: data.teacherName },
         { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
         { label: "Ort", value: data.location },
       ],
@@ -492,8 +492,8 @@ export function prepareCustomerTrialReservationReminder(data: TrialReservationEm
       greeting: data.customerName,
       intro: `Morgen findet deine reservierte Probestunde für ${data.courseTitle} statt.`,
       infoItems: [
-        { label: "Kurs", value: data.courseTitle },
-        { label: "Dozent", value: data.teacherName },
+        { label: "Laufendes Angebot", value: data.courseTitle },
+        { label: "Leitung", value: data.teacherName },
         { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
         { label: "Ort", value: data.location },
       ],
@@ -520,7 +520,7 @@ export function prepareTeacherTrialReservationNotification(data: TrialReservatio
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
         <h2>Neue Probestunden-Reservierung</h2>
-        <p>Für deinen Kurs <b>${data.courseTitle}</b> wurde eine neue Probestunde reserviert.</p>
+        <p>Für dein laufendes Angebot <b>${data.courseTitle}</b> wurde ein neuer Probetermin reserviert.</p>
         <p><b>Name:</b> ${data.customerName}</p>
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
         ${locationLine}
@@ -557,7 +557,7 @@ export function prepareTeacherTrialReservationCancellation(data: TrialReservatio
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
         <h2>Probestunden-Reservierung wurde storniert</h2>
-        <p>Eine Probestunden-Reservierung für deinen Kurs <b>${data.courseTitle}</b> wurde storniert.</p>
+        <p>Eine Probetermin-Reservierung für dein laufendes Angebot <b>${data.courseTitle}</b> wurde storniert.</p>
         <p><b>Name:</b> ${data.customerName}</p>
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
         ${locationLine}
@@ -588,12 +588,12 @@ export function prepareCustomerTrialReservationCancellation(data: TrialReservati
       greeting: data.customerName,
       intro: `Deine Probestunden-Reservierung für <b>${data.courseTitle}</b> wurde erfolgreich storniert.`,
       infoItems: [
-        { label: "Kurs", value: data.courseTitle },
+        { label: "Laufendes Angebot", value: data.courseTitle },
         { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
         { label: "Ort", value: data.location },
       ],
       nextSteps: ["Wenn du weiterhin Interesse hast, kannst du später jederzeit erneut eine Probestunde anfragen."],
-      actions: [{ label: "Zu den Kursen", href: buildAbsoluteUrl("/courses") }],
+      actions: [{ label: "Zu den Angeboten", href: buildAbsoluteUrl("/courses") }],
       footer: buildFooterBranding(data),
     }),
     text: createTextEmail({
@@ -601,12 +601,12 @@ export function prepareCustomerTrialReservationCancellation(data: TrialReservati
       greeting: data.customerName,
       intro: `Deine Probestunden-Reservierung für ${data.courseTitle} wurde erfolgreich storniert.`,
       infoItems: [
-        { label: "Kurs", value: data.courseTitle },
+        { label: "Laufendes Angebot", value: data.courseTitle },
         { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
         { label: "Ort", value: data.location },
       ],
       nextSteps: ["Wenn du weiterhin Interesse hast, kannst du später jederzeit erneut eine Probestunde anfragen."],
-      actions: [{ label: "Zu den Kursen", href: buildAbsoluteUrl("/courses") }],
+      actions: [{ label: "Zu den Angeboten", href: buildAbsoluteUrl("/courses") }],
       footer: buildFooterBranding(data),
     }),
   };
@@ -629,7 +629,7 @@ export function prepareTrialRegistrationApprovedEmail(data: TrialRegistrationDec
       greeting: data.customerName,
       intro: `Nach deiner Probestunde kannst du dich jetzt verbindlich für <b>${data.courseTitle}</b> anmelden.`,
       infoItems: [
-        { label: "Kurs", value: data.courseTitle },
+        { label: "Laufendes Angebot", value: data.courseTitle },
         {
           label: "Reserviert bis",
           value: data.registrationExpiresAt ? formatExpirationDateTime(data.registrationExpiresAt) : null,
@@ -642,9 +642,9 @@ export function prepareTrialRegistrationApprovedEmail(data: TrialRegistrationDec
       actions: data.registrationUrl
         ? [
             { label: "Jetzt anmelden", href: data.registrationUrl },
-            { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
+            { label: "Zu meinen Angeboten", href: buildAbsoluteUrl("/courses") },
           ]
-        : [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+        : [{ label: "Zu meinen Angeboten", href: buildAbsoluteUrl("/courses") }],
       footer: buildFooterBranding(data),
     }),
     text: createTextEmail({
@@ -652,7 +652,7 @@ export function prepareTrialRegistrationApprovedEmail(data: TrialRegistrationDec
       greeting: data.customerName,
       intro: `Nach deiner Probestunde kannst du dich jetzt verbindlich für ${data.courseTitle} anmelden.`,
       infoItems: [
-        { label: "Kurs", value: data.courseTitle },
+        { label: "Laufendes Angebot", value: data.courseTitle },
         {
           label: "Reserviert bis",
           value: data.registrationExpiresAt ? formatExpirationDateTime(data.registrationExpiresAt) : null,
@@ -665,9 +665,9 @@ export function prepareTrialRegistrationApprovedEmail(data: TrialRegistrationDec
       actions: data.registrationUrl
         ? [
             { label: "Jetzt anmelden", href: data.registrationUrl },
-            { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
+            { label: "Zu meinen Angeboten", href: buildAbsoluteUrl("/courses") },
           ]
-        : [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+        : [{ label: "Zu meinen Angeboten", href: buildAbsoluteUrl("/courses") }],
       footer: buildFooterBranding(data),
     }),
   };
@@ -689,7 +689,7 @@ function prepareTrialRegistrationReminderEmail(
       greeting: data.customerName,
       intro: `${input.lead} für <b>${data.courseTitle}</b>.`,
       infoItems: [
-        { label: "Kurs", value: data.courseTitle },
+        { label: "Laufendes Angebot", value: data.courseTitle },
         { label: "Verbleibende Zeit", value: input.remainingTime },
         { label: "Reserviert bis", value: expiresAtLine },
       ],
@@ -702,7 +702,7 @@ function prepareTrialRegistrationReminderEmail(
       greeting: data.customerName,
       intro: `${input.lead} für ${data.courseTitle}.`,
       infoItems: [
-        { label: "Kurs", value: data.courseTitle },
+        { label: "Laufendes Angebot", value: data.courseTitle },
         { label: "Verbleibende Zeit", value: input.remainingTime },
         { label: "Reserviert bis", value: expiresAtLine },
       ],
@@ -748,18 +748,18 @@ export function prepareTrialRegistrationExpiredEmail(data: TrialRegistrationExpi
       title: "Dein Anmeldelink ist abgelaufen",
       greeting: data.customerName,
       intro: `Die Reservierung für deine verbindliche Anmeldung zu <b>${data.courseTitle}</b> ist inzwischen abgelaufen.`,
-      infoItems: [{ label: "Kurs", value: data.courseTitle }],
-      nextSteps: ["Wenn du weiterhin Interesse hast, schau dir gerne unsere aktuellen Kurse an."],
-      actions: [{ label: "Zu meinen Kursen", href: data.coursesOverviewUrl }],
+      infoItems: [{ label: "Laufendes Angebot", value: data.courseTitle }],
+      nextSteps: ["Wenn du weiterhin Interesse hast, schau dir gerne unsere aktuellen Angebote an."],
+      actions: [{ label: "Zu meinen Angeboten", href: data.coursesOverviewUrl }],
       footer: buildFooterBranding(data),
     }),
     text: createTextEmail({
       title: "Dein Anmeldelink ist abgelaufen",
       greeting: data.customerName,
       intro: `Die Reservierung für deine verbindliche Anmeldung zu ${data.courseTitle} ist inzwischen abgelaufen.`,
-      infoItems: [{ label: "Kurs", value: data.courseTitle }],
-      nextSteps: ["Wenn du weiterhin Interesse hast, schau dir gerne unsere aktuellen Kurse an."],
-      actions: [{ label: "Zu meinen Kursen", href: data.coursesOverviewUrl }],
+      infoItems: [{ label: "Laufendes Angebot", value: data.courseTitle }],
+      nextSteps: ["Wenn du weiterhin Interesse hast, schau dir gerne unsere aktuellen Angebote an."],
+      actions: [{ label: "Zu meinen Angeboten", href: data.coursesOverviewUrl }],
       footer: buildFooterBranding(data),
     }),
   };
@@ -770,10 +770,10 @@ export async function prepareCourseSubscriptionConfirmationEmail(
 ) {
   const qrLines = await getQrLines(data.qrToken, {
     htmlLead:
-      "Dein Ticket ist bereits aktiv. Bitte zeige es künftig für Anwesenheit und Check-in im Kurs vor.",
+      "Dein Ticket ist bereits aktiv. Bitte zeige es künftig für Anwesenheit und Check-in vor.",
     textLead:
-      "Dein Ticket ist bereits aktiv. Bitte zeige es künftig für Anwesenheit und Check-in im Kurs vor.",
-    imageAlt: "QR-Ticket für deine Kursanmeldung",
+      "Dein Ticket ist bereits aktiv. Bitte zeige es künftig für Anwesenheit und Check-in vor.",
+    imageAlt: "QR-Ticket für deine Anmeldung zum laufenden Angebot",
   });
   const ticketUrl = data.qrToken ? buildTicketViewUrl(data.qrToken) : null;
   const walletUrl = data.qrToken ? buildTicketWalletUrl(data.qrToken) : null;
@@ -787,7 +787,7 @@ export async function prepareCourseSubscriptionConfirmationEmail(
           description:
             data.providerName || data.instructorName
               ? `Anbieter: ${data.providerName ?? data.instructorName}`
-              : "Kursanmeldung",
+              : "Anmeldung zum laufenden Angebot",
           filename: `kurs-${data.courseTitle}`,
         })
       : null;
@@ -801,7 +801,7 @@ export async function prepareCourseSubscriptionConfirmationEmail(
         greeting: data.customerName,
         intro: `Deine verbindliche Anmeldung für <b>${data.courseTitle}</b> wurde erfolgreich abgeschlossen. Deine Zahlung ist bestätigt.`,
         infoItems: [
-          { label: "Kursname", value: data.courseTitle },
+          { label: "Name des laufenden Angebots", value: data.courseTitle },
           ...buildProviderInfoItems(data),
           { label: "Preis", value: data.priceLabel },
           { label: "Kündigungsbedingungen", value: data.cancellationLabel },
@@ -817,7 +817,7 @@ export async function prepareCourseSubscriptionConfirmationEmail(
           ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
           ...(calendarUrl ? [{ label: "Im Kalender speichern", href: calendarUrl }] : []),
           ...(walletUrl ? [{ label: "Ins Wallet speichern", href: walletUrl }] : []),
-          { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
+          { label: "Zu meinen Angeboten", href: buildAbsoluteUrl("/courses") },
         ],
         support: `${qrLines.html}<p style="margin: 18px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>`,
         footer: buildFooterBranding(data),
@@ -827,7 +827,7 @@ export async function prepareCourseSubscriptionConfirmationEmail(
       greeting: data.customerName,
       intro: `Deine verbindliche Anmeldung für ${data.courseTitle} wurde erfolgreich abgeschlossen. Deine Zahlung ist bestätigt.`,
       infoItems: [
-        { label: "Kursname", value: data.courseTitle },
+        { label: "Name des laufenden Angebots", value: data.courseTitle },
         ...buildProviderInfoItems(data),
         { label: "Preis", value: data.priceLabel },
         { label: "Kündigungsbedingungen", value: data.cancellationLabel },
@@ -844,7 +844,7 @@ export async function prepareCourseSubscriptionConfirmationEmail(
         ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
         ...(calendarUrl ? [{ label: "Im Kalender speichern", href: calendarUrl }] : []),
         ...(walletUrl ? [{ label: "Ins Wallet speichern", href: walletUrl }] : []),
-        { label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") },
+        { label: "Zu meinen Angeboten", href: buildAbsoluteUrl("/courses") },
       ],
       footer: buildFooterBranding(data),
     }),
@@ -867,8 +867,8 @@ export function prepareCourseSubscriptionProviderNotificationEmail(
         <p><b>Name:</b> ${data.participantName}</p>
         <p><b>E-Mail:</b> ${data.participantEmail}</p>
         ${data.participantPhone ? `<p><b>Telefon:</b> ${data.participantPhone}</p>` : ""}
-        ${data.providerName ? `<p><b>Anbieter / Studio:</b> ${data.providerName}</p>` : ""}
-        ${data.instructorName ? `<p><b>Dozent:</b> ${data.instructorName}</p>` : ""}
+        ${data.providerName ? `<p><b>Organisation:</b> ${data.providerName}</p>` : ""}
+        ${data.instructorName ? `<p><b>Leitung:</b> ${data.instructorName}</p>` : ""}
         ${data.priceLabel ? `<p><b>Preis:</b> ${data.priceLabel}</p>` : ""}
         ${data.cancellationLabel ? `<p><b>Kündigungsbedingungen:</b> ${data.cancellationLabel}</p>` : ""}
         ${footerHtml}
@@ -880,8 +880,8 @@ export function prepareCourseSubscriptionProviderNotificationEmail(
       `Name: ${data.participantName}`,
       `E-Mail: ${data.participantEmail}`,
       data.participantPhone ? `Telefon: ${data.participantPhone}` : null,
-      data.providerName ? `Anbieter / Studio: ${data.providerName}` : null,
-      data.instructorName ? `Dozent: ${data.instructorName}` : null,
+      data.providerName ? `Organisation: ${data.providerName}` : null,
+      data.instructorName ? `Leitung: ${data.instructorName}` : null,
       data.priceLabel ? `Preis: ${data.priceLabel}` : null,
       data.cancellationLabel ? `Kündigungsbedingungen: ${data.cancellationLabel}` : null,
       "",
@@ -903,13 +903,13 @@ export function prepareCourseEndingNotificationEmail(data: CourseEndingNotificat
     to: data.customerEmail,
     subject: `Wichtige Info: ${data.courseTitle} endet am ${endDate}`,
     html: createHtmlEmail({
-      title: "Wichtige Änderung zu deinem Kurs",
+      title: "Wichtige Änderung zu deinem laufenden Angebot",
       greeting: data.customerName,
-      intro: `Dein Kurs <b>${data.courseTitle}</b> wird zum <b>${endDate}</b> beendet.`,
+      intro: `Dein laufendes Angebot <b>${data.courseTitle}</b> wird zum <b>${endDate}</b> beendet.`,
       infoItems: [
-        { label: "Kursname", value: data.courseTitle },
+        { label: "Name des laufenden Angebots", value: data.courseTitle },
         ...buildProviderInfoItems(data),
-        { label: "Letzter Kurstag", value: endDate },
+        { label: "Letzter Angebotstag", value: endDate },
         { label: "Ort", value: data.location },
         { label: "Weitere Infos", value: data.locationDetails },
         { label: "Kündigungsregelung", value: data.cancellationLabel },
@@ -919,17 +919,17 @@ export function prepareCourseEndingNotificationEmail(data: CourseEndingNotificat
         "Du musst dafür nichts weiter unternehmen.",
         "Falls es organisatorische Rückfragen gibt, melden wir uns separat bei dir.",
       ],
-      actions: [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+      actions: [{ label: "Zu meinen Angeboten", href: buildAbsoluteUrl("/courses") }],
       footer: buildFooterBranding(data),
     }),
     text: createTextEmail({
-      title: "Wichtige Änderung zu deinem Kurs",
+      title: "Wichtige Änderung zu deinem laufenden Angebot",
       greeting: data.customerName,
-      intro: `Dein Kurs ${data.courseTitle} wird zum ${endDate} beendet.`,
+      intro: `Dein laufendes Angebot ${data.courseTitle} wird zum ${endDate} beendet.`,
       infoItems: [
-        { label: "Kursname", value: data.courseTitle },
+        { label: "Name des laufenden Angebots", value: data.courseTitle },
         ...buildProviderInfoItems(data),
-        { label: "Letzter Kurstag", value: endDate },
+        { label: "Letzter Angebotstag", value: endDate },
         { label: "Ort", value: data.location },
         { label: "Weitere Infos", value: data.locationDetails },
         { label: "Kündigungsregelung", value: data.cancellationLabel },
@@ -939,7 +939,7 @@ export function prepareCourseEndingNotificationEmail(data: CourseEndingNotificat
         "Du musst dafür nichts weiter unternehmen.",
         "Falls es organisatorische Rückfragen gibt, melden wir uns separat bei dir.",
       ],
-      actions: [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+      actions: [{ label: "Zu meinen Angeboten", href: buildAbsoluteUrl("/courses") }],
       footer: buildFooterBranding(data),
     }),
   };
@@ -957,13 +957,13 @@ export function prepareCourseEndingProviderSummaryEmail(data: CourseEndingProvid
 
   return {
     to: data.teacherEmail ?? "",
-    subject: `Kursstopp-Benachrichtigung versendet: ${data.courseTitle}`,
+    subject: `Benachrichtigung zum Angebotsstopp versendet: ${data.courseTitle}`,
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2>Kursstopp-Benachrichtigung versendet</h2>
-        <p>Die Benachrichtigung ?ber das Kursende wurde an die betroffenen Teilnehmer versendet.</p>
-        <p><b>Kurs:</b> ${data.courseTitle}</p>
-        <p><b>Letzter Kurstag:</b> ${endDate}</p>
+        <h2>Benachrichtigung zum Angebotsstopp versendet</h2>
+        <p>Die Benachrichtigung über das Ende des laufenden Angebots wurde an die betroffenen Teilnehmer versendet.</p>
+        <p><b>Laufendes Angebot:</b> ${data.courseTitle}</p>
+        <p><b>Letzter Angebotstag:</b> ${endDate}</p>
         <p><b>Anzahl Empf?nger:</b> ${data.recipientCount}</p>
         ${
           maskedRecipients.length > 0
@@ -976,10 +976,10 @@ export function prepareCourseEndingProviderSummaryEmail(data: CourseEndingProvid
       </div>
     `,
     text: [
-      "Kursstopp-Benachrichtigung versendet",
-      "Die Benachrichtigung ?ber das Kursende wurde an die betroffenen Teilnehmer versendet.",
-      `Kurs: ${data.courseTitle}`,
-      `Letzter Kurstag: ${endDate}`,
+      "Benachrichtigung zum Angebotsstopp versendet",
+      "Die Benachrichtigung über das Ende des laufenden Angebots wurde an die betroffenen Teilnehmer versendet.",
+      `Laufendes Angebot: ${data.courseTitle}`,
+      `Letzter Angebotstag: ${endDate}`,
       `Anzahl Empf?nger: ${data.recipientCount}`,
       maskedRecipients.length > 0 ? "Benachrichtigte E-Mail-Adressen:" : "Benachrichtigte E-Mail-Adressen: Keine",
       ...maskedRecipients,
@@ -997,24 +997,24 @@ export function prepareTrialRegistrationRejectedEmail(data: TrialRegistrationDec
       title: "Vielen Dank für deine Probestunde",
       greeting: data.customerName,
       intro: `Vielen Dank, dass du an der Probestunde für <b>${data.courseTitle}</b> teilgenommen hast.`,
-      infoItems: [{ label: "Kurs", value: data.courseTitle }],
+      infoItems: [{ label: "Laufendes Angebot", value: data.courseTitle }],
       nextSteps: [
         "Nach dem Termin wurde entschieden, dass die aktuelle Gruppe im Moment leider nicht der richtige Rahmen ist.",
         "Wenn es zu einem sp?teren Zeitpunkt besser passt, freuen wir uns sehr ?ber ein Wiedersehen.",
       ],
-      actions: [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+      actions: [{ label: "Zu meinen Angeboten", href: buildAbsoluteUrl("/courses") }],
       footer: buildFooterBranding(data),
     }),
     text: createTextEmail({
       title: "Vielen Dank für deine Probestunde",
       greeting: data.customerName,
       intro: `Vielen Dank, dass du an der Probestunde für ${data.courseTitle} teilgenommen hast.`,
-      infoItems: [{ label: "Kurs", value: data.courseTitle }],
+      infoItems: [{ label: "Laufendes Angebot", value: data.courseTitle }],
       nextSteps: [
         "Nach dem Termin wurde entschieden, dass die aktuelle Gruppe im Moment leider nicht der richtige Rahmen ist.",
         "Wenn es zu einem sp?teren Zeitpunkt besser passt, freuen wir uns sehr ?ber ein Wiedersehen.",
       ],
-      actions: [{ label: "Zu meinen Kursen", href: buildAbsoluteUrl("/courses") }],
+      actions: [{ label: "Zu meinen Angeboten", href: buildAbsoluteUrl("/courses") }],
       footer: buildFooterBranding(data),
     }),
   };
@@ -1033,13 +1033,13 @@ export function prepareTrialCourseStopNotificationEmail(data: TrialCourseStopNot
     html: createHtmlEmail({
       title: "Deine Probestunde kann leider nicht stattfinden",
       greeting: data.customerName,
-      intro: `Der Kurs <b>${data.courseTitle}</b> endet und deshalb kann deine geplante Probestunde leider nicht stattfinden.`,
+      intro: `Das laufende Angebot <b>${data.courseTitle}</b> endet und deshalb kann dein geplanter Probetermin leider nicht stattfinden.`,
       infoItems: [
-        { label: "Kurs", value: data.courseTitle },
+        { label: "Laufendes Angebot", value: data.courseTitle },
         { label: "Geplanter Termin", value: trialDate },
       ],
       nextSteps: [
-        "Schau dir gerne weitere passende Kurse und Workshops auf RESER an.",
+        "Schau dir gerne weitere passende Angebote auf RESER an.",
       ],
       actions: [{ label: "Weitere Angebote auf RESER", href: offersUrl }],
       footer: buildFooterBranding({ providerName: null, teacherName: null, providerType: null }),
@@ -1047,12 +1047,12 @@ export function prepareTrialCourseStopNotificationEmail(data: TrialCourseStopNot
     text: createTextEmail({
       title: "Deine Probestunde kann leider nicht stattfinden",
       greeting: data.customerName,
-      intro: `Der Kurs ${data.courseTitle} endet und deshalb kann deine geplante Probestunde leider nicht stattfinden.`,
+      intro: `Das laufende Angebot ${data.courseTitle} endet und deshalb kann dein geplanter Probetermin leider nicht stattfinden.`,
       infoItems: [
-        { label: "Kurs", value: data.courseTitle },
+        { label: "Laufendes Angebot", value: data.courseTitle },
         { label: "Geplanter Termin", value: trialDate },
       ],
-      nextSteps: ["Schau dir gerne weitere passende Kurse und Workshops auf RESER an."],
+      nextSteps: ["Schau dir gerne weitere passende Angebote auf RESER an."],
       actions: [{ label: "Weitere Angebote auf RESER", href: offersUrl }],
       footer: buildFooterBranding({ providerName: null, teacherName: null, providerType: null }),
     }),

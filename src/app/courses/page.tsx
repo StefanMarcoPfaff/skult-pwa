@@ -23,9 +23,9 @@ function formatDateTime(dt: string | null) {
   });
 }
 
-function getKind(row: Row): "workshop" | "course" | null {
+function getKind(row: Row): "workshop" | "course" | "exclusive_offer" | null {
   const raw = (asString(row.offer_type) ?? asString(row.kind) ?? "").toLowerCase();
-  if (raw === "workshop" || raw === "course") return raw;
+  if (raw === "workshop" || raw === "course" || raw === "exclusive_offer") return raw;
   return null;
 }
 
@@ -141,6 +141,8 @@ export default async function CoursesPage() {
         isPubliclyVisibleOffer({
           kind: getKind(o),
           isPublished: typeof o.is_published === "boolean" ? o.is_published : true,
+          visibility: asString(o.visibility),
+          status: asString(o.status),
           startsAt: asString(o.starts_at),
           endsAt: asString(o.ends_at),
         })
@@ -160,7 +162,7 @@ export default async function CoursesPage() {
         <h1 className="text-3xl font-black">Angebote</h1>
 
         <Link href="/login" className="text-sm font-semibold underline">
-          Dozent*innen-Login
+          Login für Anbietende
         </Link>
       </header>
 
@@ -180,7 +182,7 @@ export default async function CoursesPage() {
             const occupied =
               kind === "course"
                 ? courseCounts.get(id) ?? 0
-                : kind === "workshop"
+                : kind === "workshop" || kind === "exclusive_offer"
                   ? workshopCounts.get(id) ?? 0
                   : 0;
             const availability = buildOfferAvailability(capacity, occupied, {
@@ -190,14 +192,22 @@ export default async function CoursesPage() {
                   : isWorkshopBookable(startsAt, endsAt),
             });
             const availabilityText =
-              kind === "workshop" && !isWorkshopBookable(startsAt, endsAt)
+              (kind === "workshop" || kind === "exclusive_offer") && !isWorkshopBookable(startsAt, endsAt)
                 ? "Nicht mehr buchbar"
                 : availability.badgeText;
             const price = formatPrice(o);
             const courseSchedule = kind === "course" ? formatCourseSchedule(o) : null;
-            const workshopTimeHint = kind === "workshop" ? formatDateTime(startsAt) : null;
+            const workshopTimeHint =
+              kind === "workshop" || kind === "exclusive_offer" ? formatDateTime(startsAt) : null;
 
-            const kindLabel = kind === "course" ? "Kurs" : kind === "workshop" ? "Workshop" : null;
+            const kindLabel =
+              kind === "course"
+                ? "laufendes Angebot"
+                : kind === "exclusive_offer"
+                  ? "Exklusiv-Angebot"
+                  : kind === "workshop"
+                    ? "einmaliges Angebot"
+                    : null;
 
             return (
               <li key={id}>
@@ -223,7 +233,7 @@ export default async function CoursesPage() {
 
                   <p className="mt-2 text-sm font-medium text-gray-700">{availabilityText}</p>
 
-                  {kind === "workshop" && workshopTimeHint ? (
+                  {(kind === "workshop" || kind === "exclusive_offer") && workshopTimeHint ? (
                     <p className="mt-2 text-sm text-gray-700">Termin: {workshopTimeHint}</p>
                   ) : null}
 

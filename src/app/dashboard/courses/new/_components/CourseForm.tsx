@@ -34,6 +34,7 @@ export type CourseFormValues = {
   currency?: string;
   instructor_name?: string;
   trial_slot_starts?: string[];
+  visibility?: "public" | "private_link";
 };
 
 function getWeekdayForDate(value: string): number | null {
@@ -91,7 +92,7 @@ function combineCourseStartsAtISO(startDate: string, startTime: string): string 
 export default function CourseForm({
   initialValues,
   submitActionOverride,
-  submitLabel = "Kurs erstellen",
+  submitLabel = "Laufendes Angebot erstellen",
   providerType,
   providerDisplayName,
 }: {
@@ -170,7 +171,7 @@ export default function CourseForm({
       return;
     }
     if (!startDateValue) {
-      setError("Bitte wähle ein Startdatum für den Kurs.");
+      setError("Bitte wähle ein Startdatum für das laufende Angebot.");
       return;
     }
     if (!startTimeValue) {
@@ -194,14 +195,14 @@ export default function CourseForm({
       return;
     }
     if (providerType === "studio_provider" && !instructorName) {
-      setError("Bitte gib den Dozenten für diesen Kurs an.");
+      setError("Bitte gib die Leitung für dieses laufende Angebot an.");
       return;
     }
 
     const selectedWeekday = Number(weekdayValue);
     const startDateWeekday = getWeekdayForDate(startDateValue);
     if (!Number.isInteger(selectedWeekday) || startDateWeekday === null) {
-      setError("Bitte wähle ein gültiges Startdatum für den Kurs.");
+      setError("Bitte wähle ein gültiges Startdatum für das laufende Angebot.");
       return;
     }
     if (selectedWeekday !== startDateWeekday) {
@@ -273,8 +274,23 @@ export default function CourseForm({
           rows={4}
           defaultValue={initialValues?.description ?? ""}
           className="w-full rounded-xl border px-3 py-2 text-sm"
-          placeholder="Kurzbeschreibung für den Kurs."
+          placeholder="Kurzbeschreibung für das laufende Angebot."
         />
+      </label>
+
+      <label className="block space-y-1">
+        <span className="text-sm font-medium">Sichtbarkeit *</span>
+        <select
+          name="visibility"
+          defaultValue={initialValues?.visibility ?? "public"}
+          className="w-full rounded-xl border px-3 py-2 text-sm"
+        >
+          <option value="public">Öffentlich sichtbar</option>
+          <option value="private_link">Nur per Link sichtbar</option>
+        </select>
+        <span className="block text-xs text-muted-foreground">
+          Aktiv bedeutet buchbar. Sichtbarkeit steuert nur, ob das Angebot öffentlich gelistet wird oder nur über den direkten Link erreichbar ist.
+        </span>
       </label>
 
       {providerType === "studio_provider" ? (
@@ -289,19 +305,19 @@ export default function CourseForm({
           </label>
 
           <label className="space-y-1">
-            <span className="text-sm font-medium">Dozent: *</span>
+            <span className="text-sm font-medium">Leitung: *</span>
             <input
               name="instructor_name"
               required
               defaultValue={initialValues?.instructor_name ?? ""}
               className="w-full rounded-xl border px-3 py-2 text-sm"
-              placeholder="Name der Kursleitung"
+              placeholder="Name der Leitung"
             />
           </label>
         </div>
       ) : (
         <label className="block space-y-1">
-          <span className="text-sm font-medium">Dozent:</span>
+          <span className="text-sm font-medium">Leitung:</span>
           <input
             name="instructor_name"
             value={providerDisplayName}
@@ -330,7 +346,7 @@ export default function CourseForm({
         </label>
 
         <label className="space-y-1">
-          <span className="text-sm font-medium">Startdatum des Kurses *</span>
+          <span className="text-sm font-medium">Startdatum des laufenden Angebots *</span>
           <input
             type="date"
             name="start_date"
@@ -409,9 +425,9 @@ export default function CourseForm({
 
       {trialMode === "manual" ? (
         <section className="rounded-2xl border bg-gray-50 p-4 text-sm">
-          <p className="font-medium">Termine für Probestunden</p>
+          <p className="font-medium">Termine für Probetermine</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Wähle aus, an welchen der kommenden Kurstermine Probeschüler*innen teilnehmen dürfen.
+            Wähle aus, an welchen der kommenden Termine Interessierte zum Probetermin teilnehmen dürfen.
           </p>
           {availableManualTrialSlots.length > 0 ? (
             <div className="mt-3 space-y-2">
@@ -442,8 +458,8 @@ export default function CourseForm({
             </div>
           ) : (
             <p className="mt-3 text-xs text-muted-foreground">
-              Sobald Kursstart, Wochentag, Startzeit, Dauer und Rhythmus gültig gesetzt sind,
-              erscheinen hier die auswählbaren Kurstermine.
+              Sobald Startdatum, Wochentag, Startzeit, Dauer und Rhythmus gültig gesetzt sind,
+              erscheinen hier die auswählbaren Termine.
             </p>
           )}
         </section>
@@ -452,7 +468,7 @@ export default function CourseForm({
       <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
         <h2 className="font-medium text-foreground">Hinweis</h2>
         <p className="mt-2 text-muted-foreground">
-          Dieser Kurs ist fortlaufend. Du kannst den Kurs später in deinem Profil pausieren oder
+          Dieses laufende Angebot ist fortlaufend. Du kannst das Angebot später in deinem Profil pausieren oder
           stoppen.
         </p>
       </section>
@@ -504,7 +520,7 @@ export default function CourseForm({
         <p className="font-medium">Preisaufteilung</p>
         <div className="mt-3 space-y-1 text-muted-foreground">
           <div className="flex items-center justify-between gap-4">
-            <span>Kurspreis pro Monat</span>
+            <span>Preis pro Monat</span>
             <span>{formatCurrency(priceBreakdown.grossCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4">

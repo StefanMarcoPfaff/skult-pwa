@@ -57,7 +57,7 @@ export default async function DashboardProfilePage({
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold">Mein Profil</h1>
         <p className="text-sm text-muted-foreground">
-          Diese Angaben bilden die Grundlage für dein Dozent*innen-Profil.
+          Diese Angaben bilden die Grundlage für dein Profil als Anbietende.
         </p>
       </header>
 
@@ -86,7 +86,7 @@ export default async function DashboardProfilePage({
         <p className="mt-2 text-sm text-muted-foreground">
           {profile?.stripe_account_id
             ? "Ein Stripe-Konto ist hinterlegt. Falls Auszahlungen noch nicht aktiv sind, starte das Onboarding erneut."
-            : "Richte dein Stripe-Konto ein, damit Einnahmen aus Workshops und Kurs-Abos automatisch auf dein Konto ausgezahlt werden können."}
+            : "Richte dein Stripe-Konto ein, damit Einnahmen aus einmaligen und laufenden Angeboten automatisch auf dein Konto ausgezahlt werden können."}
         </p>
         {profile?.stripe_account_id ? (
           <div className="mt-4 flex flex-wrap items-center gap-3">

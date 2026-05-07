@@ -65,7 +65,7 @@ export default function SignupClient() {
     <main style={{ maxWidth: 520, margin: "0 auto", padding: "48px 16px" }}>
       <h1 style={{ fontSize: 48, fontWeight: 800, marginBottom: 16 }}>Registrieren</h1>
       <p style={{ marginBottom: 20, color: "#555", lineHeight: 1.5 }}>
-        Lehrer*innen und Anbieter erstellen hier ihren Zugang und werden danach in das bestehende
+        Anbietende erstellen hier ihren Zugang und werden danach in das bestehende
         Profil-Onboarding weitergeleitet.
       </p>
 

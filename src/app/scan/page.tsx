@@ -17,7 +17,7 @@ export default function ScanStartPage() {
     <main style={{ padding: 24, maxWidth: 720, margin: "0 auto" }}>
       <h1 style={{ fontSize: 44, fontWeight: 900, margin: 0 }}>Ticket-Scan</h1>
       <p style={{ marginTop: 12, fontSize: 18, color: "#444" }}>
-        Für Dozent*innen: Ticket-Code eingeben oder QR-Link öffnen.
+        Für Anbietende: Ticket-Code eingeben oder QR-Link öffnen.
       </p>
 
       <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>

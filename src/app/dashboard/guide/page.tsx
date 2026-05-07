@@ -17,12 +17,12 @@ function GuideSection(props: { title: string; items: Array<string | ReactNode> }
 export default function DashboardGuidePage() {
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-6">
-      <Link href="/dashboard" className="inline-flex text-sm font-semibold">{"Zurück zum Dashboard"}</Link>
+      <Link href="/dashboard" className="inline-flex text-sm font-semibold">Zurück zum Dashboard</Link>
 
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold">Kurz-Anleitung</h1>
         <p className="max-w-3xl text-sm text-muted-foreground">
-          {"Ein schneller Überblick zu RESER, deinen Angeboten, Teilnehmenden, Check-ins und den wichtigsten Symbolen."}
+          Ein schneller Überblick zu RESER, deinen Angeboten, Teilnehmenden, Check-ins und den wichtigsten Symbolen.
         </p>
       </header>
 
@@ -36,18 +36,19 @@ export default function DashboardGuidePage() {
           ]}
         />
         <GuideSection
-          title="2. Kurse vs. Workshops"
+          title="2. Angebotsarten"
           items={[
-            "Workshop = einmaliger Termin mit direkter Zahlung.",
-            "Kurs = fortlaufendes Angebot mit Probestunde und monatlicher Zahlung.",
+            "Einmaliges Angebot = einzelner Termin mit direkter Zahlung.",
+            "Laufendes Angebot = fortlaufendes Angebot mit Probeteilnahme und monatlicher Zahlung.",
           ]}
         />
         <GuideSection
           title="3. Symbole bei Angeboten"
           items={[
-            <>{"\u25B6"} = {"veröffentlichen oder aktivieren."}</>,
-            <>{"\u23F8"} = Kurs pausieren.</>,
-            <>{"\u23F9"} = Kurs stoppen oder Workshop absagen.</>,
+            <>{"\u25B6"} = veröffentlichen oder aktivieren.</>,
+            <>{"\u23F8"} = laufendes Angebot pausieren.</>,
+            <>{"\u23F9"} = laufendes Angebot stoppen oder einmaliges Angebot absagen.</>,
+            <>{"\uD83D\uDCE6"} = archivieren.</>,
             <>{"\u270F\uFE0F"} = bearbeiten.</>,
             <>{"\uD83C\uDF9F\uFE0F"} = Anwesenheit erfassen.</>,
             <>{"\u2709\uFE0F"} = Teilnehmer*innen anschreiben.</>,
@@ -57,10 +58,11 @@ export default function DashboardGuidePage() {
         <GuideSection
           title="4. Symbole bei Teilnehmenden"
           items={[
-            <>{"\u25B6"} = Probestunde freigeben oder aktive Teilnahme anzeigen.</>,
+            <>{"\u25B6"} = Probeteilnahme freigeben oder aktive Teilnahme anzeigen.</>,
             <>{"\u23F8"} = Teilnahme pausieren.</>,
-            <>{"\u23F9"} = {"ablehnen, kündigen oder absagen."}</>,
-            <>{"\u270F\uFE0F"} = Daten bearbeiten.</>,
+            <>{"\u23F9"} = ablehnen, kündigen oder absagen.</>,
+            <>{"\uD83D\uDCE6"} = archivieren.</>,
+            <>{"\u270F\uFE0F"} = Daten ansehen oder bearbeiten.</>,
             <>{"\uD83C\uDF9F\uFE0F"} = Teilnehmer*in einchecken.</>,
             <>{"\u2709\uFE0F"} = Person anschreiben.</>,
           ]}
@@ -76,9 +78,9 @@ export default function DashboardGuidePage() {
         <GuideSection
           title="6. Zahlungen"
           items={[
-            "Workshops werden direkt bezahlt.",
-            "Kurse laufen monatlich.",
-            "Kurs-Pausen und Kündigungen werden durch Dozent*innen gesteuert.",
+            "Einmalige Angebote werden direkt bezahlt.",
+            "Laufende Angebote laufen monatlich.",
+            "Pausen und Kündigungen werden durch Anbietende gesteuert.",
           ]}
         />
         <GuideSection
@@ -86,7 +88,7 @@ export default function DashboardGuidePage() {
           items={[
             "Öffentlichen Link nutzen.",
             "Embed-Code für die eigene Website kopieren.",
-            "Teilen und Einbetten ist nur bei veröffentlichten Angeboten aktiv.",
+            "Teilen und Einbetten ist nur bei aktiven und direkt buchbaren Angeboten aktiv.",
           ]}
         />
       </section>

@@ -25,7 +25,7 @@ export default async function TicketQrPage({
             Für diesen Ticket-Link wurde kein gültiges Ticket gefunden.
           </p>
           <Link href="/courses" className="mt-4 inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
-            Alle Kurse
+            Alle Angebote
           </Link>
         </section>
       </main>
@@ -96,7 +96,7 @@ export default async function TicketQrPage({
           Meine Tickets
         </Link>
         <Link href="/courses" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
-          Alle Kurse
+          Alle Angebote
         </Link>
       </div>
     </main>

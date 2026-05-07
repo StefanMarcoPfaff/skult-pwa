@@ -17,7 +17,7 @@ export default async function TrialRegistrationSuccessPage({
   const { token } = await params;
   const { session_id, intentId } = await searchParams;
   let ticketForDisplay: TicketRow | null = null;
-  let courseTitleForDisplay = "Kurs";
+  let courseTitleForDisplay = "Laufendes Angebot";
   let priceLabelForDisplay: string | null = null;
   let checkoutState: CourseRegistrationFinalizeResult["kind"] | null = null;
 
@@ -50,12 +50,12 @@ export default async function TrialRegistrationSuccessPage({
         </h1>
         <p className="mt-3 text-sm text-muted-foreground">
           {checkoutState === "pending"
-            ? "Sobald Stripe die Subscription-Zahlung bestaetigt hat, wird deine Kursanmeldung automatisch abgeschlossen und du erhaeltst die weiteren Informationen per E-Mail."
-            : "Alle weiteren Informationen zu deinem Kurs erhaeltst du per E-Mail."}
+            ? "Sobald Stripe die Subscription-Zahlung bestaetigt hat, wird deine Anmeldung automatisch abgeschlossen und du erhaeltst die weiteren Informationen per E-Mail."
+            : "Alle weiteren Informationen zu deinem laufenden Angebot erhaeltst du per E-Mail."}
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <Link href="/courses" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
-            Zu den Kursen
+            Zu den Angeboten
           </Link>
           <Link
             href={`/trial/register/${token}`}
@@ -68,7 +68,7 @@ export default async function TrialRegistrationSuccessPage({
 
       {ticketForDisplay && ticketCheckInUrl ? (
         <section className="rounded-2xl border p-6">
-          <h2 className="text-xl font-semibold">Dein Kursticket</h2>
+          <h2 className="text-xl font-semibold">Dein Ticket</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             Zeige diesen QR-Code kuenftig fuer Anwesenheit und Check-in in {courseTitleForDisplay} vor.
           </p>
@@ -88,7 +88,7 @@ export default async function TrialRegistrationSuccessPage({
 
       {priceLabelForDisplay ? (
         <section className="rounded-2xl border p-6">
-          <h2 className="text-xl font-semibold">Deine Kurskonditionen</h2>
+          <h2 className="text-xl font-semibold">Deine Konditionen</h2>
           <div className="mt-3 space-y-2 text-sm text-muted-foreground">
             <p>
               Preis: <span className="font-medium text-foreground">{priceLabelForDisplay}</span>
