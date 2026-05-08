@@ -23,6 +23,7 @@ export type CourseFormValues = {
   location?: string;
   location_details?: string;
   description?: string;
+  internal_note?: string;
   weekday?: string;
   start_date?: string;
   start_time?: string;
@@ -279,6 +280,19 @@ export default function CourseForm({
       </label>
 
       <label className="block space-y-1">
+        <span className="text-sm font-medium">Interne Notiz</span>
+        <textarea
+          name="internal_note"
+          rows={3}
+          defaultValue={initialValues?.internal_note ?? ""}
+          className="w-full rounded-xl border px-3 py-2 text-sm"
+        />
+        <span className="block text-xs text-muted-foreground">
+          Nur fuer dich sichtbar. Kund*innen sehen diese Notiz nicht.
+        </span>
+      </label>
+
+      <label className="block space-y-1">
         <span className="text-sm font-medium">Sichtbarkeit *</span>
         <select
           name="visibility"
@@ -286,11 +300,12 @@ export default function CourseForm({
           className="w-full rounded-xl border px-3 py-2 text-sm"
         >
           <option value="public">Öffentlich sichtbar</option>
-          <option value="private_link">Nur per Link sichtbar</option>
+          <option value="private_link">Nur per Link buchbar</option>
         </select>
-        <span className="block text-xs text-muted-foreground">
-          Aktiv bedeutet buchbar. Sichtbarkeit steuert nur, ob das Angebot öffentlich gelistet wird oder nur über den direkten Link erreichbar ist.
-        </span>
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <p>Öffentlich sichtbar: Dein Angebot erscheint auf RESER und kann von allen gefunden und gebucht werden.</p>
+          <p>Nur per Link buchbar: Dein Angebot erscheint nicht öffentlich auf RESER. Du kannst den Link gezielt an ausgewählte Personen schicken.</p>
+        </div>
       </label>
 
       {providerType === "studio_provider" ? (
@@ -413,12 +428,8 @@ export default function CourseForm({
             onChange={(event) => setTrialMode(event.target.value)}
             className="w-full rounded-xl border px-3 py-2 text-sm"
           >
-            <option value="all_sessions">
-              Probeschüler*innen können an jedem Termin teilnehmen
-            </option>
-            <option value="manual">
-              Probeschüler*innen können nur an ausgewählten Terminen teilnehmen
-            </option>
+            <option value="all_sessions">Probeschüler*innen können an jedem Termin teilnehmen</option>
+            <option value="manual">Probeschüler*innen können nur an ausgewählten Terminen teilnehmen</option>
           </select>
         </label>
       </div>
@@ -468,8 +479,8 @@ export default function CourseForm({
       <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
         <h2 className="font-medium text-foreground">Hinweis</h2>
         <p className="mt-2 text-muted-foreground">
-          Dieses laufende Angebot ist fortlaufend. Du kannst das Angebot später in deinem Profil pausieren oder
-          stoppen.
+          Dieses laufende Angebot ist fortlaufend. Du kannst das Angebot später in deinem Profil
+          pausieren oder stoppen.
         </p>
       </section>
 

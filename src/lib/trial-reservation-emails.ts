@@ -1,7 +1,7 @@
 import { sendResendEmail } from "@/lib/resend";
 import { getSiteUrl as getCanonicalSiteUrl } from "@/lib/site-url";
 import { shouldShowStudioLabel } from "@/lib/provider-profiles";
-import { buildCalendarUrl } from "@/lib/calendar";
+import { buildBookingCalendarUrl } from "@/lib/calendar";
 import { buildTicketQrCodeDataUrl, buildTicketViewUrl, buildTicketWalletUrl } from "@/lib/ticket-qr";
 
 /*
@@ -79,6 +79,7 @@ export type CourseSubscriptionProviderNotificationEmailData = {
   instructorName: string | null;
   priceLabel: string | null;
   cancellationLabel: string | null;
+  qrToken?: string | null;
 };
 
 export type CourseEndingNotificationEmailData = {
@@ -402,14 +403,7 @@ export async function prepareCustomerTrialReservationConfirmation(data: TrialRes
   const qrLines = await getQrLines(data.qrToken);
   const ticketUrl = data.qrToken ? buildTicketViewUrl(data.qrToken) : null;
   const walletUrl = data.qrToken ? buildTicketWalletUrl(data.qrToken) : null;
-  const calendarUrl = buildCalendarUrl({
-    title: `Probestunde: ${data.courseTitle}`,
-    startsAt: data.trialStartsAt,
-    endsAt: data.trialEndsAt,
-    location: data.location,
-    description: data.teacherName ? `Leitung: ${data.teacherName}` : "Kostenlose Probestunde",
-    filename: `probestunde-${data.courseTitle}`,
-  });
+  const calendarUrl = data.qrToken ? buildBookingCalendarUrl(data.qrToken, "ticket") : null;
 
   return {
     to: data.customerEmail,
@@ -431,7 +425,7 @@ export async function prepareCustomerTrialReservationConfirmation(data: TrialRes
         ],
         actions: [
           ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
-          { label: "Im Kalender speichern", href: calendarUrl },
+          ...(calendarUrl ? [{ label: "Zum Kalender hinzufügen", href: calendarUrl }] : []),
           ...(walletUrl ? [{ label: "Ins Wallet speichern", href: walletUrl }] : []),
           { label: "Zu meinen Angeboten", href: buildAbsoluteUrl("/courses") },
           { label: "Reservierung stornieren", href: data.cancelUrl },
@@ -456,7 +450,7 @@ export async function prepareCustomerTrialReservationConfirmation(data: TrialRes
       ],
       actions: [
         ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
-        { label: "Im Kalender speichern", href: calendarUrl },
+        ...(calendarUrl ? [{ label: "Zum Kalender hinzufügen", href: calendarUrl }] : []),
         ...(walletUrl ? [{ label: "Ins Wallet speichern", href: walletUrl }] : []),
         { label: "Zu meinen Angeboten", href: buildAbsoluteUrl("/courses") },
         { label: "Reservierung stornieren", href: data.cancelUrl },
@@ -513,6 +507,7 @@ export function prepareTeacherTrialReservationNotification(data: TrialReservatio
   const teacherEmail = data.teacherEmail ?? "";
   const footerHtml = renderReserFooterHtml();
   const footerText = renderReserFooterText();
+  const calendarUrl = data.qrToken ? buildBookingCalendarUrl(data.qrToken, "ticket") : null;
 
   return {
     to: teacherEmail,
@@ -525,6 +520,7 @@ export function prepareTeacherTrialReservationNotification(data: TrialReservatio
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
         ${locationLine}
         ${dateLine}
+        ${calendarUrl ? `<p><a href="${calendarUrl}">Zum Kalender hinzufügen</a></p>` : ""}
         <p>Eine erfolgreiche Probestunde kann sp?ter in eine regul?re Anmeldung ?bergehen.</p>
         ${footerHtml}
       </div>
@@ -535,6 +531,7 @@ export function prepareTeacherTrialReservationNotification(data: TrialReservatio
       `E-Mail: ${data.customerEmail}`,
       data.location ? `Ort: ${data.location}` : null,
       `Termin: ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}`,
+      calendarUrl ? `Zum Kalender hinzufügen: ${calendarUrl}` : null,
       "Hinweis: Diese Probestunde kann sp?ter in eine regul?re Anmeldung ?bergehen.",
       "",
       footerText,
@@ -777,20 +774,7 @@ export async function prepareCourseSubscriptionConfirmationEmail(
   });
   const ticketUrl = data.qrToken ? buildTicketViewUrl(data.qrToken) : null;
   const walletUrl = data.qrToken ? buildTicketWalletUrl(data.qrToken) : null;
-  const calendarUrl =
-    data.startsAt
-      ? buildCalendarUrl({
-          title: data.courseTitle,
-          startsAt: data.startsAt,
-          endsAt: data.endsAt,
-          location: data.location,
-          description:
-            data.providerName || data.instructorName
-              ? `Anbieter: ${data.providerName ?? data.instructorName}`
-              : "Anmeldung zum laufenden Angebot",
-          filename: `kurs-${data.courseTitle}`,
-        })
-      : null;
+  const calendarUrl = data.qrToken ? buildBookingCalendarUrl(data.qrToken, "ticket") : null;
 
   return {
     to: data.customerEmail,
@@ -815,7 +799,7 @@ export async function prepareCourseSubscriptionConfirmationEmail(
         ],
         actions: [
           ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
-          ...(calendarUrl ? [{ label: "Im Kalender speichern", href: calendarUrl }] : []),
+          ...(calendarUrl ? [{ label: "Zum Kalender hinzufügen", href: calendarUrl }] : []),
           ...(walletUrl ? [{ label: "Ins Wallet speichern", href: walletUrl }] : []),
           { label: "Zu meinen Angeboten", href: buildAbsoluteUrl("/courses") },
         ],
@@ -842,7 +826,7 @@ export async function prepareCourseSubscriptionConfirmationEmail(
       ],
       actions: [
         ...(ticketUrl ? [{ label: "Ticket ansehen", href: ticketUrl }] : []),
-        ...(calendarUrl ? [{ label: "Im Kalender speichern", href: calendarUrl }] : []),
+        ...(calendarUrl ? [{ label: "Zum Kalender hinzufügen", href: calendarUrl }] : []),
         ...(walletUrl ? [{ label: "Ins Wallet speichern", href: walletUrl }] : []),
         { label: "Zu meinen Angeboten", href: buildAbsoluteUrl("/courses") },
       ],
@@ -856,6 +840,7 @@ export function prepareCourseSubscriptionProviderNotificationEmail(
 ) {
   const footerHtml = renderReserFooterHtml();
   const footerText = renderReserFooterText();
+  const calendarUrl = data.qrToken ? buildBookingCalendarUrl(data.qrToken, "ticket") : null;
 
   return {
     to: data.teacherEmail ?? "",
@@ -871,6 +856,7 @@ export function prepareCourseSubscriptionProviderNotificationEmail(
         ${data.instructorName ? `<p><b>Leitung:</b> ${data.instructorName}</p>` : ""}
         ${data.priceLabel ? `<p><b>Preis:</b> ${data.priceLabel}</p>` : ""}
         ${data.cancellationLabel ? `<p><b>Kündigungsbedingungen:</b> ${data.cancellationLabel}</p>` : ""}
+        ${calendarUrl ? `<p><a href="${calendarUrl}">Zum Kalender hinzufügen</a></p>` : ""}
         ${footerHtml}
       </div>
     `,
@@ -884,6 +870,7 @@ export function prepareCourseSubscriptionProviderNotificationEmail(
       data.instructorName ? `Leitung: ${data.instructorName}` : null,
       data.priceLabel ? `Preis: ${data.priceLabel}` : null,
       data.cancellationLabel ? `Kündigungsbedingungen: ${data.cancellationLabel}` : null,
+      calendarUrl ? `Zum Kalender hinzufügen: ${calendarUrl}` : null,
       "",
       footerText,
     ]

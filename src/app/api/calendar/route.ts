@@ -16,12 +16,16 @@ export async function GET(req: Request) {
   }
 
   const { filename, content } = buildCalendarFile({
-    title,
-    startsAt,
-    endsAt: getParam(url, "ends_at"),
-    location: getParam(url, "location"),
-    description: getParam(url, "description"),
     filename: getParam(url, "filename"),
+    events: [
+      {
+        title,
+        startsAt,
+        endsAt: getParam(url, "ends_at"),
+        location: getParam(url, "location"),
+        description: getParam(url, "description"),
+      },
+    ],
   });
 
   return new NextResponse(content, {

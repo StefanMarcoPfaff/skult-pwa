@@ -12,6 +12,8 @@ import {
   getWorkshopCancellationPolicySummary,
   getWorkshopCancellationPolicyValue,
 } from "@/lib/offer-policies";
+import { buildOfferCalendarPath } from "@/lib/calendar";
+import { hasOfferCalendarData } from "@/lib/calendar-resolver";
 import {
   buildMailtoHref,
   buildOfferMailSubject,
@@ -22,7 +24,7 @@ import {
 import { getProviderDisplayName, type ProviderType } from "@/lib/provider-profiles";
 import { getPublicCourseById } from "@/lib/public-offers";
 import { getSiteUrl } from "@/lib/site-url";
-import { getOfferVisibilityLabel } from "@/lib/offer-ui";
+import { getOfferKindLabel, getOfferVisibilityLabel, isOneTimeOfferKind } from "@/lib/offer-ui";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { CourseDetailActions } from "./CourseDetailActions";
@@ -32,9 +34,13 @@ type Row = {
   id: string;
   title: string;
   description: string | null;
+  internal_note: string | null;
   location: string | null;
   location_details: string | null;
   starts_at: string | null;
+  start_time: string | null;
+  duration_minutes: number | null;
+  recurrence_type: string | null;
   capacity: number | null;
   kind: string | null;
   status: CourseStatus | null;
@@ -338,7 +344,7 @@ export default async function DashboardCourseDetailPage({
   let courseResponse = await supabase
     .from("courses")
     .select(
-      "id,title,description,location,location_details,starts_at,capacity,kind,status,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,pause_start_date,pause_end_date,stop_date"
+      "id,title,description,internal_note,location,location_details,starts_at,start_time,duration_minutes,recurrence_type,capacity,kind,status,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,pause_start_date,pause_end_date,stop_date"
       + ",archived_at,visibility"
     )
     .eq("id", id)
@@ -349,7 +355,7 @@ export default async function DashboardCourseDetailPage({
     courseResponse = await supabase
       .from("courses")
       .select(
-        "id,title,description,location,location_details,starts_at,capacity,kind,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,archived_at,visibility"
+        "id,title,description,internal_note,location,location_details,starts_at,start_time,duration_minutes,recurrence_type,capacity,kind,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,archived_at,visibility"
       )
       .eq("id", id)
       .eq("teacher_id", user.id)
@@ -402,7 +408,7 @@ export default async function DashboardCourseDetailPage({
       : [{ data: [] as TrialTicketRow[] }, { data: [] as RegistrationIntentRow[] }];
 
   const { data: workshopBookings } =
-    data?.kind === "workshop" || data?.kind === "exclusive_offer"
+    isOneTimeOfferKind(data?.kind)
       ? await admin
           .from("bookings")
           .select("id,course_id,status,attendee_key,checked_in_at,created_at,customer_first_name,customer_last_name,customer_email,customer_phone,refunded_at,stripe_refund_id,archived_at")
@@ -414,7 +420,7 @@ export default async function DashboardCourseDetailPage({
 
   const workshopBookingIds = (workshopBookings ?? []).map((booking) => booking.id);
   const { data: workshopTickets } =
-    (data?.kind === "workshop" || data?.kind === "exclusive_offer") && workshopBookingIds.length > 0
+    isOneTimeOfferKind(data?.kind) && workshopBookingIds.length > 0
       ? await admin
           .from("tickets")
           .select("booking_id,customer_name,customer_email,status,checked_in_at")
@@ -590,7 +596,7 @@ export default async function DashboardCourseDetailPage({
       .map((ticket) => [ticket.booking_id as string, ticket])
   );
   const workshopParticipants =
-    data.kind === "workshop" || data.kind === "exclusive_offer"
+    isOneTimeOfferKind(data.kind)
       ? (workshopBookings ?? []).map<WorkshopParticipantEntry>((booking) => {
           const ticket = workshopTicketByBookingId.get(booking.id);
           const email = booking.customer_email ?? ticket?.customer_email ?? null;
@@ -617,7 +623,7 @@ export default async function DashboardCourseDetailPage({
       : [];
 
   const offerRecipientEmails =
-    data.kind === "workshop" || data.kind === "exclusive_offer"
+    isOneTimeOfferKind(data.kind)
       ? normalizeEmailRecipients(workshopParticipants.map((entry) => entry.email))
       : normalizeEmailRecipients([
           ...(groupedCourseParticipants?.firmlyRegistered.map((entry) => entry.email) ?? []),
@@ -651,6 +657,14 @@ export default async function DashboardCourseDetailPage({
     openPaymentCount: (workshopBookings ?? []).filter(
       (booking) => !booking.archived_at && booking.status === "paid" && !booking.refunded_at && !booking.stripe_refund_id
     ).length,
+  });
+  const calendarEnabled = hasOfferCalendarData({
+    kind: data.kind,
+    startsAt: data.starts_at,
+    durationMinutes: data.duration_minutes,
+    startTime: data.start_time,
+    recurrenceType: data.recurrence_type ?? null,
+    sessionCount: sessions?.length ?? 0,
   });
 
   return (
@@ -740,6 +754,8 @@ export default async function DashboardCourseDetailPage({
         visibilityLabel={getOfferVisibilityLabel(data.visibility)}
         publishBlockedForMissingPolicy={publishBlockedForMissingPolicy}
         contactMailHref={contactMailHref}
+        calendarHref={calendarEnabled ? buildOfferCalendarPath(data.id) : null}
+        calendarDisabledReason={calendarEnabled ? null : "Kalenderdatei erst mit Termin verfÃ¼gbar"}
         archiveAllowed={archiveEligibility.allowed}
         archiveReason={archiveEligibility.reason}
       />
@@ -757,7 +773,7 @@ export default async function DashboardCourseDetailPage({
       ) : null}
 
       <div style={{ marginTop: 10, opacity: 0.8 }}>
-        <div>Art: {data.kind ?? "-"}</div>
+        <div>Art: {getOfferKindLabel(data.kind)}</div>
         <div>Status: {statusLabel}</div>
         <div>Veröffentlicht: {data.is_published ? "Ja" : "Nein"}</div>
         <div>Sichtbarkeit: {getOfferVisibilityLabel(data.visibility)}</div>
@@ -784,6 +800,13 @@ export default async function DashboardCourseDetailPage({
 
       {data.description ? <p style={{ marginTop: 16, lineHeight: 1.6 }}>{data.description}</p> : null}
 
+      {data.internal_note ? (
+        <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <h2 className="text-lg font-semibold">Interne Notiz</h2>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{data.internal_note}</p>
+        </section>
+      ) : null}
+
       {data.kind === "course" ? (
         <section className="mt-6 rounded-2xl border p-5">
           <h2 className="text-lg font-semibold">Status steuern</h2>
@@ -800,9 +823,9 @@ export default async function DashboardCourseDetailPage({
         </section>
       ) : null}
 
-      {data.kind === "workshop" || data.kind === "exclusive_offer" ? (
+      {isOneTimeOfferKind(data.kind) ? (
         <section style={{ marginTop: 24 }}>
-          <h2 style={{ fontSize: 22, fontWeight: 800 }}>{data.kind === "exclusive_offer" ? "Termin / Zeitraum" : "Termine"}</h2>
+          <h2 style={{ fontSize: 22, fontWeight: 800 }}>Termine</h2>
           <div style={{ marginTop: 8, borderTop: "1px solid #ddd", paddingTop: 12 }}>
             {sessions && sessions.length > 0 ? (
               sessions.map((session) => (
@@ -882,12 +905,10 @@ export default async function DashboardCourseDetailPage({
         </section>
       ) : null}
 
-      {data.kind === "workshop" || data.kind === "exclusive_offer" ? (
+      {isOneTimeOfferKind(data.kind) ? (
         <section className="mt-8 space-y-4">
           <div>
-            <h2 className="text-2xl font-semibold">
-              {data.kind === "exclusive_offer" ? "Teilnehmende im Exklusiv-Angebot" : "Teilnehmende im einmaligen Angebot"}
-            </h2>
+            <h2 className="text-2xl font-semibold">Teilnehmende im einmaligen Angebot</h2>
             <p className="mt-2 text-sm text-muted-foreground">
               Alle gebuchten Teilnehmenden dieses Angebots mit aktuellem Status und Check-in-Stand.
             </p>

@@ -108,11 +108,7 @@ export function EmbeddedCourseCard({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              {details.kind === "course"
-                ? "Laufendes Angebot"
-                : details.kind === "exclusive_offer"
-                  ? "Exklusiv-Angebot"
-                  : "Einmaliges Angebot"}
+              {details.kind === "course" ? "Laufendes Angebot" : "Einmaliges Angebot"}
             </p>
             <div className="space-y-2">
               <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-[2rem]">

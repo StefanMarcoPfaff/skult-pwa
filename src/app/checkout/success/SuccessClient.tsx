@@ -3,12 +3,14 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import QRCode from "react-qr-code";
+import { buildBookingCalendarPath } from "@/lib/calendar";
 import { storeTicketQrToken } from "@/lib/ticket-device-store";
 import { buildTicketCheckInUrl } from "@/lib/ticket-qr";
 
 export type WorkshopSuccessData = {
   bookingId?: string;
   status?: string | null;
+  paymentStatus?: "paid" | "free" | null;
   attendeeKey?: string | null;
   courseId?: string | null;
   workshopTitle?: string | null;
@@ -56,6 +58,7 @@ export default function SuccessClient({ bookingData }: Props) {
   }, [bookingData?.attendeeKey, bookingData?.qrToken, bookingData?.status]);
 
   const paid = bookingData?.status === "paid";
+  const isFreeBooking = bookingData?.paymentStatus === "free";
   const checkInUrl = bookingData?.qrToken ? buildTicketCheckInUrl(bookingData.qrToken) : null;
 
   return (
@@ -70,7 +73,11 @@ export default function SuccessClient({ bookingData }: Props) {
           </p>
         ) : paid ? (
           <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-            <p>Deine Zahlung wurde bestätigt und dein Ticket ist bereit.</p>
+            <p>
+              {isFreeBooking
+                ? "Deine Buchung ist bestätigt und dein Ticket ist bereit."
+                : "Deine Zahlung wurde bestätigt und dein Ticket ist bereit."}
+            </p>
             <p>Alle weiteren Informationen zu deinem Angebot erhältst du per E-Mail.</p>
           </div>
         ) : (
@@ -86,14 +93,12 @@ export default function SuccessClient({ bookingData }: Props) {
           <div className="mt-4 space-y-2 text-sm text-muted-foreground">
             {bookingData.providerType === "studio_provider" && bookingData.providerName ? (
               <p>
-                Anbieter:{" "}
-                <span className="font-medium text-foreground">{bookingData.providerName}</span>
+                Anbieter: <span className="font-medium text-foreground">{bookingData.providerName}</span>
               </p>
             ) : null}
             {bookingData.instructorName ? (
               <p>
-                Anbietende:{" "}
-                <span className="font-medium text-foreground">{bookingData.instructorName}</span>
+                Anbietende: <span className="font-medium text-foreground">{bookingData.instructorName}</span>
               </p>
             ) : null}
             {bookingData.location ? (
@@ -103,8 +108,7 @@ export default function SuccessClient({ bookingData }: Props) {
             ) : null}
             {bookingData.locationDetails ? (
               <p>
-                Ort / Zusatzinfo:{" "}
-                <span className="font-medium text-foreground">{bookingData.locationDetails}</span>
+                Ort / Zusatzinfo: <span className="font-medium text-foreground">{bookingData.locationDetails}</span>
               </p>
             ) : null}
             {bookingData.sessionLines && bookingData.sessionLines.length > 0 ? (
@@ -126,9 +130,7 @@ export default function SuccessClient({ bookingData }: Props) {
       {paid && bookingData?.qrToken && checkInUrl ? (
         <section className="rounded-2xl border p-6">
           <h2 className="text-xl font-semibold">Dein Ticket</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Bitte zeige diesen QR-Code beim Einlass vor.
-          </p>
+          <p className="mt-2 text-sm text-muted-foreground">Bitte zeige diesen QR-Code beim Einlass vor.</p>
           <div className="mt-4 inline-block rounded-2xl border bg-white p-4">
             <QRCode value={checkInUrl} size={220} />
           </div>
@@ -136,6 +138,14 @@ export default function SuccessClient({ bookingData }: Props) {
       ) : null}
 
       <div className="flex flex-wrap gap-3">
+        {paid && bookingData?.qrToken ? (
+          <Link
+            href={buildBookingCalendarPath(bookingData.qrToken, "ticket")}
+            className="inline-flex rounded-xl border px-4 py-3 text-sm font-semibold"
+          >
+            Zum Kalender hinzufügen
+          </Link>
+        ) : null}
         <Link
           href="/tickets"
           className="inline-flex rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white"

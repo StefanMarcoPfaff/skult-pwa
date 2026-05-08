@@ -31,6 +31,8 @@ type CourseDetailActionsProps = {
   visibilityLabel: string;
   publishBlockedForMissingPolicy: boolean;
   contactMailHref: string | null;
+  calendarHref: string | null;
+  calendarDisabledReason: string | null;
   archiveAllowed: boolean;
   archiveReason: string;
 };
@@ -41,6 +43,19 @@ function ArchiveGlyph() {
       <path d="M4 7h16" />
       <path d="M6 7h12v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7Z" />
       <path d="M9 7V5h6v2" />
+    </svg>
+  );
+}
+
+function CalendarGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M4 7h16" />
+      <path d="M7 4v6" />
+      <path d="M17 4v6" />
+      <rect x="4" y="6" width="16" height="14" rx="2" />
+      <path d="M8 11h8" />
+      <path d="M8 15h5" />
     </svg>
   );
 }
@@ -67,7 +82,7 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
               action={setCoursePublishStateAction}
               fields={{ course_id: props.courseId, mode: "play" }}
               title="Angebot aktivieren?"
-              text={`Möchtest du dieses Angebot jetzt aktivieren? Danach ist es buchbar. Aktuelle Sichtbarkeit: ${props.visibilityLabel}.`}
+              text={`MÃ¶chtest du dieses Angebot jetzt aktivieren? Danach ist es buchbar. Aktuelle Sichtbarkeit: ${props.visibilityLabel}.`}
               cancelLabel="Nein, abbrechen"
               confirmLabel="Ja, aktivieren"
               disabled={playActionDisabled}
@@ -139,7 +154,7 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
               action={cancelWorkshopAction}
               fields={{ course_id: props.courseId, redirect_to: props.redirectTo }}
               title="Einmaliges Angebot absagen?"
-              text="Wenn du dieses einmalige Angebot absagst, wird es nicht mehr öffentlich angezeigt. Bereits angemeldete Teilnehmer*innen erhalten eine Nachricht. Falls Zahlungen vorliegen, müssen Rückerstattungen gemäß der bestehenden Refund-Logik ausgelöst werden."
+              text="Wenn du dieses einmalige Angebot absagst, wird es nicht mehr Ã¶ffentlich angezeigt. Bereits angemeldete Teilnehmer*innen erhalten eine Nachricht. Falls Zahlungen vorliegen, mÃ¼ssen RÃ¼ckerstattungen gemÃ¤ÃŸ der bestehenden Refund-Logik ausgelÃ¶st werden."
               cancelLabel="Nein, abbrechen"
               confirmLabel="Ja, absagen"
               triggerLabel="absagen"
@@ -160,34 +175,6 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
           )}
         </OfferActionItem>
 
-        <OfferActionItem label="Archiv">
-          {props.archiveAllowed ? (
-            <ConfirmIconAction
-              action={archiveCourseAction}
-              fields={{ course_id: props.courseId, redirect_to: props.redirectTo }}
-              title="Angebot archivieren?"
-              text="Das Angebot bleibt historisch erhalten und wird nur aus den aktiven Übersichten entfernt."
-              cancelLabel="Nein, abbrechen"
-              confirmLabel="Ja, archivieren"
-              triggerLabel="archivieren"
-              trigger={
-                <OfferActionIcon title="archivieren" label="archivieren">
-                  <ArchiveGlyph />
-                </OfferActionIcon>
-              }
-            />
-          ) : (
-            <OfferActionIcon
-              title={props.archiveReason}
-              label="archivieren"
-              className="border-slate-200 bg-slate-100 text-slate-400"
-              disabled={true}
-            >
-              <ArchiveGlyph />
-            </OfferActionIcon>
-          )}
-        </OfferActionItem>
-
         <OfferActionItem label="Bearbeiten">
           <Link href={`/dashboard/courses/${props.courseId}/edit`} className="inline-flex">
             <OfferActionIcon title="bearbeiten" label="bearbeiten">
@@ -197,23 +184,6 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
               </svg>
             </OfferActionIcon>
           </Link>
-        </OfferActionItem>
-
-        <OfferActionItem label="Teilen">
-          <ShareEmbedDialog
-            isEnabled={props.publicOfferEnabled}
-            publicUrl={props.publicUrl}
-            embedUrl={props.embedUrl}
-            triggerLabel="teilen"
-            trigger={
-              <OfferActionIcon title="teilen" label="teilen">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-                  <path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L10.7 5.22" />
-                  <path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.12a5 5 0 0 0 7.07 7.07l1.41-1.41" />
-                </svg>
-              </OfferActionIcon>
-            }
-          />
         </OfferActionItem>
 
         <OfferActionItem label="Check-in">
@@ -234,8 +204,72 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
           href={props.contactMailHref}
           label="E-Mail"
           title="Teilnehmer*innen per E-Mail kontaktieren"
-          disabledHint="Keine E-Mail-Adressen für dieses Angebot vorhanden"
+          disabledHint="Keine E-Mail-Adressen fÃ¼r dieses Angebot vorhanden"
         />
+
+        <OfferActionItem label="Kalender">
+          {props.calendarHref ? (
+            <Link href={props.calendarHref} className="inline-flex">
+              <OfferActionIcon title="Kalenderdatei herunterladen" label="Kalenderdatei herunterladen">
+                <CalendarGlyph />
+              </OfferActionIcon>
+            </Link>
+          ) : (
+            <OfferActionIcon
+              title={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfÃ¼gbar"}
+              label="Kalenderdatei"
+              className="border-slate-200 bg-slate-100 text-slate-400"
+              disabled={true}
+            >
+              <CalendarGlyph />
+            </OfferActionIcon>
+          )}
+        </OfferActionItem>
+
+        <OfferActionItem label="Teilen">
+          <ShareEmbedDialog
+            isEnabled={props.publicOfferEnabled}
+            publicUrl={props.publicUrl}
+            embedUrl={props.embedUrl}
+            triggerLabel="teilen"
+            trigger={
+              <OfferActionIcon title="teilen" label="teilen">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+                  <path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L10.7 5.22" />
+                  <path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.12a5 5 0 0 0 7.07 7.07l1.41-1.41" />
+                </svg>
+              </OfferActionIcon>
+            }
+          />
+        </OfferActionItem>
+
+        <OfferActionItem label="Archiv">
+          {props.archiveAllowed ? (
+            <ConfirmIconAction
+              action={archiveCourseAction}
+              fields={{ course_id: props.courseId, redirect_to: props.redirectTo }}
+              title="Angebot archivieren?"
+              text="Das Angebot bleibt historisch erhalten und wird nur aus den aktiven Ãœbersichten entfernt."
+              cancelLabel="Nein, abbrechen"
+              confirmLabel="Ja, archivieren"
+              triggerLabel="archivieren"
+              trigger={
+                <OfferActionIcon title="archivieren" label="archivieren">
+                  <ArchiveGlyph />
+                </OfferActionIcon>
+              }
+            />
+          ) : (
+            <OfferActionIcon
+              title={props.archiveReason}
+              label="archivieren"
+              className="border-slate-200 bg-slate-100 text-slate-400"
+              disabled={true}
+            >
+              <ArchiveGlyph />
+            </OfferActionIcon>
+          )}
+        </OfferActionItem>
       </div>
     </section>
   );

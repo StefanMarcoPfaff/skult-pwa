@@ -412,6 +412,7 @@ export async function finalizeCourseRegistrationCheckoutSession(input: {
           senderImageUrl: providerContact.senderImageUrl,
           priceLabel,
           cancellationLabel: "Monatlich zum Ende des Abrechnungszeitraums moeglich.",
+          qrToken: ticketForDisplay?.qr_token ?? null,
         });
 
         if (result?.error) {

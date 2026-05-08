@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { MailActionLink } from "@/components/dashboard/MailActionLink";
+import { buildBookingCalendarPath } from "@/lib/calendar";
+import { hasOfferCalendarData } from "@/lib/calendar-resolver";
 import { formatCourseLifecycleDate, getNextMonthEndDate } from "@/lib/course-lifecycle-shared";
 import { buildMailtoHref, buildParticipantMailSubject } from "@/lib/mailto";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
@@ -47,6 +49,10 @@ type CourseRow = {
   currency: string | null;
   location: string | null;
   location_details: string | null;
+  starts_at: string | null;
+  start_time: string | null;
+  duration_minutes: number | null;
+  recurrence_type: string | null;
 };
 
 type ProfileRow = {
@@ -220,7 +226,7 @@ export default async function DashboardParticipantDetailPage({
     const [{ data: course }, { data: ticket }, { data: profile }] = await Promise.all([
       admin
         .from("courses")
-        .select("id,title,teacher_id,kind,instructor_name,price_cents,currency,location,location_details")
+        .select("id,title,teacher_id,kind,instructor_name,price_cents,currency,location,location_details,starts_at,start_time,duration_minutes,recurrence_type")
         .eq("id", booking.course_id)
         .maybeSingle<CourseRow>(),
       admin
@@ -246,6 +252,10 @@ export default async function DashboardParticipantDetailPage({
       subject: buildParticipantMailSubject(course.title),
     });
     const lifecycle = getWorkshopParticipantLifecycleDisplay(booking.status === "paid");
+    const workshopCalendarEnabled = hasOfferCalendarData({
+      kind: course.kind,
+      startsAt: course.starts_at,
+    });
 
     return (
       <main className="mx-auto max-w-3xl space-y-6 p-6">
@@ -282,6 +292,15 @@ export default async function DashboardParticipantDetailPage({
               title="Teilnehmer*in per E-Mail kontaktieren"
               disabledHint="Keine E-Mail-Adresse für diese Person vorhanden"
             />
+            {workshopCalendarEnabled ? (
+              <Link href={buildBookingCalendarPath(booking.id, "workshop")} className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
+                Kalender
+              </Link>
+            ) : (
+              <span className="inline-flex cursor-not-allowed rounded-xl border px-4 py-2 text-sm font-semibold text-muted-foreground opacity-60">
+                Kalender
+              </span>
+            )}
           </div>
 
           <div className="mt-4 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2">
@@ -327,7 +346,7 @@ export default async function DashboardParticipantDetailPage({
   const [{ data: course }, { data: intent }, { data: ticket }, { data: profile }] = await Promise.all([
     admin
       .from("courses")
-      .select("id,title,teacher_id,kind,instructor_name,price_cents,currency,location,location_details")
+      .select("id,title,teacher_id,kind,instructor_name,price_cents,currency,location,location_details,starts_at,start_time,duration_minutes,recurrence_type")
       .eq("id", reservation.course_id)
       .maybeSingle<CourseRow>(),
     admin
@@ -361,6 +380,15 @@ export default async function DashboardParticipantDetailPage({
   const participantMailHref = buildMailtoHref({
     to: [intent?.email ?? reservation.email ?? null],
     subject: buildParticipantMailSubject(course.title),
+  });
+  const trialCalendarEnabled = Boolean(reservation.trial_starts_at);
+  const registeredCalendarEnabled = hasOfferCalendarData({
+    kind: course.kind,
+    startsAt: course.starts_at,
+    durationMinutes: course.duration_minutes,
+    startTime: course.start_time,
+    recurrenceType: course.recurrence_type,
+    sessionCount: 1,
   });
   const lifecycle = getParticipantLifecycleDisplay({
     reservationCancelledAt: reservation.cancelled_at ?? null,
@@ -421,6 +449,25 @@ export default async function DashboardParticipantDetailPage({
             title="Teilnehmer*in per E-Mail kontaktieren"
             disabledHint="Keine E-Mail-Adresse für diese Person vorhanden"
           />
+          {intent?.status === "checkout_completed" && intent?.stripe_subscription_id ? (
+            registeredCalendarEnabled ? (
+              <Link href={buildBookingCalendarPath(reservation.id, "registered")} className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
+                Kalender
+              </Link>
+            ) : (
+              <span className="inline-flex cursor-not-allowed rounded-xl border px-4 py-2 text-sm font-semibold text-muted-foreground opacity-60">
+                Kalender
+              </span>
+            )
+          ) : trialCalendarEnabled ? (
+            <Link href={buildBookingCalendarPath(reservation.id, "trial")} className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
+              Kalender
+            </Link>
+          ) : (
+            <span className="inline-flex cursor-not-allowed rounded-xl border px-4 py-2 text-sm font-semibold text-muted-foreground opacity-60">
+              Kalender
+            </span>
+          )}
         </div>
 
         <div className="mt-4 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2">

@@ -40,7 +40,8 @@ export default async function WorkshopFormShell() {
         <div>
           <h2 className="text-lg font-semibold">Einmaliges Angebot anlegen</h2>
           <p className="text-sm text-muted-foreground">
-            Einmaliger Termin mit festem Startzeitpunkt, optionaler Kapazität und Preis.
+            Für einmalige oder zeitlich begrenzte Angebote. Öffentlich sichtbar oder nur per Link
+            buchbar.
           </p>
         </div>
         <Link href="/dashboard/courses/new" className="text-sm underline underline-offset-4">

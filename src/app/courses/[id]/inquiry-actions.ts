@@ -3,6 +3,7 @@
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { sendResendEmail } from "@/lib/resend";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { getOfferKindLabel } from "@/lib/offer-ui";
 
 export type OfferInquiryState = {
   error?: string;
@@ -76,7 +77,7 @@ export async function submitOfferInquiryAction(
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <h2>Neue Anfrage zu deinem Angebot</h2>
         <p>Zu <b>${course.title ?? "deinem Angebot"}</b> ist eine neue Anfrage eingegangen.</p>
-        <p><b>Art:</b> ${course.kind === "workshop" ? "Einmaliges Angebot" : course.kind === "exclusive_offer" ? "Exklusiv-Angebot" : "Laufendes Angebot"}</p>
+        <p><b>Art:</b> ${getOfferKindLabel(course.kind)}</p>
         ${providerName ? `<p><b>Anbieter:</b> ${providerName}</p>` : ""}
         ${course.instructor_name ? `<p><b>Leitung:</b> ${course.instructor_name}</p>` : ""}
         <p><b>Name:</b> ${firstName} ${lastName}</p>
@@ -87,7 +88,7 @@ export async function submitOfferInquiryAction(
     text: [
       "Neue Anfrage zu deinem Angebot",
       `Titel: ${course.title ?? "dein Angebot"}`,
-      `Art: ${course.kind === "workshop" ? "Einmaliges Angebot" : course.kind === "exclusive_offer" ? "Exklusiv-Angebot" : "Laufendes Angebot"}`,
+      `Art: ${getOfferKindLabel(course.kind)}`,
       providerName ? `Anbieter: ${providerName}` : null,
       course.instructor_name ? `Leitung: ${course.instructor_name}` : null,
       `Name: ${firstName} ${lastName}`,

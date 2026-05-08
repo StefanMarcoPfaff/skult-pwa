@@ -35,6 +35,8 @@ export type OfferCardProps = {
   pauseDisabled: boolean;
   stopDisabled: boolean;
   mailHref: string | null;
+  calendarHref: string | null;
+  calendarDisabledReason: string | null;
   showMailWarning: boolean;
   archiveAllowed: boolean;
   archiveReason: string;
@@ -46,6 +48,19 @@ function ArchiveGlyph() {
       <path d="M4 7h16" />
       <path d="M6 7h12v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7Z" />
       <path d="M9 7V5h6v2" />
+    </svg>
+  );
+}
+
+function CalendarGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M4 7h16" />
+      <path d="M7 4v6" />
+      <path d="M17 4v6" />
+      <rect x="4" y="6" width="16" height="14" rx="2" />
+      <path d="M8 11h8" />
+      <path d="M8 15h5" />
     </svg>
   );
 }
@@ -76,7 +91,7 @@ export function OfferCard(props: OfferCardProps) {
         <div>
           <h2 className="text-lg font-semibold">{props.title}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {props.kindLabel} • {props.statusLabel}
+            {props.kindLabel} â€¢ {props.statusLabel}
           </p>
         </div>
         <div
@@ -88,8 +103,8 @@ export function OfferCard(props: OfferCardProps) {
             <ConfirmIconAction
               action={setCoursePublishStateAction}
               fields={{ course_id: props.id, mode: "play", redirect_to: "/dashboard/courses" }}
-              title="Möchtest du dieses Angebot aktivieren?"
-              text="Nach der Aktivierung ist dein Angebot buchbar. Die Sichtbarkeit in Listen richtet sich nach der gewählten Sichtbarkeitseinstellung."
+              title="MÃ¶chtest du dieses Angebot aktivieren?"
+              text="Nach der Aktivierung ist dein Angebot buchbar. Die Sichtbarkeit in Listen richtet sich nach der gewÃ¤hlten Sichtbarkeitseinstellung."
               cancelLabel="Nein, abbrechen"
               confirmLabel="Ja, aktivieren"
               triggerLabel="aktivieren / starten"
@@ -149,12 +164,60 @@ export function OfferCard(props: OfferCardProps) {
               </OfferActionIcon>
             </Link>
           )}
+          <Link href={props.editHref} className="inline-flex" title="bearbeiten" aria-label="bearbeiten">
+            <OfferActionIcon title="bearbeiten" label="bearbeiten">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+                <path d="m4 20 4.5-1 9-9a2.12 2.12 0 1 0-3-3l-9 9L4 20Z" />
+                <path d="M13.5 6.5 17.5 10.5" />
+              </svg>
+            </OfferActionIcon>
+          </Link>
+          <Link href={props.checkInHref} className="inline-flex" title="Check-in starten" aria-label="Check-in starten">
+            <OfferActionIcon title="Check-in starten" label="Check-in starten">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+                <path d="M4 7h16" />
+                <path d="M7 4v6" />
+                <path d="M17 4v6" />
+                <rect x="4" y="6" width="16" height="14" rx="2" />
+                <path d="m9 14 2 2 4-4" />
+              </svg>
+            </OfferActionIcon>
+          </Link>
+          <MailActionLink
+            href={props.mailHref}
+            title="Teilnehmer*innen per E-Mail kontaktieren"
+            disabledHint="Keine E-Mail-Adressen fÃ¼r dieses Angebot vorhanden"
+            showLabel={false}
+          />
+          {props.calendarHref ? (
+            <Link href={props.calendarHref} className="inline-flex" title="Kalenderdatei herunterladen" aria-label="Kalenderdatei herunterladen">
+              <OfferActionIcon title="Kalenderdatei herunterladen" label="Kalenderdatei herunterladen">
+                <CalendarGlyph />
+              </OfferActionIcon>
+            </Link>
+          ) : (
+            <span
+              className="inline-flex"
+              title={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfÃ¼gbar"}
+              aria-label={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfÃ¼gbar"}
+            >
+              <OfferActionIcon
+                title={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfÃ¼gbar"}
+                label="Kalenderdatei"
+                className="border-slate-200 bg-slate-100 text-slate-400"
+                disabled={true}
+              >
+                <CalendarGlyph />
+              </OfferActionIcon>
+            </span>
+          )}
+          <CourseCardShareButton href={props.publicHref} />
           {props.archiveAllowed ? (
             <ConfirmIconAction
               action={archiveCourseAction}
               fields={{ course_id: props.id, redirect_to: "/dashboard/courses" }}
               title="Angebot archivieren?"
-              text="Das Angebot bleibt historisch erhalten und wird nur aus den aktiven Übersichten entfernt."
+              text="Das Angebot bleibt historisch erhalten und wird nur aus den aktiven Ãœbersichten entfernt."
               cancelLabel="Nein, abbrechen"
               confirmLabel="Ja, archivieren"
               triggerLabel="archivieren"
@@ -176,32 +239,6 @@ export function OfferCard(props: OfferCardProps) {
               </OfferActionIcon>
             </span>
           )}
-          <Link href={props.editHref} className="inline-flex" title="bearbeiten" aria-label="bearbeiten">
-            <OfferActionIcon title="bearbeiten" label="bearbeiten">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-                <path d="m4 20 4.5-1 9-9a2.12 2.12 0 1 0-3-3l-9 9L4 20Z" />
-                <path d="M13.5 6.5 17.5 10.5" />
-              </svg>
-            </OfferActionIcon>
-          </Link>
-          <CourseCardShareButton href={props.publicHref} />
-          <Link href={props.checkInHref} className="inline-flex" title="Check-in starten" aria-label="Check-in starten">
-            <OfferActionIcon title="Check-in starten" label="Check-in starten">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-                <path d="M4 7h16" />
-                <path d="M7 4v6" />
-                <path d="M17 4v6" />
-                <rect x="4" y="6" width="16" height="14" rx="2" />
-                <path d="m9 14 2 2 4-4" />
-              </svg>
-            </OfferActionIcon>
-          </Link>
-          <MailActionLink
-            href={props.mailHref}
-            title="Teilnehmer*innen per E-Mail kontaktieren"
-            disabledHint="Keine E-Mail-Adressen für dieses Angebot vorhanden"
-            showLabel={false}
-          />
         </div>
       </div>
 
@@ -221,7 +258,7 @@ export function OfferCard(props: OfferCardProps) {
         ) : null}
         {props.showMailWarning ? (
           <p className="text-amber-700">
-            Bei sehr großen Gruppen kann dein E-Mail-Programm die Empfängerliste möglicherweise nicht vollständig übernehmen.
+            Bei sehr groÃŸen Gruppen kann dein E-Mail-Programm die EmpfÃ¤ngerliste mÃ¶glicherweise nicht vollstÃ¤ndig Ã¼bernehmen.
           </p>
         ) : null}
       </div>

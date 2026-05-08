@@ -16,6 +16,7 @@ import {
   isWorkshopCheckoutCurrencySupported,
   normalizeWorkshopCurrency,
 } from "@/lib/workshop-checkout";
+import { finalizeFreeWorkshopBooking } from "@/lib/workshop-booking-finalization";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
@@ -64,9 +65,11 @@ export async function POST(req: Request) {
       privacyAccepted?: boolean;
       workshopStornoAccepted?: boolean;
     };
+
     if (!courseId) {
       return NextResponse.json({ error: "courseId fehlt" }, { status: 400 });
     }
+
     const customerFirstName = requiredText(firstName);
     const customerLastName = requiredText(lastName);
     const customerEmail = requiredText(email).toLowerCase();
@@ -84,7 +87,6 @@ export async function POST(req: Request) {
     }
 
     const supabase = await createClient();
-
     const { data: course, error: courseErr } = await supabase
       .from("courses_lite")
       .select("id,title,price_type,price_cents,currency,offer_type,capacity,starts_at,ends_at,is_published,status,visibility")
@@ -96,7 +98,7 @@ export async function POST(req: Request) {
     }
 
     if (course.offer_type !== "workshop" && course.offer_type !== "exclusive_offer") {
-      return NextResponse.json({ error: "Checkout nur für Einmalangebote (V1)" }, { status: 400 });
+      return NextResponse.json({ error: "Checkout nur für einmalige Angebote" }, { status: 400 });
     }
 
     if (
@@ -112,16 +114,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Dieses Angebot ist nicht buchbar." }, { status: 400 });
     }
 
-    if (course.price_type !== "paid" || !course.price_cents || course.price_cents <= 0) {
-      return NextResponse.json({ error: "Angebot nicht paid konfiguriert" }, { status: 400 });
-    }
-
-    if (!isWorkshopCheckoutCurrencySupported(course.currency)) {
-      return NextResponse.json(
-        { error: getWorkshopCheckoutCurrencyError(course.currency) },
-        { status: 400 }
-      );
-    }
+    const normalizedPriceCents = typeof course.price_cents === "number" ? course.price_cents : 0;
+    const isFreeOffer = course.price_type === "free" || normalizedPriceCents <= 0;
 
     const capacity =
       typeof course.capacity === "number"
@@ -145,6 +139,55 @@ export async function POST(req: Request) {
     }
     if (availability.isSoldOut) {
       return NextResponse.json({ error: "Dieses Angebot ist aktuell ausgebucht." }, { status: 400 });
+    }
+
+    const attendeeKey = makeAttendeeKey();
+    const acceptedAt = new Date().toISOString();
+
+    const { data: booking, error: bookingErr } = await supabase
+      .from("bookings")
+      .insert({
+        course_id: course.id,
+        attendee_key: attendeeKey,
+        status: "pending",
+        payment_provider: isFreeOffer ? "free" : "stripe",
+        payment_status: "pending",
+        customer_first_name: customerFirstName,
+        customer_last_name: customerLastName,
+        customer_email: customerEmail,
+        customer_phone: customerPhone,
+        agb_accepted_at: acceptedAt,
+        privacy_accepted_at: acceptedAt,
+        workshop_storno_terms_accepted_at: acceptedAt,
+      })
+      .select("id,attendee_key")
+      .single();
+
+    if (bookingErr || !booking) {
+      return NextResponse.json(
+        { error: bookingErr?.message || "Booking konnte nicht erstellt werden" },
+        { status: 500 }
+      );
+    }
+
+    const siteUrl = getSiteUrl(req.url);
+
+    if (isFreeOffer) {
+      const finalized = await finalizeFreeWorkshopBooking(booking.id);
+      if (!finalized) {
+        return NextResponse.json({ error: "Kostenlose Buchung konnte nicht bestätigt werden." }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        url: `${siteUrl}/checkout/success?booking_id=${booking.id}`,
+      });
+    }
+
+    if (!isWorkshopCheckoutCurrencySupported(course.currency)) {
+      return NextResponse.json(
+        { error: getWorkshopCheckoutCurrencyError(course.currency) },
+        { status: 400 }
+      );
     }
 
     const { data: ownerCourse, error: ownerCourseError } = await supabase
@@ -208,38 +251,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const attendeeKey = makeAttendeeKey();
-
-    const acceptedAt = new Date().toISOString();
-
-    const { data: booking, error: bookingErr } = await supabase
-      .from("bookings")
-      .insert({
-        course_id: course.id,
-        attendee_key: attendeeKey,
-        status: "pending",
-        payment_provider: "stripe",
-        customer_first_name: customerFirstName,
-        customer_last_name: customerLastName,
-        customer_email: customerEmail,
-        customer_phone: customerPhone,
-        agb_accepted_at: acceptedAt,
-        privacy_accepted_at: acceptedAt,
-        workshop_storno_terms_accepted_at: acceptedAt,
-      })
-      .select("id, attendee_key")
-      .single();
-
-    if (bookingErr || !booking) {
-      return NextResponse.json(
-        { error: bookingErr?.message || "Booking konnte nicht erstellt werden" },
-        { status: 500 }
-      );
-    }
-
-    const siteUrl = getSiteUrl(req.url);
     const workshopCurrency = normalizeWorkshopCurrency(course.currency);
-
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       customer_email: customerEmail,
@@ -247,7 +259,7 @@ export async function POST(req: Request) {
         {
           price_data: {
             currency: workshopCurrency.toLowerCase(),
-            unit_amount: course.price_cents,
+            unit_amount: normalizedPriceCents,
             product_data: { name: course.title || "Angebot" },
           },
           quantity: 1,
@@ -257,7 +269,7 @@ export async function POST(req: Request) {
       cancel_url: `${siteUrl}/checkout/cancel?courseId=${course.id}`,
       payment_intent_data: {
         ...buildDestinationPaymentIntentData(
-          course.price_cents,
+          normalizedPriceCents,
           teacherProfile.stripe_account_id,
           teacherProfile.provider_type
         ),
@@ -282,6 +294,7 @@ export async function POST(req: Request) {
         stripe_session_id: session.id,
         payment_session_id: session.id,
         payment_provider: "stripe",
+        payment_status: "pending",
       })
       .eq("id", booking.id);
 

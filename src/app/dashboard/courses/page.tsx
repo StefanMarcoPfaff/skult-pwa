@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getOfferArchiveEligibility } from "@/app/dashboard/archive-rules";
 import { formatCourseLifecycleDate, type CourseStatus } from "@/lib/course-lifecycle-shared";
+import { buildOfferCalendarPath } from "@/lib/calendar";
+import { hasOfferCalendarData } from "@/lib/calendar-resolver";
 import {
   buildMailtoHref,
   buildOfferMailSubject,
@@ -13,7 +15,7 @@ import {
   getWorkshopCancellationPolicySummary,
   getWorkshopCancellationPolicyValue,
 } from "@/lib/offer-policies";
-import { getOfferCollectionLabel, getOfferKindLabel, getOfferVisibilityLabel } from "@/lib/offer-ui";
+import { getOfferCollectionLabel, getOfferKindLabel, getOfferVisibilityLabel, isOneTimeOfferKind } from "@/lib/offer-ui";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { OfferCard } from "./OfferCard";
@@ -33,6 +35,7 @@ type OfferRow = {
   visibility: string | null;
   location: string | null;
   starts_at: string | null;
+  duration_minutes: number | null;
   weekday: number | null;
   start_time: string | null;
   recurrence_type: string | null;
@@ -138,9 +141,9 @@ export default async function DashboardCoursesPage({
   }
 
   const baseSelect =
-    "id,teacher_id,title,kind,status,is_published,visibility,location,starts_at,ends_at,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,pause_start_date,pause_end_date,stop_date,archived_at";
+    "id,teacher_id,title,kind,status,is_published,visibility,location,starts_at,ends_at,duration_minutes,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,pause_start_date,pause_end_date,stop_date,archived_at";
   const fallbackSelect =
-    "id,teacher_id,title,kind,is_published,visibility,location,starts_at,ends_at,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,archived_at";
+    "id,teacher_id,title,kind,is_published,visibility,location,starts_at,ends_at,duration_minutes,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,archived_at";
 
   let offersResult = await supabase
     .from("courses")
@@ -381,7 +384,7 @@ export default async function DashboardCoursesPage({
             const isMissingPolicy =
               (kind === "course" &&
                 !getCourseTerminationModelValue({ termination_model: offer.cancellation_model })) ||
-              (kind === "workshop" &&
+              (isOneTimeOfferKind(kind) &&
                 !getWorkshopCancellationPolicyValue({
                   cancellation_policy: offer.workshop_storno_policy,
                 }));
@@ -393,6 +396,14 @@ export default async function DashboardCoursesPage({
               subject: buildOfferMailSubject(offer.kind, offer.title),
             });
             const showMailWarning = shouldWarnAboutLargeMailingGroup(recipientEmails.length, mailHref);
+            const calendarEnabled = hasOfferCalendarData({
+              kind: offer.kind,
+              startsAt: offer.starts_at,
+              durationMinutes: offer.duration_minutes,
+              startTime: offer.start_time,
+              recurrenceType: offer.recurrence_type,
+              sessionCount: sessionCountByCourseId.get(offer.id) ?? 0,
+            });
 
             const activeTrialCount = trialReservationRows.filter(
               (row) =>
@@ -437,7 +448,7 @@ export default async function DashboardCoursesPage({
                 statusLabel={displayState.currentStatusLabel}
                 visibilityLabel={getOfferVisibilityLabel(offer.visibility)}
                 location={offer.location}
-                workshopTiming={kind === "workshop" ? workshopTiming : null}
+                workshopTiming={isOneTimeOfferKind(kind) ? workshopTiming : null}
                 courseTiming={kind === "course" ? courseTiming : null}
                 pauseStartLabel={kind === "course" ? pauseStartLabel : null}
                 pauseEndLabel={kind === "course" ? pauseEndLabel : null}
@@ -456,6 +467,8 @@ export default async function DashboardCoursesPage({
                 pauseDisabled={displayState.pauseDisabled}
                 stopDisabled={displayState.stopDisabled}
                 mailHref={mailHref}
+                calendarHref={calendarEnabled ? buildOfferCalendarPath(offer.id) : null}
+                calendarDisabledReason={calendarEnabled ? null : "Kalenderdatei erst mit Termin verfÃ¼gbar"}
                 showMailWarning={showMailWarning}
                 archiveAllowed={archiveEligibility.allowed}
                 archiveReason={archiveEligibility.reason}

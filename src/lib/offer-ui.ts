@@ -1,7 +1,10 @@
-export function getOfferKindLabel(kind: string | null): string {
+export function isOneTimeOfferKind(kind: string | null | undefined): boolean {
   const normalized = String(kind ?? "").toLowerCase();
-  if (normalized === "exclusive_offer") return "Exklusiv-Angebot";
-  if (normalized === "workshop") return "einmaliges Angebot";
+  return normalized === "workshop" || normalized === "exclusive_offer";
+}
+
+export function getOfferKindLabel(kind: string | null): string {
+  if (isOneTimeOfferKind(kind)) return "einmaliges Angebot";
   return "laufendes Angebot";
 }
 
@@ -10,5 +13,5 @@ export function getOfferCollectionLabel(): string {
 }
 
 export function getOfferVisibilityLabel(value: string | null | undefined): string {
-  return String(value ?? "").toLowerCase() === "private_link" ? "Nur per Link sichtbar" : "Öffentlich sichtbar";
+  return String(value ?? "").toLowerCase() === "private_link" ? "Nur per Link buchbar" : "Öffentlich sichtbar";
 }

@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getParticipantArchiveEligibility } from "@/app/dashboard/archive-rules";
+import { buildBookingCalendarPath } from "@/lib/calendar";
+import { hasOfferCalendarData } from "@/lib/calendar-resolver";
 import { formatCourseLifecycleDate, getNextMonthEndDate } from "@/lib/course-lifecycle-shared";
 import { buildMailtoHref, buildParticipantMailSubject } from "@/lib/mailto";
 import { getOfferKindLabel } from "@/lib/offer-ui";
@@ -16,6 +18,9 @@ type CourseRow = {
   location: string | null;
   starts_at: string | null;
   ends_at: string | null;
+  start_time: string | null;
+  duration_minutes: number | null;
+  recurrence_type: string | null;
 };
 
 type SessionRow = {
@@ -274,7 +279,7 @@ async function loadParticipantItems(
   const admin = createSupabaseAdmin();
   const { data: ownCourses } = await admin
     .from("courses")
-    .select("id,title,kind,instructor_name,location,starts_at,ends_at")
+    .select("id,title,kind,instructor_name,location,starts_at,ends_at,start_time,duration_minutes,recurrence_type")
     .eq("teacher_id", user.id)
     .is("archived_at", null)
     .returns<CourseRow[]>();
@@ -434,6 +439,7 @@ async function loadParticipantItems(
       !checkedInAt &&
       !reservation.cancelled_at &&
       reservation.decision_status !== "rejected";
+    const trialCalendarEnabled = Boolean(reservation.trial_starts_at);
     const archiveEligibility = getParticipantArchiveEligibility({
       source: "trial",
       archivedAt: reservation.archived_at,
@@ -479,6 +485,10 @@ async function loadParticipantItems(
               ? "Eingecheckt"
               : "Nicht eingecheckt",
       mailHref,
+      calendarAction: {
+        href: trialCalendarEnabled ? buildBookingCalendarPath(reservation.id, "trial") : null,
+        disabledReason: trialCalendarEnabled ? null : "Kalenderdatei erst mit Termin verfügbar",
+      },
       lifecycleAction: {
         kind: "trial",
         reservationId: reservation.id,
@@ -548,6 +558,14 @@ async function loadParticipantItems(
       Boolean(ticket && event) &&
       !checkedInAt &&
       ["active", "pause_scheduled"].includes(intent.subscription_status ?? "active");
+    const registeredCalendarEnabled = hasOfferCalendarData({
+      kind: course.kind,
+      startsAt: course.starts_at,
+      durationMinutes: course.duration_minutes,
+      startTime: course.start_time,
+      recurrenceType: course.recurrence_type,
+      sessionCount: (sessionsByCourseId.get(course.id) ?? []).length,
+    });
     const archiveEligibility = getParticipantArchiveEligibility({
       source: "registered",
       archivedAt: intent.archived_at,
@@ -585,6 +603,10 @@ async function loadParticipantItems(
               ? "Eingecheckt"
               : "Aktiv",
       mailHref,
+      calendarAction: {
+        href: registeredCalendarEnabled ? buildBookingCalendarPath(intent.trial_reservation_id, "registered") : null,
+        disabledReason: registeredCalendarEnabled ? null : "Kalenderdatei erst mit Termin verfügbar",
+      },
       lifecycleAction: {
         kind: "registered",
         reservationId: intent.trial_reservation_id,
@@ -658,6 +680,11 @@ async function loadParticipantItems(
       refundedAt: booking.refunded_at,
       stripeRefundId: booking.stripe_refund_id,
     });
+    const workshopCalendarEnabled = hasOfferCalendarData({
+      kind: course.kind,
+      startsAt: course.starts_at,
+      sessionCount: (sessionsByCourseId.get(course.id) ?? []).length,
+    });
 
     items.push({
       id: `workshop-${booking.id}`,
@@ -676,6 +703,10 @@ async function loadParticipantItems(
       },
       statusLabel: checkedInAt ? "Eingecheckt" : booking.status === "paid" ? "Aktiv" : "Gekündigt / gestoppt",
       mailHref,
+      calendarAction: {
+        href: workshopCalendarEnabled ? buildBookingCalendarPath(booking.id, "workshop") : null,
+        disabledReason: workshopCalendarEnabled ? null : "Kalenderdatei erst mit Termin verfügbar",
+      },
       lifecycleAction: {
         kind: "workshop",
         playClassName: lifecycle.playClassName,

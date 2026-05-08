@@ -38,12 +38,29 @@ export default function DashboardGuidePage() {
         <GuideSection
           title="2. Angebotsarten"
           items={[
-            "Einmaliges Angebot = einzelner Termin mit direkter Zahlung.",
-            "Laufendes Angebot = fortlaufendes Angebot mit Probeteilnahme und monatlicher Zahlung.",
+            "Es gibt zwei Angebotsarten: einmaliges Angebot und laufendes Angebot.",
+            "Einmaliges Angebot = für einmalige oder zeitlich begrenzte Angebote mit Direktbuchung.",
+            "Laufendes Angebot = für wiederkehrende Angebote mit Probeteilnahme und Monatszahlung.",
           ]}
         />
         <GuideSection
-          title="3. Symbole bei Angeboten"
+          title="3. Sichtbarkeit"
+          items={[
+            "Öffentlich sichtbar = dein Angebot erscheint auf RESER und kann von allen gefunden und gebucht werden.",
+            "Nur per Link buchbar = dein Angebot erscheint nicht öffentlich auf RESER, ist aber über den direkten Link weiter buchbar.",
+            "Aktiv und nur per Link buchbar ist weiterhin teilbar und buchbar, nur eben nicht öffentlich gelistet.",
+          ]}
+        />
+        <GuideSection
+          title="4. Kostenlose Einmalangebote"
+          items={[
+            "Einmalige Angebote dürfen 0 € kosten.",
+            "Kostenlose einmalige Angebote lösen keine Stripe-Zahlung aus.",
+            "Sie können trotzdem gebucht, bestätigt, per Ticket eingecheckt und im Dashboard verwaltet werden.",
+          ]}
+        />
+        <GuideSection
+          title="5. Symbole bei Angeboten"
           items={[
             <>{"\u25B6"} = veröffentlichen oder aktivieren.</>,
             <>{"\u23F8"} = laufendes Angebot pausieren.</>,
@@ -56,7 +73,7 @@ export default function DashboardGuidePage() {
           ]}
         />
         <GuideSection
-          title="4. Symbole bei Teilnehmenden"
+          title="6. Symbole bei Teilnehmenden"
           items={[
             <>{"\u25B6"} = Probeteilnahme freigeben oder aktive Teilnahme anzeigen.</>,
             <>{"\u23F8"} = Teilnahme pausieren.</>,
@@ -68,7 +85,7 @@ export default function DashboardGuidePage() {
           ]}
         />
         <GuideSection
-          title="5. Check-in"
+          title="7. Check-in"
           items={[
             "Teilnehmer-QR scannen.",
             "Termin-QR anzeigen.",
@@ -76,19 +93,19 @@ export default function DashboardGuidePage() {
           ]}
         />
         <GuideSection
-          title="6. Zahlungen"
+          title="8. Zahlungen"
           items={[
-            "Einmalige Angebote werden direkt bezahlt.",
+            "Kostenpflichtige einmalige Angebote werden direkt bezahlt.",
+            "Kostenlose einmalige Angebote werden direkt bestätigt und brauchen keinen Stripe-Checkout.",
             "Laufende Angebote laufen monatlich.",
-            "Pausen und Kündigungen werden durch Anbietende gesteuert.",
           ]}
         />
         <GuideSection
-          title="7. Teilen & Einbetten"
+          title="9. Teilen & Einbetten"
           items={[
             "Öffentlichen Link nutzen.",
             "Embed-Code für die eigene Website kopieren.",
-            "Teilen und Einbetten ist nur bei aktiven und direkt buchbaren Angeboten aktiv.",
+            "Teilen und Einbetten ist bei aktiven Angeboten möglich, auch wenn sie nur per Link buchbar sind.",
           ]}
         />
       </section>

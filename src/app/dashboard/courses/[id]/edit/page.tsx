@@ -132,6 +132,7 @@ export default async function EditOfferPage({
     location: data.location ?? "",
     location_details: data.location_details ?? "",
     description: data.description ?? "",
+    internal_note: data.internal_note ?? "",
     weekday: data.weekday !== null ? String(data.weekday) : "1",
     start_date: toDateInputValue(data.starts_at),
     start_time: data.start_time ?? "18:00",

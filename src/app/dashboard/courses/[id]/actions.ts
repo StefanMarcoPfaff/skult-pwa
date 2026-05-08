@@ -67,6 +67,7 @@ type WorkshopBookingRefundRow = {
   customer_last_name: string | null;
   customer_email: string | null;
   status: string | null;
+  payment_status: string | null;
   stripe_session_id: string | null;
   refunded_at: string | null;
   stripe_refund_id: string | null;
@@ -569,7 +570,7 @@ export async function cancelWorkshopAction(formData: FormData) {
   const { data: bookings } = await admin
     .from("bookings")
     .select(
-      "id,customer_first_name,customer_last_name,customer_email,status,stripe_session_id,refunded_at,stripe_refund_id"
+      "id,customer_first_name,customer_last_name,customer_email,status,payment_status,stripe_session_id,refunded_at,stripe_refund_id"
     )
     .eq("course_id", courseId)
     .returns<WorkshopBookingRefundRow[]>();
@@ -582,13 +583,31 @@ export async function cancelWorkshopAction(formData: FormData) {
       continue;
     }
 
-    if (booking.status !== "paid" || !booking.stripe_session_id) {
-      await admin
+    if (booking.payment_status === "free" || booking.status !== "paid" || !booking.stripe_session_id) {
+      const { error: cancelUpdateError } = await admin
         .from("bookings")
         .update({
           status: "cancelled",
+          payment_status: booking.payment_status === "free" ? "cancelled" : booking.payment_status,
         })
         .eq("id", booking.id);
+      if (cancelUpdateError) {
+        hadRefundErrors = true;
+        continue;
+      }
+
+      const recipientEmail = booking.customer_email?.trim();
+      if (recipientEmail) {
+        try {
+          await sendWorkshopCancellationEmail({
+            customerEmail: recipientEmail,
+            customerName: formatRecipientName(booking.customer_first_name, booking.customer_last_name),
+            refunded: false,
+          });
+        } catch {
+          hadRefundErrors = true;
+        }
+      }
       continue;
     }
 
@@ -623,6 +642,7 @@ export async function cancelWorkshopAction(formData: FormData) {
       .from("bookings")
       .update({
         status: "refunded",
+        payment_status: "refunded",
         refunded_at: new Date().toISOString(),
         stripe_refund_id: refundId,
         refund_amount_cents: refundAmount,
@@ -640,9 +660,10 @@ export async function cancelWorkshopAction(formData: FormData) {
         await sendWorkshopCancellationEmail({
           customerEmail: recipientEmail,
           customerName: formatRecipientName(booking.customer_first_name, booking.customer_last_name),
+          refunded: true,
         });
       } catch {
-        // Keep cancellation/refund state even if email delivery fails.
+        hadRefundErrors = true;
       }
     }
   }

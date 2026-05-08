@@ -6,7 +6,7 @@ export default function KindPicker() {
   const router = useRouter();
 
   return (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid gap-4 md:grid-cols-2">
       <button
         type="button"
         onClick={() => router.push("/dashboard/courses/new?kind=workshop")}
@@ -14,7 +14,9 @@ export default function KindPicker() {
       >
         <div className="text-lg font-semibold">Einmaliges Angebot</div>
         <div className="mt-1 text-sm text-muted-foreground">
-          Einmalige Veranstaltung mit Termin und Direktbuchung.
+          Für einmalige oder zeitlich begrenzte Angebote, z. B. zweitägiger Workshop, einstündiger
+          Rundgang, Firmenführung, Einzelcoaching oder Wochenendangebot. Öffentlich sichtbar oder
+          nur per Link buchbar.
         </div>
       </button>
 
@@ -25,18 +27,8 @@ export default function KindPicker() {
       >
         <div className="text-lg font-semibold">Laufendes Angebot</div>
         <div className="mt-1 text-sm text-muted-foreground">
-          Wiederkehrend (wöchentlich/14-tägig/monatlich) mit Probestunde + Mailflow.
-        </div>
-      </button>
-
-      <button
-        type="button"
-        onClick={() => router.push("/dashboard/courses/new?kind=exclusive_offer")}
-        className="rounded-2xl border p-5 text-left shadow-sm transition hover:shadow"
-      >
-        <div className="text-lg font-semibold">Exklusiv-Angebot</div>
-        <div className="mt-1 text-sm text-muted-foreground">
-          Individuelles Einmalangebot, standardmäßig nur per Link sichtbar und buchbar.
+          Für wiederkehrende Angebote, z. B. wöchentliche oder 14-tägige Kurse, regelmäßige
+          Gruppen oder fortlaufende Termine mit Monatszahlung.
         </div>
       </button>
     </div>

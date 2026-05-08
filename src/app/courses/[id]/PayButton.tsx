@@ -63,7 +63,7 @@ export function PayButton({
       }
 
       if (!res.ok) throw new Error(data?.error || "Checkout fehlgeschlagen");
-      if (!data?.url) throw new Error("Stripe URL fehlt");
+      if (!data?.url) throw new Error("Checkout-URL fehlt");
 
       window.location.href = data.url;
     } catch (error) {
@@ -82,6 +82,7 @@ export function PayButton({
     consents.agbAccepted &&
     consents.privacyAccepted &&
     consents.workshopStornoAccepted;
+  const isFreeOffer = priceLabel === "Kostenlos";
 
   return (
     <div className="space-y-4">
@@ -121,10 +122,16 @@ export function PayButton({
         </label>
       </div>
 
-      <p className="text-sm text-muted-foreground">
-        Im Checkout zeigt Stripe automatisch die verfügbaren Zahlungsmethoden für Gerät, Land
-        und Buchung an, zum Beispiel Karte, Apple Pay, Google Pay, SEPA oder Klarna.
-      </p>
+      {isFreeOffer ? (
+        <p className="text-sm text-muted-foreground">
+          Dieses einmalige Angebot ist kostenlos. Deine Buchung wird direkt bestätigt.
+        </p>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Im Checkout zeigt Stripe automatisch die verfügbaren Zahlungsmethoden für Gerät, Land
+          und Buchung an, zum Beispiel Karte, Apple Pay, Google Pay, SEPA oder Klarna.
+        </p>
+      )}
 
       <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
         <h3 className="font-semibold text-foreground">Buchungsübersicht</h3>
@@ -140,10 +147,7 @@ export function PayButton({
             </p>
           ) : null}
           <p>
-            Stornierungsbedingungen:{" "}
-            <span className="font-medium text-foreground">
-              {stornoPolicyLabel}
-            </span>
+            Stornierungsbedingungen: <span className="font-medium text-foreground">{stornoPolicyLabel}</span>
           </p>
           <p>
             Angebot: <span className="font-medium text-foreground">{offerLabel}</span>
@@ -209,7 +213,8 @@ export function PayButton({
             className="mt-1"
           />
           <span>
-            Ich habe die Stornierungs- bzw. Kündigungsbedingungen gelesen und akzeptiere diese sowie den{" "}
+            Ich habe die Stornierungs- bzw. Kündigungsbedingungen gelesen und akzeptiere diese
+            sowie den{" "}
             <Link
               href={LEGAL_LINKS.workshopStorno}
               target="_blank"
@@ -229,7 +234,7 @@ export function PayButton({
           disabled || loading || !isComplete ? "bg-gray-200 text-gray-500" : "bg-black text-white"
         }`}
       >
-        {loading ? "Weiterleitung..." : "Jetzt kostenpflichtig buchen"}
+        {loading ? "Weiterleitung..." : isFreeOffer ? "Kostenlos buchen" : "Jetzt kostenpflichtig buchen"}
       </button>
 
       {err ? <p className="text-sm text-red-600">{err}</p> : null}

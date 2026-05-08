@@ -519,6 +519,7 @@ async function createOrUpdateCourse(
   const recurrence_type = String(formData.get("recurrence_type") || "").trim();
   const trial_mode = String(formData.get("trial_mode") || "all_sessions").trim().toLowerCase();
   const visibility = parseOfferVisibility(formData.get("visibility"));
+  const internal_note = parseOptionalString(formData.get("internal_note"));
   const selectedTrialSlotStarts = parseIsoDateTimeList(formData.getAll("trial_slot_starts_at"));
   const cancellation_model = "monthly";
 
@@ -625,6 +626,7 @@ async function createOrUpdateCourse(
         status: "draft",
         is_published: false,
         visibility,
+        internal_note,
       })
       .select("id")
       .single();
@@ -673,6 +675,7 @@ async function createOrUpdateCourse(
       price_cents,
       currency,
       visibility,
+      internal_note,
     })
     .eq("id", options.courseId)
     .eq("teacher_id", user.id)

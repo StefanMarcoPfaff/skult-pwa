@@ -83,7 +83,7 @@ export default function WorkshopForm({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const workshopCurrency = getWorkshopCheckoutCurrency();
-  const isExclusiveOffer = offerKind === "exclusive_offer";
+  const isLegacyExclusiveOffer = offerKind === "exclusive_offer";
   const [error, setError] = useState<string | null>(null);
   const [priceEur, setPriceEur] = useState(initialValues?.price_eur ?? "");
   const [currency] = useState(workshopCurrency);
@@ -269,36 +269,38 @@ export default function WorkshopForm({
           rows={4}
           defaultValue={initialValues?.description ?? ""}
           className="w-full rounded-xl border px-3 py-2 text-sm"
-          placeholder={isExclusiveOffer ? "Kurzbeschreibung fuer die individuelle Buchungsseite." : "Kurzbeschreibung fuer die Angebotsseite."}
+          placeholder="Kurzbeschreibung fuer die Angebotsseite."
         />
       </label>
 
-      {isExclusiveOffer ? (
-        <label className="block space-y-1">
-          <span className="text-sm font-medium">Interne Notiz</span>
-          <textarea
-            name="internal_note"
-            rows={3}
-            defaultValue={initialValues?.internal_note ?? ""}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-            placeholder="Nur intern sichtbar, z. B. Anlass, Konditionen oder Kund*innen-Kontext."
-          />
-        </label>
-      ) : null}
+      <label className="block space-y-1">
+        <span className="text-sm font-medium">Interne Notiz</span>
+        <textarea
+          name="internal_note"
+          rows={3}
+          defaultValue={initialValues?.internal_note ?? ""}
+          className="w-full rounded-xl border px-3 py-2 text-sm"
+          placeholder="Nur intern sichtbar, z. B. Anlass, Konditionen oder Kund*innen-Kontext."
+        />
+        <span className="block text-xs text-muted-foreground">
+          Nur fuer dich sichtbar. Kund*innen sehen diese Notiz nicht.
+        </span>
+      </label>
 
       <label className="block space-y-1">
         <span className="text-sm font-medium">Sichtbarkeit *</span>
         <select
           name="visibility"
-          defaultValue={initialValues?.visibility ?? (isExclusiveOffer ? "private_link" : "public")}
+          defaultValue={initialValues?.visibility ?? (isLegacyExclusiveOffer ? "private_link" : "public")}
           className="w-full rounded-xl border px-3 py-2 text-sm"
         >
           <option value="public">Öffentlich sichtbar</option>
-          <option value="private_link">Nur per Link sichtbar</option>
+          <option value="private_link">Nur per Link buchbar</option>
         </select>
-        <span className="block text-xs text-muted-foreground">
-          Aktiv bedeutet buchbar. Sichtbarkeit steuert nur, ob das Angebot öffentlich gelistet wird oder nur über den direkten Link erreichbar ist.
-        </span>
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <p>Öffentlich sichtbar: Dein Angebot erscheint auf RESER und kann von allen gefunden und gebucht werden.</p>
+          <p>Nur per Link buchbar: Dein Angebot erscheint nicht öffentlich auf RESER. Du kannst den Link gezielt an ausgewählte Personen schicken.</p>
+        </div>
       </label>
 
       {providerType === "studio_provider" ? (
@@ -319,7 +321,7 @@ export default function WorkshopForm({
               required
               defaultValue={initialValues?.instructor_name ?? ""}
               className="w-full rounded-xl border px-3 py-2 text-sm"
-              placeholder={isExclusiveOffer ? "Name der Ansprechperson oder Leitung" : "Name der Leitung"}
+              placeholder="Name der Leitung"
             />
           </label>
         </div>
@@ -357,12 +359,10 @@ export default function WorkshopForm({
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <span className="text-sm font-medium">{isExclusiveOffer ? "Termin / Zeitraum *" : "Termine *"}</span>
-            <p className="text-xs text-muted-foreground">
-              {isExclusiveOffer ? "Lege Start und Ende fuer den exklusiven Termin fest." : "Jeder Termin benoetigt Start- und Endzeit."}
-            </p>
+            <span className="text-sm font-medium">Termine *</span>
+            <p className="text-xs text-muted-foreground">Jeder Termin benoetigt Start- und Endzeit.</p>
           </div>
-          {!isExclusiveOffer ? (
+          {!isLegacyExclusiveOffer ? (
             <button
               type="button"
               onClick={() => setSessions((prev) => [...prev, createEmptySession()])}
@@ -380,7 +380,7 @@ export default function WorkshopForm({
               <div key={session.id} className="space-y-2 rounded-xl border p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs font-semibold text-muted-foreground">Termin {index + 1}</p>
-                  {!isExclusiveOffer ? (
+                  {!isLegacyExclusiveOffer ? (
                     <button
                       type="button"
                       onClick={() =>
@@ -451,7 +451,7 @@ export default function WorkshopForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-1">
-          <span className="text-sm font-medium">{isExclusiveOffer ? "Preis (EUR)" : "Preis pro Person (EUR)"}</span>
+          <span className="text-sm font-medium">Preis pro Person (EUR)</span>
           <input
             type="number"
             name="price_eur"
@@ -463,6 +463,9 @@ export default function WorkshopForm({
             className="w-full rounded-xl border px-3 py-2 text-sm"
             placeholder="49.00"
           />
+          <span className="block text-xs text-muted-foreground">
+            0,00 ist erlaubt. Kostenlose einmalige Angebote werden ohne Stripe direkt bestätigt.
+          </span>
         </label>
 
         <label className="space-y-1">
@@ -480,7 +483,7 @@ export default function WorkshopForm({
         <p className="font-medium">Preisaufteilung</p>
         <div className="mt-3 space-y-1 text-muted-foreground">
           <div className="flex items-center justify-between gap-4">
-            <span>{isExclusiveOffer ? "Angebotspreis" : "Preis pro Person"}</span>
+            <span>Preis pro Person</span>
             <span>{formatCurrency(priceBreakdown.grossCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
@@ -499,7 +502,8 @@ export default function WorkshopForm({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Checkout fuer Einmalangebote ist aktuell nur in {workshopCurrency} aktiviert.
+        Kostenpflichtige Einmalangebote nutzen aktuell Checkout in {workshopCurrency}. Kostenlose
+        Einmalangebote werden direkt bestätigt.
       </p>
 
       {error ? (

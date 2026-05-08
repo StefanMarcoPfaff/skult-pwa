@@ -16,6 +16,7 @@ type BookingRow = {
   customer_last_name: string | null;
   customer_email: string | null;
   customer_phone: string | null;
+  payment_status: string | null;
   workshop_confirmation_email_sent_at: string | null;
   workshop_provider_notification_email_sent_at: string | null;
 };
@@ -149,46 +150,43 @@ export type FinalizedWorkshopBooking = {
   instructorName: string | null;
   stornoPolicyLabel: string | null;
   priceLabel: string | null;
+  paymentStatus: "paid" | "free";
 };
 
-export async function finalizeWorkshopBookingBySession(
-  sessionId: string
-): Promise<FinalizedWorkshopBooking | null> {
-  const stripe = getStripe();
-  const session = await stripe.checkout.sessions.retrieve(sessionId);
-  const bookingId = session.metadata?.bookingId ?? session.client_reference_id ?? null;
-
-  if (!bookingId || session.payment_status !== "paid") {
-    return null;
-  }
-
+async function finalizeWorkshopBookingRecord(input: {
+  bookingId: string;
+  paymentProvider: "stripe" | "free";
+  paymentStatus: "paid" | "free";
+  paymentSessionId?: string | null;
+  customerEmail?: string | null;
+  customerName?: string | null;
+}): Promise<FinalizedWorkshopBooking | null> {
   const admin = createSupabaseAdmin();
   const { data: booking } = await admin
     .from("bookings")
     .select(
-      "id,status,course_id,attendee_key,customer_first_name,customer_last_name,customer_email,customer_phone,workshop_confirmation_email_sent_at"
+      "id,status,course_id,attendee_key,customer_first_name,customer_last_name,customer_email,customer_phone,payment_status,workshop_confirmation_email_sent_at"
         + ",workshop_provider_notification_email_sent_at"
     )
-    .eq("id", bookingId)
+    .eq("id", input.bookingId)
     .maybeSingle<BookingRow>();
 
   if (!booking) return null;
 
-  const stripeEmail = session.customer_details?.email ?? session.customer_email ?? null;
-  const stripeName = session.customer_details?.name?.trim() || null;
   const customerName =
     [booking.customer_first_name, booking.customer_last_name].filter(Boolean).join(" ").trim() ||
-    stripeName ||
+    input.customerName ||
     "Gast";
-  const customerEmail = booking.customer_email?.trim() || stripeEmail;
+  const customerEmail = booking.customer_email?.trim() || input.customerEmail?.trim() || null;
 
   await admin
     .from("bookings")
     .update({
       status: "paid",
-      stripe_session_id: session.id,
-      payment_session_id: session.id,
-      payment_provider: "stripe",
+      stripe_session_id: input.paymentProvider === "stripe" ? input.paymentSessionId ?? null : null,
+      payment_session_id: input.paymentSessionId ?? null,
+      payment_provider: input.paymentProvider,
+      payment_status: input.paymentStatus,
       customer_email: customerEmail,
     })
     .eq("id", booking.id);
@@ -238,11 +236,6 @@ export async function finalizeWorkshopBookingBySession(
 
   if (ticket && customerEmail && !booking.workshop_confirmation_email_sent_at) {
     try {
-      logWorkshopFinalization("customer confirmation email attempt", {
-        bookingId: booking.id,
-        recipient: customerEmail,
-      });
-
       const result = await sendWorkshopCustomerBookingConfirmationEmail({
         bookingId: booking.id,
         workshopTitle: course?.title ?? "Angebot",
@@ -265,6 +258,7 @@ export async function finalizeWorkshopBookingBySession(
         sessionLines,
         stornoPolicyLabel: getWorkshopStornoPolicyLabel(course?.workshop_storno_policy),
         priceLabel: formatPrice(course?.price_cents ?? null, course?.currency ?? null),
+        paymentStatus: input.paymentStatus,
         qrToken: ticket.qr_token,
       });
 
@@ -277,27 +271,13 @@ export async function finalizeWorkshopBookingBySession(
         .update({ workshop_confirmation_email_sent_at: new Date().toISOString() })
         .eq("id", booking.id)
         .is("workshop_confirmation_email_sent_at", null);
-
-      logWorkshopFinalization("customer confirmation email sent", {
-        bookingId: booking.id,
-        recipient: customerEmail,
-        messageId: result?.data?.id ?? null,
-      });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
       logWorkshopFinalization("customer confirmation email failed", {
         bookingId: booking.id,
         recipient: customerEmail,
-        reason: message,
+        reason: error instanceof Error ? error.message : String(error),
       });
     }
-  } else {
-    logWorkshopFinalization("customer confirmation email skipped", {
-      bookingId: booking.id,
-      recipient: customerEmail,
-      reason: ticket ? (customerEmail ? "already-sent" : "missing-recipient") : "missing-ticket",
-      sentAtAlreadySet: Boolean(booking.workshop_confirmation_email_sent_at),
-    });
   }
 
   const providerEmail = providerContact.providerEmail;
@@ -316,20 +296,8 @@ export async function finalizeWorkshopBookingBySession(
         recipient: providerEmail,
         reason: claimError.message,
       });
-    } else if (!claimedRows || claimedRows.length === 0) {
-      logWorkshopFinalization("provider notification email skipped", {
-        bookingId: booking.id,
-        recipient: providerEmail,
-        reason: "already-sent",
-        sentAtAlreadySet: true,
-      });
-    } else {
+    } else if (claimedRows && claimedRows.length > 0) {
       try {
-        logWorkshopFinalization("provider notification email attempt", {
-          bookingId: booking.id,
-          recipient: providerEmail,
-        });
-
         const result = await sendWorkshopBookingNotificationEmail({
           bookingId: booking.id,
           workshopTitle: course?.title ?? "Angebot",
@@ -352,18 +320,13 @@ export async function finalizeWorkshopBookingBySession(
           sessionLines,
           stornoPolicyLabel: getWorkshopStornoPolicyLabel(course?.workshop_storno_policy),
           priceLabel: formatPrice(course?.price_cents ?? null, course?.currency ?? null),
+          paymentStatus: input.paymentStatus,
           qrToken: ticket.qr_token,
         });
 
         if (result?.error) {
           throw result.error;
         }
-
-        logWorkshopFinalization("provider notification email sent", {
-          bookingId: booking.id,
-          recipient: providerEmail,
-          messageId: result?.data?.id ?? null,
-        });
       } catch (error) {
         await admin
           .from("bookings")
@@ -371,21 +334,13 @@ export async function finalizeWorkshopBookingBySession(
           .eq("id", booking.id)
           .eq("workshop_provider_notification_email_sent_at", claimedAt);
 
-        const message = error instanceof Error ? error.message : String(error);
         logWorkshopFinalization("provider notification email failed", {
           bookingId: booking.id,
           recipient: providerEmail,
-          reason: message,
+          reason: error instanceof Error ? error.message : String(error),
         });
       }
     }
-  } else {
-    logWorkshopFinalization("provider notification email skipped", {
-      bookingId: booking.id,
-      recipient: providerEmail,
-      reason: ticket ? (providerEmail ? "already-sent" : "missing-recipient") : "missing-ticket",
-      sentAtAlreadySet: Boolean(booking.workshop_provider_notification_email_sent_at),
-    });
   }
 
   return {
@@ -405,5 +360,37 @@ export async function finalizeWorkshopBookingBySession(
     instructorName: course?.instructor_name ?? null,
     stornoPolicyLabel: getWorkshopStornoPolicyLabel(course?.workshop_storno_policy),
     priceLabel: formatPrice(course?.price_cents ?? null, course?.currency ?? null),
+    paymentStatus: input.paymentStatus,
   };
+}
+
+export async function finalizeWorkshopBookingBySession(
+  sessionId: string
+): Promise<FinalizedWorkshopBooking | null> {
+  const stripe = getStripe();
+  const session = await stripe.checkout.sessions.retrieve(sessionId);
+  const bookingId = session.metadata?.bookingId ?? session.client_reference_id ?? null;
+
+  if (!bookingId || session.payment_status !== "paid") {
+    return null;
+  }
+
+  return finalizeWorkshopBookingRecord({
+    bookingId,
+    paymentProvider: "stripe",
+    paymentStatus: "paid",
+    paymentSessionId: session.id,
+    customerEmail: session.customer_details?.email ?? session.customer_email ?? null,
+    customerName: session.customer_details?.name?.trim() || null,
+  });
+}
+
+export async function finalizeFreeWorkshopBooking(
+  bookingId: string
+): Promise<FinalizedWorkshopBooking | null> {
+  return finalizeWorkshopBookingRecord({
+    bookingId,
+    paymentProvider: "free",
+    paymentStatus: "free",
+  });
 }

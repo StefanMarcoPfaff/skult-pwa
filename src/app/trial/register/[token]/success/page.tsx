@@ -1,5 +1,6 @@
 import Link from "next/link";
 import QRCode from "react-qr-code";
+import { buildBookingCalendarPath } from "@/lib/calendar";
 import {
   finalizeCourseRegistrationCheckoutSession,
   type CourseRegistrationFinalizeResult,
@@ -54,6 +55,14 @@ export default async function TrialRegistrationSuccessPage({
             : "Alle weiteren Informationen zu deinem laufenden Angebot erhaeltst du per E-Mail."}
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
+          {ticketForDisplay?.qr_token ? (
+            <Link
+              href={buildBookingCalendarPath(ticketForDisplay.qr_token, "ticket")}
+              className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold"
+            >
+              Zum Kalender hinzufügen
+            </Link>
+          ) : null}
           <Link href="/courses" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
             Zu den Angeboten
           </Link>

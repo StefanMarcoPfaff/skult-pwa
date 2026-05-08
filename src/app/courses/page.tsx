@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatCoursePriceFromRow } from "@/lib/course-display";
 import { buildOfferAvailability, loadOccupiedSeatCountsForOffers } from "@/lib/public-offer-availability";
 import { isPubliclyVisibleOffer } from "@/lib/public-offer-visibility";
+import { getOfferKindLabel, isOneTimeOfferKind } from "@/lib/offer-ui";
 
 type Row = Record<string, unknown>;
 
@@ -182,7 +183,7 @@ export default async function CoursesPage() {
             const occupied =
               kind === "course"
                 ? courseCounts.get(id) ?? 0
-                : kind === "workshop" || kind === "exclusive_offer"
+                : isOneTimeOfferKind(kind)
                   ? workshopCounts.get(id) ?? 0
                   : 0;
             const availability = buildOfferAvailability(capacity, occupied, {
@@ -192,22 +193,13 @@ export default async function CoursesPage() {
                   : isWorkshopBookable(startsAt, endsAt),
             });
             const availabilityText =
-              (kind === "workshop" || kind === "exclusive_offer") && !isWorkshopBookable(startsAt, endsAt)
+              isOneTimeOfferKind(kind) && !isWorkshopBookable(startsAt, endsAt)
                 ? "Nicht mehr buchbar"
                 : availability.badgeText;
             const price = formatPrice(o);
             const courseSchedule = kind === "course" ? formatCourseSchedule(o) : null;
-            const workshopTimeHint =
-              kind === "workshop" || kind === "exclusive_offer" ? formatDateTime(startsAt) : null;
-
-            const kindLabel =
-              kind === "course"
-                ? "laufendes Angebot"
-                : kind === "exclusive_offer"
-                  ? "Exklusiv-Angebot"
-                  : kind === "workshop"
-                    ? "einmaliges Angebot"
-                    : null;
+            const workshopTimeHint = isOneTimeOfferKind(kind) ? formatDateTime(startsAt) : null;
+            const kindLabel = kind ? getOfferKindLabel(kind) : null;
 
             return (
               <li key={id}>
@@ -233,7 +225,7 @@ export default async function CoursesPage() {
 
                   <p className="mt-2 text-sm font-medium text-gray-700">{availabilityText}</p>
 
-                  {(kind === "workshop" || kind === "exclusive_offer") && workshopTimeHint ? (
+                  {isOneTimeOfferKind(kind) && workshopTimeHint ? (
                     <p className="mt-2 text-sm text-gray-700">Termin: {workshopTimeHint}</p>
                   ) : null}
 

@@ -23,6 +23,7 @@ import { PayButton } from "./PayButton";
 import ReserveTrialButton from "./ReserveTrialButton";
 import SoldOutInquiryForm from "./SoldOutInquiryForm";
 import { buildTrialSlot, computeUpcomingTrialSlots, type TrialSlot } from "./trial-slots";
+import { getOfferKindLabel, isOneTimeOfferKind } from "@/lib/offer-ui";
 
 type Row = Record<string, unknown>;
 type SessionRow = {
@@ -121,9 +122,8 @@ export default async function CourseDetailPage({
   const description = asString(data.description) ?? asString(data.subtitle);
   const location = asString(data.location);
   const price = formatPrice(data);
-  const isSinglePaymentOffer = kind === "workshop" || kind === "exclusive_offer";
-  const offerKindLabel =
-    kind === "exclusive_offer" ? "Exklusiv-Angebot" : kind === "workshop" ? "einmaliges Angebot" : "laufendes Angebot";
+  const isSinglePaymentOffer = isOneTimeOfferKind(kind);
+  const offerKindLabel = getOfferKindLabel(kind);
 
   const weekday = asNumber(data.weekday);
   const startTime = asString(data.start_time);
@@ -298,7 +298,7 @@ export default async function CourseDetailPage({
 
       {isSinglePaymentOffer ? (
         <section className="space-y-3">
-          <h2 className="text-xl font-semibold">{kind === "exclusive_offer" ? "Termin / Zeitraum" : "Termine"}</h2>
+          <h2 className="text-xl font-semibold">Termine</h2>
           <div className="rounded-2xl border p-4 text-sm text-muted-foreground">
             {sessions.length > 0 ? (
               <ul className="space-y-2">
@@ -327,7 +327,7 @@ export default async function CourseDetailPage({
             ) : availability.isSoldOut ? (
               <SoldOutInquiryForm
                 courseId={id}
-                offerLabel={kind === "exclusive_offer" ? "Exklusiv-Angebot" : "einmaliges Angebot"}
+                offerLabel="einmaliges Angebot"
               />
             ) : (
               <PayButton
@@ -335,7 +335,7 @@ export default async function CourseDetailPage({
                 teacherName={profileHeading ?? publicCourse?.instructor_name ?? providerLabel}
                 priceLabel={price}
                 stornoPolicyLabel={workshopPolicyLabel}
-                offerLabel={kind === "exclusive_offer" ? "Exklusiv-Angebot" : "einmaliges Angebot"}
+                offerLabel="einmaliges Angebot"
               />
             )}
           </div>

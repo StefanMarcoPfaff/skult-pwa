@@ -1,15 +1,7 @@
 import { sendResendEmail } from "@/lib/resend";
 import { shouldShowStudioLabel } from "@/lib/provider-profiles";
-import { buildCalendarUrl } from "@/lib/calendar";
+import { buildBookingCalendarUrl } from "@/lib/calendar";
 import { buildTicketQrCodeDataUrl, buildTicketViewUrl, buildTicketWalletUrl } from "@/lib/ticket-qr";
-
-/*
- * MVP verification checklist:
- * 1. Complete a paid workshop booking.
- * 2. Confirm exactly one public.tickets row exists for the booking.
- * 3. Confirm the customer HTML email contains an embedded QR image.
- * 4. Open /dashboard/check-in?token=<qr_token> and check in once.
- */
 
 export type WorkshopBookingEmailData = {
   bookingId: string;
@@ -30,6 +22,7 @@ export type WorkshopBookingEmailData = {
   sessionLines: string[];
   stornoPolicyLabel: string | null;
   priceLabel: string | null;
+  paymentStatus?: "paid" | "free" | null;
   qrToken: string;
 };
 
@@ -244,26 +237,19 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
   const ticketUrl = buildTicketViewUrl(data.qrToken);
   const walletUrl = buildTicketWalletUrl(data.qrToken);
   const qrDataUrl = await buildTicketQrCodeDataUrl(data.qrToken);
-  const calendarUrl =
-    data.startsAt
-      ? buildCalendarUrl({
-          title: data.workshopTitle,
-          startsAt: data.startsAt,
-          endsAt: data.endsAt,
-          location: data.location,
-          description: data.providerName ?? data.teacherName ?? "Angebot",
-          filename: `angebot-${data.workshopTitle}`,
-        })
-      : null;
+  const calendarUrl = buildBookingCalendarUrl(data.qrToken, "ticket");
+  const isFreeBooking = data.paymentStatus === "free";
 
   return {
     to: data.customerEmail,
-    subject: `Deine Buchung war erfolgreich 🎉 ${data.workshopTitle}`,
+    subject: `${isFreeBooking ? "Deine Buchung ist bestätigt" : "Deine Buchung war erfolgreich"} 🎉 ${data.workshopTitle}`,
     html:
       createHtmlEmail({
-        title: "Deine Buchung war erfolgreich 🎉",
+        title: isFreeBooking ? "Deine Buchung ist bestätigt 🎉" : "Deine Buchung war erfolgreich 🎉",
         greeting: data.customerName,
-        intro: `Deine Buchung für <b>${data.workshopTitle}</b> ist erfolgreich abgeschlossen. Deine Zahlung wurde bestätigt.`,
+        intro: isFreeBooking
+          ? `Deine Buchung für <b>${data.workshopTitle}</b> ist bestätigt.`
+          : `Deine Buchung für <b>${data.workshopTitle}</b> ist erfolgreich abgeschlossen. Deine Zahlung wurde bestätigt.`,
         infoItems: [
           { label: "Angebot", value: data.workshopTitle },
           ...buildProviderInfoItems(data),
@@ -282,7 +268,7 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
         ],
         actions: [
           { label: "Ticket ansehen", href: ticketUrl },
-          ...(calendarUrl ? [{ label: "Im Kalender speichern", href: calendarUrl }] : []),
+          { label: "Zum Kalender hinzufügen", href: calendarUrl },
           { label: "Ins Wallet speichern", href: walletUrl },
           { label: "Zu den Angeboten", href: buildAbsoluteUrl("/courses") },
         ],
@@ -297,9 +283,11 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
         footer: buildFooterBranding(data),
       }),
     text: createTextEmail({
-      title: "Deine Buchung war erfolgreich 🎉",
+      title: isFreeBooking ? "Deine Buchung ist bestätigt 🎉" : "Deine Buchung war erfolgreich 🎉",
       greeting: data.customerName,
-      intro: `Deine Buchung für ${data.workshopTitle} ist erfolgreich abgeschlossen. Deine Zahlung wurde bestätigt.`,
+      intro: isFreeBooking
+        ? `Deine Buchung für ${data.workshopTitle} ist bestätigt.`
+        : `Deine Buchung für ${data.workshopTitle} ist erfolgreich abgeschlossen. Deine Zahlung wurde bestätigt.`,
       infoItems: [
         { label: "Angebot", value: data.workshopTitle },
         ...buildProviderInfoItems(data),
@@ -315,7 +303,7 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
       ],
       actions: [
         { label: "Ticket ansehen", href: ticketUrl },
-        ...(calendarUrl ? [{ label: "Im Kalender speichern", href: calendarUrl }] : []),
+        { label: "Zum Kalender hinzufügen", href: calendarUrl },
         { label: "Ins Wallet speichern", href: walletUrl },
         { label: "Zu den Angeboten", href: buildAbsoluteUrl("/courses") },
       ],
@@ -328,6 +316,8 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
 export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingEmailData) {
   const footerHtml = renderReserFooterHtml();
   const footerText = renderReserFooterText();
+  const calendarUrl = buildBookingCalendarUrl(data.qrToken, "ticket");
+  const isFreeBooking = data.paymentStatus === "free";
 
   return {
     to: data.teacherEmail ?? "",
@@ -335,7 +325,7 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
         <h2>Neue Buchung</h2>
-        <p><b>${data.customerName}</b> hat das Angebot <b>${data.workshopTitle}</b> gebucht und bezahlt.</p>
+        <p><b>${data.customerName}</b> hat das Angebot <b>${data.workshopTitle}</b> ${isFreeBooking ? "kostenlos gebucht" : "gebucht und bezahlt"}.</p>
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
         ${data.customerPhone ? `<p><b>Telefon:</b> ${data.customerPhone}</p>` : ""}
         ${data.providerName ? `<p><b>Anbieter:</b> ${data.providerName}</p>` : ""}
@@ -347,12 +337,13 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
             ? `<div><p><b>Termine:</b></p><ul>${data.sessionLines.map((line) => `<li>${line}</li>`).join("")}</ul></div>`
             : "<p><b>Termin:</b> Termin folgt</p>"
         }
+        <p><a href="${calendarUrl}">Zum Kalender hinzufügen</a></p>
         ${footerHtml}
       </div>
     `,
     text: [
       `Neue Buchung: ${data.workshopTitle}`,
-      `${data.customerName} hat das Angebot gebucht und bezahlt.`,
+      `${data.customerName} hat das Angebot ${isFreeBooking ? "kostenlos gebucht" : "gebucht und bezahlt"}.`,
       `E-Mail: ${data.customerEmail}`,
       data.customerPhone ? `Telefon: ${data.customerPhone}` : null,
       data.providerName ? `Anbieter: ${data.providerName}` : null,
@@ -361,6 +352,7 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
       data.priceLabel ? `Preis: ${data.priceLabel}` : null,
       data.sessionLines.length > 0 ? "Termine:" : "Termin: Termin folgt",
       ...data.sessionLines,
+      `Zum Kalender hinzufügen: ${calendarUrl}`,
       "",
       footerText,
     ]
@@ -404,7 +396,12 @@ export async function sendWorkshopBookingNotificationEmail(data: WorkshopBooking
 export async function sendWorkshopCancellationEmail(input: {
   customerEmail: string;
   customerName: string;
+  refunded?: boolean;
 }) {
+  const followUp = input.refunded
+    ? "Der Betrag wird automatisch zurueckerstattet."
+    : "Deine Buchung wurde entsprechend aktualisiert.";
+
   return sendResendEmail({
     to: input.customerEmail,
     subject: "Angebot abgesagt",
@@ -412,9 +409,9 @@ export async function sendWorkshopCancellationEmail(input: {
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <p>Hallo ${input.customerName},</p>
         <p>das Angebot wurde abgesagt.</p>
-        <p>Der Betrag wird automatisch zurueckerstattet.</p>
+        <p>${followUp}</p>
       </div>
     `,
-    text: `Hallo ${input.customerName},\n\ndas Angebot wurde abgesagt.\nDer Betrag wird automatisch zurueckerstattet.`,
+    text: `Hallo ${input.customerName},\n\ndas Angebot wurde abgesagt.\n${followUp}`,
   });
 }

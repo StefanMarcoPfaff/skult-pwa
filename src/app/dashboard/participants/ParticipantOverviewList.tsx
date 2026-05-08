@@ -94,6 +94,11 @@ type ParticipantArchiveAction = {
   reason: string;
 };
 
+type ParticipantCalendarAction = {
+  href: string | null;
+  disabledReason: string | null;
+};
+
 export type ParticipantOverviewItem = {
   id: string;
   detailHref: string;
@@ -108,6 +113,7 @@ export type ParticipantOverviewItem = {
   status: ParticipantStatusSource;
   statusLabel: string;
   mailHref: string | null;
+  calendarAction: ParticipantCalendarAction;
   lifecycleAction: ParticipantLifecycleAction;
   checkIn: ParticipantCheckIn | null;
   archiveAction: ParticipantArchiveAction;
@@ -299,6 +305,19 @@ function CheckInGlyph() {
       <rect x="4" y="6" width="16" height="12" rx="2" />
       <path d="M8 10h4" />
       <path d="m10 14 2 2 4-4" />
+    </svg>
+  );
+}
+
+function CalendarGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M4 7h16" />
+      <path d="M7 4v6" />
+      <path d="M17 4v6" />
+      <rect x="4" y="6" width="16" height="14" rx="2" />
+      <path d="M8 11h8" />
+      <path d="M8 15h5" />
     </svg>
   );
 }
@@ -635,9 +654,6 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
               <ActionZone>
                 <LifecycleActions action={item.lifecycleAction} />
                 <EditAction href={item.detailHref} />
-                <ActionItem label="Archiv">
-                  <ArchiveAction action={item.archiveAction} />
-                </ActionItem>
                 {item.checkIn ? (
                   <ActionItem label="Einchecken">
                     <CheckInAction item={item} checkedInAt={checkedInAt} onCheckedIn={handleCheckedIn} />
@@ -650,6 +666,27 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
                     disabledHint="Keine E-Mail-Adresse für diese Person vorhanden"
                     showLabel={false}
                   />
+                </ActionItem>
+                <ActionItem label="Kalender">
+                  {item.calendarAction.href ? (
+                    <Link href={item.calendarAction.href} className="inline-flex" title="Kalenderdatei herunterladen" aria-label="Kalenderdatei herunterladen">
+                      <OfferActionIcon title="Kalenderdatei herunterladen" label="Kalenderdatei herunterladen">
+                        <CalendarGlyph />
+                      </OfferActionIcon>
+                    </Link>
+                  ) : (
+                    <OfferActionIcon
+                      title={item.calendarAction.disabledReason ?? "Kalenderdatei erst mit Termin verfügbar"}
+                      label="Kalenderdatei"
+                      className="border-slate-200 bg-slate-100 text-slate-400"
+                      disabled={true}
+                    >
+                      <CalendarGlyph />
+                    </OfferActionIcon>
+                  )}
+                </ActionItem>
+                <ActionItem label="Archiv">
+                  <ArchiveAction action={item.archiveAction} />
                 </ActionItem>
               </ActionZone>
             </div>
