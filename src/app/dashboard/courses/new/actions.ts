@@ -35,6 +35,15 @@ type TrialSlotInsert = {
   source_type: "manual";
 };
 
+function extractCourseIdFromRpcResult(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (value && typeof value === "object") {
+    const candidate = (value as Record<string, unknown>).create_workshop_with_sessions;
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  return null;
+}
+
 function parseOfferVisibility(value: FormDataEntryValue | null): "public" | "private_link" {
   return value === "private_link" ? "private_link" : "public";
 }
@@ -386,7 +395,7 @@ async function createOrUpdateWorkshop(
         return { error: formatUserSupabaseError(error) };
       }
 
-      const newId = String(data || "").trim();
+      const newId = extractCourseIdFromRpcResult(data);
       if (!newId) return { error: "Workshop wurde erstellt, aber keine ID zurueckgegeben." };
 
       const { error: statusUpdateError } = await supabase
@@ -403,6 +412,12 @@ async function createOrUpdateWorkshop(
 
       if (statusUpdateError) {
         logSupabaseError("update.courses(workshop-create-status)", statusUpdateError);
+        return { error: formatUserSupabaseError(statusUpdateError) };
+      }
+
+      const ownership = await assertTeacherOwnsCourse(supabase, user.id, newId);
+      if (!ownership.ok) {
+        return { error: ownership.error ?? "Neues Angebot wurde erstellt, konnte aber nicht erneut geladen werden." };
       }
 
       return { redirectTo: `/dashboard/courses/${newId}` };

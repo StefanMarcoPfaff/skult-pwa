@@ -145,7 +145,7 @@ export default async function DashboardCoursesPage({
   const fallbackSelect =
     "id,teacher_id,title,kind,is_published,visibility,location,starts_at,ends_at,duration_minutes,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,archived_at";
 
-  let offersResult = await supabase
+  let offersResult = await admin
     .from("courses")
     .select(baseSelect)
     .eq("teacher_id", user.id)
@@ -154,7 +154,7 @@ export default async function DashboardCoursesPage({
     .returns<OfferRow[]>();
 
   if (offersResult.error) {
-    offersResult = await supabase
+    offersResult = await admin
       .from("courses")
       .select(fallbackSelect)
       .eq("teacher_id", user.id)
@@ -164,7 +164,7 @@ export default async function DashboardCoursesPage({
   }
 
   if (offersResult.error) {
-    offersResult = await supabase
+    offersResult = await admin
       .from("courses")
       .select(fallbackSelect)
       .eq("teacher_id", user.id)
@@ -229,7 +229,7 @@ export default async function DashboardCoursesPage({
       offer.id,
       getDisplayStatus({
         kind: offer.kind,
-        status: offer.status,
+        status: offer.status ?? "draft",
         isPublished: offer.is_published,
         endsAt: offer.ends_at ?? null,
         startsAt: offer.starts_at,

@@ -341,7 +341,7 @@ export default async function DashboardCourseDetailPage({
     redirect("/login");
   }
 
-  let courseResponse = await supabase
+  let courseResponse = await admin
     .from("courses")
     .select(
       "id,title,description,internal_note,location,location_details,starts_at,start_time,duration_minutes,recurrence_type,capacity,kind,status,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,pause_start_date,pause_end_date,stop_date"
@@ -352,7 +352,7 @@ export default async function DashboardCourseDetailPage({
     .single<Row>();
 
   if (courseResponse.error) {
-    courseResponse = await supabase
+    courseResponse = await admin
       .from("courses")
       .select(
         "id,title,description,internal_note,location,location_details,starts_at,start_time,duration_minutes,recurrence_type,capacity,kind,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,archived_at,visibility"
@@ -454,7 +454,7 @@ export default async function DashboardCourseDetailPage({
       : null;
   const displayState = getDisplayStatus({
     kind: data.kind,
-    status: data.status,
+    status: data.status ?? "draft",
     isPublished: data.is_published ?? null,
     endsAt: data.ends_at ?? null,
     startsAt: data.starts_at,
