@@ -14,7 +14,9 @@ export type OfferCardProps = {
   title: string;
   kindLabel: string;
   statusLabel: string;
+  priceLabel: string | null;
   visibilityLabel: string;
+  visibility: "public" | "private_link";
   location: string | null;
   workshopTiming: string | null;
   courseTiming: string | null;
@@ -24,7 +26,9 @@ export type OfferCardProps = {
   policyTypeLabel: string;
   policyLabel: string;
   showActivationHint: boolean;
-  publicHref: string;
+  publicUrl: string;
+  embedUrl: string;
+  publicOfferEnabled: boolean;
   detailHref: string;
   editHref: string;
   checkInHref: string;
@@ -87,15 +91,17 @@ export function OfferCard(props: OfferCardProps) {
       role="link"
       aria-label={`${props.title} ansehen`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div className="space-y-4">
+        <div className="space-y-1">
           <h2 className="text-lg font-semibold">{props.title}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {props.kindLabel} â€¢ {props.statusLabel}
+          <p className="text-sm text-muted-foreground">
+            {props.kindLabel}
+            {props.priceLabel ? ` · ${props.priceLabel}` : ""}
           </p>
         </div>
+
         <div
-          className="flex items-center gap-2"
+          className="flex max-w-full flex-wrap items-start gap-2"
           onMouseDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
         >
@@ -103,11 +109,13 @@ export function OfferCard(props: OfferCardProps) {
             <ConfirmIconAction
               action={setCoursePublishStateAction}
               fields={{ course_id: props.id, mode: "play", redirect_to: "/dashboard/courses" }}
-              title="MÃ¶chtest du dieses Angebot aktivieren?"
-              text="Nach der Aktivierung ist dein Angebot buchbar. Die Sichtbarkeit in Listen richtet sich nach der gewÃ¤hlten Sichtbarkeitseinstellung."
+              title="Möchtest du dieses Angebot aktivieren?"
+              text="Nach der Aktivierung ist dein Angebot buchbar. Die Sichtbarkeit in Listen richtet sich nach der gewählten Sichtbarkeitseinstellung."
               cancelLabel="Nein, abbrechen"
               confirmLabel="Ja, aktivieren"
               triggerLabel="aktivieren / starten"
+              clientAction={true}
+              timeoutMs={15000}
               trigger={
                 <OfferActionIcon title="aktivieren / starten" label="aktivieren / starten" className={props.playIconClass}>
                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
@@ -118,18 +126,14 @@ export function OfferCard(props: OfferCardProps) {
             />
           ) : (
             <span className="inline-flex">
-              <OfferActionIcon
-                title="aktivieren / starten"
-                label="aktivieren / starten"
-                className={props.playIconClass}
-                disabled={true}
-              >
+              <OfferActionIcon title="aktivieren / starten" label="aktivieren / starten" className={props.playIconClass} disabled={true}>
                 <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                   <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10-6.86a1 1 0 0 0 0-1.72l-10-6.86a1 1 0 0 0-1.5.86Z" />
                 </svg>
               </OfferActionIcon>
             </span>
           )}
+
           {props.pauseDisabled ? (
             <span className="inline-flex">
               <OfferActionIcon title="pausieren" label="pausieren" className={props.pauseIconClass} disabled={true}>
@@ -147,6 +151,7 @@ export function OfferCard(props: OfferCardProps) {
               </OfferActionIcon>
             </Link>
           )}
+
           {props.stopDisabled ? (
             <span className="inline-flex">
               <OfferActionIcon title="beenden" label="beenden" className={props.stopIconClass} disabled={true}>
@@ -164,6 +169,7 @@ export function OfferCard(props: OfferCardProps) {
               </OfferActionIcon>
             </Link>
           )}
+
           <Link href={props.editHref} className="inline-flex" title="bearbeiten" aria-label="bearbeiten">
             <OfferActionIcon title="bearbeiten" label="bearbeiten">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
@@ -172,6 +178,7 @@ export function OfferCard(props: OfferCardProps) {
               </svg>
             </OfferActionIcon>
           </Link>
+
           <Link href={props.checkInHref} className="inline-flex" title="Check-in starten" aria-label="Check-in starten">
             <OfferActionIcon title="Check-in starten" label="Check-in starten">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
@@ -183,12 +190,14 @@ export function OfferCard(props: OfferCardProps) {
               </svg>
             </OfferActionIcon>
           </Link>
+
           <MailActionLink
             href={props.mailHref}
-            title="Teilnehmer*innen per E-Mail kontaktieren"
-            disabledHint="Keine E-Mail-Adressen fÃ¼r dieses Angebot vorhanden"
+            title="Teilnehmende per E-Mail kontaktieren"
+            disabledHint="Keine E-Mail-Adressen für dieses Angebot vorhanden"
             showLabel={false}
           />
+
           {props.calendarHref ? (
             <Link href={props.calendarHref} className="inline-flex" title="Kalenderdatei herunterladen" aria-label="Kalenderdatei herunterladen">
               <OfferActionIcon title="Kalenderdatei herunterladen" label="Kalenderdatei herunterladen">
@@ -196,13 +205,9 @@ export function OfferCard(props: OfferCardProps) {
               </OfferActionIcon>
             </Link>
           ) : (
-            <span
-              className="inline-flex"
-              title={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfÃ¼gbar"}
-              aria-label={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfÃ¼gbar"}
-            >
+            <span className="inline-flex" title={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfügbar"} aria-label={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfügbar"}>
               <OfferActionIcon
-                title={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfÃ¼gbar"}
+                title={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfügbar"}
                 label="Kalenderdatei"
                 className="border-slate-200 bg-slate-100 text-slate-400"
                 disabled={true}
@@ -211,13 +216,20 @@ export function OfferCard(props: OfferCardProps) {
               </OfferActionIcon>
             </span>
           )}
-          <CourseCardShareButton href={props.publicHref} />
+
+          <CourseCardShareButton
+            publicUrl={props.publicUrl}
+            embedUrl={props.embedUrl}
+            visibility={props.visibility}
+            isEnabled={props.publicOfferEnabled}
+          />
+
           {props.archiveAllowed ? (
             <ConfirmIconAction
               action={archiveCourseAction}
               fields={{ course_id: props.id, redirect_to: "/dashboard/courses" }}
               title="Angebot archivieren?"
-              text="Das Angebot bleibt historisch erhalten und wird nur aus den aktiven Ãœbersichten entfernt."
+              text="Das Angebot bleibt historisch erhalten und wird nur aus den aktiven Übersichten entfernt."
               cancelLabel="Nein, abbrechen"
               confirmLabel="Ja, archivieren"
               triggerLabel="archivieren"
@@ -240,27 +252,29 @@ export function OfferCard(props: OfferCardProps) {
             </span>
           )}
         </div>
-      </div>
 
-      <div className="mt-3 space-y-1 text-sm text-muted-foreground">
-        {props.location ? <p>Ort: {props.location}</p> : null}
-        <p>Sichtbarkeit: {props.visibilityLabel}</p>
-        {props.workshopTiming ? <p>{props.workshopTiming}</p> : null}
-        {props.courseTiming ? <p>{props.courseTiming}</p> : null}
-        {props.pauseStartLabel ? <p>Pausenstart: {props.pauseStartLabel}</p> : null}
-        {props.pauseEndLabel ? <p>Pause endet: {props.pauseEndLabel}</p> : null}
-        {props.stopDateLabel ? <p>Stopdatum: {props.stopDateLabel}</p> : null}
-        <p>
-          {props.policyTypeLabel}: {props.policyLabel}
-        </p>
-        {props.showActivationHint ? (
-          <p className="text-red-700">Vor der Aktivierung muss zuerst eine Regel hinterlegt sein.</p>
-        ) : null}
-        {props.showMailWarning ? (
-          <p className="text-amber-700">
-            Bei sehr groÃŸen Gruppen kann dein E-Mail-Programm die EmpfÃ¤ngerliste mÃ¶glicherweise nicht vollstÃ¤ndig Ã¼bernehmen.
+        <div className="space-y-1 text-sm text-muted-foreground">
+          <p>Status: {props.statusLabel}</p>
+          {props.location ? <p>Ort: {props.location}</p> : null}
+          <p>Sichtbarkeit: {props.visibilityLabel}</p>
+          {props.workshopTiming ? <p>{props.workshopTiming}</p> : null}
+          {props.courseTiming ? <p>{props.courseTiming}</p> : null}
+          {props.pauseStartLabel ? <p>Pausenstart: {props.pauseStartLabel}</p> : null}
+          {props.pauseEndLabel ? <p>Pause endet: {props.pauseEndLabel}</p> : null}
+          {props.stopDateLabel ? <p>Stopdatum: {props.stopDateLabel}</p> : null}
+          <p>
+            {props.policyTypeLabel}: {props.policyLabel}
           </p>
-        ) : null}
+          {props.showActivationHint ? (
+            <p className="text-red-700">Vor der Aktivierung muss zuerst eine Regel hinterlegt sein.</p>
+          ) : null}
+          {props.showMailWarning ? (
+            <p className="text-amber-700">
+              Bei sehr großen Gruppen kann dein E-Mail-Programm die Empfängerliste möglicherweise
+              nicht vollständig übernehmen.
+            </p>
+          ) : null}
+        </div>
       </div>
     </article>
   );

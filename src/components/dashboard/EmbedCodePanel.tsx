@@ -39,6 +39,8 @@ export function EmbedCodePanel({
   isEnabled,
   publicUrl,
   embedUrl,
+  shareLabel = "Öffentlicher Link",
+  embedEnabled = true,
   title = "Teilen & Einbetten",
   description = "Öffentlichen Link und Embed-Code für deine Website, Linktree oder andere Kanäle.",
   className = "mt-8 rounded-2xl border p-5",
@@ -47,6 +49,8 @@ export function EmbedCodePanel({
   isEnabled: boolean;
   publicUrl: string;
   embedUrl: string;
+  shareLabel?: string;
+  embedEnabled?: boolean;
   title?: string;
   description?: string;
   className?: string;
@@ -75,7 +79,7 @@ export function EmbedCodePanel({
 
       <div className={`mt-5 space-y-4 ${!isEnabled ? "opacity-50" : ""}`}>
         <div className="rounded-xl border p-4">
-          <p className="text-sm font-semibold">Öffentlicher Link</p>
+          <p className="text-sm font-semibold">{shareLabel}</p>
           <code className="mt-2 block overflow-x-auto rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
             {publicUrl}
           </code>
@@ -94,37 +98,46 @@ export function EmbedCodePanel({
           ) : null}
         </div>
 
-        <div className="rounded-xl border p-4">
-          <p className="text-sm font-semibold">Embed-Link</p>
-          <code className="mt-2 block overflow-x-auto rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
-            {embedUrl}
-          </code>
-          {isEnabled ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <CopyButton label="Embed-Link kopieren" value={embedUrl} />
-              <a
-                href={embedUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
-              >
-                Embed-Vorschau öffnen
-              </a>
+        {embedEnabled ? (
+          <>
+            <div className="rounded-xl border p-4">
+              <p className="text-sm font-semibold">Embed-Link</p>
+              <code className="mt-2 block overflow-x-auto rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                {embedUrl}
+              </code>
+              {isEnabled ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <CopyButton label="Embed-Link kopieren" value={embedUrl} />
+                  <a
+                    href={embedUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
+                  >
+                    Embed-Vorschau öffnen
+                  </a>
+                </div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
 
-        <div className="rounded-xl border p-4">
-          <p className="text-sm font-semibold">Embed-Code</p>
-          <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-950 px-3 py-3 text-xs leading-6 text-slate-100">
-            <code>{embedCode}</code>
-          </pre>
-          {isEnabled ? (
-            <div className="mt-3">
-              <CopyButton label="Embed-Code kopieren" value={embedCode} />
+            <div className="rounded-xl border p-4">
+              <p className="text-sm font-semibold">Embed-Code</p>
+              <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-950 px-3 py-3 text-xs leading-6 text-slate-100">
+                <code>{embedCode}</code>
+              </pre>
+              {isEnabled ? (
+                <div className="mt-3">
+                  <CopyButton label="Embed-Code kopieren" value={embedCode} />
+                </div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
+          </>
+        ) : (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            Embed ist für Angebote mit Sichtbarkeit &quot;Nur per Link buchbar&quot; deaktiviert,
+            damit sie nicht wie öffentliche Angebote eingebettet werden.
+          </div>
+        )}
       </div>
 
       {footer ? <div className="mt-5">{footer}</div> : null}

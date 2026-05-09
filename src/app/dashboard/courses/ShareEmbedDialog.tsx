@@ -8,6 +8,7 @@ export function ShareEmbedDialog(props: {
   isEnabled: boolean;
   publicUrl: string;
   embedUrl: string;
+  visibility: "public" | "private_link";
   triggerLabel: string;
   trigger: ReactNode;
 }) {
@@ -37,8 +38,14 @@ export function ShareEmbedDialog(props: {
             isEnabled={props.isEnabled}
             publicUrl={props.publicUrl}
             embedUrl={props.embedUrl}
+            shareLabel={props.visibility === "private_link" ? "Privater Buchungslink" : "Öffentlicher Link"}
+            embedEnabled={props.visibility === "public"}
             title="Teilen & Einbetten"
-            description="Oeffentlicher Link, Embed-Link und Embed-Code fuer dein Angebot."
+            description={
+              props.visibility === "private_link"
+                ? "Direkter Buchungslink für dieses nicht öffentlich gelistete Angebot."
+                : "Öffentlicher Link, Embed-Link und Embed-Code für dein Angebot."
+            }
             className="rounded-2xl border p-5"
             footer={
               <div className="flex justify-end">
@@ -47,7 +54,7 @@ export function ShareEmbedDialog(props: {
                   className="rounded-xl border px-4 py-2 text-sm"
                   onClick={() => dialogRef.current?.close()}
                 >
-                  Schliessen
+                  Schließen
                 </button>
               </div>
             }

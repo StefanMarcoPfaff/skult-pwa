@@ -60,9 +60,10 @@ export function PauseCourseModal(props: {
       <dialog ref={dialogRef} aria-labelledby={titleId} className="w-full max-w-lg rounded-2xl border p-0 backdrop:bg-black/30">
         <div className="space-y-4 p-6">
           <div className="space-y-2">
-            <h3 id={titleId} className="text-lg font-semibold">Moechtest du dieses Angebot pausieren?</h3>
+            <h3 id={titleId} className="text-lg font-semibold">Möchtest du dieses Angebot pausieren?</h3>
             <p className="text-sm text-muted-foreground">
-              Waehle, bis wann das laufende Angebot noch laeuft, und ab wann es wieder startet. Pausen werden monatsweise geplant.
+              Wähle, bis wann das laufende Angebot noch läuft, und ab wann es wieder startet.
+              Pausen werden monatsweise geplant.
             </p>
           </div>
           <form action={props.action} className="space-y-4">
@@ -161,9 +162,10 @@ export function StopCourseModal(props: {
       <dialog ref={dialogRef} aria-labelledby={titleId} className="w-full max-w-lg rounded-2xl border p-0 backdrop:bg-black/30">
         <div className="space-y-4 p-6">
           <div className="space-y-2">
-            <h3 id={titleId} className="text-lg font-semibold">Moechtest du dieses Angebot stoppen?</h3>
+            <h3 id={titleId} className="text-lg font-semibold">Möchtest du dieses Angebot stoppen?</h3>
             <p className="text-sm text-muted-foreground">
-              Waehle den letzten Angebotstag. Das Angebot wird danach nicht mehr oeffentlich buchbar sein.
+              Wähle den letzten Angebotstag. Das Angebot wird danach nicht mehr öffentlich buchbar
+              sein.
             </p>
           </div>
           <form action={props.action} className="space-y-4">

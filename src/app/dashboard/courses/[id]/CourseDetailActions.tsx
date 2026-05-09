@@ -28,6 +28,7 @@ type CourseDetailActionsProps = {
   publicUrl: string;
   embedUrl: string;
   publicOfferEnabled: boolean;
+  visibility: "public" | "private_link";
   visibilityLabel: string;
   publishBlockedForMissingPolicy: boolean;
   contactMailHref: string | null;
@@ -80,13 +81,15 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
           {props.normalizedStatus === "draft" ? (
             <ConfirmIconAction
               action={setCoursePublishStateAction}
-              fields={{ course_id: props.courseId, mode: "play" }}
+              fields={{ course_id: props.courseId, mode: "play", redirect_to: props.redirectTo }}
               title="Angebot aktivieren?"
-              text={`MÃ¶chtest du dieses Angebot jetzt aktivieren? Danach ist es buchbar. Aktuelle Sichtbarkeit: ${props.visibilityLabel}.`}
+              text={`Möchtest du dieses Angebot jetzt aktivieren? Danach ist es buchbar. Aktuelle Sichtbarkeit: ${props.visibilityLabel}.`}
               cancelLabel="Nein, abbrechen"
               confirmLabel="Ja, aktivieren"
               disabled={playActionDisabled}
               triggerLabel="aktivieren / starten"
+              clientAction={true}
+              timeoutMs={15000}
               trigger={
                 <OfferActionIcon title="aktivieren / starten" label="aktivieren / starten" className={playIconClassName} disabled={playActionDisabled}>
                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
@@ -96,12 +99,7 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
               }
             />
           ) : (
-            <OfferActionIcon
-              title="aktiv / buchbar"
-              label="aktiv / buchbar"
-              className={displayState.playClassName}
-              disabled={true}
-            >
+            <OfferActionIcon title="aktiv / buchbar" label="aktiv / buchbar" className={displayState.playClassName} disabled={true}>
               <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                 <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10-6.86a1 1 0 0 0 0-1.72l-10-6.86a1 1 0 0 0-1.5.86Z" />
               </svg>
@@ -154,7 +152,7 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
               action={cancelWorkshopAction}
               fields={{ course_id: props.courseId, redirect_to: props.redirectTo }}
               title="Einmaliges Angebot absagen?"
-              text="Wenn du dieses einmalige Angebot absagst, wird es nicht mehr Ã¶ffentlich angezeigt. Bereits angemeldete Teilnehmer*innen erhalten eine Nachricht. Falls Zahlungen vorliegen, mÃ¼ssen RÃ¼ckerstattungen gemÃ¤ÃŸ der bestehenden Refund-Logik ausgelÃ¶st werden."
+              text="Wenn du dieses einmalige Angebot absagst, wird es nicht mehr öffentlich angezeigt. Bereits angemeldete Teilnehmer*innen erhalten eine Nachricht. Falls Zahlungen vorliegen, müssen Rückerstattungen gemäß der bestehenden Refund-Logik ausgelöst werden."
               cancelLabel="Nein, abbrechen"
               confirmLabel="Ja, absagen"
               triggerLabel="absagen"
@@ -203,8 +201,8 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
         <MailActionLink
           href={props.contactMailHref}
           label="E-Mail"
-          title="Teilnehmer*innen per E-Mail kontaktieren"
-          disabledHint="Keine E-Mail-Adressen fÃ¼r dieses Angebot vorhanden"
+          title="Teilnehmende per E-Mail kontaktieren"
+          disabledHint="Keine E-Mail-Adressen für dieses Angebot vorhanden"
         />
 
         <OfferActionItem label="Kalender">
@@ -216,7 +214,7 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
             </Link>
           ) : (
             <OfferActionIcon
-              title={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfÃ¼gbar"}
+              title={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfügbar"}
               label="Kalenderdatei"
               className="border-slate-200 bg-slate-100 text-slate-400"
               disabled={true}
@@ -231,6 +229,7 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
             isEnabled={props.publicOfferEnabled}
             publicUrl={props.publicUrl}
             embedUrl={props.embedUrl}
+            visibility={props.visibility}
             triggerLabel="teilen"
             trigger={
               <OfferActionIcon title="teilen" label="teilen">
@@ -249,7 +248,7 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
               action={archiveCourseAction}
               fields={{ course_id: props.courseId, redirect_to: props.redirectTo }}
               title="Angebot archivieren?"
-              text="Das Angebot bleibt historisch erhalten und wird nur aus den aktiven Ãœbersichten entfernt."
+              text="Das Angebot bleibt historisch erhalten und wird nur aus den aktiven Übersichten entfernt."
               cancelLabel="Nein, abbrechen"
               confirmLabel="Ja, archivieren"
               triggerLabel="archivieren"

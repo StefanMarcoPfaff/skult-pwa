@@ -17,12 +17,15 @@ function GuideSection(props: { title: string; items: Array<string | ReactNode> }
 export default function DashboardGuidePage() {
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-6">
-      <Link href="/dashboard" className="inline-flex text-sm font-semibold">Zurück zum Dashboard</Link>
+      <Link href="/dashboard" className="inline-flex text-sm font-semibold">
+        Zurück zum Dashboard
+      </Link>
 
       <header className="space-y-2">
-        <h1 className="text-3xl font-semibold">Kurz-Anleitung</h1>
+        <h1 className="text-3xl font-semibold">Kurzanleitung</h1>
         <p className="max-w-3xl text-sm text-muted-foreground">
-          Ein schneller Überblick zu RESER, deinen Angeboten, Teilnehmenden, Check-ins und den wichtigsten Symbolen.
+          Ein schneller Überblick zu RESER, deinen Angeboten, Teilnehmenden, Check-ins und den
+          wichtigsten Symbolen.
         </p>
       </header>
 
@@ -68,7 +71,7 @@ export default function DashboardGuidePage() {
             <>{"\uD83D\uDCE6"} = archivieren.</>,
             <>{"\u270F\uFE0F"} = bearbeiten.</>,
             <>{"\uD83C\uDF9F\uFE0F"} = Anwesenheit erfassen.</>,
-            <>{"\u2709\uFE0F"} = Teilnehmer*innen anschreiben.</>,
+            <>{"\u2709\uFE0F"} = Teilnehmende anschreiben.</>,
             <>{"\uD83D\uDD17"} = Link oder Embed-Code kopieren.</>,
           ]}
         />
@@ -86,11 +89,7 @@ export default function DashboardGuidePage() {
         />
         <GuideSection
           title="7. Check-in"
-          items={[
-            "Teilnehmer-QR scannen.",
-            "Termin-QR anzeigen.",
-            "Manuell einchecken.",
-          ]}
+          items={["Teilnehmer-QR scannen.", "Termin-QR anzeigen.", "Manuell einchecken."]}
         />
         <GuideSection
           title="8. Zahlungen"

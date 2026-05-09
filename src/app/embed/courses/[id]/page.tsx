@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { EmbeddedCourseCard } from "@/components/embed/EmbeddedCourseCard";
-import { getPublicCourseById } from "@/lib/public-offers";
+import { getPublicCourseById, isOfferPubliclyVisible } from "@/lib/public-offers";
 
 export default async function EmbeddedCoursePage({
   params,
@@ -11,6 +11,10 @@ export default async function EmbeddedCoursePage({
   const details = await getPublicCourseById(id);
 
   if (!details) {
+    notFound();
+  }
+
+  if (!(await isOfferPubliclyVisible(details.offer))) {
     notFound();
   }
 

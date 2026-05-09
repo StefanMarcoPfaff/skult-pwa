@@ -120,6 +120,15 @@ export type ParticipantOverviewItem = {
   sortDate: string;
 };
 
+type StatusFilterValue =
+  | "all"
+  | "not_checked_in"
+  | "checked_in"
+  | "decision_open"
+  | "active"
+  | "paused"
+  | "stopped";
+
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
   const date = new Date(value);
@@ -214,10 +223,94 @@ function getCheckInSummary(item: ParticipantOverviewItem, checkedInAt: string | 
   return "Noch nicht eingecheckt";
 }
 
+function PlayGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+      <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10-6.86a1 1 0 0 0 0-1.72l-10-6.86a1 1 0 0 0-1.5.86Z" />
+    </svg>
+  );
+}
+
+function PauseGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+      <path d="M7 5.5A1.5 1.5 0 0 1 8.5 4h1A1.5 1.5 0 0 1 11 5.5v13A1.5 1.5 0 0 1 9.5 20h-1A1.5 1.5 0 0 1 7 18.5v-13Zm6 0A1.5 1.5 0 0 1 14.5 4h1A1.5 1.5 0 0 1 17 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-1A1.5 1.5 0 0 1 13 18.5v-13Z" />
+    </svg>
+  );
+}
+
+function StopGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+      <path d="M7 7.5A1.5 1.5 0 0 1 8.5 6h7A1.5 1.5 0 0 1 17 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 16.5v-9Z" />
+    </svg>
+  );
+}
+
+function CheckGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="m5 13 4 4L19 7" />
+    </svg>
+  );
+}
+
+function FilterIcon(props: { kind: StatusFilterValue }) {
+  if (props.kind === "active" || props.kind === "decision_open") return <PlayGlyph />;
+  if (props.kind === "paused") return <PauseGlyph />;
+  if (props.kind === "stopped") return <StopGlyph />;
+  if (props.kind === "checked_in") return <CheckGlyph />;
+  return null;
+}
+
+function FilterChip(props: {
+  active: boolean;
+  tone: "neutral" | "green" | "orange" | "red" | "emerald" | "amber";
+  label: string;
+  icon?: ReactNode;
+  onClick: () => void;
+}) {
+  const toneClasses =
+    props.tone === "green"
+      ? props.active
+        ? "border-green-600 bg-green-600 text-white"
+        : "border-green-200 bg-green-50 text-green-800 hover:border-green-300"
+      : props.tone === "orange"
+        ? props.active
+          ? "border-orange-500 bg-orange-500 text-white"
+          : "border-orange-200 bg-orange-50 text-orange-800 hover:border-orange-300"
+        : props.tone === "red"
+          ? props.active
+            ? "border-red-600 bg-red-600 text-white"
+            : "border-red-200 bg-red-50 text-red-800 hover:border-red-300"
+          : props.tone === "emerald"
+            ? props.active
+              ? "border-emerald-600 bg-emerald-600 text-white"
+              : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300"
+            : props.tone === "amber"
+              ? props.active
+                ? "border-amber-500 bg-amber-500 text-white"
+                : "border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300"
+            : props.active
+              ? "border-slate-900 bg-slate-900 text-white"
+              : "border-slate-200 bg-white text-slate-800 hover:border-slate-300";
+
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${toneClasses}`}
+    >
+      {props.icon ? <span className="inline-flex h-4 w-4 items-center justify-center">{props.icon}</span> : null}
+      <span>{props.label}</span>
+    </button>
+  );
+}
+
 function ActionZone(props: { children: ReactNode }) {
   return (
     <div
-      className="flex flex-wrap items-center gap-2"
+      className="flex max-w-full flex-wrap items-start gap-2"
       onMouseDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
       onKeyDown={(event) => event.stopPropagation()}
@@ -337,7 +430,7 @@ function CheckInAction(props: {
   const resolvedCheckIn = checkIn;
 
   const isDone = Boolean(props.checkedInAt);
-  const disabled = pending || isDone || !checkIn.enabled;
+  const disabled = pending || isDone || !resolvedCheckIn.enabled;
   const className = isDone
     ? "border-emerald-300 bg-emerald-50 text-emerald-700"
     : disabled
@@ -385,11 +478,11 @@ function CheckInAction(props: {
         disabled={disabled}
         onClick={() => dialogRef.current?.showModal()}
         className="disabled:cursor-not-allowed"
-        title={isDone ? "Bereits eingecheckt" : !checkIn.enabled ? checkIn.disabledReason ?? "Nicht eincheckbar" : "Einchecken"}
-        aria-label={isDone ? "Bereits eingecheckt" : !checkIn.enabled ? checkIn.disabledReason ?? "Nicht eincheckbar" : "Einchecken"}
+        title={isDone ? "Bereits eingecheckt" : !resolvedCheckIn.enabled ? resolvedCheckIn.disabledReason ?? "Nicht eincheckbar" : "Einchecken"}
+        aria-label={isDone ? "Bereits eingecheckt" : !resolvedCheckIn.enabled ? resolvedCheckIn.disabledReason ?? "Nicht eincheckbar" : "Einchecken"}
       >
         <OfferActionIcon
-          title={isDone ? "Bereits eingecheckt" : !checkIn.enabled ? checkIn.disabledReason ?? "Nicht eincheckbar" : "Einchecken"}
+          title={isDone ? "Bereits eingecheckt" : !resolvedCheckIn.enabled ? resolvedCheckIn.disabledReason ?? "Nicht eincheckbar" : "Einchecken"}
           label="Einchecken"
           className={className}
           disabled={disabled}
@@ -412,7 +505,9 @@ function CheckInAction(props: {
           </div>
 
           {message ? (
-            <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{message}</p>
+            <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {message}
+            </p>
           ) : null}
 
           {isDone ? (
@@ -436,7 +531,9 @@ function CheckInAction(props: {
                 className="rounded-2xl border p-4 text-left text-sm transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <p className="font-semibold">{pending ? "Speichert..." : "Manuell einchecken"}</p>
-                <p className="mt-1 text-muted-foreground">Für diese konkrete Person direkt als anwesend markieren.</p>
+                <p className="mt-1 text-muted-foreground">
+                  Für diese konkrete Person direkt als anwesend markieren.
+                </p>
               </button>
             </div>
           )}
@@ -502,7 +599,7 @@ function LifecycleActions(props: { action: ParticipantLifecycleAction }) {
 export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[] }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>("all");
   const [sortBy, setSortBy] = useState("date");
   const [checkedInById, setCheckedInById] = useState<Record<string, string | null>>(
     Object.fromEntries(props.items.map((item) => [item.id, item.checkIn?.checkedInAt ?? null]))
@@ -526,14 +623,18 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
   const visibleItems = props.items
     .filter((item) => {
       const checkedInAt = checkedInById[item.id] ?? null;
-      const haystack = [item.displayName, item.email ?? ""].join(" ").toLowerCase();
+      const haystack = [item.displayName, item.email ?? "", item.offerTitle].join(" ").toLowerCase();
       if (normalizedQuery && !haystack.includes(normalizedQuery)) return false;
 
       if (statusFilter === "all") return true;
       if (statusFilter === "not_checked_in") return !checkedInAt;
       if (statusFilter === "checked_in") return Boolean(checkedInAt);
       if (statusFilter === "decision_open") {
-        return item.status.kind === "trial" && (item.status.decisionStatus ?? "pending") === "pending" && Boolean(checkedInAt);
+        return (
+          item.status.kind === "trial" &&
+          (item.status.decisionStatus ?? "pending") === "pending" &&
+          Boolean(checkedInAt)
+        );
       }
       if (statusFilter === "active") {
         if (item.status.kind === "registered") return (item.status.subscriptionStatus ?? "active") === "active";
@@ -541,11 +642,18 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
         return item.status.kind === "trial" && item.status.decisionStatus === "approved";
       }
       if (statusFilter === "paused") {
-        return item.status.kind === "registered" && ["paused", "pause_scheduled"].includes(item.status.subscriptionStatus ?? "");
+        return (
+          item.status.kind === "registered" &&
+          ["paused", "pause_scheduled"].includes(item.status.subscriptionStatus ?? "")
+        );
       }
       if (statusFilter === "stopped") {
-        if (item.status.kind === "trial") return Boolean(item.status.cancelledAt) || item.status.decisionStatus === "rejected";
-        if (item.status.kind === "registered") return ["cancel_scheduled", "cancelled", "inactive"].includes(item.status.subscriptionStatus ?? "");
+        if (item.status.kind === "trial") {
+          return Boolean(item.status.cancelledAt) || item.status.decisionStatus === "rejected";
+        }
+        if (item.status.kind === "registered") {
+          return ["cancel_scheduled", "cancelled", "inactive"].includes(item.status.subscriptionStatus ?? "");
+        }
         return item.status.bookingStatus !== "paid";
       }
       return true;
@@ -555,10 +663,16 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
         return left.displayName.localeCompare(right.displayName, "de");
       }
       if (sortBy === "status") {
-        return left.statusLabel.localeCompare(right.statusLabel, "de") || right.sortDate.localeCompare(left.sortDate);
+        return (
+          left.statusLabel.localeCompare(right.statusLabel, "de") ||
+          right.sortDate.localeCompare(left.sortDate)
+        );
       }
       if (sortBy === "offer") {
-        return left.offerTitle.localeCompare(right.offerTitle, "de") || left.displayName.localeCompare(right.displayName, "de");
+        return (
+          left.offerTitle.localeCompare(right.offerTitle, "de") ||
+          left.displayName.localeCompare(right.displayName, "de")
+        );
       }
 
       const leftPriority = left.highlight ? 0 : 1;
@@ -567,44 +681,67 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
       return right.sortDate.localeCompare(left.sortDate);
     });
 
+  const filterOptions: Array<{
+    value: StatusFilterValue;
+    label: string;
+    tone: "neutral" | "green" | "orange" | "red" | "emerald" | "amber";
+  }> = [
+    { value: "all", label: "Alle", tone: "neutral" },
+    { value: "active", label: "Aktiv / freigegeben", tone: "green" },
+    { value: "paused", label: "Pausiert", tone: "orange" },
+    { value: "stopped", label: "Gestoppt / abgelehnt", tone: "red" },
+    { value: "decision_open", label: "Entscheidung offen", tone: "amber" },
+    { value: "not_checked_in", label: "Nicht eingecheckt", tone: "neutral" },
+    { value: "checked_in", label: "Eingecheckt", tone: "emerald" },
+  ];
+
   return (
-    <section className="space-y-3">
-      <div className="grid gap-3 rounded-2xl border p-4 md:grid-cols-[minmax(0,1.4fr)_220px_220px]">
-        <label className="grid gap-2 text-sm">
-          <span className="font-medium">Suche</span>
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Name oder E-Mail"
-            className="rounded-xl border px-3 py-2"
-          />
-        </label>
-        <label className="grid gap-2 text-sm">
-          <span className="font-medium">Filter</span>
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-xl border px-3 py-2">
-            <option value="all">Alle</option>
-            <option value="not_checked_in">Nicht eingecheckt</option>
-            <option value="checked_in">Eingecheckt</option>
-            <option value="decision_open">Entscheidung offen</option>
-            <option value="active">Aktiv</option>
-            <option value="paused">Pausiert</option>
-            <option value="stopped">Gekündigt / gestoppt</option>
-          </select>
-        </label>
-        <label className="grid gap-2 text-sm">
-          <span className="font-medium">Sortierung</span>
-          <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="rounded-xl border px-3 py-2">
-            <option value="name">Name</option>
-            <option value="date">Datum</option>
-            <option value="status">Status</option>
-            <option value="offer">Kurs / Angebot</option>
-          </select>
-        </label>
+    <section className="space-y-4">
+      <div className="rounded-2xl border p-4">
+        <div className="flex flex-wrap gap-2">
+          {filterOptions.map((option) => (
+            <FilterChip
+              key={option.value}
+              active={statusFilter === option.value}
+              tone={option.tone}
+              label={option.label}
+              icon={<FilterIcon kind={option.value} />}
+              onClick={() => setStatusFilter(option.value)}
+            />
+          ))}
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.5fr)_220px]">
+          <label className="grid gap-2 text-sm">
+            <span className="font-medium">Suche</span>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Name, E-Mail oder Angebot"
+              className="rounded-xl border px-3 py-2"
+            />
+          </label>
+          <label className="grid gap-2 text-sm">
+            <span className="font-medium">Sortierung</span>
+            <select
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value)}
+              className="rounded-xl border px-3 py-2"
+            >
+              <option value="date">Datum</option>
+              <option value="name">Name</option>
+              <option value="status">Status</option>
+              <option value="offer">Angebot</option>
+            </select>
+          </label>
+        </div>
       </div>
 
       {visibleItems.length === 0 ? (
         <section className="rounded-2xl border p-6">
-          <p className="text-sm text-muted-foreground">Für die aktuelle Suche oder Filterung wurden keine Teilnahmen gefunden.</p>
+          <p className="text-sm text-muted-foreground">
+            Für die aktuelle Suche oder Filterung wurden keine Teilnahmen gefunden.
+          </p>
         </section>
       ) : null}
 
@@ -616,7 +753,7 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
         return (
           <article
             key={item.id}
-            className={`group cursor-pointer rounded-2xl border p-4 transition focus-within:ring-2 focus-within:ring-foreground/20 hover:border-foreground/20 hover:shadow-sm ${
+            className={`group cursor-pointer rounded-2xl border p-4 transition hover:border-foreground/20 hover:shadow-sm focus-within:ring-2 focus-within:ring-foreground/20 ${
               item.highlight ? "border-amber-200 bg-amber-50/40" : ""
             }`}
             tabIndex={0}
@@ -625,37 +762,24 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
             onClick={() => handleNavigate(item.detailHref)}
             onKeyDown={(event) => handleKeyDown(event, item.detailHref)}
           >
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] lg:items-center">
-              <div className="min-w-0 space-y-2">
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="truncate text-lg font-semibold">{item.displayName}</h2>
-                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${badge.className}`}>
-                      {badge.label}
-                    </span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {item.offerKindLabel} | {item.offerTitle}
-                  </p>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="truncate text-lg font-semibold">{item.displayName}</h2>
+                  <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${badge.className}`}>
+                    {badge.label}
+                  </span>
                 </div>
-                <div className="space-y-1 text-sm text-muted-foreground">
-                  {item.email ? <p className="truncate">{item.email}</p> : null}
-                  <p>{item.sourceLabel}</p>
-                  {item.metaLabel ? <p>{item.metaLabel}</p> : null}
-                </div>
-              </div>
-
-              <div className="space-y-1 text-sm text-muted-foreground">
-                <p className="font-medium text-foreground">Check-in</p>
-                <p>{checkInSummary}</p>
-                {item.decisionInfo ? <p>{item.decisionInfo}</p> : null}
+                <p className="text-sm text-muted-foreground">
+                  {item.offerKindLabel} · {item.offerTitle}
+                </p>
               </div>
 
               <ActionZone>
                 <LifecycleActions action={item.lifecycleAction} />
                 <EditAction href={item.detailHref} />
                 {item.checkIn ? (
-                  <ActionItem label="Einchecken">
+                  <ActionItem label="Check-in">
                     <CheckInAction item={item} checkedInAt={checkedInAt} onCheckedIn={handleCheckedIn} />
                   </ActionItem>
                 ) : null}
@@ -669,7 +793,12 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
                 </ActionItem>
                 <ActionItem label="Kalender">
                   {item.calendarAction.href ? (
-                    <Link href={item.calendarAction.href} className="inline-flex" title="Kalenderdatei herunterladen" aria-label="Kalenderdatei herunterladen">
+                    <Link
+                      href={item.calendarAction.href}
+                      className="inline-flex"
+                      title="Kalenderdatei herunterladen"
+                      aria-label="Kalenderdatei herunterladen"
+                    >
                       <OfferActionIcon title="Kalenderdatei herunterladen" label="Kalenderdatei herunterladen">
                         <CalendarGlyph />
                       </OfferActionIcon>
@@ -689,6 +818,19 @@ export function ParticipantOverviewList(props: { items: ParticipantOverviewItem[
                   <ArchiveAction action={item.archiveAction} />
                 </ActionItem>
               </ActionZone>
+
+              <div className="grid gap-3 text-sm text-muted-foreground md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                <div className="space-y-1">
+                  {item.email ? <p className="truncate">{item.email}</p> : null}
+                  <p>{item.sourceLabel}</p>
+                  {item.metaLabel ? <p>{item.metaLabel}</p> : null}
+                </div>
+                <div className="space-y-1">
+                  <p className="font-medium text-foreground">Check-in</p>
+                  <p>{checkInSummary}</p>
+                  {item.decisionInfo ? <p>{item.decisionInfo}</p> : null}
+                </div>
+              </div>
             </div>
           </article>
         );

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
 import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
 import type { ProviderType } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
@@ -72,6 +73,54 @@ function getView(value: string | string[] | undefined): DashboardOfferView {
 
 function buildViewHref(view: DashboardOfferView) {
   return view === "all" ? "/dashboard/revenue" : `/dashboard/revenue?view=${view}`;
+}
+
+function PlayGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+      <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10-6.86a1 1 0 0 0 0-1.72l-10-6.86a1 1 0 0 0-1.5.86Z" />
+    </svg>
+  );
+}
+
+function StopGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+      <path d="M7 7.5A1.5 1.5 0 0 1 8.5 6h7A1.5 1.5 0 0 1 17 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 16.5v-9Z" />
+    </svg>
+  );
+}
+
+function FilterTab(props: {
+  href: string;
+  active: boolean;
+  tone: "neutral" | "green" | "red";
+  icon?: ReactNode;
+  label: string;
+}) {
+  const toneClasses =
+    props.tone === "green"
+      ? props.active
+        ? "border-green-600 bg-green-600 text-white"
+        : "border-green-200 bg-green-50 text-green-800 hover:border-green-300"
+      : props.tone === "red"
+        ? props.active
+          ? "border-red-600 bg-red-600 text-white"
+          : "border-red-200 bg-red-50 text-red-800 hover:border-red-300"
+        : props.active
+          ? "border-slate-900 bg-slate-900 text-white"
+          : "border-slate-200 bg-white text-slate-800 hover:border-slate-300";
+
+  return (
+    <Link
+      href={props.href}
+      aria-current={props.active ? "page" : undefined}
+      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${toneClasses}`}
+    >
+      {props.icon ? <span className="inline-flex h-4 w-4 items-center justify-center">{props.icon}</span> : null}
+      <span>{props.label}</span>
+    </Link>
+  );
 }
 
 export default async function DashboardRevenuePage({
@@ -188,15 +237,11 @@ export default async function DashboardRevenuePage({
 
   revenueLines.sort((left, right) => right.recognizedAt.localeCompare(left.recognizedAt));
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
   const monthGroups = new Map<string, { grossCents: number; feeCents: number; payoutCents: number }>();
   const offerGroups = new Map<
     string,
     { title: string; kindLabel: string; grossCents: number; feeCents: number; payoutCents: number; count: number }
   >();
-
-  let currentMonthPayoutCents = 0;
-  let totalPayoutCents = 0;
 
   for (const line of revenueLines) {
     const monthKey = line.recognizedAt.slice(0, 7);
@@ -219,9 +264,6 @@ export default async function DashboardRevenuePage({
     offerEntry.payoutCents += line.payoutCents;
     offerEntry.count += 1;
     offerGroups.set(line.courseId, offerEntry);
-
-    totalPayoutCents += line.payoutCents;
-    if (monthKey === currentMonth) currentMonthPayoutCents += line.payoutCents;
   }
 
   const months = [...monthGroups.entries()].sort((left, right) => right[0].localeCompare(left[0]));
@@ -237,54 +279,24 @@ export default async function DashboardRevenuePage({
         <h1 className="text-3xl font-semibold">Einnahmen</h1>
         <p className="max-w-3xl text-sm text-muted-foreground">
           Übersicht über erfasste Umsätze pro Angebot und Monat. Netto bedeutet hier aktuell:
-          Brutto minus RESER-Plattformgebühr auf Basis der im System gespeicherten Preise für laufende und einmalige Angebote.
+          Brutto minus RESER-Plattformgebühr auf Basis der im System gespeicherten Preise für
+          laufende und einmalige Angebote.
         </p>
       </header>
 
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <p className="font-semibold">Datenstand</p>
         <p className="mt-1">
-          Wiederkehrende Stripe-Folgebuchungen, Stripe-Gebühren, Transfer-Auszahlungen und Payout-Timing werden
-          aktuell noch nicht vollständig persistiert. Die Netto-Werte bilden deshalb bestätigte Erstzahlungen und
-          bezahlte Buchungen ab.
+          Wiederkehrende Stripe-Folgebuchungen, Stripe-Gebühren, Transfer-Auszahlungen und
+          Payout-Timing werden aktuell noch nicht vollständig persistiert. Die Netto-Werte bilden
+          deshalb bestätigte Erstzahlungen und bezahlte Buchungen ab.
         </p>
       </div>
 
-      <section className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border p-4">
-          <p className="text-sm text-muted-foreground">Einnahmen gesamt</p>
-          <p className="mt-1 text-2xl font-semibold">{formatCurrency(totalPayoutCents)}</p>
-        </div>
-        <div className="rounded-2xl border p-4">
-          <p className="text-sm text-muted-foreground">Einnahmen diesen Monat</p>
-          <p className="mt-1 text-2xl font-semibold">{formatCurrency(currentMonthPayoutCents)}</p>
-        </div>
-        <div className="rounded-2xl border p-4">
-          <p className="text-sm text-muted-foreground">Erfasste Zahlungen</p>
-          <p className="mt-1 text-2xl font-semibold">{revenueLines.length}</p>
-        </div>
-      </section>
-
-      <nav className="flex flex-wrap gap-2" aria-label="Revenue-Filter">
-        {[
-          { id: "all" as const, label: "Alle Angebote" },
-          { id: "active" as const, label: "Aktive Angebote" },
-          { id: "archive" as const, label: "Vergangene Angebote" },
-        ].map((tab) => {
-          const selected = selectedView === tab.id;
-          return (
-            <Link
-              key={tab.id}
-              href={buildViewHref(tab.id)}
-              aria-current={selected ? "page" : undefined}
-              className={`inline-flex rounded-full border px-4 py-2 text-sm font-medium transition ${
-                selected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              {tab.label}
-            </Link>
-          );
-        })}
+      <nav className="flex flex-wrap gap-2" aria-label="Einnahmen-Filter">
+        <FilterTab href={buildViewHref("all")} active={selectedView === "all"} tone="neutral" label="Alle Angebote" />
+        <FilterTab href={buildViewHref("active")} active={selectedView === "active"} tone="green" icon={<PlayGlyph />} label="Aktive Angebote" />
+        <FilterTab href={buildViewHref("archive")} active={selectedView === "archive"} tone="red" icon={<StopGlyph />} label="Vergangene Angebote" />
       </nav>
 
       <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
@@ -292,7 +304,9 @@ export default async function DashboardRevenuePage({
           <h2 className="text-xl font-semibold">Einnahmen pro Angebot</h2>
           <div className="mt-4 space-y-3">
             {offers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Für den aktuellen Filter wurden noch keine Einnahmen erfasst.</p>
+              <p className="text-sm text-muted-foreground">
+                Für den aktuellen Filter wurden noch keine Einnahmen erfasst.
+              </p>
             ) : (
               offers.map(([courseId, offer]) => (
                 <article key={courseId} className="rounded-2xl border p-4">
@@ -300,7 +314,7 @@ export default async function DashboardRevenuePage({
                     <div>
                       <h3 className="font-semibold">{offer.title}</h3>
                       <p className="text-sm text-muted-foreground">
-                        {offer.kindLabel} | {offer.count} Zahlung{offer.count === 1 ? "" : "en"}
+                        {offer.kindLabel} · {offer.count} Zahlung{offer.count === 1 ? "" : "en"}
                       </p>
                     </div>
                     <div className="text-right">
@@ -309,9 +323,18 @@ export default async function DashboardRevenuePage({
                     </div>
                   </div>
                   <div className="mt-3 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
-                    <p>Brutto: <span className="font-medium text-foreground">{formatCurrency(offer.grossCents)}</span></p>
-                    <p>Plattformgebühr: <span className="font-medium text-foreground">{formatCurrency(offer.feeCents)}</span></p>
-                    <p>Angebot: <Link href={`/dashboard/courses/${courseId}`} className="font-medium text-foreground underline underline-offset-4">Öffnen</Link></p>
+                    <p>
+                      Brutto: <span className="font-medium text-foreground">{formatCurrency(offer.grossCents)}</span>
+                    </p>
+                    <p>
+                      Plattformgebühr: <span className="font-medium text-foreground">{formatCurrency(offer.feeCents)}</span>
+                    </p>
+                    <p>
+                      Angebot:{" "}
+                      <Link href={`/dashboard/courses/${courseId}`} className="font-medium text-foreground underline underline-offset-4">
+                        Öffnen
+                      </Link>
+                    </p>
                   </div>
                 </article>
               ))
@@ -331,7 +354,7 @@ export default async function DashboardRevenuePage({
                     <div>
                       <p className="font-semibold">{formatMonthLabel(monthKey)}</p>
                       <p className="text-sm text-muted-foreground">
-                        Brutto {formatCurrency(entry.grossCents)} | Gebühr {formatCurrency(entry.feeCents)}
+                        Brutto {formatCurrency(entry.grossCents)} · Gebühr {formatCurrency(entry.feeCents)}
                       </p>
                     </div>
                     <p className="text-lg font-semibold">{formatCurrency(entry.payoutCents)}</p>
@@ -352,7 +375,7 @@ export default async function DashboardRevenuePage({
                     <div>
                       <p className="font-semibold">{line.offerTitle}</p>
                       <p className="text-sm text-muted-foreground">
-                        {line.kindLabel} | {line.sourceLabel} | {new Date(line.recognizedAt).toLocaleDateString("de-DE")}
+                        {line.kindLabel} · {line.sourceLabel} · {new Date(line.recognizedAt).toLocaleDateString("de-DE")}
                       </p>
                     </div>
                     <p className="font-semibold">{formatCurrency(line.payoutCents)}</p>

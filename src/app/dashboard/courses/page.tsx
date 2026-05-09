@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
 import { getOfferArchiveEligibility } from "@/app/dashboard/archive-rules";
-import { formatCourseLifecycleDate, type CourseStatus } from "@/lib/course-lifecycle-shared";
 import { buildOfferCalendarPath } from "@/lib/calendar";
 import { hasOfferCalendarData } from "@/lib/calendar-resolver";
+import { formatMoney } from "@/lib/course-display";
+import { formatCourseLifecycleDate, type CourseStatus } from "@/lib/course-lifecycle-shared";
 import {
   buildMailtoHref,
   buildOfferMailSubject,
@@ -15,7 +17,8 @@ import {
   getWorkshopCancellationPolicySummary,
   getWorkshopCancellationPolicyValue,
 } from "@/lib/offer-policies";
-import { getOfferCollectionLabel, getOfferKindLabel, getOfferVisibilityLabel, isOneTimeOfferKind } from "@/lib/offer-ui";
+import { getOfferKindLabel, getOfferVisibilityLabel, isOneTimeOfferKind } from "@/lib/offer-ui";
+import { normalizeOfferVisibility } from "@/lib/public-offer-visibility";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { OfferCard } from "./OfferCard";
@@ -47,6 +50,8 @@ type OfferRow = {
   stop_date: string | null;
   ends_at?: string | null;
   archived_at: string | null;
+  price_cents: number | null;
+  currency: string | null;
 };
 
 type SessionRow = {
@@ -108,7 +113,13 @@ function formatCourseSchedule(weekday: number | null, startTime: string | null, 
           : recurrence;
 
   const parts = [weekdayLabel, startTime, recurrenceLabel].filter(Boolean);
-  return parts.length ? parts.join(" • ") : null;
+  return parts.length ? parts.join(" · ") : null;
+}
+
+function formatOfferPrice(priceCents: number | null, currency: string | null) {
+  if (priceCents === null || !Number.isFinite(priceCents)) return null;
+  if (priceCents <= 0) return "Kostenlos";
+  return formatMoney(priceCents, currency || "EUR");
 }
 
 function getOfferView(value: string | string[] | undefined): DashboardOfferView {
@@ -121,6 +132,66 @@ function buildTabHref(view: DashboardOfferView) {
   return view === "all" ? "/dashboard/courses" : `/dashboard/courses?view=${view}`;
 }
 
+function PlayGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+      <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10-6.86a1 1 0 0 0 0-1.72l-10-6.86a1 1 0 0 0-1.5.86Z" />
+    </svg>
+  );
+}
+
+function PauseGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+      <path d="M7 5.5A1.5 1.5 0 0 1 8.5 4h1A1.5 1.5 0 0 1 11 5.5v13A1.5 1.5 0 0 1 9.5 20h-1A1.5 1.5 0 0 1 7 18.5v-13Zm6 0A1.5 1.5 0 0 1 14.5 4h1A1.5 1.5 0 0 1 17 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-1A1.5 1.5 0 0 1 13 18.5v-13Z" />
+    </svg>
+  );
+}
+
+function StopGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+      <path d="M7 7.5A1.5 1.5 0 0 1 8.5 6h7A1.5 1.5 0 0 1 17 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 16.5v-9Z" />
+    </svg>
+  );
+}
+
+function FilterTab(props: {
+  href: string;
+  active: boolean;
+  tone: "neutral" | "green" | "orange" | "red";
+  icon?: ReactNode;
+  label: string;
+}) {
+  const toneClasses =
+    props.tone === "green"
+      ? props.active
+        ? "border-green-600 bg-green-600 text-white"
+        : "border-green-200 bg-green-50 text-green-800 hover:border-green-300"
+      : props.tone === "orange"
+        ? props.active
+          ? "border-orange-500 bg-orange-500 text-white"
+          : "border-orange-200 bg-orange-50 text-orange-800 hover:border-orange-300"
+        : props.tone === "red"
+          ? props.active
+            ? "border-red-600 bg-red-600 text-white"
+            : "border-red-200 bg-red-50 text-red-800 hover:border-red-300"
+          : props.active
+            ? "border-slate-900 bg-slate-900 text-white"
+            : "border-slate-200 bg-white text-slate-800 hover:border-slate-300";
+
+  return (
+    <Link
+      href={props.href}
+      aria-current={props.active ? "page" : undefined}
+      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${toneClasses}`}
+    >
+      {props.icon ? <span className="inline-flex h-4 w-4 items-center justify-center">{props.icon}</span> : null}
+      <span>{props.label}</span>
+    </Link>
+  );
+}
+
 export default async function DashboardCoursesPage({
   searchParams,
 }: {
@@ -129,6 +200,7 @@ export default async function DashboardCoursesPage({
   const sp = await searchParams;
   const savedParam = Array.isArray(sp.saved) ? sp.saved[0] : sp.saved;
   const selectedView = getOfferView(sp.view);
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
   const supabase = await createSupabaseServerClient();
   const admin = createSupabaseAdmin();
@@ -141,9 +213,9 @@ export default async function DashboardCoursesPage({
   }
 
   const baseSelect =
-    "id,teacher_id,title,kind,status,is_published,visibility,location,starts_at,ends_at,duration_minutes,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,pause_start_date,pause_end_date,stop_date,archived_at";
+    "id,teacher_id,title,kind,status,is_published,visibility,location,starts_at,ends_at,duration_minutes,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,pause_start_date,pause_end_date,stop_date,archived_at,price_cents,currency";
   const fallbackSelect =
-    "id,teacher_id,title,kind,is_published,visibility,location,starts_at,ends_at,duration_minutes,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,archived_at";
+    "id,teacher_id,title,kind,is_published,visibility,location,starts_at,ends_at,duration_minutes,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,archived_at,price_cents,currency";
 
   let offersResult = await admin
     .from("courses")
@@ -210,6 +282,7 @@ export default async function DashboardCoursesPage({
   for (const row of sessionRows) {
     sessionCountByCourseId.set(row.course_id, (sessionCountByCourseId.get(row.course_id) ?? 0) + 1);
   }
+
   const offerEmailsById = new Map<string, Array<string | null>>();
   for (const row of trialReservationRows) {
     if (row.archived_at) continue;
@@ -237,29 +310,19 @@ export default async function DashboardCoursesPage({
     ])
   );
 
-  const draftOffers = offers.filter((offer) => offerDisplayStateById.get(offer.id)?.view === "drafts");
-  const archivedOffers = offers.filter((offer) => offerDisplayStateById.get(offer.id)?.view === "archive");
-  const activeOffers = offers.filter((offer) => offerDisplayStateById.get(offer.id)?.view === "active");
-
-  const totalCount = offers.length;
-  const activeCount = activeOffers.length;
-  const draftCount = draftOffers.length;
-  const archiveCount = archivedOffers.length;
-  const visibleOffers =
-    selectedView === "drafts"
-      ? draftOffers
-      : selectedView === "archive"
-        ? archivedOffers
-        : selectedView === "active"
-          ? activeOffers
-          : offers;
+  const visibleOffers = offers.filter((offer) => {
+    if (selectedView === "all") return true;
+    return offerDisplayStateById.get(offer.id)?.view === selectedView;
+  });
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-2">
           <h1 className="text-3xl font-semibold">Meine Angebote</h1>
-          <p className="text-sm text-muted-foreground">Hier verwaltest du deine laufenden und einmaligen Angebote.</p>
+          <p className="text-sm text-muted-foreground">
+            Hier verwaltest du deine laufenden und einmaligen Angebote.
+          </p>
         </div>
 
         <Link href="/dashboard/courses/new" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
@@ -267,65 +330,11 @@ export default async function DashboardCoursesPage({
         </Link>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-4">
-        <div className="rounded-2xl border p-4">
-          <p className="text-sm text-muted-foreground">{getOfferCollectionLabel()} gesamt</p>
-          <p className="mt-1 text-2xl font-semibold">{totalCount}</p>
-        </div>
-        <div className="rounded-2xl border p-4">
-          <p className="text-sm text-muted-foreground">Aktiv / buchbar</p>
-          <p className="mt-1 text-2xl font-semibold">{activeCount}</p>
-        </div>
-        <div className="rounded-2xl border p-4">
-          <p className="text-sm text-muted-foreground">Entwürfe / pausiert</p>
-          <p className="mt-1 text-2xl font-semibold">{draftCount}</p>
-        </div>
-        <div className="rounded-2xl border p-4">
-          <p className="text-sm text-muted-foreground">Vergangen / gestoppt</p>
-          <p className="mt-1 text-2xl font-semibold">{archiveCount}</p>
-        </div>
-      </section>
-
       <nav className="flex flex-wrap gap-2" aria-label="Angebotsfilter">
-        {[
-          { id: "all" as const, label: "Alle Angebote", count: totalCount },
-          { id: "active" as const, label: "Aktive / buchbare Angebote", count: activeCount },
-          { id: "drafts" as const, label: "Entwürfe / pausierte Angebote", count: draftCount },
-          { id: "archive" as const, label: "Vergangene / gestoppte Angebote", count: archiveCount },
-        ].map((tab) => {
-          const isSelected = selectedView === tab.id;
-          const tabClasses =
-            tab.id === "active"
-              ? isSelected
-                ? "border-green-300 bg-green-100 text-green-900"
-                : "border-green-200 text-green-800 hover:bg-green-50"
-              : tab.id === "drafts"
-                ? isSelected
-                  ? "border-orange-300 bg-orange-100 text-orange-900"
-                  : "border-orange-200 text-orange-800 hover:bg-orange-50"
-                : tab.id === "archive"
-                  ? isSelected
-                    ? "border-red-300 bg-red-100 text-red-900"
-                    : "border-red-200 text-red-800 hover:bg-red-50"
-                  : isSelected
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-200 text-slate-800 hover:bg-slate-50";
-          return (
-            <Link
-              key={tab.id}
-              href={buildTabHref(tab.id)}
-              aria-current={isSelected ? "page" : undefined}
-              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${tabClasses}`}
-            >
-              <span>{tab.label}</span>
-              <span
-                className={`rounded-full px-2 py-0.5 text-xs ${isSelected ? "bg-white/70 text-current" : "bg-muted text-muted-foreground"}`}
-              >
-                {tab.count}
-              </span>
-            </Link>
-          );
-        })}
+        <FilterTab href={buildTabHref("all")} active={selectedView === "all"} tone="neutral" label="Alle Angebote" />
+        <FilterTab href={buildTabHref("active")} active={selectedView === "active"} tone="green" icon={<PlayGlyph />} label="Aktive / buchbare Angebote" />
+        <FilterTab href={buildTabHref("drafts")} active={selectedView === "drafts"} tone="orange" icon={<PauseGlyph />} label="Entwürfe / pausierte Angebote" />
+        <FilterTab href={buildTabHref("archive")} active={selectedView === "archive"} tone="red" icon={<StopGlyph />} label="Vergangene / gestoppte Angebote" />
       </nav>
 
       {savedParam === "missing_policy" ? (
@@ -367,17 +376,16 @@ export default async function DashboardCoursesPage({
             const kind = (offer.kind ?? "").toLowerCase();
             const displayState = offerDisplayStateById.get(offer.id);
             if (!displayState) return null;
+
             const pauseStartLabel = formatCourseLifecycleDate(offer.pause_start_date);
             const pauseEndLabel = formatCourseLifecycleDate(offer.pause_end_date);
             const stopDateLabel = formatCourseLifecycleDate(offer.stop_date);
             const workshopHasMultipleSessions = (sessionCountByCourseId.get(offer.id) ?? 0) > 1;
-            const workshopTiming = workshopHasMultipleSessions
-              ? "Mehrere Termine"
-              : formatWorkshopDateTime(offer.starts_at);
+            const workshopTiming = workshopHasMultipleSessions ? "Mehrere Termine" : formatWorkshopDateTime(offer.starts_at);
             const courseTiming = formatCourseSchedule(offer.weekday, offer.start_time, offer.recurrence_type);
             const policyLabel =
               kind === "course"
-                ? "Abrechnung: monatlich | Modell: fortlaufend"
+                ? "Abrechnung: monatlich · Modell: fortlaufend"
                 : getWorkshopCancellationPolicySummary({
                     cancellation_policy: offer.workshop_storno_policy,
                   });
@@ -388,7 +396,9 @@ export default async function DashboardCoursesPage({
                 !getWorkshopCancellationPolicyValue({
                   cancellation_policy: offer.workshop_storno_policy,
                 }));
-            const publicHref = `/courses/${offer.id}`;
+            const publicUrl = `${siteUrl}/courses/${offer.id}`;
+            const embedUrl = `${siteUrl}/embed/courses/${offer.id}`;
+            const visibility = normalizeOfferVisibility(offer.visibility);
             const detailHref = `/dashboard/courses/${offer.id}`;
             const recipientEmails = normalizeEmailRecipients(offerEmailsById.get(offer.id) ?? []);
             const mailHref = buildMailtoHref({
@@ -446,6 +456,8 @@ export default async function DashboardCoursesPage({
                 title={offer.title}
                 kindLabel={getOfferKindLabel(offer.kind)}
                 statusLabel={displayState.currentStatusLabel}
+                priceLabel={formatOfferPrice(offer.price_cents, offer.currency)}
+                visibility={visibility}
                 visibilityLabel={getOfferVisibilityLabel(offer.visibility)}
                 location={offer.location}
                 workshopTiming={isOneTimeOfferKind(kind) ? workshopTiming : null}
@@ -456,7 +468,9 @@ export default async function DashboardCoursesPage({
                 policyTypeLabel={kind === "course" ? "Modell" : "Stornierungsbedingungen"}
                 policyLabel={policyLabel}
                 showActivationHint={displayState.normalizedStatus === "draft" && isMissingPolicy}
-                publicHref={publicHref}
+                publicUrl={publicUrl}
+                embedUrl={embedUrl}
+                publicOfferEnabled={displayState.normalizedStatus === "active"}
                 detailHref={detailHref}
                 editHref={`/dashboard/courses/${offer.id}/edit`}
                 checkInHref={`/dashboard/courses/${offer.id}/check-in`}
@@ -468,7 +482,7 @@ export default async function DashboardCoursesPage({
                 stopDisabled={displayState.stopDisabled}
                 mailHref={mailHref}
                 calendarHref={calendarEnabled ? buildOfferCalendarPath(offer.id) : null}
-                calendarDisabledReason={calendarEnabled ? null : "Kalenderdatei erst mit Termin verfÃ¼gbar"}
+                calendarDisabledReason={calendarEnabled ? null : "Kalenderdatei erst mit Termin verfügbar"}
                 showMailWarning={showMailWarning}
                 archiveAllowed={archiveEligibility.allowed}
                 archiveReason={archiveEligibility.reason}

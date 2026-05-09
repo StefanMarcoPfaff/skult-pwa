@@ -75,6 +75,19 @@ type WorkshopBookingRefundRow = {
 
 type PublishMode = "play";
 
+export type OfferActivationActionResult =
+  | { ok: true }
+  | {
+      ok: false;
+      error:
+        | "invalid_request"
+        | "not_found"
+        | "invalid_status"
+        | "missing_policy"
+        | "update_failed"
+        | "unknown";
+    };
+
 type CourseCopySourceRow = {
   id: string;
   teacher_id: string;
@@ -152,44 +165,110 @@ export async function setCoursePublishStateAction(formData: FormData) {
   const redirectTo = String(formData.get("redirect_to") || "").trim();
   const targetPath = redirectTo || `/dashboard/courses/${courseId}`;
 
+  console.log("[activate_offer_start]", {
+    courseId,
+    mode,
+    targetPath,
+  });
+
   if (!courseId || mode !== "play") {
-    redirect("/dashboard");
+    console.error("[activate_offer_error]", {
+      courseId,
+      mode,
+      reason: "invalid_request",
+    });
+    return { ok: false, error: "invalid_request" } satisfies OfferActivationActionResult;
   }
 
-  const { admin, user, course } = await requireOwnedCourse(courseId);
+  try {
+    const { admin, user, course } = await requireOwnedCourse(courseId);
 
-  if (!course || course.status !== "draft") {
-    redirect(withSavedParam(targetPath, "play_invalid"));
+    if (!course) {
+      console.error("[activate_offer_error]", {
+        courseId,
+        userId: user.id,
+        reason: "not_found",
+      });
+      return { ok: false, error: "not_found" } satisfies OfferActivationActionResult;
+    }
+
+    if (course.status !== "draft") {
+      console.error("[activate_offer_error]", {
+        courseId,
+        userId: user.id,
+        currentStatus: course.status,
+        reason: "invalid_status",
+      });
+      return { ok: false, error: "invalid_status" } satisfies OfferActivationActionResult;
+    }
+
+    const missingWorkshopPolicy =
+      course.kind !== "course" &&
+      !getWorkshopCancellationPolicyValue({ cancellation_policy: course.workshop_storno_policy });
+    const missingCoursePolicy =
+      course.kind === "course" &&
+      !getCourseTerminationModelValue({ termination_model: course.cancellation_model });
+
+    if (missingWorkshopPolicy || missingCoursePolicy) {
+      console.error("[activate_offer_error]", {
+        courseId,
+        userId: user.id,
+        reason: "missing_policy",
+      });
+      return { ok: false, error: "missing_policy" } satisfies OfferActivationActionResult;
+    }
+
+    const { data: updatedCourse, error } = await admin
+      .from("courses")
+      .update({
+        status: "active",
+        is_published: true,
+        pause_start_date: null,
+        pause_end_date: null,
+        stop_date: null,
+      })
+      .eq("id", courseId)
+      .eq("teacher_id", user.id)
+      .select("id,status,is_published,visibility")
+      .maybeSingle<{
+        id: string;
+        status: CourseStatus;
+        is_published: boolean | null;
+        visibility: string | null;
+      }>();
+
+    if (error || !updatedCourse) {
+      console.error("[activate_offer_error]", {
+        courseId,
+        userId: user.id,
+        reason: "update_failed",
+        error: error?.message ?? "missing_updated_row",
+      });
+      return { ok: false, error: "update_failed" } satisfies OfferActivationActionResult;
+    }
+
+    revalidatePath("/dashboard/courses");
+    revalidatePath(`/dashboard/courses/${courseId}`);
+    revalidatePath(targetPath);
+
+    console.log("[activate_offer_success]", {
+      courseId,
+      userId: user.id,
+      status: updatedCourse.status,
+      isPublished: updatedCourse.is_published,
+      visibility: updatedCourse.visibility,
+    });
+
+    return { ok: true } satisfies OfferActivationActionResult;
+  } catch (error) {
+    console.error("[activate_offer_error]", {
+      courseId,
+      mode,
+      reason: "unknown",
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: "unknown" } satisfies OfferActivationActionResult;
   }
-
-  const missingWorkshopPolicy =
-    course.kind !== "course" &&
-    !getWorkshopCancellationPolicyValue({ cancellation_policy: course.workshop_storno_policy });
-  const missingCoursePolicy =
-    course.kind === "course" &&
-    !getCourseTerminationModelValue({ termination_model: course.cancellation_model });
-
-  if (missingWorkshopPolicy || missingCoursePolicy) {
-    redirect(withSavedParam(targetPath, "missing_policy"));
-  }
-
-  const { error } = await admin
-    .from("courses")
-    .update({
-      status: "active",
-      is_published: true,
-      pause_start_date: null,
-      pause_end_date: null,
-      stop_date: null,
-    })
-    .eq("id", courseId)
-    .eq("teacher_id", user.id);
-
-  if (error) {
-    redirect(withSavedParam(targetPath, "play_error"));
-  }
-
-  redirect(withSavedParam(targetPath, "play_started"));
 }
 
 export async function duplicateCourseAction(formData: FormData) {

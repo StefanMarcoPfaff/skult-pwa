@@ -22,11 +22,14 @@ import {
   shouldWarnAboutLargeMailingGroup,
 } from "@/lib/mailto";
 import { getProviderDisplayName, type ProviderType } from "@/lib/provider-profiles";
+import { normalizeOfferVisibility } from "@/lib/public-offer-visibility";
 import { getPublicCourseById } from "@/lib/public-offers";
 import { getSiteUrl } from "@/lib/site-url";
 import { getOfferKindLabel, getOfferVisibilityLabel, isOneTimeOfferKind } from "@/lib/offer-ui";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { ParticipantOverviewList } from "../../participants/ParticipantOverviewList";
+import { loadParticipantOverviewItems } from "../../participants/participant-overview-data";
 import { CourseDetailActions } from "./CourseDetailActions";
 import { getDisplayStatus } from "../display-status";
 
@@ -156,7 +159,7 @@ function formatDateTime(dt: string | null) {
 }
 
 function formatTrialMode(value: string | null): string {
-  if (value === "manual") return "Nur an ausgewaehlten Terminen";
+  if (value === "manual") return "Nur an ausgewählten Terminen";
   return "An jedem Termin möglich";
 }
 
@@ -194,130 +197,6 @@ function formatDateTimeRange(start: string | null, end: string | null): string |
   });
 
   return `${date} | ${startTime}-${endTime}`;
-}
-
-function renderParticipantGroup(
-  title: string,
-  description: string,
-  entries: CourseParticipantEntry[]
-) {
-  return (
-    <section className="rounded-2xl border p-5" key={title}>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-semibold">{title}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-        </div>
-        <div className="rounded-full border px-3 py-1 text-sm font-semibold">{entries.length}</div>
-      </div>
-
-      {entries.length === 0 ? (
-        <p className="mt-4 text-sm text-muted-foreground">Aktuell keine Eintraege.</p>
-      ) : (
-        <div className="mt-4 space-y-3">
-          {entries.map((entry) => (
-            <div key={entry.id} className="rounded-xl border p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="space-y-1 text-sm">
-                  <p className="font-semibold text-foreground">{entry.name}</p>
-                  {entry.email ? <p>{entry.email}</p> : null}
-                  <p>
-                    Status: <span className="font-medium text-foreground">{entry.statusLabel}</span>
-                  </p>
-                  <p>
-                    Check-in: <span className="font-medium text-foreground">{entry.checkInLabel}</span>
-                  </p>
-                  {entry.meta ? <p>{entry.meta}</p> : null}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {entry.mailHref ? (
-                    <a
-                      href={entry.mailHref}
-                      className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
-                    >
-                      E-Mail
-                    </a>
-                  ) : (
-                    <span className="inline-flex cursor-not-allowed rounded-xl border px-3 py-2 text-xs font-semibold text-muted-foreground opacity-60">
-                      E-Mail
-                    </span>
-                  )}
-                  <Link
-                    href={`/dashboard/participants/${entry.id}?source=trial`}
-                    className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
-                  >
-                    Details
-                  </Link>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function renderWorkshopParticipantGroup(
-  title: string,
-  description: string,
-  entries: WorkshopParticipantEntry[]
-) {
-  return (
-    <section className="rounded-2xl border p-5">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-semibold">{title}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-        </div>
-        <div className="rounded-full border px-3 py-1 text-sm font-semibold">{entries.length}</div>
-      </div>
-
-      {entries.length === 0 ? (
-        <p className="mt-4 text-sm text-muted-foreground">Aktuell keine Eintraege.</p>
-      ) : (
-        <div className="mt-4 space-y-3">
-          {entries.map((entry) => (
-            <div key={entry.id} className="rounded-xl border p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="space-y-1 text-sm">
-                  <p className="font-semibold text-foreground">{entry.name}</p>
-                  {entry.email ? <p>{entry.email}</p> : null}
-                  <p>
-                    Status: <span className="font-medium text-foreground">{entry.statusLabel}</span>
-                  </p>
-                  <p>
-                    Check-in: <span className="font-medium text-foreground">{entry.checkInLabel}</span>
-                  </p>
-                  {entry.meta ? <p>{entry.meta}</p> : null}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {entry.mailHref ? (
-                    <a
-                      href={entry.mailHref}
-                      className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
-                    >
-                      E-Mail
-                    </a>
-                  ) : (
-                    <span className="inline-flex cursor-not-allowed rounded-xl border px-3 py-2 text-xs font-semibold text-muted-foreground opacity-60">
-                      E-Mail
-                    </span>
-                  )}
-                  <Link
-                    href={`/dashboard/participants/${entry.id}?source=workshop`}
-                    className="inline-flex rounded-xl border px-3 py-2 text-xs font-semibold"
-                  >
-                    Details
-                  </Link>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
 }
 
 export default async function DashboardCourseDetailPage({
@@ -666,6 +545,10 @@ export default async function DashboardCourseDetailPage({
     recurrenceType: data.recurrence_type ?? null,
     sessionCount: sessions?.length ?? 0,
   });
+  const participantOverviewItems = await loadParticipantOverviewItems({
+    teacherId: user.id,
+    courseIds: [id],
+  });
 
   return (
     <main style={{ padding: 24, maxWidth: 820 }}>
@@ -730,7 +613,7 @@ export default async function DashboardCourseDetailPage({
       ) : null}
       {savedParam === "play_error" || savedParam === "pause_error" || savedParam === "stop_error" ? (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Die Statusaenderung konnte nicht gespeichert werden.
+          Die Statusänderung konnte nicht gespeichert werden.
         </p>
       ) : null}
       {savedParam === "workshop_cancel_error" ? (
@@ -751,11 +634,12 @@ export default async function DashboardCourseDetailPage({
         publicUrl={publicUrl}
         embedUrl={embedUrl}
         publicOfferEnabled={Boolean(publicOffer)}
+        visibility={normalizeOfferVisibility(data.visibility)}
         visibilityLabel={getOfferVisibilityLabel(data.visibility)}
         publishBlockedForMissingPolicy={publishBlockedForMissingPolicy}
         contactMailHref={contactMailHref}
         calendarHref={calendarEnabled ? buildOfferCalendarPath(data.id) : null}
-        calendarDisabledReason={calendarEnabled ? null : "Kalenderdatei erst mit Termin verfÃ¼gbar"}
+        calendarDisabledReason={calendarEnabled ? null : "Kalenderdatei erst mit Termin verfügbar"}
         archiveAllowed={archiveEligibility.allowed}
         archiveReason={archiveEligibility.reason}
       />
@@ -795,7 +679,7 @@ export default async function DashboardCourseDetailPage({
         {data.location_details ? <div>Raum / Zusatzinfo: {data.location_details}</div> : null}
         {data.kind === "course" && data.starts_at ? <div>Start des laufenden Angebots: {formatDateTime(data.starts_at)}</div> : null}
         {data.kind !== "course" && data.starts_at ? <div>Start: {formatDateTime(data.starts_at)}</div> : null}
-        {data.capacity !== null ? <div>Plaetze: {data.capacity}</div> : null}
+        {data.capacity !== null ? <div>Plätze: {data.capacity}</div> : null}
       </div>
 
       {data.description ? <p style={{ marginTop: 16, lineHeight: 1.6 }}>{data.description}</p> : null}
@@ -862,62 +746,16 @@ export default async function DashboardCourseDetailPage({
         </section>
       ) : null}
 
-      {data.kind === "course" && groupedCourseParticipants ? (
+      {participantOverviewItems.length > 0 ? (
         <section className="mt-8 space-y-4">
           <div>
-            <h2 className="text-2xl font-semibold">Teilnehmerübersicht</h2>
+            <h2 className="text-2xl font-semibold">Teilnehmende</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Hier siehst du den aktuellen Stand der verbindlichen Anmeldungen und Probeteilnahmen für dieses laufende Angebot.
+              Diese Liste nutzt dieselbe Übersicht wie die Hauptseite für Teilnehmende, gefiltert
+              auf dieses Angebot.
             </p>
           </div>
-
-          {renderParticipantGroup(
-            "Fest angemeldete Teilnehmer",
-            "Diese Personen haben die verbindliche Anmeldung zum laufenden Angebot erfolgreich abgeschlossen.",
-            groupedCourseParticipants.firmlyRegistered
-          )}
-
-          <section className="rounded-2xl border p-5">
-            <div>
-              <h3 className="text-lg font-semibold">Probeteilnahmen nach Status</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Probeteilnahmen werden nach ihrem aktuellen Fortschritt im Aufnahmeprozess gruppiert.
-              </p>
-            </div>
-            <div className="mt-5 space-y-4">
-              {renderParticipantGroup(
-                "Noch nicht teilgenommen",
-                "Diese Personen sind eingeplant, aber noch nicht eingecheckt.",
-                groupedCourseParticipants.notYetAttended
-              )}
-              {renderParticipantGroup(
-                "Teilgenommen, Entscheidung offen",
-                "Diese Personen haben bereits teilgenommen und warten noch auf deine Entscheidung.",
-                groupedCourseParticipants.attendedPending
-              )}
-              {renderParticipantGroup(
-                "Freigegeben, noch nicht angemeldet",
-                "Diese Personen wurden freigegeben, haben die verbindliche Anmeldung aber noch nicht abgeschlossen.",
-                groupedCourseParticipants.attendedApproved
-              )}
-            </div>
-          </section>
-        </section>
-      ) : null}
-
-      {isOneTimeOfferKind(data.kind) ? (
-        <section className="mt-8 space-y-4">
-          <div>
-            <h2 className="text-2xl font-semibold">Teilnehmende im einmaligen Angebot</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Alle gebuchten Teilnehmenden dieses Angebots mit aktuellem Status und Check-in-Stand.
-            </p>
-          </div>
-          {renderWorkshopParticipantGroup(
-            "Alle gebuchten Teilnehmer",
-            "Diese Liste zeigt alle bezahlten Buchungen dieses Angebots.",
-            workshopParticipants
-          )}
+          <ParticipantOverviewList items={participantOverviewItems} />
         </section>
       ) : null}
     </main>
