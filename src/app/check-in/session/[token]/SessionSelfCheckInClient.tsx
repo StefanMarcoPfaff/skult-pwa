@@ -55,7 +55,7 @@ export default function SessionSelfCheckInClient(props: Props) {
       setState({
         tone: "success",
         message: data.alreadyPresent
-          ? "Deine Anwesenheit war fuer diesen Termin bereits erfasst."
+          ? "Deine Anwesenheit war für diesen Termin bereits erfasst."
           : "Deine Anwesenheit wurde erfolgreich gespeichert.",
       });
     } finally {
@@ -88,14 +88,14 @@ export default function SessionSelfCheckInClient(props: Props) {
       ) : null}
 
       <section className="rounded-2xl border p-5">
-        <h2 className="text-lg font-semibold">Schneller Check-in auf diesem Geraet</h2>
+        <h2 className="text-lg font-semibold">Schneller Check-in auf diesem Gerät</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Wenn dein Ticket bereits auf diesem Smartphone geoeffnet wurde, kannst du es hier direkt verwenden.
+          Wenn dein Ticket bereits auf diesem Smartphone geöffnet wurde, kannst du es hier direkt verwenden.
         </p>
 
         {localTokens.length === 0 ? (
           <p className="mt-4 text-sm text-muted-foreground">
-            Auf diesem Geraet wurde noch kein Ticket gespeichert. Nutze unten deinen Ticket-Token als Fallback.
+            Auf diesem Gerät wurde noch kein Ticket gespeichert. Nutze unten deinen Ticket-Token als Fallback.
           </p>
         ) : (
           <div className="mt-4 space-y-3">
@@ -120,7 +120,7 @@ export default function SessionSelfCheckInClient(props: Props) {
       <section className="rounded-2xl border p-5">
         <h2 className="text-lg font-semibold">Fallback mit Ticket-Token</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Falls dein Ticket nicht auf diesem Geraet gespeichert ist, gib den Token aus deiner Ticketansicht ein.
+          Falls dein Ticket nicht auf diesem Gerät gespeichert ist, gib den Token aus deiner Ticketansicht ein.
         </p>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
           <input

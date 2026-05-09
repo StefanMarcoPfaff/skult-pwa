@@ -351,7 +351,7 @@ export default async function DashboardCourseCheckInPage({
           return {
             id: reservation.id,
             ticketId: ticket.id,
-            name: formatName(reservation.first_name, reservation.last_name, ticket.customer_name || "Probeschueler*in"),
+            name: formatName(reservation.first_name, reservation.last_name, ticket.customer_name || "Probeschüler*in"),
             email: reservation.email ?? ticket.customer_email ?? null,
             typeLabel: "Probestunde",
             meta: formatDateTimeRange(reservation.trial_starts_at, reservation.trial_ends_at),
@@ -386,18 +386,18 @@ export default async function DashboardCourseCheckInPage({
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-6">
       <Link href={`/dashboard/courses/${course.id}`} className="inline-flex text-sm font-semibold">
-        Zurueck zum Angebot
+        Zurück zum Angebot
       </Link>
 
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold">Check-in starten</h1>
         <p className="text-sm text-muted-foreground">
-          {course.title ?? "Angebot"}: Waehle zuerst den Termin und danach den passenden Check-in-Modus.
+          {course.title ?? "Angebot"}: Wähle zuerst den Termin und danach den passenden Check-in-Modus.
         </p>
       </header>
 
       <section className="rounded-2xl border p-5">
-        <h2 className="text-lg font-semibold">Termin waehlen</h2>
+        <h2 className="text-lg font-semibold">Termin wählen</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {eventOptions.map((option) => {
             const isSelected = option.key === selectedEvent.key;
@@ -420,7 +420,7 @@ export default async function DashboardCourseCheckInPage({
       </section>
 
       <section className="rounded-2xl border p-5">
-        <h2 className="text-lg font-semibold">Modus waehlen</h2>
+        <h2 className="text-lg font-semibold">Modus wählen</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <Link
             href={buildModeHref(basePath, selectedEvent, "scan")}
@@ -441,7 +441,7 @@ export default async function DashboardCourseCheckInPage({
             className={`rounded-2xl border p-4 text-sm ${mode === "manual" ? "border-foreground bg-muted" : ""}`}
           >
             <p className="font-semibold">Manuell einchecken</p>
-            <p className="mt-2 text-muted-foreground">Ideal fuer groessere Gruppen mit schneller Tap-Liste.</p>
+            <p className="mt-2 text-muted-foreground">Ideal für größere Gruppen mit schneller Tap-Liste.</p>
           </Link>
         </div>
       </section>
@@ -450,11 +450,11 @@ export default async function DashboardCourseCheckInPage({
         <section className="rounded-2xl border p-5">
           <h2 className="text-xl font-semibold">Teilnehmer-QR scannen</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Der bestehende Scanner bleibt aktiv. Fuer diesen Termin wird zusaetzlich eine Anwesenheit pro Session gespeichert.
+            Der bestehende Scanner bleibt aktiv. Für diesen Termin wird zusätzlich eine Anwesenheit pro Session gespeichert.
           </p>
           <div className="mt-4">
             <Link href={teacherScanHref} className="inline-flex rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white">
-              Scanner fuer diesen Termin oeffnen
+              Scanner für diesen Termin öffnen
             </Link>
           </div>
         </section>
@@ -464,14 +464,14 @@ export default async function DashboardCourseCheckInPage({
         <section className="rounded-2xl border p-5">
           <h2 className="text-xl font-semibold">Termin-QR anzeigen</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Dieser QR-Code ist nur fuer den ausgewaehlten Termin gueltig und laeuft nach zwei Stunden automatisch ab.
+            Dieser QR-Code ist nur für den ausgewählten Termin gültig und läuft nach zwei Stunden automatisch ab.
           </p>
           <div className="mt-4 inline-block rounded-2xl border bg-white p-4">
             <QRCode value={participantQrUrl} size={220} />
           </div>
           <p className="mt-4 break-all text-xs text-muted-foreground">{participantQrUrl}</p>
           <p className="mt-3 text-sm text-amber-700">
-            Teilnehmer*innen benoetigen zusaetzlich ihr eigenes Ticket auf demselben Geraet oder den Ticket-Token als Fallback.
+            Teilnehmer*innen benötigen zusätzlich ihr eigenes Ticket auf demselben Gerät oder den Ticket-Token als Fallback.
           </p>
         </section>
       ) : null}
@@ -480,7 +480,7 @@ export default async function DashboardCourseCheckInPage({
         <section className="rounded-2xl border p-5">
           <h2 className="text-xl font-semibold">Manuelle Anwesenheit</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Bereits erfasste Personen sind sofort sichtbar. Du kannst sie fuer genau diesen Termin an- oder abwaehlen.
+            Bereits erfasste Personen sind sofort sichtbar. Du kannst sie für genau diesen Termin an- oder abwählen.
           </p>
           <div className="mt-4">
             <ManualAttendanceClient

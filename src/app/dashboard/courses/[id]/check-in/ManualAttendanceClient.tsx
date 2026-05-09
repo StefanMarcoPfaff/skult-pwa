@@ -87,7 +87,7 @@ export default function ManualAttendanceClient(props: {
 
       {entries.length === 0 ? (
         <section className="rounded-2xl border p-5 text-sm text-muted-foreground">
-          Fuer diesen Termin wurden noch keine passenden Teilnehmer*innen gefunden.
+          Für diesen Termin wurden noch keine passenden Teilnehmer*innen gefunden.
         </section>
       ) : (
         <div className="space-y-3">
@@ -108,7 +108,7 @@ export default function ManualAttendanceClient(props: {
                       <span className="font-medium text-foreground">
                         {isPresent
                           ? `Anwesend seit ${formatDateTime(entry.attendanceCheckedInAt) ?? "-"}`
-                          : "Noch nicht fuer diesen Termin erfasst"}
+                          : "Noch nicht für diesen Termin erfasst"}
                       </span>
                     </p>
                     {entry.legacyCheckedInAt ? (
