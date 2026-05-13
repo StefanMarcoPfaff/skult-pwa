@@ -2,6 +2,11 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  createSimulatedPayoutBatchAction,
+  markEligibleLedgerEntriesAsPayableAction,
+} from "./actions";
+import { canAccessPaymentsV2Audit } from "./access";
 
 export const dynamic = "force-dynamic";
 
@@ -90,25 +95,11 @@ type RelatedPaymentTransactionRow = Pick<
 
 type RelatedRefundRow = Pick<RefundRecordRow, "id" | "payment_transaction_id">;
 
+type SearchParams = {
+  action?: string;
+};
+
 const ROW_LIMIT = 20;
-
-function parseAdminEmails(): string[] {
-  return (process.env.PAYMENTS_V2_ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function canAccessPaymentsV2Audit(userEmail: string | null | undefined): boolean {
-  const normalizedEmail = userEmail?.trim().toLowerCase() ?? "";
-  const configuredEmails = parseAdminEmails();
-
-  if (configuredEmails.length > 0) {
-    return configuredEmails.includes(normalizedEmail);
-  }
-
-  return process.env.NODE_ENV !== "production";
-}
 
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
@@ -229,7 +220,74 @@ function Section({
   );
 }
 
-export default async function PaymentsV2AdminPage() {
+function ActionNotice({ action }: { action: string | undefined }) {
+  if (!action) return null;
+
+  let message = "Interne Simulation ausgefuehrt.";
+  let toneClass = "border-slate-200 bg-slate-100 text-slate-700";
+
+  if (action.startsWith("eligible-ok-")) {
+    const count = action.slice("eligible-ok-".length);
+    message = `${count} Ledger-Eintraege wurden als payable markiert.`;
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+  } else if (action.startsWith("eligible-none-")) {
+    const count = action.slice("eligible-none-".length);
+    message = `Keine neuen payable-Eintraege. Geprueft: ${count}.`;
+    toneClass = "border-amber-200 bg-amber-50 text-amber-800";
+  } else if (action === "eligible-error") {
+    message = "Fehler beim Markieren von payable Ledger-Eintraegen.";
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+  } else if (action.startsWith("batch-ok-")) {
+    const parts = action.split("-");
+    const batchCount = parts[2] ?? "0";
+    const itemCount = parts[3] ?? "0";
+    message = `${batchCount} Simulations-Batches mit ${itemCount} Items wurden erzeugt.`;
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+  } else if (action.startsWith("batch-none-")) {
+    const count = action.slice("batch-none-".length);
+    message = `Keine neuen Simulations-Batches. Payable geprueft: ${count}.`;
+    toneClass = "border-amber-200 bg-amber-50 text-amber-800";
+  } else if (action === "batch-error") {
+    message = "Fehler beim Erzeugen des Simulated Payout Batch.";
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+  }
+
+  return <div className={`rounded-2xl border px-4 py-3 text-sm ${toneClass}`}>{message}</div>;
+}
+
+function ActionButton({
+  action,
+  label,
+  description,
+}: {
+  action: () => Promise<void>;
+  label: string;
+  description: string;
+}) {
+  return (
+    <form action={action} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="space-y-3">
+        <div>
+          <div className="text-sm font-semibold text-slate-900">{label}</div>
+          <div className="mt-1 text-xs text-slate-600">{description}</div>
+        </div>
+        <button
+          type="submit"
+          className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+        >
+          Internal Simulation
+        </button>
+      </div>
+    </form>
+  );
+}
+
+export default async function PaymentsV2AdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const sp = await searchParams;
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -349,6 +407,21 @@ export default async function PaymentsV2AdminPage() {
             Simulation only
           </div>
         </header>
+
+        <ActionNotice action={sp.action} />
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <ActionButton
+            action={markEligibleLedgerEntriesAsPayableAction}
+            label="Eligible Ledger Entries als payable markieren"
+            description="Ruft intern markEligibleLedgerEntriesAsPayable() auf. Keine echte Auszahlung."
+          />
+          <ActionButton
+            action={createSimulatedPayoutBatchAction}
+            label="Simulated Payout Batch erstellen"
+            description="Ruft intern createSimulatedPayoutBatch() auf. Nur interne Batch-Simulation."
+          />
+        </div>
 
         <div className="grid gap-6">
           <Section
