@@ -657,7 +657,6 @@ export async function cancelWorkshopAction(formData: FormData) {
     .eq("course_id", courseId)
     .returns<WorkshopBookingRefundRow[]>();
 
-  const stripe = getStripe();
   let hadRefundErrors = false;
 
   for (const booking of bookings ?? []) {

@@ -1,3 +1,4 @@
+import type Stripe from "stripe";
 import { mirrorStripePaymentToLedger } from "@/lib/payments/ledger";
 import { getProviderDisplayName, getWorkshopStornoPolicyLabel } from "@/lib/provider-profiles";
 import { getStripe } from "@/lib/stripe";
