@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { buildOfferAvailability, loadOccupiedWorkshopSeats } from "@/lib/public-offer-availability";
+import { paymentService } from "@/lib/payments/payment-service";
 import { isDirectlyAccessibleOffer } from "@/lib/public-offer-visibility";
 import { getStripe } from "@/lib/stripe";
 import {
-  buildDestinationPaymentIntentData,
   getSiteUrl,
   isStripeDestinationChargeReady,
   summarizeStripeAccount,
@@ -252,28 +252,28 @@ export async function POST(req: Request) {
     }
 
     const workshopCurrency = normalizeWorkshopCurrency(course.currency);
-    const session = await stripe.checkout.sessions.create({
+    const session = await paymentService.createCheckoutSession({
+      provider: "stripe",
       mode: "payment",
-      customer_email: customerEmail,
-      line_items: [
+      customer: {
+        email: customerEmail,
+      },
+      lineItems: [
         {
-          price_data: {
-            currency: workshopCurrency.toLowerCase(),
-            unit_amount: normalizedPriceCents,
-            product_data: { name: course.title || "Angebot" },
-          },
           quantity: 1,
+          priceData: {
+            currency: workshopCurrency,
+            unitAmount: normalizedPriceCents,
+            productName: course.title || "Angebot",
+          },
         },
       ],
-      success_url: `${siteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}&courseId=${course.id}`,
-      cancel_url: `${siteUrl}/checkout/cancel?courseId=${course.id}`,
-      payment_intent_data: {
-        ...buildDestinationPaymentIntentData(
-          normalizedPriceCents,
-          teacherProfile.stripe_account_id,
-          teacherProfile.provider_type
-        ),
-        on_behalf_of: teacherProfile.stripe_account_id,
+      successUrl: `${siteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}&courseId=${course.id}`,
+      cancelUrl: `${siteUrl}/checkout/cancel?courseId=${course.id}`,
+      providerContext: {
+        connectedAccountId: teacherProfile.stripe_account_id,
+        onBehalfOfAccountId: teacherProfile.stripe_account_id,
+        providerType: teacherProfile.provider_type,
       },
       metadata: {
         bookingId: booking.id,
@@ -285,14 +285,14 @@ export async function POST(req: Request) {
         customerEmail,
         customerPhone,
       },
-      client_reference_id: booking.id,
+      clientReferenceId: booking.id,
     });
 
     const { error: updErr } = await supabase
       .from("bookings")
       .update({
-        stripe_session_id: session.id,
-        payment_session_id: session.id,
+        stripe_session_id: session.sessionId,
+        payment_session_id: session.sessionId,
         payment_provider: "stripe",
         payment_status: "pending",
       })

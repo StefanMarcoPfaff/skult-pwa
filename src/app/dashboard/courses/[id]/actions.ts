@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getOfferArchiveEligibility } from "@/app/dashboard/archive-rules";
 import { sendCoursePauseNotificationEmail, sendCourseStopNotificationEmail } from "@/lib/course-lifecycle-emails";
+import { paymentService } from "@/lib/payments/payment-service";
 import { getStripe } from "@/lib/stripe";
 import {
   CourseStatus,
@@ -690,45 +691,28 @@ export async function cancelWorkshopAction(formData: FormData) {
       continue;
     }
 
-    let refundId: string | null = null;
-    let refundAmount: number | null = null;
-
     try {
-      const session = await stripe.checkout.sessions.retrieve(booking.stripe_session_id, {
-        expand: ["payment_intent"],
+      const refund = await paymentService.refundPayment({
+        provider: "stripe",
+        referenceType: "checkout_session",
+        referenceId: booking.stripe_session_id,
       });
-      const paymentIntentId =
-        typeof session.payment_intent === "string"
-          ? session.payment_intent
-          : session.payment_intent?.id ?? null;
+      const { error: bookingUpdateError } = await admin
+        .from("bookings")
+        .update({
+          status: "refunded",
+          payment_status: "refunded",
+          refunded_at: new Date().toISOString(),
+          stripe_refund_id: refund.refundId,
+          refund_amount_cents: refund.amountCents,
+        })
+        .eq("id", booking.id);
 
-      if (!paymentIntentId) {
+      if (bookingUpdateError) {
         hadRefundErrors = true;
         continue;
       }
-
-      const refund = await stripe.refunds.create({
-        payment_intent: paymentIntentId,
-      });
-      refundId = refund.id;
-      refundAmount = refund.amount ?? null;
     } catch {
-      hadRefundErrors = true;
-      continue;
-    }
-
-    const { error: bookingUpdateError } = await admin
-      .from("bookings")
-      .update({
-        status: "refunded",
-        payment_status: "refunded",
-        refunded_at: new Date().toISOString(),
-        stripe_refund_id: refundId,
-        refund_amount_cents: refundAmount,
-      })
-      .eq("id", booking.id);
-
-    if (bookingUpdateError) {
       hadRefundErrors = true;
       continue;
     }

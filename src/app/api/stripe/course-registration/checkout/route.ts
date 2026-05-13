@@ -8,13 +8,10 @@ import {
   getCourseSubscriptionCheckoutCurrencyError,
   isCourseSubscriptionCheckoutCurrencySupported,
 } from "@/lib/course-subscription-checkout";
+import { paymentService } from "@/lib/payments/payment-service";
 import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
 import { getStripe } from "@/lib/stripe";
-import {
-  buildDestinationSubscriptionData,
-  getSiteUrl,
-  isStripeDestinationChargeReady,
-} from "@/lib/stripe-connect";
+import { getSiteUrl, isStripeDestinationChargeReady } from "@/lib/stripe-connect";
 import type { ProviderType } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -143,38 +140,33 @@ export async function GET(req: Request) {
   const sessionCurrency = getCourseSubscriptionCheckoutCurrency().toLowerCase();
   const billingCycleAnchor = getCourseSubscriptionBillingCycleAnchor();
 
-  let session: Stripe.Checkout.Session;
+  let sessionId: string;
+  let sessionUrl: string | null;
   try {
-    session = await stripe.checkout.sessions.create({
+    const session = await paymentService.createRecurringPayment({
+      provider: "stripe",
       mode: "subscription",
-      customer_email: intent.email,
-      line_items: [
+      customer: {
+        email: intent.email,
+      },
+      lineItems: [
         {
-          price_data: {
-            currency: sessionCurrency,
-            unit_amount: course.price_cents,
-            recurring: {
-              interval: "month",
-            },
-            product_data: {
-              name: course.title || "Kurs",
-            },
-          },
           quantity: 1,
+          priceData: {
+            currency: sessionCurrency,
+            unitAmount: course.price_cents,
+            recurringInterval: "month",
+            productName: course.title || "Kurs",
+          },
         },
       ],
-      subscription_data: {
-        ...buildDestinationSubscriptionData(profile.stripe_account_id, profile.provider_type),
-        billing_cycle_anchor: billingCycleAnchor,
-        metadata: {
-          registrationIntentId: intent.id,
-          trialReservationId: intent.trial_reservation_id,
-          courseId: intent.course_id,
-          registrationToken: token,
-        },
+      successUrl: `${siteUrl}/trial/register/${token}/success?session_id={CHECKOUT_SESSION_ID}&intentId=${intent.id}`,
+      cancelUrl: `${siteUrl}/trial/register/${token}/cancel?intentId=${intent.id}`,
+      providerContext: {
+        connectedAccountId: profile.stripe_account_id,
+        providerType: profile.provider_type,
       },
-      success_url: `${siteUrl}/trial/register/${token}/success?session_id={CHECKOUT_SESSION_ID}&intentId=${intent.id}`,
-      cancel_url: `${siteUrl}/trial/register/${token}/cancel?intentId=${intent.id}`,
+      billingCycleAnchorUnix: billingCycleAnchor,
       metadata: {
         registrationIntentId: intent.id,
         trialReservationId: intent.trial_reservation_id,
@@ -183,8 +175,10 @@ export async function GET(req: Request) {
         teacherStripeAccountId: profile.stripe_account_id,
         checkoutFlow: "course_registration",
       },
-      client_reference_id: intent.id,
+      clientReferenceId: intent.id,
     });
+    sessionId = session.sessionId;
+    sessionUrl = session.url;
   } catch (error: unknown) {
     console.error("[stripe-course-registration-checkout]", {
       context: "checkout.session.create.failed",
@@ -200,10 +194,10 @@ export async function GET(req: Request) {
   await admin
     .from("course_registration_intents")
     .update({
-      stripe_checkout_session_id: session.id,
+      stripe_checkout_session_id: sessionId,
       status: "checkout_started",
     })
     .eq("id", intent.id);
 
-  return NextResponse.redirect(session.url!);
+  return NextResponse.redirect(sessionUrl!);
 }

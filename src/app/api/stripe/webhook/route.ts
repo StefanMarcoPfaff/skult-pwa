@@ -4,11 +4,10 @@ import {
   finalizeCourseRegistrationCheckoutSession,
   markCourseRegistrationCheckoutFailed,
 } from "@/lib/course-registration-finalization";
+import { paymentService } from "@/lib/payments/payment-service";
 import { finalizeWorkshopBookingBySession } from "@/lib/workshop-booking-finalization";
 
 export const runtime = "nodejs";
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 function logWebhookEvent(message: string, payload: Record<string, unknown>) {
   if (process.env.NODE_ENV === "production") return;
@@ -36,7 +35,12 @@ export async function POST(req: Request) {
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET!);
+    const webhook = await paymentService.handleWebhookEvent({
+      provider: "stripe",
+      signature: sig,
+      payload: body,
+    });
+    event = webhook.event.rawEvent as Stripe.Event;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Signature verification failed";
     console.error("[stripe-webhook] signature verification failed", message);
