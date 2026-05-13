@@ -42,7 +42,16 @@ function normalizeWebhookEventType(type: Stripe.Event.Type): PaymentWebhookEvent
   if (
     type === "checkout.session.completed" ||
     type === "checkout.session.async_payment_succeeded" ||
-    type === "checkout.session.async_payment_failed"
+    type === "checkout.session.async_payment_failed" ||
+    type === "payment_intent.succeeded" ||
+    type === "payment_intent.payment_failed" ||
+    type === "charge.refunded" ||
+    type === "refund.created" ||
+    type === "refund.updated" ||
+    type === "invoice.payment_succeeded" ||
+    type === "invoice.payment_failed" ||
+    type === "customer.subscription.updated" ||
+    type === "customer.subscription.deleted"
   ) {
     return type;
   }
@@ -56,6 +65,162 @@ function mapCheckoutEventToPaymentStatus(eventType: Stripe.Event.Type, session: 
   }
 
   return normalizeStripePaymentStatus(session.payment_status);
+}
+
+function toStripeObjectId(
+  value:
+    | string
+    | Stripe.PaymentIntent
+    | Stripe.Subscription
+    | Stripe.Checkout.Session
+    | Stripe.Customer
+    | Stripe.DeletedCustomer
+    | Stripe.Charge
+    | null
+    | undefined
+): string | null {
+  if (typeof value === "string") return value;
+  return value?.id ?? null;
+}
+
+function mapPaymentIntentEventToPaymentStatus(eventType: Stripe.Event.Type): PaymentStatus {
+  return eventType === "payment_intent.succeeded" ? "paid" : "failed";
+}
+
+function mapRefundStatus(status: Stripe.Refund["status"] | null): PaymentStatus {
+  if (status === "failed" || status === "canceled") {
+    return "failed";
+  }
+
+  if (status === "pending" || status === "requires_action") {
+    return "pending";
+  }
+
+  return "refunded";
+}
+
+function mapInvoiceEventToPaymentStatus(eventType: Stripe.Event.Type, invoice: Stripe.Invoice): PaymentStatus {
+  if (eventType === "invoice.payment_failed") {
+    return "failed";
+  }
+
+  if (invoice.status === "paid") {
+    return "paid";
+  }
+
+  return "pending";
+}
+
+function mapSubscriptionStatus(status: Stripe.Subscription.Status): PaymentStatus {
+  if (status === "canceled" || status === "unpaid" || status === "incomplete_expired") {
+    return "cancelled";
+  }
+
+  if (status === "active" || status === "trialing") {
+    return "paid";
+  }
+
+  if (status === "past_due" || status === "incomplete" || status === "paused") {
+    return "pending";
+  }
+
+  return "unknown";
+}
+
+function buildNormalizedWebhookEvent(event: Stripe.Event): PaymentWebhookEvent {
+  switch (event.type) {
+    case "checkout.session.completed":
+    case "checkout.session.async_payment_succeeded":
+    case "checkout.session.async_payment_failed": {
+      const session = event.data.object as Stripe.Checkout.Session;
+      return {
+        provider: "stripe",
+        type: normalizeWebhookEventType(event.type),
+        referenceType: "checkout_session",
+        referenceId: session.id ?? null,
+        paymentStatus: mapCheckoutEventToPaymentStatus(event.type, session),
+        metadata: session.metadata ?? {},
+        rawEvent: event,
+      };
+    }
+    case "payment_intent.succeeded":
+    case "payment_intent.payment_failed": {
+      const paymentIntent = event.data.object as Stripe.PaymentIntent;
+      return {
+        provider: "stripe",
+        type: normalizeWebhookEventType(event.type),
+        referenceType: "payment_intent",
+        referenceId: paymentIntent.id,
+        paymentStatus: mapPaymentIntentEventToPaymentStatus(event.type),
+        metadata: paymentIntent.metadata ?? {},
+        rawEvent: event,
+      };
+    }
+    case "charge.refunded": {
+      const charge = event.data.object as Stripe.Charge;
+      return {
+        provider: "stripe",
+        type: "charge.refunded",
+        referenceType: "payment_intent",
+        referenceId: toStripeObjectId(charge.payment_intent),
+        paymentStatus: "refunded",
+        metadata: charge.metadata ?? {},
+        rawEvent: event,
+      };
+    }
+    case "refund.created":
+    case "refund.updated": {
+      const refund = event.data.object as Stripe.Refund;
+      return {
+        provider: "stripe",
+        type: normalizeWebhookEventType(event.type),
+        referenceType: "payment_intent",
+        referenceId: toStripeObjectId(refund.payment_intent),
+        paymentStatus: mapRefundStatus(refund.status),
+        metadata: refund.metadata ?? {},
+        rawEvent: event,
+      };
+    }
+    case "invoice.payment_succeeded":
+    case "invoice.payment_failed": {
+      const invoice = event.data.object as Stripe.Invoice;
+      return {
+        provider: "stripe",
+        type: normalizeWebhookEventType(event.type),
+        referenceType: "subscription",
+        referenceId: toStripeObjectId(invoice.parent?.subscription_details?.subscription),
+        paymentStatus: mapInvoiceEventToPaymentStatus(event.type, invoice),
+        metadata: invoice.metadata ?? {},
+        rawEvent: event,
+      };
+    }
+    case "customer.subscription.updated":
+    case "customer.subscription.deleted": {
+      const subscription = event.data.object as Stripe.Subscription;
+      return {
+        provider: "stripe",
+        type: normalizeWebhookEventType(event.type),
+        referenceType: "subscription",
+        referenceId: subscription.id,
+        paymentStatus:
+          event.type === "customer.subscription.deleted"
+            ? "cancelled"
+            : mapSubscriptionStatus(subscription.status),
+        metadata: subscription.metadata ?? {},
+        rawEvent: event,
+      };
+    }
+    default:
+      return {
+        provider: "stripe",
+        type: "unknown",
+        referenceType: "checkout_session",
+        referenceId: null,
+        paymentStatus: "unknown",
+        metadata: {},
+        rawEvent: event,
+      };
+  }
 }
 
 export class StripePaymentProvider implements PaymentProvider {
@@ -196,16 +361,7 @@ export class StripePaymentProvider implements PaymentProvider {
     }
 
     const event = this.client.webhooks.constructEvent(input.payload, input.signature, secret);
-    const session = event.data.object as Stripe.Checkout.Session;
-    const normalizedEvent: PaymentWebhookEvent = {
-      provider: this.name,
-      type: normalizeWebhookEventType(event.type),
-      referenceType: "checkout_session",
-      referenceId: session.id ?? null,
-      paymentStatus: mapCheckoutEventToPaymentStatus(event.type, session),
-      metadata: session.metadata ?? {},
-      rawEvent: event,
-    };
+    const normalizedEvent = buildNormalizedWebhookEvent(event);
 
     return {
       provider: this.name,

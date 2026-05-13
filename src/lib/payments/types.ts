@@ -110,6 +110,15 @@ export type PaymentWebhookEventType =
   | "checkout.session.completed"
   | "checkout.session.async_payment_succeeded"
   | "checkout.session.async_payment_failed"
+  | "payment_intent.succeeded"
+  | "payment_intent.payment_failed"
+  | "charge.refunded"
+  | "refund.created"
+  | "refund.updated"
+  | "invoice.payment_succeeded"
+  | "invoice.payment_failed"
+  | "customer.subscription.updated"
+  | "customer.subscription.deleted"
   | "unknown";
 
 export type PaymentWebhookEvent = {
