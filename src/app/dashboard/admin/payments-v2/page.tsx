@@ -26,6 +26,7 @@ type PaymentTransactionRow = {
 
 type LedgerEntryRow = {
   id: string;
+  provider_payout_profile_id: string | null;
   source_type: string;
   source_id: string;
   entry_type: string;
@@ -36,6 +37,29 @@ type LedgerEntryRow = {
   currency: string;
   payout_status: string;
   available_at: string | null;
+  payout_batch_id: string | null;
+  created_at: string;
+};
+
+type PayoutBatchRow = {
+  id: string;
+  payout_provider: string;
+  payout_method: string;
+  total_amount_cents: number;
+  currency: string;
+  status: string;
+  scheduled_for: string | null;
+  created_at: string;
+};
+
+type PayoutItemRow = {
+  id: string;
+  payout_batch_id: string;
+  provider_payout_profile_id: string;
+  ledger_entry_id: string;
+  amount_cents: number;
+  currency: string;
+  status: string;
   created_at: string;
 };
 
@@ -131,6 +155,9 @@ function toneForStatus(status: string | null | undefined): "green" | "yellow" | 
     case "succeeded":
     case "verified":
     case "payable":
+    case "batched":
+    case "simulated_pending":
+    case "planned":
       return "green";
     case "pending":
     case "pending_event_completion":
@@ -217,7 +244,8 @@ export default async function PaymentsV2AdminPage() {
   }
 
   const admin = createSupabaseAdmin();
-  const [transactionsResult, ledgerResult, refundsResult, webhooksResult] = await Promise.all([
+  const [transactionsResult, ledgerResult, refundsResult, webhooksResult, payoutBatchesResult, payoutItemsResult] =
+    await Promise.all([
     admin
       .from("payment_transactions")
       .select(
@@ -229,7 +257,7 @@ export default async function PaymentsV2AdminPage() {
     admin
       .from("ledger_entries")
       .select(
-        "id,source_type,source_id,entry_type,gross_amount_cents,platform_fee_cents,provider_fee_cents,net_amount_cents,currency,payout_status,available_at,created_at"
+        "id,provider_payout_profile_id,source_type,source_id,entry_type,gross_amount_cents,platform_fee_cents,provider_fee_cents,net_amount_cents,currency,payout_status,available_at,payout_batch_id,created_at"
       )
       .order("created_at", { ascending: false })
       .limit(ROW_LIMIT)
@@ -247,12 +275,26 @@ export default async function PaymentsV2AdminPage() {
       .order("created_at", { ascending: false })
       .limit(ROW_LIMIT)
       .returns<ProviderWebhookEventRow[]>(),
+    admin
+      .from("payout_batches")
+      .select("id,payout_provider,payout_method,total_amount_cents,currency,status,scheduled_for,created_at")
+      .order("created_at", { ascending: false })
+      .limit(ROW_LIMIT)
+      .returns<PayoutBatchRow[]>(),
+    admin
+      .from("payout_items")
+      .select("id,payout_batch_id,provider_payout_profile_id,ledger_entry_id,amount_cents,currency,status,created_at")
+      .order("created_at", { ascending: false })
+      .limit(ROW_LIMIT)
+      .returns<PayoutItemRow[]>(),
   ]);
 
   const paymentTransactions = transactionsResult.data ?? [];
   const ledgerEntries = ledgerResult.data ?? [];
   const refundRecords = refundsResult.data ?? [];
   const webhookEvents = webhooksResult.data ?? [];
+  const payoutBatches = payoutBatchesResult.data ?? [];
+  const payoutItems = payoutItemsResult.data ?? [];
 
   const paymentTransactionIds = Array.from(
     new Set(
@@ -303,6 +345,9 @@ export default async function PaymentsV2AdminPage() {
             Read-only Kontrollansicht fuer die aktuelle Payment-V2-Spiegelung. Angezeigt werden nur interne
             Audit-Daten ohne Webhook-Payloads und ohne sensible Auszahlungsdaten.
           </p>
+          <div className="mt-4 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
+            Simulation only
+          </div>
         </header>
 
         <div className="grid gap-6">
@@ -366,6 +411,7 @@ export default async function PaymentsV2AdminPage() {
                     <th className="px-3 py-2">Brutto / Netto</th>
                     <th className="px-3 py-2">Quelle</th>
                     <th className="px-3 py-2">Payout Status</th>
+                    <th className="px-3 py-2">Batch</th>
                     <th className="px-3 py-2">Referenz</th>
                     <th className="px-3 py-2">Erstellt</th>
                   </tr>
@@ -403,6 +449,10 @@ export default async function PaymentsV2AdminPage() {
                           </div>
                           <div>available at: {formatDateTime(row.available_at)}</div>
                         </td>
+                        <td className="px-3 py-3 text-xs text-slate-600">
+                          <div>batch: {shortenId(row.payout_batch_id)}</div>
+                          <div>profile: {shortenId(row.provider_payout_profile_id)}</div>
+                        </td>
                         <td className="px-3 py-3">
                           <ReferenceCell
                             bookingId={relatedTransaction?.booking_id}
@@ -413,6 +463,83 @@ export default async function PaymentsV2AdminPage() {
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </div>
+          </Section>
+
+          <Section
+            title="Payout Batches"
+            description="Interne Simulations-Batches aus payable Ledger-Eintraegen. Es werden keine echten Auszahlungen ausgefuehrt."
+          >
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Provider / Methode</th>
+                    <th className="px-3 py-2">Total</th>
+                    <th className="px-3 py-2">Batch ID</th>
+                    <th className="px-3 py-2">Zeitpunkte</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payoutBatches.map((row) => (
+                    <tr key={row.id} className="border-b border-slate-100 align-top">
+                      <td className="px-3 py-3">
+                        <StatusBadge value={row.status} />
+                      </td>
+                      <td className="px-3 py-3 text-xs text-slate-600">
+                        <div>{row.payout_provider}</div>
+                        <div>{row.payout_method}</div>
+                      </td>
+                      <td className="px-3 py-3 font-medium text-slate-900">
+                        {formatMoney(row.total_amount_cents, row.currency)}
+                      </td>
+                      <td className="px-3 py-3 text-xs text-slate-600">{shortenId(row.id)}</td>
+                      <td className="px-3 py-3 text-xs text-slate-600">
+                        <div>created: {formatDateTime(row.created_at)}</div>
+                        <div>scheduled: {formatDateTime(row.scheduled_for)}</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Section>
+
+          <Section
+            title="Payout Items"
+            description="Interne Batch-Positionen im Simulationsmodus, jeweils referenziert auf einen Ledger-Eintrag."
+          >
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Betrag</th>
+                    <th className="px-3 py-2">Batch / Ledger</th>
+                    <th className="px-3 py-2">Profil</th>
+                    <th className="px-3 py-2">Erstellt</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payoutItems.map((row) => (
+                    <tr key={row.id} className="border-b border-slate-100 align-top">
+                      <td className="px-3 py-3">
+                        <StatusBadge value={row.status} />
+                      </td>
+                      <td className="px-3 py-3 font-medium text-slate-900">
+                        {formatMoney(row.amount_cents, row.currency)}
+                      </td>
+                      <td className="px-3 py-3 text-xs text-slate-600">
+                        <div>batch: {shortenId(row.payout_batch_id)}</div>
+                        <div>ledger: {shortenId(row.ledger_entry_id)}</div>
+                      </td>
+                      <td className="px-3 py-3 text-xs text-slate-600">{shortenId(row.provider_payout_profile_id)}</td>
+                      <td className="px-3 py-3 text-xs text-slate-600">{formatDateTime(row.created_at)}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

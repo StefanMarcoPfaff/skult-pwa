@@ -476,7 +476,7 @@ async function ensureLedgerEntry(input: {
   providerFeeCents: number;
   netAmountCents: number;
   currency: string;
-  payoutStatus: "pending" | "pending_event_completion" | "payable" | "cancelled";
+  payoutStatus: "pending" | "pending_event_completion" | "payable" | "batched" | "cancelled";
   availableAt?: string | null;
 }): Promise<void> {
   const admin = createSupabaseAdmin();
