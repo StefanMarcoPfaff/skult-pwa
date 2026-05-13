@@ -1,3 +1,4 @@
+import { mirrorStripePaymentToLedger } from "@/lib/payments/ledger";
 import { getProviderDisplayName, getWorkshopStornoPolicyLabel } from "@/lib/provider-profiles";
 import { getStripe } from "@/lib/stripe";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
@@ -44,6 +45,7 @@ type ProfileRow = {
   provider_type: "independent_teacher" | "studio_provider" | null;
   organization_name: string | null;
   photo_url: string | null;
+  stripe_account_id: string | null;
 };
 
 type ProviderContact = {
@@ -52,6 +54,7 @@ type ProviderContact = {
   providerEmail: string | null;
   providerContactName: string | null;
   senderImageUrl: string | null;
+  providerAccountId: string | null;
 };
 
 function isDev() {
@@ -107,13 +110,14 @@ async function resolveWorkshopProviderContact(
       providerEmail: null,
       providerContactName: null,
       senderImageUrl: null,
+      providerAccountId: null,
     };
   }
 
   const [{ data: profile }, authResult] = await Promise.all([
     admin
       .from("profiles")
-      .select("first_name,last_name,provider_type,organization_name,photo_url")
+      .select("first_name,last_name,provider_type,organization_name,photo_url,stripe_account_id")
       .eq("id", course.teacher_id)
       .maybeSingle<ProfileRow>(),
     admin.auth.admin.getUserById(course.teacher_id),
@@ -130,6 +134,7 @@ async function resolveWorkshopProviderContact(
     providerEmail,
     providerContactName,
     senderImageUrl: profile?.photo_url ?? null,
+    providerAccountId: profile?.stripe_account_id ?? null,
   };
 }
 
@@ -160,6 +165,7 @@ async function finalizeWorkshopBookingRecord(input: {
   paymentSessionId?: string | null;
   customerEmail?: string | null;
   customerName?: string | null;
+  stripeSession?: Stripe.Checkout.Session | null;
 }): Promise<FinalizedWorkshopBooking | null> {
   const admin = createSupabaseAdmin();
   const { data: booking } = await admin
@@ -233,6 +239,27 @@ async function finalizeWorkshopBookingRecord(input: {
     workshopSessions && workshopSessions.length > 0
       ? workshopSessions[workshopSessions.length - 1]?.ends_at ?? null
       : null;
+
+  if (input.paymentProvider === "stripe" && input.paymentStatus === "paid" && input.stripeSession) {
+    try {
+      await mirrorStripePaymentToLedger({
+        bookingId: booking.id,
+        teacherId: course?.teacher_id ?? null,
+        providerType: providerContact.providerType,
+        providerAccountId: providerContact.providerAccountId,
+        accountHolderName: providerContact.providerName ?? providerContact.providerContactName,
+        session: input.stripeSession,
+        fallbackAmountCents: course?.price_cents ?? null,
+        fallbackCurrency: course?.currency ?? null,
+        payoutStatus: "pending",
+      });
+    } catch (error) {
+      logWorkshopFinalization("payment-v2 mirror failed", {
+        bookingId: booking.id,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   if (ticket && customerEmail && !booking.workshop_confirmation_email_sent_at) {
     try {
@@ -368,7 +395,9 @@ export async function finalizeWorkshopBookingBySession(
   sessionId: string
 ): Promise<FinalizedWorkshopBooking | null> {
   const stripe = getStripe();
-  const session = await stripe.checkout.sessions.retrieve(sessionId);
+  const session = await stripe.checkout.sessions.retrieve(sessionId, {
+    expand: ["payment_intent"],
+  });
   const bookingId = session.metadata?.bookingId ?? session.client_reference_id ?? null;
 
   if (!bookingId || session.payment_status !== "paid") {
@@ -382,6 +411,7 @@ export async function finalizeWorkshopBookingBySession(
     paymentSessionId: session.id,
     customerEmail: session.customer_details?.email ?? session.customer_email ?? null,
     customerName: session.customer_details?.name?.trim() || null,
+    stripeSession: session,
   });
 }
 

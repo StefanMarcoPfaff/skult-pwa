@@ -1,4 +1,5 @@
 import { formatRecurringCoursePrice } from "@/lib/course-display";
+import { mirrorStripePaymentToLedger } from "@/lib/payments/ledger";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { getStripe } from "@/lib/stripe";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
@@ -53,6 +54,7 @@ type ProfileRow = {
   provider_type: "independent_teacher" | "studio_provider" | null;
   organization_name: string | null;
   photo_url: string | null;
+  stripe_account_id: string | null;
 };
 
 type ProviderContact = {
@@ -61,6 +63,7 @@ type ProviderContact = {
   providerEmail: string | null;
   providerContactName: string | null;
   senderImageUrl: string | null;
+  providerAccountId: string | null;
 };
 
 type SupabaseLikeError = {
@@ -135,13 +138,14 @@ async function resolveProviderContact(
       providerEmail: null,
       providerContactName: null,
       senderImageUrl: null,
+      providerAccountId: null,
     };
   }
 
   const [{ data: profile }, authResult] = await Promise.all([
     admin
       .from("profiles")
-      .select("first_name,last_name,provider_type,organization_name,photo_url")
+      .select("first_name,last_name,provider_type,organization_name,photo_url,stripe_account_id")
       .eq("id", course.teacher_id)
       .maybeSingle<ProfileRow>(),
     admin.auth.admin.getUserById(course.teacher_id),
@@ -155,6 +159,7 @@ async function resolveProviderContact(
     providerContactName:
       [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null,
     senderImageUrl: profile?.photo_url ?? null,
+    providerAccountId: profile?.stripe_account_id ?? null,
   };
 }
 
@@ -193,7 +198,7 @@ export async function finalizeCourseRegistrationCheckoutSession(input: {
 }): Promise<CourseRegistrationFinalizeResult> {
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.retrieve(input.sessionId, {
-    expand: ["subscription"],
+    expand: ["subscription", "payment_intent"],
   });
   const intentId = session.metadata?.registrationIntentId ?? null;
 
@@ -298,6 +303,23 @@ export async function finalizeCourseRegistrationCheckoutSession(input: {
   const providerName = providerContact.providerName;
   const subscriptionId =
     typeof session.subscription === "string" ? session.subscription : session.subscription?.id ?? null;
+
+  try {
+    await mirrorStripePaymentToLedger({
+      courseRegistrationIntentId: finalizedIntent.id,
+      teacherId: course?.teacher_id ?? null,
+      providerType: providerContact.providerType,
+      providerAccountId: providerContact.providerAccountId,
+      accountHolderName: providerContact.providerName ?? providerContact.providerContactName,
+      session,
+      paidAt: finalizedIntent.completed_at ?? completedAt,
+      fallbackAmountCents: course?.price_cents ?? null,
+      fallbackCurrency: course?.currency ?? null,
+      payoutStatus: "pending",
+    });
+  } catch (error) {
+    logRegistrationSuccessError("mirror-payment-v2", error);
+  }
 
   let ticketForDisplay: TicketRow | null = null;
 

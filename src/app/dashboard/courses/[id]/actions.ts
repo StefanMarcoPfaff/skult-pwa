@@ -2,8 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type Stripe from "stripe";
 import { getOfferArchiveEligibility } from "@/app/dashboard/archive-rules";
 import { sendCoursePauseNotificationEmail, sendCourseStopNotificationEmail } from "@/lib/course-lifecycle-emails";
+import { mirrorStripeRefundToLedger } from "@/lib/payments/ledger";
 import { paymentService } from "@/lib/payments/payment-service";
 import { getStripe } from "@/lib/stripe";
 import {
@@ -697,6 +699,17 @@ export async function cancelWorkshopAction(formData: FormData) {
         referenceType: "checkout_session",
         referenceId: booking.stripe_session_id,
       });
+      if (refund.raw) {
+        try {
+          await mirrorStripeRefundToLedger({
+            bookingId: booking.id,
+            checkoutSessionId: booking.stripe_session_id,
+            refund: refund.raw as Stripe.Refund,
+          });
+        } catch {
+          hadRefundErrors = true;
+        }
+      }
       const { error: bookingUpdateError } = await admin
         .from("bookings")
         .update({

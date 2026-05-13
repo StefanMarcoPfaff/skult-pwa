@@ -4,6 +4,7 @@ import {
   finalizeCourseRegistrationCheckoutSession,
   markCourseRegistrationCheckoutFailed,
 } from "@/lib/course-registration-finalization";
+import { recordStripeWebhookEvent } from "@/lib/payments/ledger";
 import { paymentService } from "@/lib/payments/payment-service";
 import { finalizeWorkshopBookingBySession } from "@/lib/workshop-booking-finalization";
 
@@ -41,6 +42,10 @@ export async function POST(req: Request) {
       payload: body,
     });
     event = webhook.event.rawEvent as Stripe.Event;
+    await recordStripeWebhookEvent({
+      event,
+      processingStatus: "processing",
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Signature verification failed";
     console.error("[stripe-webhook] signature verification failed", message);
@@ -62,6 +67,11 @@ export async function POST(req: Request) {
         await markCourseRegistrationCheckoutFailed({
           sessionId: session.id,
           expectedIntentId: session.metadata.registrationIntentId,
+        });
+        await recordStripeWebhookEvent({
+          event,
+          processingStatus: "failed",
+          processedAt: new Date().toISOString(),
         });
         return NextResponse.json({ received: true });
       }
@@ -85,6 +95,11 @@ export async function POST(req: Request) {
         intentId: finalized.kind === "ignored" ? null : finalized.intentId,
         result: finalized.kind,
       });
+      await recordStripeWebhookEvent({
+        event,
+        processingStatus: finalized.kind === "ignored" ? "ignored" : "processed",
+        processedAt: new Date().toISOString(),
+      });
 
       return NextResponse.json({ received: true });
     }
@@ -102,11 +117,21 @@ export async function POST(req: Request) {
       bookingId: finalized.bookingId,
       ticketId: finalized.ticket?.id ?? null,
     });
+    await recordStripeWebhookEvent({
+      event,
+      processingStatus: "processed",
+      processedAt: new Date().toISOString(),
+    });
 
     return NextResponse.json({ received: true });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Webhook handler failed";
     console.error("[stripe-webhook] handler failed", message);
+    await recordStripeWebhookEvent({
+      event,
+      processingStatus: "failed",
+      processedAt: new Date().toISOString(),
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
