@@ -35,6 +35,7 @@ type LedgerEntryRow = {
   net_amount_cents: number;
   currency: string;
   payout_status: string;
+  available_at: string | null;
   created_at: string;
 };
 
@@ -129,8 +130,10 @@ function toneForStatus(status: string | null | undefined): "green" | "yellow" | 
     case "processed":
     case "succeeded":
     case "verified":
+    case "payable":
       return "green";
     case "pending":
+    case "pending_event_completion":
     case "processing":
     case "requires_action":
     case "scheduled":
@@ -226,7 +229,7 @@ export default async function PaymentsV2AdminPage() {
     admin
       .from("ledger_entries")
       .select(
-        "id,source_type,source_id,entry_type,gross_amount_cents,platform_fee_cents,provider_fee_cents,net_amount_cents,currency,payout_status,created_at"
+        "id,source_type,source_id,entry_type,gross_amount_cents,platform_fee_cents,provider_fee_cents,net_amount_cents,currency,payout_status,available_at,created_at"
       )
       .order("created_at", { ascending: false })
       .limit(ROW_LIMIT)
@@ -362,6 +365,7 @@ export default async function PaymentsV2AdminPage() {
                     <th className="px-3 py-2">Entry</th>
                     <th className="px-3 py-2">Brutto / Netto</th>
                     <th className="px-3 py-2">Quelle</th>
+                    <th className="px-3 py-2">Payout Status</th>
                     <th className="px-3 py-2">Referenz</th>
                     <th className="px-3 py-2">Erstellt</th>
                   </tr>
@@ -392,6 +396,12 @@ export default async function PaymentsV2AdminPage() {
                         <td className="px-3 py-3 text-xs text-slate-600">
                           <div>{row.source_type}</div>
                           <div>{shortenId(row.source_id)}</div>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-600">
+                          <div className="mb-2">
+                            <StatusBadge value={row.payout_status} />
+                          </div>
+                          <div>available at: {formatDateTime(row.available_at)}</div>
                         </td>
                         <td className="px-3 py-3">
                           <ReferenceCell

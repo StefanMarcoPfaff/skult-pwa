@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 import { calculatePlatformFeeAmount, calculateProviderPayoutAmount } from "@/lib/platform-fees";
+import { calculatePayoutAvailableAt } from "@/lib/payments/payout-eligibility";
 import type { ProviderType } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import type { LedgerEntry } from "@/lib/payments/types";
@@ -52,6 +53,7 @@ type MirrorStripePaymentInput = {
   providerAccountId?: string | null;
   accountHolderName?: string | null;
   payoutStatus?: "pending" | "pending_event_completion";
+  availableAt?: string | null;
   session: Stripe.Checkout.Session;
   paidAt?: string | null;
   fallbackAmountCents?: number | null;
@@ -344,6 +346,7 @@ async function ensureStripePaymentLedgerMirror(input: {
   amountCents: number;
   currency: string;
   payoutStatus?: "pending" | "pending_event_completion";
+  availableAt?: string | null;
 }): Promise<void> {
   const providerPayoutProfileId = await ensureProviderPayoutProfile({
     teacherId: input.teacherId,
@@ -364,6 +367,7 @@ async function ensureStripePaymentLedgerMirror(input: {
     netAmountCents,
     currency: input.currency,
     payoutStatus: input.payoutStatus ?? "pending",
+    availableAt: input.availableAt ?? null,
   });
 }
 
@@ -472,7 +476,8 @@ async function ensureLedgerEntry(input: {
   providerFeeCents: number;
   netAmountCents: number;
   currency: string;
-  payoutStatus: "pending" | "pending_event_completion" | "cancelled";
+  payoutStatus: "pending" | "pending_event_completion" | "payable" | "cancelled";
+  availableAt?: string | null;
 }): Promise<void> {
   const admin = createSupabaseAdmin();
   const { data: existing } = await admin
@@ -494,6 +499,7 @@ async function ensureLedgerEntry(input: {
         net_amount_cents: input.netAmountCents,
         currency: input.currency,
         payout_status: input.payoutStatus,
+        available_at: input.availableAt ?? null,
       })
       .eq("id", existing.id);
     return;
@@ -510,6 +516,7 @@ async function ensureLedgerEntry(input: {
     net_amount_cents: input.netAmountCents,
     currency: input.currency,
     payout_status: input.payoutStatus,
+    available_at: input.availableAt ?? null,
   });
 }
 
@@ -589,6 +596,7 @@ export async function mirrorStripePaymentToLedger(input: MirrorStripePaymentInpu
     amountCents,
     currency,
     payoutStatus: input.payoutStatus ?? "pending",
+    availableAt: input.availableAt ?? null,
   });
 
   return paymentTransactionId;
@@ -759,6 +767,7 @@ export async function mirrorStripeInvoiceEventToLedger(input: {
       amountCents,
       currency,
       payoutStatus: "pending",
+      availableAt: null,
     });
   }
 
@@ -776,6 +785,8 @@ export async function mirrorStripeRefundEventToLedger(input: {
 }): Promise<string | null> {
   return upsertStripeRefundMirror(input);
 }
+
+export { calculatePayoutAvailableAt };
 
 export async function recordStripeWebhookEvent(input: RecordStripeWebhookEventInput): Promise<void> {
   const admin = createSupabaseAdmin();

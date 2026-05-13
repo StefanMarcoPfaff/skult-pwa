@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 import { mirrorStripePaymentToLedger } from "@/lib/payments/ledger";
+import { DEFAULT_PAYOUT_HOLD_DAYS } from "@/lib/payments/payout-eligibility";
 import { getProviderDisplayName, getWorkshopStornoPolicyLabel } from "@/lib/provider-profiles";
 import { getStripe } from "@/lib/stripe";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
@@ -252,7 +253,12 @@ async function finalizeWorkshopBookingRecord(input: {
         session: input.stripeSession,
         fallbackAmountCents: course?.price_cents ?? null,
         fallbackCurrency: course?.currency ?? null,
-        payoutStatus: "pending",
+        payoutStatus: "pending_event_completion",
+        availableAt: lastSessionEnd
+          ? new Date(
+              new Date(lastSessionEnd).getTime() + DEFAULT_PAYOUT_HOLD_DAYS * 24 * 60 * 60 * 1000
+            ).toISOString()
+          : null,
       });
     } catch (error) {
       logWorkshopFinalization("payment-v2 mirror failed", {
