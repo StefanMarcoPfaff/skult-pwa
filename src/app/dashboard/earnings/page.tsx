@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import EarningsTableClient, { type EarningsTableRow } from "./EarningsTableClient";
 
 type SearchParams = {
   offerType?: string;
@@ -81,6 +82,7 @@ type EarningsRow = {
   statusLabel: string;
   statusDetail: string | null;
   includeInSummary: boolean;
+  statusToneClass: string;
 };
 
 const LEDGER_ENTRY_LIMIT = 80;
@@ -90,15 +92,6 @@ function formatMoney(amountCents: number, currency: string | null | undefined): 
     style: "currency",
     currency: currency?.trim().toUpperCase() || "EUR",
   }).format((amountCents ?? 0) / 100);
-}
-
-function formatDate(value: string | null): string {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("de-DE", {
-    dateStyle: "medium",
-  });
 }
 
 function formatDateTime(value: string | null): string {
@@ -443,6 +436,7 @@ export default async function DashboardEarningsPage({
       statusLabel: displayStatus.statusLabel,
       statusDetail: displayStatus.statusDetail,
       includeInSummary: displayStatus.includeInSummary,
+      statusToneClass: toneForStatus(displayStatus.statusKey),
     };
   });
 
@@ -467,6 +461,18 @@ export default async function DashboardEarningsPage({
   });
 
   const summaryRows = filteredRows.filter((row) => row.includeInSummary);
+  const tableRows: EarningsTableRow[] = filteredRows.map((row) => ({
+    id: row.id,
+    offerTitle: row.offerTitle,
+    offerTypeLabel: row.offerTypeLabel,
+    date: row.date,
+    grossCents: row.grossCents,
+    platformFeeCents: row.platformFeeCents,
+    netCents: row.netCents,
+    statusLabel: row.statusLabel,
+    statusDetail: row.statusDetail,
+    statusToneClass: row.statusToneClass,
+  }));
   const totals = summaryRows.reduce(
     (acc, row) => {
       acc.grossCents += row.grossCents;
@@ -667,51 +673,7 @@ export default async function DashboardEarningsPage({
           </p>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-3 py-2">Angebot</th>
-                <th className="px-3 py-2">Typ</th>
-                <th className="px-3 py-2">Datum</th>
-                <th className="px-3 py-2">Brutto</th>
-                <th className="px-3 py-2">RESER-Abzug</th>
-                <th className="px-3 py-2">Dein Betrag</th>
-                <th className="px-3 py-2">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRows.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-3 py-6 text-sm text-slate-500">
-                    Fuer die aktuelle Auswahl wurden noch keine Eintraege gefunden.
-                  </td>
-                </tr>
-              ) : (
-                filteredRows.map((row) => (
-                  <tr key={row.id} className="border-b border-slate-100 align-top">
-                    <td className="px-3 py-3">
-                      <div className="font-medium text-slate-900">{row.offerTitle}</div>
-                    </td>
-                    <td className="px-3 py-3 text-slate-700">{row.offerTypeLabel}</td>
-                    <td className="px-3 py-3 text-slate-700">{formatDate(row.date)}</td>
-                    <td className="px-3 py-3 font-medium text-slate-900">{formatMoney(row.grossCents, "EUR")}</td>
-                    <td className="px-3 py-3 text-slate-700">{formatMoney(row.platformFeeCents, "EUR")}</td>
-                    <td className="px-3 py-3 font-medium text-slate-900">{formatMoney(row.netCents, "EUR")}</td>
-                    <td className="px-3 py-3">
-                      <div className="space-y-2">
-                        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${toneForStatus(row.statusKey)}`}>
-                          {row.statusLabel}
-                        </span>
-                        {row.statusDetail ? <div className="text-xs text-slate-500">{row.statusDetail}</div> : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <EarningsTableClient rows={tableRows} />
       </section>
     </main>
   );
