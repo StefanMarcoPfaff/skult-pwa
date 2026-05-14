@@ -1,31 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { createSimulatedPayoutBatch } from "@/lib/payments/payout-batches";
 import {
   forceLedgerEntryPayableForTest,
   markEligibleLedgerEntriesAsPayable,
 } from "@/lib/payments/payout-eligibility";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { canAccessPaymentsV2Audit } from "./access";
-
-const PAYMENTS_V2_ADMIN_PATH = "/dashboard/admin/payments-v2";
-
-async function requirePaymentsV2AdminAccess() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  if (!canAccessPaymentsV2Audit(user.email)) {
-    notFound();
-  }
-}
+import { requirePaymentsV2AdminAccess } from "./access";
+import { PAYMENTS_V2_ADMIN_PATH } from "./ui";
 
 function redirectWithActionState(actionState: string) {
   redirect(`${PAYMENTS_V2_ADMIN_PATH}?action=${encodeURIComponent(actionState)}`);

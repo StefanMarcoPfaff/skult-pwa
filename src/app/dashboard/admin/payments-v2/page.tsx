@@ -1,13 +1,21 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   createSimulatedPayoutBatchAction,
   forceLedgerEntryPayableForTestAction,
   markEligibleLedgerEntriesAsPayableAction,
 } from "./actions";
-import { canAccessPaymentsV2Audit } from "./access";
+import { requirePaymentsV2AdminAccess } from "./access";
+import {
+  AuditNav,
+  PAYMENTS_V2_ADMIN_PATH,
+  PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH,
+  Section,
+  StatusBadge,
+  formatDateTime,
+  formatMoney,
+  shortenId,
+} from "./ui";
 
 export const dynamic = "force-dynamic";
 
@@ -102,81 +110,6 @@ type SearchParams = {
 
 const ROW_LIMIT = 20;
 
-function formatDateTime(value: string | null): string {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("de-DE", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
-
-function formatMoney(amountCents: number, currency: string | null | undefined): string {
-  return new Intl.NumberFormat("de-DE", {
-    style: "currency",
-    currency: currency?.trim().toUpperCase() || "EUR",
-  }).format((amountCents ?? 0) / 100);
-}
-
-function shortenId(value: string | null | undefined): string {
-  if (!value) return "-";
-  if (value.length <= 14) return value;
-  return `${value.slice(0, 8)}...${value.slice(-4)}`;
-}
-
-function badgeClasses(tone: "green" | "yellow" | "red" | "gray" | "blue"): string {
-  switch (tone) {
-    case "green":
-      return "bg-green-100 text-green-800";
-    case "yellow":
-      return "bg-amber-100 text-amber-800";
-    case "red":
-      return "bg-rose-100 text-rose-800";
-    case "blue":
-      return "bg-sky-100 text-sky-800";
-    default:
-      return "bg-slate-100 text-slate-700";
-  }
-}
-
-function toneForStatus(status: string | null | undefined): "green" | "yellow" | "red" | "gray" | "blue" {
-  switch (status) {
-    case "paid":
-    case "processed":
-    case "succeeded":
-    case "verified":
-    case "payable":
-    case "batched":
-    case "simulated_pending":
-    case "planned":
-      return "green";
-    case "pending":
-    case "pending_event_completion":
-    case "processing":
-    case "requires_action":
-    case "scheduled":
-      return "yellow";
-    case "failed":
-    case "cancelled":
-    case "refunded":
-    case "deleted":
-      return "red";
-    case "ignored":
-      return "gray";
-    default:
-      return "blue";
-  }
-}
-
-function StatusBadge({ value }: { value: string | null | undefined }) {
-  return (
-    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${badgeClasses(toneForStatus(value))}`}>
-      {value ?? "-"}
-    </span>
-  );
-}
-
 function ReferenceCell({
   bookingId,
   courseRegistrationIntentId,
@@ -198,26 +131,6 @@ function ReferenceCell({
       </div>
       <div>intent: {courseRegistrationIntentId ? shortenId(courseRegistrationIntentId) : "-"}</div>
     </div>
-  );
-}
-
-function Section({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-        <p className="mt-1 text-sm text-slate-600">{description}</p>
-      </div>
-      {children}
-    </section>
   );
 }
 
@@ -299,18 +212,7 @@ export default async function PaymentsV2AdminPage({
   searchParams: Promise<SearchParams>;
 }) {
   const sp = await searchParams;
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  if (!canAccessPaymentsV2Audit(user.email)) {
-    notFound();
-  }
+  await requirePaymentsV2AdminAccess();
 
   const admin = createSupabaseAdmin();
   const [transactionsResult, ledgerResult, refundsResult, webhooksResult, payoutBatchesResult, payoutItemsResult] =
@@ -414,8 +316,17 @@ export default async function PaymentsV2AdminPage({
             Read-only Kontrollansicht fuer die aktuelle Payment-V2-Spiegelung. Angezeigt werden nur interne
             Audit-Daten ohne Webhook-Payloads und ohne sensible Auszahlungsdaten.
           </p>
+          <div className="mt-4">
+            <AuditNav currentPath={PAYMENTS_V2_ADMIN_PATH} />
+          </div>
           <div className="mt-4 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
             Simulation only
+          </div>
+          <div className="mt-4 text-sm text-slate-600">
+            Subscription-Domain-Audit:{" "}
+            <Link className="font-medium text-sky-700 underline" href={PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH}>
+              Subscription Audit oeffnen
+            </Link>
           </div>
         </header>
 
