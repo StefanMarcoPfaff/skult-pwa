@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { getProviderDisplayName, type ProviderType } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import DashboardFilterPanel from "../_components/DashboardFilterPanel";
+import DashboardPageHeader from "../_components/DashboardPageHeader";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -452,19 +454,12 @@ export default async function DashboardAttendancePage({
 
   return (
     <main className="mx-auto max-w-7xl space-y-6 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-2">
-          <Link href="/dashboard" className="inline-flex text-sm font-medium underline underline-offset-4">
-            Zurück zum Dashboard
-          </Link>
-          <h1 className="text-3xl font-semibold">Anwesenheit & Check-ins</h1>
-          <p className="text-sm text-muted-foreground">
-            Interne Übersicht über Anwesenheiten, Check-in-Methode und nicht erfasste Teilnahmen.
-          </p>
-        </div>
-      </div>
+      <DashboardPageHeader
+        title="Anwesenheit & Check-ins"
+        description="Interne Übersicht über Anwesenheiten, Check-in-Methode und nicht erfasste Teilnahmen."
+      />
 
-      <section className="rounded-2xl border p-5">
+      <DashboardFilterPanel>
         <form className="grid gap-4 md:grid-cols-4">
           <label className="space-y-1 text-sm">
             <span className="font-medium">Von</span>
@@ -541,7 +536,7 @@ export default async function DashboardAttendancePage({
             </Link>
           </div>
         </form>
-      </section>
+      </DashboardFilterPanel>
 
       <section className="rounded-2xl border">
         <div className="flex items-center justify-between border-b px-5 py-4">

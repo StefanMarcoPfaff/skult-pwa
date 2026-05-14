@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import DashboardFilterPanel from "../_components/DashboardFilterPanel";
+import DashboardPageHeader from "../_components/DashboardPageHeader";
 import { ParticipantOverviewList } from "./ParticipantOverviewList";
 import { loadParticipantOverviewItems } from "./participant-overview-data";
 
@@ -92,13 +94,19 @@ export default async function DashboardParticipantsPage({
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-6">
-      <header className="space-y-2">
-        <h1 className="text-3xl font-semibold">Teilnehmende</h1>
-        <p className="text-sm text-muted-foreground">
-          Hier siehst du Probeteilnahmen, verbindliche Anmeldungen, Buchungen und Check-ins für
-          deine Angebote.
-        </p>
-      </header>
+      <DashboardPageHeader
+        title="Teilnehmende"
+        description="Hier siehst du Probeteilnahmen, verbindliche Anmeldungen, Buchungen und Check-ins für deine Angebote."
+      />
+
+      <DashboardFilterPanel>
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold text-slate-900">Filter</h2>
+          <p className="text-sm text-slate-600">
+            Die fachlichen Filter und die Sortierung werden im nächsten Schritt vereinheitlicht.
+          </p>
+        </div>
+      </DashboardFilterPanel>
 
       <FlashMessages saved={saved} />
 

@@ -21,6 +21,8 @@ import { getOfferKindLabel, getOfferVisibilityLabel, isOneTimeOfferKind } from "
 import { normalizeOfferVisibility } from "@/lib/public-offer-visibility";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import DashboardFilterPanel from "../_components/DashboardFilterPanel";
+import DashboardPageHeader from "../_components/DashboardPageHeader";
 import { OfferCard } from "./OfferCard";
 import {
   DISABLED_OFFER_ACTION_ICON_CLASS,
@@ -317,25 +319,24 @@ export default async function DashboardCoursesPage({
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-semibold">Meine Angebote</h1>
-          <p className="text-sm text-muted-foreground">
-            Hier verwaltest du deine laufenden und einmaligen Angebote.
-          </p>
-        </div>
+      <DashboardPageHeader
+        title="Meine Angebote"
+        description="Hier verwaltest du deine laufenden und einmaligen Angebote."
+        actions={
+          <Link href="/dashboard/courses/new" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
+            Neues Angebot
+          </Link>
+        }
+      />
 
-        <Link href="/dashboard/courses/new" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
-          Neues Angebot
-        </Link>
-      </header>
-
-      <nav className="flex flex-wrap gap-2" aria-label="Angebotsfilter">
+      <DashboardFilterPanel>
+        <nav className="flex flex-wrap gap-2" aria-label="Angebotsfilter">
         <FilterTab href={buildTabHref("all")} active={selectedView === "all"} tone="neutral" label="Alle Angebote" />
         <FilterTab href={buildTabHref("active")} active={selectedView === "active"} tone="green" icon={<PlayGlyph />} label="Aktive / buchbare Angebote" />
         <FilterTab href={buildTabHref("drafts")} active={selectedView === "drafts"} tone="orange" icon={<PauseGlyph />} label="Entwürfe / pausierte Angebote" />
         <FilterTab href={buildTabHref("archive")} active={selectedView === "archive"} tone="red" icon={<StopGlyph />} label="Vergangene / gestoppte Angebote" />
-      </nav>
+        </nav>
+      </DashboardFilterPanel>
 
       {savedParam === "missing_policy" ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

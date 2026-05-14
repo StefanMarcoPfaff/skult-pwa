@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import DashboardFilterPanel from "../_components/DashboardFilterPanel";
+import DashboardPageHeader from "../_components/DashboardPageHeader";
 import EarningsTableClient, { type EarningsTableRow } from "./EarningsTableClient";
 
 type SearchParams = {
@@ -165,7 +167,7 @@ function getDisplayStatus(input: {
     return {
       statusKey: "vorbereitet",
       statusLabel: "Zur Auszahlung vorbereitet",
-      statusDetail: "Dieser Betrag ist fuer den naechsten Auszahlungslauf vorbereitet.",
+      statusDetail: "Dieser Betrag ist für den nächsten Auszahlungslauf vorbereitet.",
       includeInSummary: true,
     };
   }
@@ -174,7 +176,7 @@ function getDisplayStatus(input: {
     return {
       statusKey: "auszahlbar",
       statusLabel: "Auszahlbar",
-      statusDetail: "Dieser Betrag kann fuer eine Auszahlung beruecksichtigt werden.",
+      statusDetail: "Dieser Betrag kann für eine Auszahlung berücksichtigt werden.",
       includeInSummary: true,
     };
   }
@@ -182,10 +184,10 @@ function getDisplayStatus(input: {
   if (input.payoutStatus === "pending_event_completion") {
     return {
       statusKey: "vorgemerkt",
-      statusLabel: "Vorgemerkt - Auszahlung nach Durchfuehrung",
+      statusLabel: "Vorgemerkt - Auszahlung nach Durchführung",
       statusDetail: input.availableAt
         ? `Voraussichtlich auszahlbar ab ${formatDateTime(input.availableAt)}`
-        : "Die Auszahlung wird nach Durchfuehrung des Angebots vorgemerkt.",
+        : "Die Auszahlung wird nach Durchführung des Angebots vorgemerkt.",
       includeInSummary: true,
     };
   }
@@ -505,27 +507,20 @@ export default async function DashboardEarningsPage({
 
   return (
     <main className="mx-auto max-w-7xl space-y-6 p-6">
-      <Link href="/dashboard" className="inline-flex text-sm font-medium underline underline-offset-4">
-        Zurueck zum Dashboard
-      </Link>
-
-      <header className="space-y-2">
-        <h1 className="text-3xl font-semibold">Einnahmen & Auszahlungen</h1>
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          Hier siehst du, was gebucht wurde, was RESER abzieht und welche Betraege fuer dich bereits auszahlbar sind
-          oder noch vorgemerkt bleiben.
-        </p>
-      </header>
+      <DashboardPageHeader
+        title="Einnahmen & Auszahlungen"
+        description="Hier siehst du, was gebucht wurde, was RESER abzieht und welche Beträge für dich bereits auszahlbar sind oder noch vorgemerkt bleiben."
+      />
 
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        Hinweis: Auszahlungen befinden sich aktuell noch im Testmodus. Es werden keine echten Auszahlungen ausgeloest.
+        Hinweis: Auszahlungen befinden sich aktuell noch im Testmodus. Es werden keine echten Auszahlungen ausgelöst.
       </div>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <SummaryCard
           title="Gesamteinnahmen brutto"
           value={formatMoney(totals.grossCents, "EUR")}
-          description="Alle aktuell beruecksichtigten Buchungen vor Abzuegen."
+          description="Alle aktuell berücksichtigten Buchungen vor Abzügen."
         />
         <SummaryCard
           title="RESER-Provision"
@@ -533,9 +528,9 @@ export default async function DashboardEarningsPage({
           description="Dieser Anteil wird von RESER einbehalten."
         />
         <SummaryCard
-          title="Netto fuer dich"
+          title="Netto für dich"
           value={formatMoney(totals.netCents, "EUR")}
-          description="Das bleibt nach dem RESER-Abzug fuer dich uebrig."
+          description="Das bleibt nach dem RESER-Abzug für dich übrig."
         />
         <SummaryCard
           title="Bereits auszahlbar/ausgezahlt"
@@ -545,11 +540,11 @@ export default async function DashboardEarningsPage({
         <SummaryCard
           title="Noch vorgemerkt"
           value={formatMoney(totals.pendingCents, "EUR")}
-          description="Noch nicht auszahlbar, zum Beispiel vor der Durchfuehrung."
+          description="Noch nicht auszahlbar, zum Beispiel vor der Durchführung."
         />
       </section>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <DashboardFilterPanel>
         <div className="space-y-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Filter</h2>
@@ -663,11 +658,11 @@ export default async function DashboardEarningsPage({
             </form>
           </div>
         </div>
-      </section>
+      </DashboardFilterPanel>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-4">
-          <h2 className="text-lg font-semibold text-slate-900">Uebersicht</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Übersicht</h2>
           <p className="mt-1 text-sm text-slate-600">
             Angezeigt werden nur deine eigenen Daten ohne Bankdaten und ohne interne Verwaltungsdaten.
           </p>
