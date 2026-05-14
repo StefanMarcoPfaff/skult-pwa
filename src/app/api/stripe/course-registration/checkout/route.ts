@@ -8,7 +8,13 @@ import {
   getCourseSubscriptionCheckoutCurrencyError,
   isCourseSubscriptionCheckoutCurrencySupported,
 } from "@/lib/course-subscription-checkout";
+import { isPaymentsV2SubscriptionsDualWriteEnabled } from "@/lib/payments/config";
 import { paymentService } from "@/lib/payments/payment-service";
+import {
+  findSubscriptionContractById,
+  findSubscriptionContractByIntentId,
+} from "@/lib/payments/subscriptions/contracts-repo";
+import { createPendingInitialPaymentContract } from "@/lib/payments/subscriptions/contracts-service";
 import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
 import { getStripe } from "@/lib/stripe";
 import { getSiteUrl, isStripeDestinationChargeReady } from "@/lib/stripe-connect";
@@ -19,6 +25,7 @@ type IntentRow = {
   id: string;
   trial_reservation_id: string;
   course_id: string;
+  subscription_contract_id: string | null;
   registration_token: string;
   email: string;
   first_name: string;
@@ -49,6 +56,74 @@ function isExpired(value: string | null): boolean {
   return Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() < Date.now();
 }
 
+async function ensureDraftSubscriptionContractForCheckout(input: {
+  admin: ReturnType<typeof createSupabaseAdmin>;
+  intent: IntentRow;
+  course: CourseRow;
+}): Promise<string | null> {
+  if (!isPaymentsV2SubscriptionsDualWriteEnabled()) {
+    return null;
+  }
+
+  const existingContractId = input.intent.subscription_contract_id?.trim() || null;
+  if (existingContractId) {
+    const existingById = await findSubscriptionContractById(existingContractId);
+    if (existingById) {
+      return existingById.id;
+    }
+  }
+
+  const existingByIntent = await findSubscriptionContractByIntentId(input.intent.id);
+  if (existingByIntent) {
+    if (!existingContractId) {
+      await input.admin
+        .from("course_registration_intents")
+        .update({ subscription_contract_id: existingByIntent.id })
+        .eq("id", input.intent.id)
+        .is("subscription_contract_id", null);
+    }
+    return existingByIntent.id;
+  }
+
+  try {
+    const createdContract = await createPendingInitialPaymentContract({
+      courseRegistrationIntentId: input.intent.id,
+      courseId: input.course.id,
+      teacherId: input.course.teacher_id!,
+      customerEmail: input.intent.email,
+      provider: "stripe",
+      baseAmountCents: input.course.price_cents!,
+      currency: getCourseSubscriptionCheckoutCurrency(),
+      billingAnchorDay: 1,
+      metadata: {
+        checkoutFlow: "course_registration",
+        trialReservationId: input.intent.trial_reservation_id,
+      },
+    });
+
+    await input.admin
+      .from("course_registration_intents")
+      .update({ subscription_contract_id: createdContract.id })
+      .eq("id", input.intent.id)
+      .is("subscription_contract_id", null);
+
+    return createdContract.id;
+  } catch (error) {
+    const existingAfterConflict = await findSubscriptionContractByIntentId(input.intent.id);
+    if (existingAfterConflict) {
+      await input.admin
+        .from("course_registration_intents")
+        .update({ subscription_contract_id: existingAfterConflict.id })
+        .eq("id", input.intent.id)
+        .is("subscription_contract_id", null);
+
+      return existingAfterConflict.id;
+    }
+
+    throw error;
+  }
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const intentId = url.searchParams.get("intentId");
@@ -62,7 +137,7 @@ export async function GET(req: Request) {
 
   const { data: intent } = await admin
     .from("course_registration_intents")
-    .select("id,trial_reservation_id,course_id,registration_token,email,first_name,last_name,status")
+    .select("id,trial_reservation_id,course_id,subscription_contract_id,registration_token,email,first_name,last_name,status")
     .eq("id", intentId)
     .maybeSingle<IntentRow>();
 
@@ -139,6 +214,11 @@ export async function GET(req: Request) {
   const siteUrl = getSiteUrl(req.url);
   const sessionCurrency = getCourseSubscriptionCheckoutCurrency().toLowerCase();
   const billingCycleAnchor = getCourseSubscriptionBillingCycleAnchor();
+  const subscriptionContractId = await ensureDraftSubscriptionContractForCheckout({
+    admin,
+    intent,
+    course,
+  });
 
   let sessionId: string;
   let sessionUrl: string | null;
@@ -174,6 +254,7 @@ export async function GET(req: Request) {
         registrationToken: token,
         teacherStripeAccountId: profile.stripe_account_id,
         checkoutFlow: "course_registration",
+        ...(subscriptionContractId ? { subscriptionContractId } : {}),
       },
       clientReferenceId: intent.id,
     });

@@ -27,6 +27,15 @@ export async function createDraftContract(
   });
 }
 
+export async function createPendingInitialPaymentContract(
+  input: Omit<CreateSubscriptionContractInput, "status">
+): Promise<SubscriptionContract> {
+  return createSubscriptionContract({
+    ...input,
+    status: "pending_initial_payment",
+  });
+}
+
 export async function activateContract(input: {
   contractId: string;
   startedAt?: string | null;
