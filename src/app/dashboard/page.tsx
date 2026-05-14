@@ -549,8 +549,8 @@ export default async function DashboardPage({
         />
 
         <DashboardNavCard
-          href="/dashboard/revenue"
-          title="Einnahmen"
+          href="/dashboard/earnings"
+          title="Einnahmen & Auszahlungen"
           description="Übersicht über deine bisherigen Einnahmen und Umsätze."
           footerLabel="Einnahmen diesen Monat"
           footerValue={formatCurrency(currentMonthRevenueCents)}
