@@ -4,6 +4,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   createSimulatedPayoutBatchAction,
+  forceLedgerEntryPayableForTestAction,
   markEligibleLedgerEntriesAsPayableAction,
 } from "./actions";
 import { canAccessPaymentsV2Audit } from "./access";
@@ -250,6 +251,16 @@ function ActionNotice({ action }: { action: string | undefined }) {
   } else if (action === "batch-error") {
     message = "Fehler beim Erzeugen des Simulated Payout Batch.";
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+  } else if (action.startsWith("force-payable-ok-")) {
+    message = "Ledger-Eintrag wurde im Testmodus auf payable gesetzt. Nur Testmodus - loest keine echte Auszahlung aus.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+  } else if (action.startsWith("force-payable-none-")) {
+    message =
+      "Ledger-Eintrag konnte nicht umgestellt werden. Er muss pending_event_completion sein und darf noch keinem Batch zugeordnet sein.";
+    toneClass = "border-amber-200 bg-amber-50 text-amber-800";
+  } else if (action.startsWith("force-payable-error-")) {
+    message = "Fehler beim Force-payable-Test. Nur Testmodus - loest keine echte Auszahlung aus.";
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
   }
 
   return <div className={`rounded-2xl border px-4 py-3 text-sm ${toneClass}`}>{message}</div>;
@@ -476,6 +487,9 @@ export default async function PaymentsV2AdminPage({
           </Section>
 
           <Section title="Ledger Entries" description="Letzte erzeugte Ledger-Zeilen der Payment-V2-Spiegelung.">
+            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Nur Testmodus - loest keine echte Auszahlung aus.
+            </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
                 <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
@@ -486,6 +500,7 @@ export default async function PaymentsV2AdminPage({
                     <th className="px-3 py-2">Payout Status</th>
                     <th className="px-3 py-2">Batch</th>
                     <th className="px-3 py-2">Referenz</th>
+                    <th className="px-3 py-2">Testmodus</th>
                     <th className="px-3 py-2">Erstellt</th>
                   </tr>
                 </thead>
@@ -531,6 +546,24 @@ export default async function PaymentsV2AdminPage({
                             bookingId={relatedTransaction?.booking_id}
                             courseRegistrationIntentId={relatedTransaction?.course_registration_intent_id}
                           />
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-600">
+                          {row.payout_status === "pending_event_completion" && !row.payout_batch_id ? (
+                            <form action={forceLedgerEntryPayableForTestAction} className="space-y-2">
+                              <input type="hidden" name="ledgerEntryId" value={row.id} />
+                              <button
+                                type="submit"
+                                className="inline-flex rounded-xl border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-900 transition hover:bg-amber-200"
+                              >
+                                Force payable (Test)
+                              </button>
+                              <div className="text-[11px] text-amber-800">
+                                Nur Testmodus - loest keine echte Auszahlung aus.
+                              </div>
+                            </form>
+                          ) : (
+                            "-"
+                          )}
                         </td>
                         <td className="px-3 py-3 text-xs text-slate-600">{formatDateTime(row.created_at)}</td>
                       </tr>

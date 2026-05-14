@@ -1,7 +1,7 @@
 import "server-only";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
-export const DEFAULT_PAYOUT_HOLD_DAYS = 7;
+export const DEFAULT_ONE_TIME_OFFER_PAYOUT_HOLD_HOURS = 24;
 
 type EligibleLedgerEntryRow = {
   id: string;
@@ -21,7 +21,7 @@ type RelatedPaymentTransactionRow = {
 
 export function calculatePayoutAvailableAt(input: {
   eventEndsAt?: string | null;
-  holdDays?: number;
+  holdHours?: number;
 }): string | null {
   if (!input.eventEndsAt) {
     return null;
@@ -32,8 +32,8 @@ export function calculatePayoutAvailableAt(input: {
     return null;
   }
 
-  const holdDays = input.holdDays ?? DEFAULT_PAYOUT_HOLD_DAYS;
-  return new Date(eventEnd.getTime() + holdDays * 24 * 60 * 60 * 1000).toISOString();
+  const holdHours = input.holdHours ?? DEFAULT_ONE_TIME_OFFER_PAYOUT_HOLD_HOURS;
+  return new Date(eventEnd.getTime() + holdHours * 60 * 60 * 1000).toISOString();
 }
 
 export async function markEligibleLedgerEntriesAsPayable(): Promise<{
@@ -114,4 +114,32 @@ export async function markEligibleLedgerEntriesAsPayable(): Promise<{
     markedCount: eligibleLedgerEntryIds.length,
     markedLedgerEntryIds: eligibleLedgerEntryIds,
   };
+}
+
+export async function forceLedgerEntryPayableForTest(ledgerEntryId: string): Promise<boolean> {
+  const normalizedLedgerEntryId = ledgerEntryId.trim();
+  if (!normalizedLedgerEntryId) {
+    return false;
+  }
+
+  const admin = createSupabaseAdmin();
+  const { data, error } = await admin
+    .from("ledger_entries")
+    .update({
+      payout_status: "payable",
+      available_at: new Date().toISOString(),
+    })
+    .eq("id", normalizedLedgerEntryId)
+    .eq("entry_type", "payment")
+    .eq("source_type", "payment_transaction")
+    .eq("payout_status", "pending_event_completion")
+    .is("payout_batch_id", null)
+    .select("id")
+    .limit(1);
+
+  if (error) {
+    throw error;
+  }
+
+  return Boolean(data && data.length > 0);
 }

@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { createSimulatedPayoutBatch } from "@/lib/payments/payout-batches";
-import { markEligibleLedgerEntriesAsPayable } from "@/lib/payments/payout-eligibility";
+import {
+  forceLedgerEntryPayableForTest,
+  markEligibleLedgerEntriesAsPayable,
+} from "@/lib/payments/payout-eligibility";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { canAccessPaymentsV2Audit } from "./access";
 
@@ -57,5 +60,20 @@ export async function createSimulatedPayoutBatchAction() {
   } catch {
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
     redirectWithActionState("batch-error");
+  }
+}
+
+export async function forceLedgerEntryPayableForTestAction(formData: FormData) {
+  await requirePaymentsV2AdminAccess();
+
+  const ledgerEntryId = String(formData.get("ledgerEntryId") ?? "").trim();
+
+  try {
+    const updated = await forceLedgerEntryPayableForTest(ledgerEntryId);
+    revalidatePath(PAYMENTS_V2_ADMIN_PATH);
+    redirectWithActionState(updated ? `force-payable-ok-${ledgerEntryId}` : `force-payable-none-${ledgerEntryId}`);
+  } catch {
+    revalidatePath(PAYMENTS_V2_ADMIN_PATH);
+    redirectWithActionState(`force-payable-error-${ledgerEntryId}`);
   }
 }

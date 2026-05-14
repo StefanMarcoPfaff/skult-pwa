@@ -1,6 +1,6 @@
 import type Stripe from "stripe";
 import { mirrorStripePaymentToLedger } from "@/lib/payments/ledger";
-import { DEFAULT_PAYOUT_HOLD_DAYS } from "@/lib/payments/payout-eligibility";
+import { calculatePayoutAvailableAt } from "@/lib/payments/payout-eligibility";
 import { getProviderDisplayName, getWorkshopStornoPolicyLabel } from "@/lib/provider-profiles";
 import { getStripe } from "@/lib/stripe";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
@@ -99,6 +99,23 @@ function formatSessionLine(startsAt: string | null, endsAt: string | null): stri
   });
 
   return `${date} | ${startTime}-${endTime}`;
+}
+
+function resolveLastWorkshopSessionEnd(sessions: SessionRow[] | null | undefined): string | null {
+  const validEndTimestamps = (sessions ?? [])
+    .map((session) => session.ends_at)
+    .filter((value): value is string => Boolean(value))
+    .map((value) => {
+      const timestamp = new Date(value).getTime();
+      return Number.isNaN(timestamp) ? null : timestamp;
+    })
+    .filter((value): value is number => value !== null);
+
+  if (validEndTimestamps.length === 0) {
+    return null;
+  }
+
+  return new Date(Math.max(...validEndTimestamps)).toISOString();
 }
 
 async function resolveWorkshopProviderContact(
@@ -237,10 +254,7 @@ async function finalizeWorkshopBookingRecord(input: {
       ? (workshopSessions ?? []).map((item) => formatSessionLine(item.starts_at, item.ends_at))
       : [];
   const firstSessionStart = workshopSessions?.[0]?.starts_at ?? null;
-  const lastSessionEnd =
-    workshopSessions && workshopSessions.length > 0
-      ? workshopSessions[workshopSessions.length - 1]?.ends_at ?? null
-      : null;
+  const lastSessionEnd = resolveLastWorkshopSessionEnd(workshopSessions ?? []);
 
   if (input.paymentProvider === "stripe" && input.paymentStatus === "paid" && input.stripeSession) {
     try {
@@ -254,11 +268,7 @@ async function finalizeWorkshopBookingRecord(input: {
         fallbackAmountCents: course?.price_cents ?? null,
         fallbackCurrency: course?.currency ?? null,
         payoutStatus: "pending_event_completion",
-        availableAt: lastSessionEnd
-          ? new Date(
-              new Date(lastSessionEnd).getTime() + DEFAULT_PAYOUT_HOLD_DAYS * 24 * 60 * 60 * 1000
-            ).toISOString()
-          : null,
+        availableAt: calculatePayoutAvailableAt({ eventEndsAt: lastSessionEnd }),
       });
     } catch (error) {
       logWorkshopFinalization("payment-v2 mirror failed", {
