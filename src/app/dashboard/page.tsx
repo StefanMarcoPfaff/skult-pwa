@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
+import { PROVIDER_PAYOUT_PROFILE_PROVIDER } from "@/lib/payout-profile";
 import type { ProviderType } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -35,6 +36,11 @@ type ProfileRow = {
   stripe_account_id: string | null;
   provider_type: ProviderType | null;
   organization_name: string | null;
+};
+
+type ProviderPayoutProfileRow = {
+  payout_method: string | null;
+  verification_status: string | null;
 };
 
 type TrialReservationRow = {
@@ -200,7 +206,7 @@ export default async function DashboardPage({
   }
 
   const admin = createSupabaseAdmin();
-  const [{ data: profile }, { data: courses }] = await Promise.all([
+  const [{ data: profile }, { data: courses }, { data: payoutProfile }] = await Promise.all([
     admin
       .from("profiles")
       .select("first_name,last_name,bio,stripe_account_id,provider_type,organization_name")
@@ -211,6 +217,12 @@ export default async function DashboardPage({
       .select("id,title,kind,status,is_published,starts_at,ends_at,instructor_name,location,price_cents,currency")
       .eq("teacher_id", user.id)
       .returns<CourseRow[]>(),
+    admin
+      .from("provider_payout_profiles")
+      .select("payout_method,verification_status")
+      .eq("teacher_id", user.id)
+      .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
+      .maybeSingle<ProviderPayoutProfileRow>(),
   ]);
 
   const offerRows = courses ?? [];
@@ -218,6 +230,13 @@ export default async function DashboardPage({
   const publishedOffersCount = offerRows.filter((course) => course.is_published).length;
   const profileComplete = isProfileComplete(profile ?? null);
   const providerType = profile?.provider_type ?? null;
+  const payoutProfileStatus = payoutProfile?.verification_status ?? "offen";
+  const payoutProfileValue =
+    payoutProfile?.payout_method === "paypal"
+      ? `PayPal - ${payoutProfileStatus}`
+      : payoutProfile?.payout_method === "iban"
+        ? `IBAN - ${payoutProfileStatus}`
+        : "Nicht hinterlegt";
 
   const [sessionsResult, reservationsResult, intentsResult, bookingsResult] = courseIds.length
     ? await Promise.all([
@@ -343,6 +362,7 @@ export default async function DashboardPage({
     ])
   );
 
+  // eslint-disable-next-line react-hooks/purity
   const now = Date.now();
   const activeCourseParticipantsCount = intents.filter(
     (intent) =>
@@ -541,6 +561,22 @@ export default async function DashboardPage({
               <path d="M7 15V9" />
               <path d="M12 15V5" />
               <path d="M17 15v-3" />
+            </svg>
+          }
+        />
+
+        <DashboardNavCard
+          href="/dashboard/payout-profile"
+          title="Auszahlungen"
+          description="Lege deine spaetere Auszahlungsmethode fuer Payment-V2-Payouts fest."
+          footerLabel="Payout-Profil"
+          footerValue={payoutProfileValue}
+          tone="neutral"
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+              <rect x="3.5" y="6" width="17" height="12" rx="2" />
+              <path d="M7 12h10" />
+              <path d="M7 9h3" />
             </svg>
           }
         />

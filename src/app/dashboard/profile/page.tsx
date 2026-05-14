@@ -82,6 +82,20 @@ export default async function DashboardProfilePage({
       ) : null}
 
       <section className="rounded-2xl border p-6">
+        <h2 className="text-lg font-semibold">Auszahlungsprofil</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Hinterlege hier deine spaetere Auszahlungsmethode fuer Payment-V2-Payouts. Es werden noch keine echten
+          Auszahlungen ausgefuehrt.
+        </p>
+        <Link
+          href="/dashboard/payout-profile"
+          className="mt-4 inline-flex rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white"
+        >
+          Auszahlungsprofil bearbeiten
+        </Link>
+      </section>
+
+      <section className="rounded-2xl border p-6">
         <h2 className="text-lg font-semibold">Zahlungen</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           {profile?.stripe_account_id
