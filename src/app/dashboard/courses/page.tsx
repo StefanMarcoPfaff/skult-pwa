@@ -439,6 +439,17 @@ export default async function DashboardCoursesPage({
                 showMailWarning={showMailWarning}
                 archiveAllowed={archiveEligibility.allowed}
                 archiveReason={archiveEligibility.reason}
+                oneTimeOfferState={
+                  isOneTimeOfferKind(kind)
+                    ? displayState.view === "archive"
+                      ? "ended"
+                      : displayState.normalizedStatus === "draft"
+                        ? "draft"
+                        : activeBookingCount > 0
+                          ? "published_with_bookings"
+                          : "published"
+                    : null
+                }
               />
             );
           })}
