@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import DashboardFilterPanel from "../_components/DashboardFilterPanel";
 import DashboardPageHeader from "../_components/DashboardPageHeader";
 import StatusFilterChips from "../_components/StatusFilterChips";
+import AttendanceTableClient from "./AttendanceTableClient";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -101,6 +102,7 @@ type AttendanceViewRow = {
   methodLabel: string | null;
   checkedInAt: string | null;
   status: "present" | "not_checked_in";
+  sortDate: number;
 };
 
 type EventInstance = {
@@ -136,13 +138,6 @@ function formatTime(value: string | null): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatDateTime(value: string | null): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" });
 }
 
 function formatName(firstName: string | null, lastName: string | null, fallback: string): string {
@@ -395,6 +390,7 @@ export default async function DashboardAttendancePage({
           methodLabel: mapMethodLabel(attendance?.method ?? null),
           checkedInAt: attendance?.checked_in_at ?? null,
           status: attendance ? "present" : "not_checked_in",
+          sortDate: new Date(event.startsAt ?? event.eventDate).getTime(),
         });
       }
       continue;
@@ -444,6 +440,7 @@ export default async function DashboardAttendancePage({
         methodLabel: mapMethodLabel(attendance?.method ?? null),
         checkedInAt: attendance?.checked_in_at ?? null,
         status: attendance ? "present" : "not_checked_in",
+        sortDate: new Date(event.startsAt ?? event.eventDate).getTime(),
       });
     }
   }
@@ -514,15 +511,15 @@ export default async function DashboardAttendancePage({
           <form className="grid gap-4 md:grid-cols-4">
             <label className="space-y-1 text-sm">
               <span className="font-medium">Von</span>
-              <input type="date" name="from" defaultValue={from ?? ""} className="w-full rounded-xl border px-3 py-2" />
+              <input type="date" name="from" defaultValue={from ?? ""} className="min-h-11 w-full rounded-2xl border border-slate-200 px-4 py-3" />
             </label>
             <label className="space-y-1 text-sm">
               <span className="font-medium">Bis</span>
-              <input type="date" name="to" defaultValue={to ?? ""} className="w-full rounded-xl border px-3 py-2" />
+              <input type="date" name="to" defaultValue={to ?? ""} className="min-h-11 w-full rounded-2xl border border-slate-200 px-4 py-3" />
             </label>
             <label className="space-y-1 text-sm">
               <span className="font-medium">Angebot</span>
-              <select name="offer" defaultValue={offerFilter} className="w-full rounded-xl border px-3 py-2">
+              <select name="offer" defaultValue={offerFilter} className="min-h-11 w-full rounded-2xl border border-slate-200 px-4 py-3">
                 <option value="">Alle Angebote</option>
                 {(courses ?? []).map((course) => (
                   <option key={course.id} value={course.id}>
@@ -538,7 +535,7 @@ export default async function DashboardAttendancePage({
                 name="instructor"
                 defaultValue={getParam(sp, "instructor")}
                 placeholder="Name filtern"
-                className="w-full rounded-xl border px-3 py-2"
+                className="min-h-11 w-full rounded-2xl border border-slate-200 px-4 py-3"
               />
             </label>
             <label className="space-y-1 text-sm">
@@ -548,7 +545,7 @@ export default async function DashboardAttendancePage({
                 name="room"
                 defaultValue={getParam(sp, "room")}
                 placeholder="Ort / Raum"
-                className="w-full rounded-xl border px-3 py-2"
+                className="min-h-11 w-full rounded-2xl border border-slate-200 px-4 py-3"
               />
             </label>
             <label className="space-y-1 text-sm">
@@ -558,12 +555,12 @@ export default async function DashboardAttendancePage({
                 name="participant"
                 defaultValue={getParam(sp, "participant")}
                 placeholder="Name oder E-Mail"
-                className="w-full rounded-xl border px-3 py-2"
+                className="min-h-11 w-full rounded-2xl border border-slate-200 px-4 py-3"
               />
             </label>
             <label className="space-y-1 text-sm">
               <span className="font-medium">Check-in-Methode</span>
-              <select name="method" defaultValue={methodFilter} className="w-full rounded-xl border px-3 py-2">
+              <select name="method" defaultValue={methodFilter} className="min-h-11 w-full rounded-2xl border border-slate-200 px-4 py-3">
                 <option value="">Alle Methoden</option>
                 <option value="teacher_scan">Anbietende scannen</option>
                 <option value="participant_scan">Teilnehmer scannt</option>
@@ -572,66 +569,21 @@ export default async function DashboardAttendancePage({
             </label>
             <div className="flex items-end gap-3 md:col-span-4">
               <input type="hidden" name="status" value={statusFilter} />
-              <button type="submit" className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white">
+              <button type="submit" className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-black px-4 py-3 text-sm font-semibold text-white">
                 Filter anwenden
               </button>
-              <Link href="/dashboard/attendance" className="rounded-xl border px-4 py-2 text-sm font-semibold">
-                Zur�cksetzen
+              <Link href="/dashboard/attendance" className="inline-flex min-h-11 items-center justify-center rounded-2xl border px-4 py-3 text-sm font-semibold">
+                Zurücksetzen
               </Link>
             </div>
           </form>
         </div>
       </DashboardFilterPanel>
 
-      <section className="rounded-2xl border">
-        <div className="flex items-center justify-between border-b px-5 py-4">
-          <h2 className="text-lg font-semibold">Treffer</h2>
-          <span className="text-sm text-muted-foreground">{filteredRows.length} Einträge</span>
-        </div>
-
-        {filteredRows.length === 0 ? (
-          <div className="p-5 text-sm text-muted-foreground">Keine passenden Anwesenheitsdaten gefunden.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y">
-              <thead className="bg-muted/40 text-left text-sm">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Datum</th>
-                  <th className="px-4 py-3 font-semibold">Uhrzeit</th>
-                  <th className="px-4 py-3 font-semibold">Angebotstitel</th>
-                  <th className="px-4 py-3 font-semibold">Typ</th>
-                  <th className="px-4 py-3 font-semibold">Teilnehmer*in</th>
-                  <th className="px-4 py-3 font-semibold">E-Mail</th>
-                  <th className="px-4 py-3 font-semibold">Anbietende</th>
-                  <th className="px-4 py-3 font-semibold">Raum / Ort</th>
-                  <th className="px-4 py-3 font-semibold">Check-in-Methode</th>
-                  <th className="px-4 py-3 font-semibold">Check-in-Zeitpunkt</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y text-sm">
-                {filteredRows.map((row) => (
-                  <tr key={row.rowKey} className={row.status === "not_checked_in" ? "bg-amber-50/30" : undefined}>
-                    <td className="px-4 py-3">{row.date}</td>
-                    <td className="px-4 py-3">{row.time}</td>
-                    <td className="px-4 py-3">{row.offerTitle}</td>
-                    <td className="px-4 py-3">{row.offerKind}</td>
-                    <td className="px-4 py-3">{row.participantName}</td>
-                    <td className="px-4 py-3">{row.participantEmail ?? "-"}</td>
-                    <td className="px-4 py-3">{row.instructorName}</td>
-                    <td className="px-4 py-3">{row.room ?? "-"}</td>
-                    <td className="px-4 py-3">
-                      {row.status === "present" ? row.methodLabel ?? "-" : "nicht eingecheckt"}
-                    </td>
-                    <td className="px-4 py-3">{formatDateTime(row.checkedInAt) ?? "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      <AttendanceTableClient rows={filteredRows} />
     </main>
   );
 }
+
 
 

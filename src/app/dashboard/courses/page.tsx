@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getOfferArchiveEligibility } from "@/app/dashboard/archive-rules";
 import { buildOfferCalendarPath } from "@/lib/calendar";
@@ -20,10 +20,11 @@ import { getOfferKindLabel, getOfferVisibilityLabel, isOneTimeOfferKind } from "
 import { normalizeOfferVisibility } from "@/lib/public-offer-visibility";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import DashboardEmptyState from "../_components/DashboardEmptyState";
 import DashboardFilterPanel from "../_components/DashboardFilterPanel";
 import DashboardPageHeader from "../_components/DashboardPageHeader";
 import StatusFilterChips from "../_components/StatusFilterChips";
-import { OfferCard } from "./OfferCard";
+import CourseOverviewClient, { type CourseOverviewItem } from "./CourseOverviewClient";
 import {
   DISABLED_OFFER_ACTION_ICON_CLASS,
   type DashboardOfferView,
@@ -257,6 +258,136 @@ export default async function DashboardCoursesPage({
     return offerDisplayStateById.get(offer.id)?.view === selectedView;
   });
 
+  const courseOverviewItems: CourseOverviewItem[] = visibleOffers.map((offer) => {
+    const kind = (offer.kind ?? "").toLowerCase();
+    const displayState = offerDisplayStateById.get(offer.id);
+    if (!displayState) {
+      throw new Error(`Display state missing for offer ${offer.id}`);
+    }
+
+    const pauseStartLabel = formatCourseLifecycleDate(offer.pause_start_date);
+    const pauseEndLabel = formatCourseLifecycleDate(offer.pause_end_date);
+    const stopDateLabel = formatCourseLifecycleDate(offer.stop_date);
+    const workshopHasMultipleSessions = (sessionCountByCourseId.get(offer.id) ?? 0) > 1;
+    const workshopTiming = workshopHasMultipleSessions ? "Mehrere Termine" : formatWorkshopDateTime(offer.starts_at);
+    const courseTiming = formatCourseSchedule(offer.weekday, offer.start_time, offer.recurrence_type);
+    const policyLabel =
+      kind === "course"
+        ? "Abrechnung: monatlich · Modell: fortlaufend"
+        : getWorkshopCancellationPolicySummary({
+            cancellation_policy: offer.workshop_storno_policy,
+          });
+    const isMissingPolicy =
+      (kind === "course" &&
+        !getCourseTerminationModelValue({ termination_model: offer.cancellation_model })) ||
+      (isOneTimeOfferKind(kind) &&
+        !getWorkshopCancellationPolicyValue({
+          cancellation_policy: offer.workshop_storno_policy,
+        }));
+    const publicUrl = `${siteUrl}/courses/${offer.id}`;
+    const embedUrl = `${siteUrl}/embed/courses/${offer.id}`;
+    const visibility = normalizeOfferVisibility(offer.visibility);
+    const detailHref = `/dashboard/courses/${offer.id}`;
+    const recipientEmails = normalizeEmailRecipients(offerEmailsById.get(offer.id) ?? []);
+    const mailHref = buildMailtoHref({
+      bcc: recipientEmails,
+      subject: buildOfferMailSubject(offer.kind, offer.title),
+    });
+    const showMailWarning = shouldWarnAboutLargeMailingGroup(recipientEmails.length, mailHref);
+    const calendarEnabled = hasOfferCalendarData({
+      kind: offer.kind,
+      startsAt: offer.starts_at,
+      durationMinutes: offer.duration_minutes,
+      startTime: offer.start_time,
+      recurrenceType: offer.recurrence_type,
+      sessionCount: sessionCountByCourseId.get(offer.id) ?? 0,
+    });
+
+    const activeTrialCount = trialReservationRows.filter(
+      (row) =>
+        !row.archived_at &&
+        row.course_id === offer.id &&
+        !row.cancelled_at &&
+        row.decision_status !== "rejected"
+    ).length;
+    const activeRegistrationCount = registrationIntentRows.filter(
+      (row) =>
+        !row.archived_at &&
+        row.course_id === offer.id &&
+        row.status === "checkout_completed" &&
+        ["active", "pause_scheduled", "paused", "cancel_scheduled"].includes(row.subscription_status ?? "active")
+    ).length;
+    const activeBookingCount = workshopBookingRows.filter(
+      (row) =>
+        !row.archived_at &&
+        row.course_id === offer.id &&
+        row.status === "paid" &&
+        !row.refunded_at &&
+        !row.stripe_refund_id
+    ).length;
+    const archiveEligibility = getOfferArchiveEligibility({
+      kind: offer.kind,
+      status: offer.status,
+      startsAt: offer.starts_at,
+      endsAt: offer.ends_at ?? null,
+      archivedAt: offer.archived_at,
+      activeTrialCount,
+      activeRegistrationCount,
+      activeBookingCount,
+      openPaymentCount: activeBookingCount,
+    });
+
+    return {
+      id: offer.id,
+      title: offer.title,
+      kindLabel: getOfferKindLabel(offer.kind),
+      statusLabel: displayState.currentStatusLabel,
+      priceLabel: formatOfferPrice(offer.price_cents, offer.currency),
+      visibility,
+      visibilityLabel: getOfferVisibilityLabel(offer.visibility),
+      location: offer.location,
+      workshopTiming: isOneTimeOfferKind(kind) ? workshopTiming : null,
+      courseTiming: kind === "course" ? courseTiming : null,
+      pauseStartLabel: kind === "course" ? pauseStartLabel : null,
+      pauseEndLabel: kind === "course" ? pauseEndLabel : null,
+      stopDateLabel: kind === "course" ? stopDateLabel : null,
+      policyTypeLabel: kind === "course" ? "Modell" : "Stornierungsbedingungen",
+      policyLabel,
+      showActivationHint: displayState.normalizedStatus === "draft" && isMissingPolicy,
+      publicUrl,
+      embedUrl,
+      publicOfferEnabled: displayState.normalizedStatus === "active",
+      detailHref,
+      editHref: `/dashboard/courses/${offer.id}/edit`,
+      checkInHref: `/dashboard/courses/${offer.id}/check-in`,
+      playIconClass: isMissingPolicy ? DISABLED_OFFER_ACTION_ICON_CLASS : displayState.playClassName,
+      pauseIconClass: displayState.pauseClassName,
+      stopIconClass: displayState.stopClassName,
+      playDisabled: displayState.playDisabled || isMissingPolicy,
+      pauseDisabled: displayState.pauseDisabled,
+      stopDisabled: displayState.stopDisabled,
+      mailHref,
+      calendarHref: calendarEnabled ? buildOfferCalendarPath(offer.id) : null,
+      calendarDisabledReason: calendarEnabled ? null : "Kalenderdatei erst mit Termin verfügbar",
+      showMailWarning,
+      archiveAllowed: archiveEligibility.allowed,
+      archiveReason: archiveEligibility.reason,
+      oneTimeOfferState: isOneTimeOfferKind(kind)
+        ? displayState.view === "archive"
+          ? "ended"
+          : displayState.normalizedStatus === "draft"
+            ? "draft"
+            : activeBookingCount > 0
+              ? "published_with_bookings"
+              : "published"
+        : null,
+      sortTitle: offer.title,
+      sortStatus: displayState.currentStatusLabel,
+      sortDate: offer.starts_at ? new Date(offer.starts_at).getTime() : null,
+      sortPrice: offer.price_cents,
+    };
+  });
+
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-6">
       <DashboardPageHeader
@@ -307,155 +438,32 @@ export default async function DashboardCoursesPage({
       ) : null}
 
       {offers.length === 0 ? (
-        <section className="rounded-2xl border p-6">
-          <p className="text-sm text-muted-foreground">Du hast noch keine Angebote angelegt.</p>
-          <Link href="/dashboard/courses/new" className="mt-4 inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
-            Neues Angebot
-          </Link>
-        </section>
+        <DashboardEmptyState
+          title="Du hast noch keine Angebote angelegt."
+          action={
+            <Link href="/dashboard/courses/new" className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
+              Neues Angebot
+            </Link>
+          }
+        />
       ) : visibleOffers.length === 0 ? (
-        <section className="rounded-2xl border p-6">
-          <p className="text-sm text-muted-foreground">
-            {selectedView === "active"
-              ? "Aktuell gibt es keine aktiven Angebote."
+        <DashboardEmptyState
+          title="Keine passenden Angebote gefunden."
+          description={
+            selectedView === "active"
+              ? "Für den aktuellen Statusfilter sind keine aktiven Angebote vorhanden."
               : selectedView === "drafts"
-                ? "Aktuell gibt es keine Entwürfe oder pausierten Angebote."
-                : "Aktuell gibt es keine Angebote im Archiv."}
-          </p>
-        </section>
+                ? "Für den aktuellen Statusfilter sind keine Entwürfe oder pausierten Angebote vorhanden."
+                : "Für den aktuellen Statusfilter sind keine archivierten oder gestoppten Angebote vorhanden."
+          }
+        />
       ) : (
-        <section className="grid gap-4 md:grid-cols-2">
-          {visibleOffers.map((offer) => {
-            const kind = (offer.kind ?? "").toLowerCase();
-            const displayState = offerDisplayStateById.get(offer.id);
-            if (!displayState) return null;
-
-            const pauseStartLabel = formatCourseLifecycleDate(offer.pause_start_date);
-            const pauseEndLabel = formatCourseLifecycleDate(offer.pause_end_date);
-            const stopDateLabel = formatCourseLifecycleDate(offer.stop_date);
-            const workshopHasMultipleSessions = (sessionCountByCourseId.get(offer.id) ?? 0) > 1;
-            const workshopTiming = workshopHasMultipleSessions ? "Mehrere Termine" : formatWorkshopDateTime(offer.starts_at);
-            const courseTiming = formatCourseSchedule(offer.weekday, offer.start_time, offer.recurrence_type);
-            const policyLabel =
-              kind === "course"
-                ? "Abrechnung: monatlich · Modell: fortlaufend"
-                : getWorkshopCancellationPolicySummary({
-                    cancellation_policy: offer.workshop_storno_policy,
-                  });
-            const isMissingPolicy =
-              (kind === "course" &&
-                !getCourseTerminationModelValue({ termination_model: offer.cancellation_model })) ||
-              (isOneTimeOfferKind(kind) &&
-                !getWorkshopCancellationPolicyValue({
-                  cancellation_policy: offer.workshop_storno_policy,
-                }));
-            const publicUrl = `${siteUrl}/courses/${offer.id}`;
-            const embedUrl = `${siteUrl}/embed/courses/${offer.id}`;
-            const visibility = normalizeOfferVisibility(offer.visibility);
-            const detailHref = `/dashboard/courses/${offer.id}`;
-            const recipientEmails = normalizeEmailRecipients(offerEmailsById.get(offer.id) ?? []);
-            const mailHref = buildMailtoHref({
-              bcc: recipientEmails,
-              subject: buildOfferMailSubject(offer.kind, offer.title),
-            });
-            const showMailWarning = shouldWarnAboutLargeMailingGroup(recipientEmails.length, mailHref);
-            const calendarEnabled = hasOfferCalendarData({
-              kind: offer.kind,
-              startsAt: offer.starts_at,
-              durationMinutes: offer.duration_minutes,
-              startTime: offer.start_time,
-              recurrenceType: offer.recurrence_type,
-              sessionCount: sessionCountByCourseId.get(offer.id) ?? 0,
-            });
-
-            const activeTrialCount = trialReservationRows.filter(
-              (row) =>
-                !row.archived_at &&
-                row.course_id === offer.id &&
-                !row.cancelled_at &&
-                row.decision_status !== "rejected"
-            ).length;
-            const activeRegistrationCount = registrationIntentRows.filter(
-              (row) =>
-                !row.archived_at &&
-                row.course_id === offer.id &&
-                row.status === "checkout_completed" &&
-                ["active", "pause_scheduled", "paused", "cancel_scheduled"].includes(row.subscription_status ?? "active")
-            ).length;
-            const activeBookingCount = workshopBookingRows.filter(
-              (row) =>
-                !row.archived_at &&
-                row.course_id === offer.id &&
-                row.status === "paid" &&
-                !row.refunded_at &&
-                !row.stripe_refund_id
-            ).length;
-            const archiveEligibility = getOfferArchiveEligibility({
-              kind: offer.kind,
-              status: offer.status,
-              startsAt: offer.starts_at,
-              endsAt: offer.ends_at ?? null,
-              archivedAt: offer.archived_at,
-              activeTrialCount,
-              activeRegistrationCount,
-              activeBookingCount,
-              openPaymentCount: activeBookingCount,
-            });
-
-            return (
-              <OfferCard
-                key={offer.id}
-                id={offer.id}
-                title={offer.title}
-                kindLabel={getOfferKindLabel(offer.kind)}
-                statusLabel={displayState.currentStatusLabel}
-                priceLabel={formatOfferPrice(offer.price_cents, offer.currency)}
-                visibility={visibility}
-                visibilityLabel={getOfferVisibilityLabel(offer.visibility)}
-                location={offer.location}
-                workshopTiming={isOneTimeOfferKind(kind) ? workshopTiming : null}
-                courseTiming={kind === "course" ? courseTiming : null}
-                pauseStartLabel={kind === "course" ? pauseStartLabel : null}
-                pauseEndLabel={kind === "course" ? pauseEndLabel : null}
-                stopDateLabel={kind === "course" ? stopDateLabel : null}
-                policyTypeLabel={kind === "course" ? "Modell" : "Stornierungsbedingungen"}
-                policyLabel={policyLabel}
-                showActivationHint={displayState.normalizedStatus === "draft" && isMissingPolicy}
-                publicUrl={publicUrl}
-                embedUrl={embedUrl}
-                publicOfferEnabled={displayState.normalizedStatus === "active"}
-                detailHref={detailHref}
-                editHref={`/dashboard/courses/${offer.id}/edit`}
-                checkInHref={`/dashboard/courses/${offer.id}/check-in`}
-                playIconClass={isMissingPolicy ? DISABLED_OFFER_ACTION_ICON_CLASS : displayState.playClassName}
-                pauseIconClass={displayState.pauseClassName}
-                stopIconClass={displayState.stopClassName}
-                playDisabled={displayState.playDisabled || isMissingPolicy}
-                pauseDisabled={displayState.pauseDisabled}
-                stopDisabled={displayState.stopDisabled}
-                mailHref={mailHref}
-                calendarHref={calendarEnabled ? buildOfferCalendarPath(offer.id) : null}
-                calendarDisabledReason={calendarEnabled ? null : "Kalenderdatei erst mit Termin verfügbar"}
-                showMailWarning={showMailWarning}
-                archiveAllowed={archiveEligibility.allowed}
-                archiveReason={archiveEligibility.reason}
-                oneTimeOfferState={
-                  isOneTimeOfferKind(kind)
-                    ? displayState.view === "archive"
-                      ? "ended"
-                      : displayState.normalizedStatus === "draft"
-                        ? "draft"
-                        : activeBookingCount > 0
-                          ? "published_with_bookings"
-                          : "published"
-                    : null
-                }
-              />
-            );
-          })}
-        </section>
+        <CourseOverviewClient items={courseOverviewItems} />
       )}
     </main>
   );
 }
+
+
+
 

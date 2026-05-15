@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import DashboardEmptyState from "../_components/DashboardEmptyState";
+import SortableTableHeader, { type SortDirection } from "../_components/SortableTableHeader";
 
 export type EarningsTableRow = {
   id: string;
@@ -16,7 +18,6 @@ export type EarningsTableRow = {
 };
 
 type SortKey = "offerTitle" | "date" | "grossCents" | "platformFeeCents" | "netCents" | "statusLabel";
-type SortDirection = "asc" | "desc";
 
 function formatMoney(amountCents: number): string {
   return new Intl.NumberFormat("de-DE", {
@@ -34,41 +35,15 @@ function formatDate(value: string | null): string {
   });
 }
 
-function SortButton(props: {
-  label: string;
-  sortKey: SortKey;
-  activeSortKey: SortKey;
-  direction: SortDirection;
-  onToggle: (key: SortKey) => void;
-}) {
-  const isActive = props.activeSortKey === props.sortKey;
-  const marker = isActive ? (props.direction === "asc" ? "↑" : "↓") : "↕";
-
-  return (
-    <button
-      type="button"
-      onClick={() => props.onToggle(props.sortKey)}
-      className={`inline-flex items-center gap-1 transition ${
-        isActive ? "font-semibold text-slate-900" : "text-slate-500 hover:text-slate-700"
-      }`}
-      aria-label={`${props.label} sortieren`}
-      aria-pressed={isActive}
-    >
-      <span>{props.label}</span>
-      <span className="text-[11px]">{marker}</span>
-    </button>
-  );
-}
-
 export default function EarningsTableClient({ rows }: { rows: EarningsTableRow[] }) {
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   const sortedRows = useMemo(() => {
     const sorted = [...rows];
-    sorted.sort((left, right) => {
-      const directionFactor = sortDirection === "asc" ? 1 : -1;
+    const directionFactor = sortDirection === "asc" ? 1 : -1;
 
+    sorted.sort((left, right) => {
       switch (sortKey) {
         case "offerTitle":
         case "statusLabel":
@@ -88,6 +63,7 @@ export default function EarningsTableClient({ rows }: { rows: EarningsTableRow[]
           return 0;
       }
     });
+
     return sorted;
   }, [rows, sortDirection, sortKey]);
 
@@ -101,97 +77,90 @@ export default function EarningsTableClient({ rows }: { rows: EarningsTableRow[]
     setSortDirection(nextKey === "date" ? "desc" : "asc");
   }
 
+  if (sortedRows.length === 0) {
+    return <DashboardEmptyState title="Keine passenden Einnahmen gefunden." />;
+  }
+
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full text-left text-sm">
-        <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+        <thead className="border-b border-slate-200 bg-slate-50/70">
           <tr>
-            <th className="px-3 py-2">
-              <SortButton
+            <th className="px-3 py-3">
+              <SortableTableHeader
                 label="Angebot"
-                sortKey="offerTitle"
-                activeSortKey={sortKey}
+                active={sortKey === "offerTitle"}
                 direction={sortDirection}
-                onToggle={toggleSort}
+                onToggle={() => toggleSort("offerTitle")}
               />
             </th>
-            <th className="px-3 py-2">Typ</th>
-            <th className="px-3 py-2">
-              <SortButton
+            <th className="px-3 py-3 text-xs font-semibold tracking-wide text-slate-500">Typ</th>
+            <th className="px-3 py-3">
+              <SortableTableHeader
                 label="Datum"
-                sortKey="date"
-                activeSortKey={sortKey}
+                active={sortKey === "date"}
                 direction={sortDirection}
-                onToggle={toggleSort}
+                onToggle={() => toggleSort("date")}
               />
             </th>
-            <th className="px-3 py-2">
-              <SortButton
+            <th className="px-3 py-3">
+              <SortableTableHeader
                 label="Brutto"
-                sortKey="grossCents"
-                activeSortKey={sortKey}
+                active={sortKey === "grossCents"}
                 direction={sortDirection}
-                onToggle={toggleSort}
+                onToggle={() => toggleSort("grossCents")}
+                align="right"
               />
             </th>
-            <th className="px-3 py-2">
-              <SortButton
+            <th className="px-3 py-3">
+              <SortableTableHeader
                 label="RESER-Abzug"
-                sortKey="platformFeeCents"
-                activeSortKey={sortKey}
+                active={sortKey === "platformFeeCents"}
                 direction={sortDirection}
-                onToggle={toggleSort}
+                onToggle={() => toggleSort("platformFeeCents")}
+                align="right"
               />
             </th>
-            <th className="px-3 py-2">
-              <SortButton
+            <th className="px-3 py-3">
+              <SortableTableHeader
                 label="Dein Betrag"
-                sortKey="netCents"
-                activeSortKey={sortKey}
+                active={sortKey === "netCents"}
                 direction={sortDirection}
-                onToggle={toggleSort}
+                onToggle={() => toggleSort("netCents")}
+                align="right"
               />
             </th>
-            <th className="px-3 py-2">
-              <SortButton
+            <th className="px-3 py-3">
+              <SortableTableHeader
                 label="Status"
-                sortKey="statusLabel"
-                activeSortKey={sortKey}
+                active={sortKey === "statusLabel"}
                 direction={sortDirection}
-                onToggle={toggleSort}
+                onToggle={() => toggleSort("statusLabel")}
               />
             </th>
           </tr>
         </thead>
-        <tbody>
-          {sortedRows.length === 0 ? (
-            <tr>
-              <td colSpan={7} className="px-3 py-6 text-sm text-slate-500">
-                Fuer die aktuelle Auswahl wurden noch keine Eintraege gefunden.
+        <tbody className="divide-y divide-slate-100">
+          {sortedRows.map((row) => (
+            <tr key={row.id} className="align-top">
+              <td className="px-3 py-3">
+                <div className="font-medium text-slate-900">{row.offerTitle}</div>
+              </td>
+              <td className="px-3 py-3 text-slate-700">{row.offerTypeLabel}</td>
+              <td className="px-3 py-3 text-slate-700">{formatDate(row.date)}</td>
+              <td className="px-3 py-3 text-right font-medium text-slate-900">{formatMoney(row.grossCents)}</td>
+              <td className="px-3 py-3 text-right text-slate-700">{formatMoney(row.platformFeeCents)}</td>
+              <td className="px-3 py-3 text-right font-medium text-slate-900">{formatMoney(row.netCents)}</td>
+              <td className="px-3 py-3">
+                <div className="space-y-2">
+                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${row.statusToneClass}`}>
+                    {row.statusLabel}
+                  </span>
+                  {row.statusDetail ? <div className="text-xs text-slate-500">{row.statusDetail}</div> : null}
+                </div>
               </td>
             </tr>
-          ) : (
-            sortedRows.map((row) => (
-              <tr key={row.id} className="border-b border-slate-100 align-top">
-                <td className="px-3 py-3">
-                  <div className="font-medium text-slate-900">{row.offerTitle}</div>
-                </td>
-                <td className="px-3 py-3 text-slate-700">{row.offerTypeLabel}</td>
-                <td className="px-3 py-3 text-slate-700">{formatDate(row.date)}</td>
-                <td className="px-3 py-3 font-medium text-slate-900">{formatMoney(row.grossCents)}</td>
-                <td className="px-3 py-3 text-slate-700">{formatMoney(row.platformFeeCents)}</td>
-                <td className="px-3 py-3 font-medium text-slate-900">{formatMoney(row.netCents)}</td>
-                <td className="px-3 py-3">
-                  <div className="space-y-2">
-                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${row.statusToneClass}`}>
-                      {row.statusLabel}
-                    </span>
-                    {row.statusDetail ? <div className="text-xs text-slate-500">{row.statusDetail}</div> : null}
-                  </div>
-                </td>
-              </tr>
-            ))
-          )}
+          ))}
         </tbody>
       </table>
     </div>

@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useMemo, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
 import { ConfirmIconAction } from "@/app/dashboard/courses/ConfirmIconAction";
 import { OfferActionIcon } from "@/app/dashboard/courses/OfferActionIcon";
 import { MailActionLink } from "@/components/dashboard/MailActionLink";
+import DashboardEmptyState from "../_components/DashboardEmptyState";
+import SortableTableHeader, { type SortDirection } from "../_components/SortableTableHeader";
 import { archiveParticipantAction } from "./actions";
 import {
   RegisteredParticipantLifecycleButtons,
@@ -121,6 +123,8 @@ export type ParticipantOverviewItem = {
 };
 
 export type ParticipantStatusFilter = "all" | "active" | "paused" | "ended";
+
+type SortKey = "date" | "name" | "offer" | "status";
 
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
@@ -387,11 +391,29 @@ function CheckInAction(props: {
         disabled={disabled}
         onClick={() => dialogRef.current?.showModal()}
         className="disabled:cursor-not-allowed"
-        title={isDone ? "Bereits eingecheckt" : !resolvedCheckIn.enabled ? resolvedCheckIn.disabledReason ?? "Nicht eincheckbar" : "Einchecken"}
-        aria-label={isDone ? "Bereits eingecheckt" : !resolvedCheckIn.enabled ? resolvedCheckIn.disabledReason ?? "Nicht eincheckbar" : "Einchecken"}
+        title={
+          isDone
+            ? "Bereits eingecheckt"
+            : !resolvedCheckIn.enabled
+              ? resolvedCheckIn.disabledReason ?? "Nicht eincheckbar"
+              : "Einchecken"
+        }
+        aria-label={
+          isDone
+            ? "Bereits eingecheckt"
+            : !resolvedCheckIn.enabled
+              ? resolvedCheckIn.disabledReason ?? "Nicht eincheckbar"
+              : "Einchecken"
+        }
       >
         <OfferActionIcon
-          title={isDone ? "Bereits eingecheckt" : !resolvedCheckIn.enabled ? resolvedCheckIn.disabledReason ?? "Nicht eincheckbar" : "Einchecken"}
+          title={
+            isDone
+              ? "Bereits eingecheckt"
+              : !resolvedCheckIn.enabled
+                ? resolvedCheckIn.disabledReason ?? "Nicht eincheckbar"
+                : "Einchecken"
+          }
           label="Einchecken"
           className={className}
           disabled={disabled}
@@ -511,7 +533,8 @@ export function ParticipantOverviewList(props: {
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState("date");
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [checkedInById, setCheckedInById] = useState<Record<string, string | null>>(
     Object.fromEntries(props.items.map((item) => [item.id, item.checkIn?.checkedInAt ?? null]))
   );
@@ -531,8 +554,8 @@ export function ParticipantOverviewList(props: {
   }
 
   const normalizedQuery = query.trim().toLowerCase();
-  const visibleItems = props.items
-    .filter((item) => {
+  const visibleItems = useMemo(() => {
+    const items = props.items.filter((item) => {
       const haystack = [item.displayName, item.email ?? "", item.offerTitle].join(" ").toLowerCase();
       if (normalizedQuery && !haystack.includes(normalizedQuery)) return false;
 
@@ -558,66 +581,94 @@ export function ParticipantOverviewList(props: {
         return item.status.bookingStatus !== "paid";
       }
       return true;
-    })
-    .sort((left, right) => {
-      if (sortBy === "name") {
-        return left.displayName.localeCompare(right.displayName, "de");
+    });
+
+    const directionFactor = sortDirection === "asc" ? 1 : -1;
+
+    items.sort((left, right) => {
+      if (sortKey === "name") {
+        return left.displayName.localeCompare(right.displayName, "de", { sensitivity: "base" }) * directionFactor;
       }
-      if (sortBy === "status") {
+
+      if (sortKey === "status") {
         return (
-          left.statusLabel.localeCompare(right.statusLabel, "de") ||
-          right.sortDate.localeCompare(left.sortDate)
+          left.statusLabel.localeCompare(right.statusLabel, "de", { sensitivity: "base" }) * directionFactor ||
+          right.sortDate.localeCompare(left.sortDate) * directionFactor
         );
       }
-      if (sortBy === "offer") {
+
+      if (sortKey === "offer") {
         return (
-          left.offerTitle.localeCompare(right.offerTitle, "de") ||
-          left.displayName.localeCompare(right.displayName, "de")
+          left.offerTitle.localeCompare(right.offerTitle, "de", { sensitivity: "base" }) * directionFactor ||
+          left.displayName.localeCompare(right.displayName, "de", { sensitivity: "base" }) * directionFactor
         );
       }
 
       const leftPriority = left.highlight ? 0 : 1;
       const rightPriority = right.highlight ? 0 : 1;
-      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
-      return right.sortDate.localeCompare(left.sortDate);
+      if (leftPriority !== rightPriority) return (leftPriority - rightPriority) * directionFactor;
+      return right.sortDate.localeCompare(left.sortDate) * directionFactor;
     });
 
+    return items;
+  }, [normalizedQuery, props.items, props.statusFilter, sortDirection, sortKey]);
+
+  function toggleSort(nextKey: SortKey) {
+    if (nextKey === sortKey) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+
+    setSortKey(nextKey);
+    setSortDirection(nextKey === "date" ? "desc" : "asc");
+  }
+
   return (
-    <section className="space-y-4">
-      <div className="rounded-2xl border p-4">
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_220px]">
+    <section className="space-y-5">
+      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
           <label className="grid gap-2 text-sm">
-            <span className="font-medium">Suche</span>
+            <span className="font-medium text-slate-900">Suche</span>
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Name, E-Mail oder Angebot"
-              className="rounded-xl border px-3 py-2"
+              className="min-h-11 rounded-2xl border border-slate-200 px-4 py-3"
             />
           </label>
-          <label className="grid gap-2 text-sm">
-            <span className="font-medium">Sortierung</span>
-            <select
-              value={sortBy}
-              onChange={(event) => setSortBy(event.target.value)}
-              className="rounded-xl border px-3 py-2"
-            >
-              <option value="date">Datum</option>
-              <option value="name">Name</option>
-              <option value="status">Status</option>
-              <option value="offer">Angebot</option>
-            </select>
-          </label>
+          <div className="grid gap-2 text-sm">
+            <span className="font-medium text-slate-900">Sortierung</span>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <SortableTableHeader
+                label="Datum"
+                active={sortKey === "date"}
+                direction={sortDirection}
+                onToggle={() => toggleSort("date")}
+              />
+              <SortableTableHeader
+                label="Teilnehmer*in"
+                active={sortKey === "name"}
+                direction={sortDirection}
+                onToggle={() => toggleSort("name")}
+              />
+              <SortableTableHeader
+                label="Angebot"
+                active={sortKey === "offer"}
+                direction={sortDirection}
+                onToggle={() => toggleSort("offer")}
+              />
+              <SortableTableHeader
+                label="Status"
+                active={sortKey === "status"}
+                direction={sortDirection}
+                onToggle={() => toggleSort("status")}
+              />
+            </div>
+          </div>
         </div>
       </div>
 
-      {visibleItems.length === 0 ? (
-        <section className="rounded-2xl border p-6">
-          <p className="text-sm text-muted-foreground">
-            Für die aktuelle Suche oder Filterung wurden keine Teilnahmen gefunden.
-          </p>
-        </section>
-      ) : null}
+      {visibleItems.length === 0 ? <DashboardEmptyState title="Keine passenden Teilnehmenden gefunden." /> : null}
 
       {visibleItems.map((item) => {
         const checkedInAt = checkedInById[item.id] ?? null;

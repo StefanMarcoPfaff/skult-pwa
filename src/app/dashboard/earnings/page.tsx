@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -276,7 +276,7 @@ function FilterLink(props: {
   return (
     <Link
       href={props.href}
-      className={`inline-flex rounded-full border px-4 py-2 text-sm font-medium transition ${
+      className={`inline-flex min-h-11 items-center justify-center rounded-2xl border px-4 py-2 text-sm font-medium transition ${
         props.active
           ? "border-slate-900 bg-slate-900 text-white"
           : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
@@ -710,3 +710,6 @@ export default async function DashboardEarningsPage({
     </main>
   );
 }
+
+
+

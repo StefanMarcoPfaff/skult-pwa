@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import DashboardEmptyState from "../_components/DashboardEmptyState";
 import DashboardFilterPanel from "../_components/DashboardFilterPanel";
 import DashboardPageHeader from "../_components/DashboardPageHeader";
 import StatusFilterChips from "../_components/StatusFilterChips";
@@ -122,7 +123,7 @@ export default async function DashboardParticipantsPage({
             {
               href: buildParticipantStatusHref("ended"),
               active: statusFilter === "ended",
-              label: "Beendet/Gekündigt",
+              label: "Beendet/GekÃ¼ndigt",
               tone: "red",
             },
           ]}
@@ -132,15 +133,13 @@ export default async function DashboardParticipantsPage({
       <FlashMessages saved={saved} />
 
       {items.length === 0 ? (
-        <section className="rounded-2xl border p-6">
-          <p className="text-sm text-muted-foreground">
-            Bisher liegen noch keine Teilnehmenden oder Probeteilnahmen vor.
-          </p>
-        </section>
+        <DashboardEmptyState
+          title="Keine passenden Teilnehmenden gefunden."
+          description="Bisher liegen noch keine Teilnehmenden oder Probeteilnahmen vor."
+        />
       ) : (
         <ParticipantOverviewList items={items} statusFilter={statusFilter} />
       )}
     </main>
   );
 }
-
