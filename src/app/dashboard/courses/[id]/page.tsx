@@ -755,7 +755,7 @@ export default async function DashboardCourseDetailPage({
               auf dieses Angebot.
             </p>
           </div>
-          <ParticipantOverviewList items={participantOverviewItems} />
+          <ParticipantOverviewList items={participantOverviewItems} statusFilter="all" />
         </section>
       ) : null}
     </main>

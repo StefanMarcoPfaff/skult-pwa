@@ -5,6 +5,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import DashboardFilterPanel from "../_components/DashboardFilterPanel";
 import DashboardPageHeader from "../_components/DashboardPageHeader";
+import StatusFilterChips from "../_components/StatusFilterChips";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -168,6 +169,32 @@ function sameDate(value: string | null, date: string): boolean {
   return Boolean(value && value.slice(0, 10) === date);
 }
 
+function getAttendanceStatusFilter(value: string): "all" | "present" | "not_checked_in" {
+  if (value === "present" || value === "not_checked_in") return value;
+  return "all";
+}
+
+function buildAttendanceFilterHref(
+  sp: SearchParams,
+  status: "all" | "present" | "not_checked_in"
+): string {
+  const params = new URLSearchParams();
+
+  for (const [key, rawValue] of Object.entries(sp)) {
+    if (key === "status" || rawValue === undefined) continue;
+    const value = Array.isArray(rawValue) ? rawValue[0] : rawValue;
+    if (!value) continue;
+    params.set(key, value);
+  }
+
+  if (status !== "all") {
+    params.set("status", status);
+  }
+
+  const query = params.toString();
+  return query ? `/dashboard/attendance?${query}` : "/dashboard/attendance";
+}
+
 export default async function DashboardAttendancePage({
   searchParams,
 }: {
@@ -189,7 +216,7 @@ export default async function DashboardAttendancePage({
   const roomFilter = getParam(sp, "room").toLowerCase();
   const participantFilter = getParam(sp, "participant").toLowerCase();
   const methodFilter = getParam(sp, "method");
-  const statusFilter = getParam(sp, "status") || "present";
+  const statusFilter = getAttendanceStatusFilter(getParam(sp, "status"));
 
   const [{ data: profile }, { data: courses }] = await Promise.all([
     supabase
@@ -458,84 +485,102 @@ export default async function DashboardAttendancePage({
         title="Anwesenheit & Check-ins"
         description="Interne Übersicht über Anwesenheiten, Check-in-Methode und nicht erfasste Teilnahmen."
       />
-
       <DashboardFilterPanel>
-        <form className="grid gap-4 md:grid-cols-4">
-          <label className="space-y-1 text-sm">
-            <span className="font-medium">Von</span>
-            <input type="date" name="from" defaultValue={from ?? ""} className="w-full rounded-xl border px-3 py-2" />
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="font-medium">Bis</span>
-            <input type="date" name="to" defaultValue={to ?? ""} className="w-full rounded-xl border px-3 py-2" />
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="font-medium">Angebot</span>
-            <select name="offer" defaultValue={offerFilter} className="w-full rounded-xl border px-3 py-2">
-              <option value="">Alle Angebote</option>
-              {(courses ?? []).map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.title ?? "Angebot"}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="font-medium">Anbietende</span>
-            <input
-              type="text"
-              name="instructor"
-              defaultValue={getParam(sp, "instructor")}
-              placeholder="Name filtern"
-              className="w-full rounded-xl border px-3 py-2"
-            />
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="font-medium">Raum</span>
-            <input
-              type="text"
-              name="room"
-              defaultValue={getParam(sp, "room")}
-              placeholder="Ort / Raum"
-              className="w-full rounded-xl border px-3 py-2"
-            />
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="font-medium">Teilnehmer*in</span>
-            <input
-              type="text"
-              name="participant"
-              defaultValue={getParam(sp, "participant")}
-              placeholder="Name oder E-Mail"
-              className="w-full rounded-xl border px-3 py-2"
-            />
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="font-medium">Check-in-Methode</span>
-            <select name="method" defaultValue={methodFilter} className="w-full rounded-xl border px-3 py-2">
-              <option value="">Alle Methoden</option>
-              <option value="teacher_scan">Anbietende scannen</option>
-              <option value="participant_scan">Teilnehmer scannt</option>
-              <option value="manual">manuell</option>
-            </select>
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="font-medium">Status</span>
-            <select name="status" defaultValue={statusFilter} className="w-full rounded-xl border px-3 py-2">
-              <option value="present">anwesend</option>
-              <option value="not_checked_in">nicht eingecheckt</option>
-              <option value="all">alle</option>
-            </select>
-          </label>
-          <div className="flex items-end gap-3 md:col-span-4">
-            <button type="submit" className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white">
-              Filter anwenden
-            </button>
-            <Link href="/dashboard/attendance" className="rounded-xl border px-4 py-2 text-sm font-semibold">
-              Zurücksetzen
-            </Link>
-          </div>
-        </form>
+        <div className="space-y-4">
+          <StatusFilterChips
+            ariaLabel="Anwesenheitsstatus"
+            items={[
+              {
+                href: buildAttendanceFilterHref(sp, "all"),
+                active: statusFilter === "all",
+                label: "Alle",
+                tone: "neutral",
+              },
+              {
+                href: buildAttendanceFilterHref(sp, "not_checked_in"),
+                active: statusFilter === "not_checked_in",
+                label: "Offen",
+                tone: "amber",
+              },
+              {
+                href: buildAttendanceFilterHref(sp, "present"),
+                active: statusFilter === "present",
+                label: "Anwesend/Erfasst",
+                tone: "emerald",
+              },
+            ]}
+          />
+
+          <form className="grid gap-4 md:grid-cols-4">
+            <label className="space-y-1 text-sm">
+              <span className="font-medium">Von</span>
+              <input type="date" name="from" defaultValue={from ?? ""} className="w-full rounded-xl border px-3 py-2" />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="font-medium">Bis</span>
+              <input type="date" name="to" defaultValue={to ?? ""} className="w-full rounded-xl border px-3 py-2" />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="font-medium">Angebot</span>
+              <select name="offer" defaultValue={offerFilter} className="w-full rounded-xl border px-3 py-2">
+                <option value="">Alle Angebote</option>
+                {(courses ?? []).map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.title ?? "Angebot"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="font-medium">Anbietende</span>
+              <input
+                type="text"
+                name="instructor"
+                defaultValue={getParam(sp, "instructor")}
+                placeholder="Name filtern"
+                className="w-full rounded-xl border px-3 py-2"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="font-medium">Raum</span>
+              <input
+                type="text"
+                name="room"
+                defaultValue={getParam(sp, "room")}
+                placeholder="Ort / Raum"
+                className="w-full rounded-xl border px-3 py-2"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="font-medium">Teilnehmer*in</span>
+              <input
+                type="text"
+                name="participant"
+                defaultValue={getParam(sp, "participant")}
+                placeholder="Name oder E-Mail"
+                className="w-full rounded-xl border px-3 py-2"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="font-medium">Check-in-Methode</span>
+              <select name="method" defaultValue={methodFilter} className="w-full rounded-xl border px-3 py-2">
+                <option value="">Alle Methoden</option>
+                <option value="teacher_scan">Anbietende scannen</option>
+                <option value="participant_scan">Teilnehmer scannt</option>
+                <option value="manual">manuell</option>
+              </select>
+            </label>
+            <div className="flex items-end gap-3 md:col-span-4">
+              <input type="hidden" name="status" value={statusFilter} />
+              <button type="submit" className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white">
+                Filter anwenden
+              </button>
+              <Link href="/dashboard/attendance" className="rounded-xl border px-4 py-2 text-sm font-semibold">
+                Zur�cksetzen
+              </Link>
+            </div>
+          </form>
+        </div>
       </DashboardFilterPanel>
 
       <section className="rounded-2xl border">
@@ -588,3 +633,5 @@ export default async function DashboardAttendancePage({
     </main>
   );
 }
+
+

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { ReactNode } from "react";
 import { getOfferArchiveEligibility } from "@/app/dashboard/archive-rules";
 import { buildOfferCalendarPath } from "@/lib/calendar";
 import { hasOfferCalendarData } from "@/lib/calendar-resolver";
@@ -23,6 +22,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import DashboardFilterPanel from "../_components/DashboardFilterPanel";
 import DashboardPageHeader from "../_components/DashboardPageHeader";
+import StatusFilterChips from "../_components/StatusFilterChips";
 import { OfferCard } from "./OfferCard";
 import {
   DISABLED_OFFER_ACTION_ICON_CLASS,
@@ -132,66 +132,6 @@ function getOfferView(value: string | string[] | undefined): DashboardOfferView 
 
 function buildTabHref(view: DashboardOfferView) {
   return view === "all" ? "/dashboard/courses" : `/dashboard/courses?view=${view}`;
-}
-
-function PlayGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
-      <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10-6.86a1 1 0 0 0 0-1.72l-10-6.86a1 1 0 0 0-1.5.86Z" />
-    </svg>
-  );
-}
-
-function PauseGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
-      <path d="M7 5.5A1.5 1.5 0 0 1 8.5 4h1A1.5 1.5 0 0 1 11 5.5v13A1.5 1.5 0 0 1 9.5 20h-1A1.5 1.5 0 0 1 7 18.5v-13Zm6 0A1.5 1.5 0 0 1 14.5 4h1A1.5 1.5 0 0 1 17 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-1A1.5 1.5 0 0 1 13 18.5v-13Z" />
-    </svg>
-  );
-}
-
-function StopGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
-      <path d="M7 7.5A1.5 1.5 0 0 1 8.5 6h7A1.5 1.5 0 0 1 17 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 16.5v-9Z" />
-    </svg>
-  );
-}
-
-function FilterTab(props: {
-  href: string;
-  active: boolean;
-  tone: "neutral" | "green" | "orange" | "red";
-  icon?: ReactNode;
-  label: string;
-}) {
-  const toneClasses =
-    props.tone === "green"
-      ? props.active
-        ? "border-green-600 bg-green-600 text-white"
-        : "border-green-200 bg-green-50 text-green-800 hover:border-green-300"
-      : props.tone === "orange"
-        ? props.active
-          ? "border-orange-500 bg-orange-500 text-white"
-          : "border-orange-200 bg-orange-50 text-orange-800 hover:border-orange-300"
-        : props.tone === "red"
-          ? props.active
-            ? "border-red-600 bg-red-600 text-white"
-            : "border-red-200 bg-red-50 text-red-800 hover:border-red-300"
-          : props.active
-            ? "border-slate-900 bg-slate-900 text-white"
-            : "border-slate-200 bg-white text-slate-800 hover:border-slate-300";
-
-  return (
-    <Link
-      href={props.href}
-      aria-current={props.active ? "page" : undefined}
-      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${toneClasses}`}
-    >
-      {props.icon ? <span className="inline-flex h-4 w-4 items-center justify-center">{props.icon}</span> : null}
-      <span>{props.label}</span>
-    </Link>
-  );
 }
 
 export default async function DashboardCoursesPage({
@@ -328,14 +268,26 @@ export default async function DashboardCoursesPage({
           </Link>
         }
       />
-
       <DashboardFilterPanel>
-        <nav className="flex flex-wrap gap-2" aria-label="Angebotsfilter">
-        <FilterTab href={buildTabHref("all")} active={selectedView === "all"} tone="neutral" label="Alle Angebote" />
-        <FilterTab href={buildTabHref("active")} active={selectedView === "active"} tone="green" icon={<PlayGlyph />} label="Aktive / buchbare Angebote" />
-        <FilterTab href={buildTabHref("drafts")} active={selectedView === "drafts"} tone="orange" icon={<PauseGlyph />} label="Entwürfe / pausierte Angebote" />
-        <FilterTab href={buildTabHref("archive")} active={selectedView === "archive"} tone="red" icon={<StopGlyph />} label="Vergangene / gestoppte Angebote" />
-        </nav>
+        <StatusFilterChips
+          ariaLabel="Angebotsstatus"
+          items={[
+            { href: buildTabHref("all"), active: selectedView === "all", label: "Alle", tone: "neutral" },
+            { href: buildTabHref("active"), active: selectedView === "active", label: "Aktiv", tone: "green" },
+            {
+              href: buildTabHref("drafts"),
+              active: selectedView === "drafts",
+              label: "Entwurf/Pausiert",
+              tone: "orange",
+            },
+            {
+              href: buildTabHref("archive"),
+              active: selectedView === "archive",
+              label: "Archiviert/Gestoppt",
+              tone: "red",
+            },
+          ]}
+        />
       </DashboardFilterPanel>
 
       {savedParam === "missing_policy" ? (
@@ -495,3 +447,4 @@ export default async function DashboardCoursesPage({
     </main>
   );
 }
+

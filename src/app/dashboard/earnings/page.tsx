@@ -4,6 +4,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import DashboardFilterPanel from "../_components/DashboardFilterPanel";
 import DashboardPageHeader from "../_components/DashboardPageHeader";
+import StatusFilterChips from "../_components/StatusFilterChips";
 import EarningsTableClient, { type EarningsTableRow } from "./EarningsTableClient";
 
 type SearchParams = {
@@ -245,10 +246,10 @@ function matchesPeriod(dateIso: string, period: string): boolean {
 function matchesStatus(statusKey: EarningsStatusKey, selectedStatus: string): boolean {
   if (selectedStatus === "all") return true;
   if (selectedStatus === "pending") return statusKey === "vorgemerkt";
-  if (selectedStatus === "payable") {
-    return statusKey === "auszahlbar" || statusKey === "vorbereitet" || statusKey === "in_auszahlung";
-  }
+  if (selectedStatus === "payable") return statusKey === "auszahlbar";
+  if (selectedStatus === "in_progress") return statusKey === "vorbereitet" || statusKey === "in_auszahlung";
   if (selectedStatus === "paid") return statusKey === "ausgezahlt";
+  if (selectedStatus === "refunded") return statusKey === "erstattet";
   return true;
 }
 
@@ -307,7 +308,14 @@ export default async function DashboardEarningsPage({
 }) {
   const sp = await searchParams;
   const selectedOfferType = sp.offerType === "one_time" || sp.offerType === "recurring" ? sp.offerType : "all";
-  const selectedStatus = sp.status === "pending" || sp.status === "payable" || sp.status === "paid" ? sp.status : "all";
+  const selectedStatus =
+    sp.status === "pending" ||
+    sp.status === "payable" ||
+    sp.status === "in_progress" ||
+    sp.status === "paid" ||
+    sp.status === "refunded"
+      ? sp.status
+      : "all";
   const selectedPeriod = sp.period === "this_month" || sp.period === "last_month" ? sp.period : "all";
   const offerQuery = String(sp.offer ?? "").trim().toLowerCase();
 
@@ -582,43 +590,72 @@ export default async function DashboardEarningsPage({
               />
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <FilterLink
-                href={buildFilterHref({ offerType: selectedOfferType, status: "all", period: selectedPeriod, offer: offerQuery })}
-                active={selectedStatus === "all"}
-                label="Alle Status"
-              />
-              <FilterLink
-                href={buildFilterHref({
-                  offerType: selectedOfferType,
-                  status: "pending",
-                  period: selectedPeriod,
-                  offer: offerQuery,
-                })}
-                active={selectedStatus === "pending"}
-                label="Vorgemerkt"
-              />
-              <FilterLink
-                href={buildFilterHref({
-                  offerType: selectedOfferType,
-                  status: "payable",
-                  period: selectedPeriod,
-                  offer: offerQuery,
-                })}
-                active={selectedStatus === "payable"}
-                label="Auszahlbar"
-              />
-              <FilterLink
-                href={buildFilterHref({
-                  offerType: selectedOfferType,
-                  status: "paid",
-                  period: selectedPeriod,
-                  offer: offerQuery,
-                })}
-                active={selectedStatus === "paid"}
-                label="Ausgezahlt"
-              />
-            </div>
+            <StatusFilterChips
+              ariaLabel="Auszahlungsstatus"
+              items={[
+                {
+                  href: buildFilterHref({ offerType: selectedOfferType, status: "all", period: selectedPeriod, offer: offerQuery }),
+                  active: selectedStatus === "all",
+                  label: "Alle",
+                  tone: "neutral",
+                },
+                {
+                  href: buildFilterHref({
+                    offerType: selectedOfferType,
+                    status: "pending",
+                    period: selectedPeriod,
+                    offer: offerQuery,
+                  }),
+                  active: selectedStatus === "pending",
+                  label: "Vorgemerkt",
+                  tone: "amber",
+                },
+                {
+                  href: buildFilterHref({
+                    offerType: selectedOfferType,
+                    status: "payable",
+                    period: selectedPeriod,
+                    offer: offerQuery,
+                  }),
+                  active: selectedStatus === "payable",
+                  label: "Auszahlbar",
+                  tone: "green",
+                },
+                {
+                  href: buildFilterHref({
+                    offerType: selectedOfferType,
+                    status: "in_progress",
+                    period: selectedPeriod,
+                    offer: offerQuery,
+                  }),
+                  active: selectedStatus === "in_progress",
+                  label: "In Auszahlung",
+                  tone: "sky",
+                },
+                {
+                  href: buildFilterHref({
+                    offerType: selectedOfferType,
+                    status: "paid",
+                    period: selectedPeriod,
+                    offer: offerQuery,
+                  }),
+                  active: selectedStatus === "paid",
+                  label: "Ausgezahlt",
+                  tone: "emerald",
+                },
+                {
+                  href: buildFilterHref({
+                    offerType: selectedOfferType,
+                    status: "refunded",
+                    period: selectedPeriod,
+                    offer: offerQuery,
+                  }),
+                  active: selectedStatus === "refunded",
+                  label: "Erstattet/Storniert",
+                  tone: "red",
+                },
+              ]}
+            />
 
             <div className="flex flex-wrap gap-2">
               <FilterLink

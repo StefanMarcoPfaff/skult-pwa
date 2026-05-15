@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import DashboardFilterPanel from "../_components/DashboardFilterPanel";
 import DashboardPageHeader from "../_components/DashboardPageHeader";
-import { ParticipantOverviewList } from "./ParticipantOverviewList";
+import StatusFilterChips from "../_components/StatusFilterChips";
+import { ParticipantOverviewList, type ParticipantStatusFilter } from "./ParticipantOverviewList";
 import { loadParticipantOverviewItems } from "./participant-overview-data";
 
 function resolveSavedState(searchParams: Record<string, string | string[] | undefined>): string | null {
@@ -75,6 +76,18 @@ function FlashMessages(props: { saved: string | null }) {
   );
 }
 
+function getParticipantStatusFilter(value: string | string[] | undefined): ParticipantStatusFilter {
+  const selected = Array.isArray(value) ? value[0] : value;
+  if (selected === "active" || selected === "paused" || selected === "ended") {
+    return selected;
+  }
+  return "all";
+}
+
+function buildParticipantStatusHref(status: ParticipantStatusFilter) {
+  return status === "all" ? "/dashboard/participants" : `/dashboard/participants?status=${status}`;
+}
+
 export default async function DashboardParticipantsPage({
   searchParams,
 }: {
@@ -82,6 +95,7 @@ export default async function DashboardParticipantsPage({
 }) {
   const sp = await searchParams;
   const saved = resolveSavedState(sp);
+  const statusFilter = getParticipantStatusFilter(sp.status);
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -98,14 +112,21 @@ export default async function DashboardParticipantsPage({
         title="Teilnehmende"
         description="Hier siehst du Probeteilnahmen, verbindliche Anmeldungen, Buchungen und Check-ins für deine Angebote."
       />
-
       <DashboardFilterPanel>
-        <div className="space-y-2">
-          <h2 className="text-lg font-semibold text-slate-900">Filter</h2>
-          <p className="text-sm text-slate-600">
-            Die fachlichen Filter und die Sortierung werden im nächsten Schritt vereinheitlicht.
-          </p>
-        </div>
+        <StatusFilterChips
+          ariaLabel="Teilnahmestatus"
+          items={[
+            { href: buildParticipantStatusHref("all"), active: statusFilter === "all", label: "Alle", tone: "neutral" },
+            { href: buildParticipantStatusHref("active"), active: statusFilter === "active", label: "Aktiv", tone: "green" },
+            { href: buildParticipantStatusHref("paused"), active: statusFilter === "paused", label: "Pausiert", tone: "orange" },
+            {
+              href: buildParticipantStatusHref("ended"),
+              active: statusFilter === "ended",
+              label: "Beendet/Gek�ndigt",
+              tone: "red",
+            },
+          ]}
+        />
       </DashboardFilterPanel>
 
       <FlashMessages saved={saved} />
@@ -117,8 +138,9 @@ export default async function DashboardParticipantsPage({
           </p>
         </section>
       ) : (
-        <ParticipantOverviewList items={items} />
+        <ParticipantOverviewList items={items} statusFilter={statusFilter} />
       )}
     </main>
   );
 }
+
