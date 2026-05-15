@@ -1,5 +1,7 @@
 import { formatRecurringCoursePrice } from "@/lib/course-display";
+import { isPaymentsV2SubscriptionsDualWriteEnabled } from "@/lib/payments/config";
 import { mirrorStripePaymentToLedger } from "@/lib/payments/ledger";
+import { materializeSuccessfulInitialSubscriptionPayment } from "@/lib/payments/subscriptions/initial-payment-materialization";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { getStripe } from "@/lib/stripe";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
@@ -304,8 +306,10 @@ export async function finalizeCourseRegistrationCheckoutSession(input: {
   const subscriptionId =
     typeof session.subscription === "string" ? session.subscription : session.subscription?.id ?? null;
 
+  let paymentTransactionId: string | null = null;
+
   try {
-    await mirrorStripePaymentToLedger({
+    paymentTransactionId = await mirrorStripePaymentToLedger({
       courseRegistrationIntentId: finalizedIntent.id,
       teacherId: course?.teacher_id ?? null,
       providerType: providerContact.providerType,
@@ -319,6 +323,19 @@ export async function finalizeCourseRegistrationCheckoutSession(input: {
     });
   } catch (error) {
     logRegistrationSuccessError("mirror-payment-v2", error);
+  }
+
+  if (isPaymentsV2SubscriptionsDualWriteEnabled()) {
+    try {
+      await materializeSuccessfulInitialSubscriptionPayment({
+        courseRegistrationIntentId: finalizedIntent.id,
+        stripeSession: session,
+        paidAt: finalizedIntent.completed_at ?? completedAt,
+        paymentTransactionId,
+      });
+    } catch (error) {
+      logRegistrationSuccessError("materialize-initial-subscription-payment", error);
+    }
   }
 
   let ticketForDisplay: TicketRow | null = null;

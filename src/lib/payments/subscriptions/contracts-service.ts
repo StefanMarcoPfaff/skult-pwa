@@ -63,6 +63,41 @@ export async function activateContract(input: {
   });
 }
 
+export async function activateContractForSuccessfulInitialPayment(input: {
+  contractId: string;
+  startedAt: string;
+  firstPaidAt: string;
+  nextChargeAt?: string | null;
+  providerSubscriptionId?: string | null;
+  providerCustomerId?: string | null;
+  providerMandateId?: string | null;
+  metadata?: Record<string, unknown>;
+}): Promise<SubscriptionContract> {
+  const existing = await findSubscriptionContractById(input.contractId);
+  if (!existing) {
+    throw new Error(`Subscription contract not found: ${input.contractId}`);
+  }
+
+  const mergedMetadata = {
+    ...existing.metadata,
+    ...(input.metadata ?? {}),
+    firstPaidAt:
+      typeof existing.metadata.firstPaidAt === "string" && existing.metadata.firstPaidAt.trim()
+        ? existing.metadata.firstPaidAt
+        : input.firstPaidAt,
+  };
+
+  return activateContract({
+    contractId: input.contractId,
+    startedAt: existing.startedAt ?? input.startedAt,
+    nextChargeAt: existing.nextChargeAt ?? input.nextChargeAt ?? null,
+    providerSubscriptionId: input.providerSubscriptionId ?? existing.providerSubscriptionId,
+    providerCustomerId: input.providerCustomerId ?? existing.providerCustomerId,
+    providerMandateId: input.providerMandateId ?? existing.providerMandateId,
+    metadata: mergedMetadata,
+  });
+}
+
 export async function markLegacyExternal(input: {
   contractId: string;
   providerSubscriptionId?: string | null;
