@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
-import { PROVIDER_PAYOUT_PROFILE_PROVIDER } from "@/lib/payout-profile";
 import type { ProviderType } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -30,17 +29,7 @@ type SessionRow = {
 };
 
 type ProfileRow = {
-  first_name: string | null;
-  last_name: string | null;
-  bio: string | null;
-  stripe_account_id: string | null;
   provider_type: ProviderType | null;
-  organization_name: string | null;
-};
-
-type ProviderPayoutProfileRow = {
-  payout_method: string | null;
-  verification_status: string | null;
 };
 
 type TrialReservationRow = {
@@ -177,14 +166,33 @@ function getTrialEvent(reservation: TrialReservationRow, sessions: SessionRow[])
   };
 }
 
-function isProfileComplete(profile: ProfileRow | null) {
-  if (!profile) return false;
-  const hasBase = Boolean(profile.first_name && profile.last_name && profile.bio && profile.stripe_account_id);
-  if (!hasBase) return false;
-  if (profile.provider_type === "studio_provider") {
-    return Boolean(profile.organization_name);
+function ToolbarIconButton(props: {
+  href?: string;
+  title: string;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  const className =
+    "inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-stone-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20";
+
+  if (props.disabled || !props.href) {
+    return (
+      <span
+        title={props.title}
+        aria-label={props.title}
+        aria-disabled="true"
+        className={`${className} cursor-not-allowed border-stone-200 bg-stone-100 text-slate-400 shadow-none`}
+      >
+        {props.children}
+      </span>
+    );
   }
-  return true;
+
+  return (
+    <Link href={props.href} title={props.title} aria-label={props.title} className={className}>
+      {props.children}
+    </Link>
+  );
 }
 
 export default async function DashboardPage({
@@ -206,10 +214,10 @@ export default async function DashboardPage({
   }
 
   const admin = createSupabaseAdmin();
-  const [{ data: profile }, { data: courses }, { data: payoutProfile }] = await Promise.all([
+  const [{ data: profile }, { data: courses }] = await Promise.all([
     admin
       .from("profiles")
-      .select("first_name,last_name,bio,stripe_account_id,provider_type,organization_name")
+      .select("provider_type")
       .eq("id", user.id)
       .maybeSingle<ProfileRow>(),
     admin
@@ -217,26 +225,12 @@ export default async function DashboardPage({
       .select("id,title,kind,status,is_published,starts_at,ends_at,instructor_name,location,price_cents,currency")
       .eq("teacher_id", user.id)
       .returns<CourseRow[]>(),
-    admin
-      .from("provider_payout_profiles")
-      .select("payout_method,verification_status")
-      .eq("teacher_id", user.id)
-      .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
-      .maybeSingle<ProviderPayoutProfileRow>(),
   ]);
 
   const offerRows = courses ?? [];
   const courseIds = offerRows.map((course) => course.id);
   const publishedOffersCount = offerRows.filter((course) => course.is_published).length;
-  const profileComplete = isProfileComplete(profile ?? null);
   const providerType = profile?.provider_type ?? null;
-  const payoutProfileStatus = payoutProfile?.verification_status ?? "offen";
-  const payoutProfileValue =
-    payoutProfile?.payout_method === "paypal"
-      ? `PayPal - ${payoutProfileStatus}`
-      : payoutProfile?.payout_method === "iban"
-        ? `IBAN - ${payoutProfileStatus}`
-        : "Nicht hinterlegt";
 
   const [sessionsResult, reservationsResult, intentsResult, bookingsResult] = courseIds.length
     ? await Promise.all([
@@ -463,34 +457,47 @@ export default async function DashboardPage({
 
   return (
     <main className="mx-auto max-w-6xl space-y-8 p-6">
-      <header className="flex flex-wrap items-start justify-between gap-5">
-        <div className="space-y-3">
+      <header className="space-y-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2">
-            <h1 className="text-4xl font-semibold tracking-tight">Dashboard</h1>
-            <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-              Verwalte Angebote, Teilnehmende, Check-ins, Anwesenheiten und Einnahmen in einer klaren Übersicht.
+            <h1 className="text-4xl font-semibold tracking-tight text-slate-900">Dashboard</h1>
+            <p className="max-w-2xl text-sm leading-6 text-slate-600">
+              Wähle den Bereich, in dem du gerade weiterarbeiten möchtest.
             </p>
-            <p className="text-sm text-muted-foreground">
-              Eingeloggt als <span className="font-medium text-foreground">{user.email}</span>
+            <p className="text-sm text-slate-500">
+              Eingeloggt als <span className="font-medium text-slate-900">{user.email}</span>
             </p>
           </div>
-        </div>
 
-        <div className="flex items-start gap-3">
-          <Link
-            href="/dashboard/check-in"
-            className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-foreground transition hover:border-foreground/20 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-              <path d="M4 7h16" />
-              <path d="M7 4v6" />
-              <path d="M17 4v6" />
-              <rect x="4" y="6" width="16" height="14" rx="2" />
-              <path d="m9 14 2 2 4-4" />
-            </svg>
-            <span>Check-in</span>
-          </Link>
-          <LogoutButton />
+          <div className="flex items-center gap-2">
+            <ToolbarIconButton href="/dashboard/guide" title="Kurzanleitung">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+                <path d="M6 5.5A2.5 2.5 0 0 1 8.5 3H20v15.5A2.5 2.5 0 0 0 17.5 16H6Z" />
+                <path d="M6 5.5V21" />
+                <path d="M9.5 7.5h7" />
+                <path d="M9.5 11h7" />
+              </svg>
+            </ToolbarIconButton>
+
+            <ToolbarIconButton href="/dashboard/profile" title="Profil">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+                <circle cx="12" cy="8" r="3.2" />
+                <path d="M5 19a7 7 0 0 1 14 0" />
+              </svg>
+            </ToolbarIconButton>
+
+            <ToolbarIconButton href="/dashboard/check-in" title="Check-in">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+                <path d="M4 7h16" />
+                <path d="M7 4v6" />
+                <path d="M17 4v6" />
+                <rect x="4" y="6" width="16" height="14" rx="2" />
+                <path d="m9 14 2 2 4-4" />
+              </svg>
+            </ToolbarIconButton>
+
+            <LogoutButton />
+          </div>
         </div>
       </header>
 
@@ -500,11 +507,11 @@ export default async function DashboardPage({
         </p>
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-4 md:grid-cols-2">
         <DashboardNavCard
           href="/dashboard/courses"
           title="Meine Angebote"
-          description="Verwalte deine laufenden und einmaligen Angebote und lege neue Angebote an."
+          description="Verwalte deine laufenden und einmaligen Angebote und springe direkt in Bearbeitung, Status und Kommunikation."
           footerLabel="Aktive Angebote"
           footerValue={String(publishedOffersCount)}
           tone="green"
@@ -518,7 +525,7 @@ export default async function DashboardPage({
         <DashboardNavCard
           href="/dashboard/participants"
           title="Teilnehmende"
-          description="Hier siehst du, wer sich für deine Angebote angemeldet hat."
+          description="Hier siehst du Anmeldungen, Buchungen und Teilnahmen zu deinen Angeboten auf einen Blick."
           footerLabel="Aktive Teilnehmende"
           footerValue={String(activeParticipantsCount)}
           tone="blue"
@@ -535,7 +542,7 @@ export default async function DashboardPage({
         <DashboardNavCard
           href="/dashboard/attendance"
           title="Anwesenheiten"
-          description="Übersicht über Check-ins, Anwesenheiten und offene Teilnahmen."
+          description="Behalte Check-ins, Anwesenheiten und noch offene Teilnahmen in einer klaren Übersicht im Blick."
           footerLabel="Ausstehende Check-ins"
           footerValue={String(openCheckInsCount)}
           tone="orange"
@@ -551,7 +558,7 @@ export default async function DashboardPage({
         <DashboardNavCard
           href="/dashboard/earnings"
           title="Einnahmen & Auszahlungen"
-          description="Übersicht über deine bisherigen Einnahmen und Umsätze."
+          description="Öffne deine Einnahmen, Umsätze und Auszahlungsübersichten, ohne weitere Zahlungsbereiche im Dashboard aufzublähen."
           footerLabel="Einnahmen diesen Monat"
           footerValue={formatCurrency(currentMonthRevenueCents)}
           tone="neutral"
@@ -565,52 +572,6 @@ export default async function DashboardPage({
           }
         />
 
-        <DashboardNavCard
-          href="/dashboard/payout-profile"
-          title="Auszahlungen"
-          description="Lege deine spaetere Auszahlungsmethode fuer Payment-V2-Payouts fest."
-          footerLabel="Payout-Profil"
-          footerValue={payoutProfileValue}
-          tone="neutral"
-          icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
-              <rect x="3.5" y="6" width="17" height="12" rx="2" />
-              <path d="M7 12h10" />
-              <path d="M7 9h3" />
-            </svg>
-          }
-        />
-
-        <DashboardNavCard
-          href="/dashboard/profile"
-          title="Profil"
-          description="Bearbeite deine persönlichen Angaben, Beschreibung und Auszahlungsdaten."
-          footerLabel="Profilstatus"
-          footerValue={profileComplete ? "Profil vollständig" : "Profil unvollständig"}
-          tone="neutral"
-          icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
-              <circle cx="12" cy="8" r="3.2" />
-              <path d="M5 19a7 7 0 0 1 14 0" />
-            </svg>
-          }
-        />
-
-        <DashboardNavCard
-          href="/dashboard/guide"
-          title="Kurz-Anleitung"
-          description="Hier findest du eine schnelle Erklärung zu RESER, deinen Angeboten, Teilnehmenden, Check-ins und den wichtigsten Symbolen."
-          footerLabel="Hilfe & Funktionen"
-          footerValue="Anleitung"
-          tone="neutral"
-          icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
-              <circle cx="12" cy="12" r="8" />
-              <path d="M12 16v.01" />
-              <path d="M10.8 9.3a1.8 1.8 0 1 1 2.7 1.56c-.9.5-1.5.94-1.5 2.14" />
-            </svg>
-          }
-        />
       </section>
     </main>
   );
