@@ -33,9 +33,9 @@ function StopGlyph() {
 
 function IconSlot(props: { label: string; children: ReactNode }) {
   return (
-    <div className="flex min-w-14 flex-col items-center gap-2 text-center">
+    <div className="flex min-w-[4.5rem] max-w-[5.5rem] flex-col items-center gap-2 text-center">
       {props.children}
-      <span className="text-[11px] font-medium leading-4 text-muted-foreground sm:hidden">{props.label}</span>
+      <span className="text-[11px] font-medium leading-4 text-muted-foreground">{props.label}</span>
     </div>
   );
 }
@@ -61,9 +61,12 @@ export function TrialParticipantLifecycleButtons(props: {
   showApprovalAction: boolean;
   showCancellationAction: boolean;
 }) {
+  const playLabel = props.showApprovalAction && !props.playDisabled ? "Jetzt zusagen" : "Probeschüler*in";
+  const stopLabel = props.showApprovalAction ? "Jetzt absagen" : "Stornieren";
+
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <IconSlot label="Freigeben">
+      <IconSlot label={playLabel}>
         {props.showApprovalAction && !props.playDisabled ? (
           <ConfirmIconAction
             action={approveTrialReservationAction}
@@ -74,13 +77,13 @@ export function TrialParticipantLifecycleButtons(props: {
             confirmLabel="Ja, freigeben"
             triggerLabel="freigeben"
             trigger={
-              <OfferActionIcon title="Freigeben" label="Freigeben" className={props.playClassName}>
+              <OfferActionIcon title={playLabel} label={playLabel} className={props.playClassName}>
                 <PlayGlyph />
               </OfferActionIcon>
             }
           />
         ) : (
-          <DisabledAction title="Freigeben" className={props.playClassName}>
+          <DisabledAction title={playLabel} className={props.playClassName}>
             <PlayGlyph />
           </DisabledAction>
         )}
@@ -92,7 +95,7 @@ export function TrialParticipantLifecycleButtons(props: {
         </DisabledAction>
       </IconSlot>
 
-      <IconSlot label={props.showApprovalAction ? "Ablehnen" : "Absagen"}>
+      <IconSlot label={stopLabel}>
         {props.showCancellationAction && !props.stopDisabled ? (
           <ConfirmIconAction
             action={props.showApprovalAction ? rejectTrialReservationAction : cancelTrialReservationAction}
@@ -107,17 +110,13 @@ export function TrialParticipantLifecycleButtons(props: {
             confirmLabel={props.showApprovalAction ? "Ja, ablehnen" : "Ja, absagen"}
             triggerLabel={props.showApprovalAction ? "ablehnen" : "absagen"}
             trigger={
-              <OfferActionIcon
-                title={props.showApprovalAction ? "Ablehnen" : "Absagen"}
-                label={props.showApprovalAction ? "Ablehnen" : "Absagen"}
-                className={props.stopClassName}
-              >
+              <OfferActionIcon title={stopLabel} label={stopLabel} className={props.stopClassName}>
                 <StopGlyph />
               </OfferActionIcon>
             }
           />
         ) : (
-          <DisabledAction title={props.showApprovalAction ? "Ablehnen" : "Absagen"} className={props.stopClassName}>
+          <DisabledAction title={stopLabel} className={props.stopClassName}>
             <StopGlyph />
           </DisabledAction>
         )}
@@ -197,10 +196,13 @@ export function WorkshopParticipantLifecycleButtons(props: {
   pauseClassName: string;
   stopClassName: string;
 }) {
+  const isPaid = props.playClassName.includes("green-600");
+  const playLabel = isPaid ? "Bezahlt" : "Beendet";
+
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <IconSlot label="Aktiv">
-        <DisabledAction title="Aktiv" className={props.playClassName}>
+      <IconSlot label={playLabel}>
+        <DisabledAction title={playLabel} className={props.playClassName}>
           <PlayGlyph />
         </DisabledAction>
       </IconSlot>
@@ -209,8 +211,8 @@ export function WorkshopParticipantLifecycleButtons(props: {
           <PauseGlyph />
         </DisabledAction>
       </IconSlot>
-      <IconSlot label="Absagen">
-        <DisabledAction title="Absagen" className={props.stopClassName}>
+      <IconSlot label="Stornieren">
+        <DisabledAction title="Stornieren" className={props.stopClassName}>
           <StopGlyph />
         </DisabledAction>
       </IconSlot>

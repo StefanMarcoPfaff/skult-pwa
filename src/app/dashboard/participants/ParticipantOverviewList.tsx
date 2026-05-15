@@ -101,6 +101,16 @@ type ParticipantCalendarAction = {
   disabledReason: string | null;
 };
 
+type StatusBadge = {
+  label: string;
+  className: string;
+};
+
+type CardPresentation = {
+  articleClassName: string;
+  badge: StatusBadge;
+};
+
 export type ParticipantOverviewItem = {
   id: string;
   detailHref: string;
@@ -136,19 +146,19 @@ function formatDateTime(value: string | null): string {
   });
 }
 
-function getStatusBadge(status: ParticipantStatusSource, checkedInAt: string | null) {
+function getStatusBadge(status: ParticipantStatusSource, checkedInAt: string | null): StatusBadge {
   if (status.kind === "trial") {
     if (status.cancelledAt || status.decisionStatus === "rejected") {
       return {
-        label: "Gekündigt / gestoppt",
+        label: "Abgesagt",
         className: "border-red-200 bg-red-50 text-red-700",
       };
     }
 
     if ((status.decisionStatus ?? "pending") === "pending" && checkedInAt) {
       return {
-        label: "Entscheidung offen",
-        className: "border-amber-200 bg-amber-50 text-amber-800",
+        label: "Eingecheckt",
+        className: "border-emerald-200 bg-emerald-50 text-emerald-700",
       };
     }
 
@@ -202,7 +212,7 @@ function getStatusBadge(status: ParticipantStatusSource, checkedInAt: string | n
 
   if (status.bookingStatus === "paid") {
     return {
-      label: "Aktiv",
+      label: "Bezahlt",
       className: "border-green-200 bg-green-50 text-green-700",
     };
   }
@@ -211,6 +221,46 @@ function getStatusBadge(status: ParticipantStatusSource, checkedInAt: string | n
     label: "Gekündigt / gestoppt",
     className: "border-red-200 bg-red-50 text-red-700",
   };
+}
+
+function getCardPresentation(item: ParticipantOverviewItem, checkedInAt: string | null): CardPresentation {
+  const badge = getStatusBadge(item.status, checkedInAt);
+
+  if (item.status.kind === "trial") {
+    if (item.status.cancelledAt || item.status.decisionStatus === "rejected") {
+      return { articleClassName: "border-red-200 bg-red-50/60", badge };
+    }
+    if ((item.status.decisionStatus ?? "pending") === "pending" && checkedInAt) {
+      return { articleClassName: "border-amber-200 bg-amber-50/60", badge };
+    }
+    if (item.status.decisionStatus === "approved") {
+      return { articleClassName: "border-green-200 bg-green-50/60", badge };
+    }
+    return { articleClassName: "border-green-200 bg-green-50/45", badge };
+  }
+
+  if (item.status.kind === "registered") {
+    if (item.status.subscriptionStatus === "paused" || item.status.subscriptionStatus === "pause_scheduled") {
+      return { articleClassName: "border-orange-200 bg-orange-50/60", badge };
+    }
+    if (item.status.subscriptionStatus === "cancel_scheduled" || item.status.subscriptionStatus === "cancelled") {
+      return { articleClassName: "border-red-200 bg-red-50/60", badge };
+    }
+    if (checkedInAt) {
+      return { articleClassName: "border-emerald-200 bg-emerald-50/60", badge };
+    }
+    return { articleClassName: "border-green-200 bg-green-50/60", badge };
+  }
+
+  if (checkedInAt) {
+    return { articleClassName: "border-emerald-200 bg-emerald-50/60", badge };
+  }
+
+  if (item.status.bookingStatus === "paid") {
+    return { articleClassName: "border-green-200 bg-green-50/60", badge };
+  }
+
+  return { articleClassName: "border-red-200 bg-red-50/60", badge };
 }
 
 function getCheckInSummary(item: ParticipantOverviewItem, checkedInAt: string | null) {
@@ -235,18 +285,27 @@ function ActionZone(props: { children: ReactNode }) {
 
 function ActionItem(props: { label: string; children: ReactNode }) {
   return (
-    <div className="flex min-w-14 flex-col items-center gap-2 text-center">
+    <div className="flex min-w-[4.5rem] max-w-[5.5rem] flex-col items-center gap-2 text-center">
       {props.children}
-      <span className="text-[11px] font-medium leading-4 text-muted-foreground sm:hidden">{props.label}</span>
+      <span className="text-[11px] font-medium leading-4 text-muted-foreground">{props.label}</span>
+    </div>
+  );
+}
+
+function ActionGroup(props: { title: string; children: ReactNode }) {
+  return (
+    <div className="space-y-2 rounded-2xl border border-white/70 bg-white/70 p-3 backdrop-blur-sm">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{props.title}</p>
+      <ActionZone>{props.children}</ActionZone>
     </div>
   );
 }
 
 function EditAction(props: { href: string }) {
   return (
-    <ActionItem label="Bearbeiten">
-      <Link href={props.href} className="inline-flex" title="Bearbeiten" aria-label="Bearbeiten">
-        <OfferActionIcon title="Bearbeiten" label="Bearbeiten">
+    <ActionItem label="Notizen">
+      <Link href={props.href} className="inline-flex" title="Notizen" aria-label="Notizen">
+        <OfferActionIcon title="Notizen" label="Notizen">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
             <path d="m4 20 4.5-1 9-9a2.12 2.12 0 1 0-3-3l-9 9L4 20Z" />
             <path d="M13.5 6.5 17.5 10.5" />
@@ -672,77 +731,82 @@ export function ParticipantOverviewList(props: {
 
       {visibleItems.map((item) => {
         const checkedInAt = checkedInById[item.id] ?? null;
-        const badge = getStatusBadge(item.status, checkedInAt);
+        const presentation = getCardPresentation(item, checkedInAt);
         const checkInSummary = getCheckInSummary(item, checkedInAt);
 
         return (
           <article
             key={item.id}
-            className={`group cursor-pointer rounded-2xl border p-4 transition hover:border-foreground/20 hover:shadow-sm focus-within:ring-2 focus-within:ring-foreground/20 ${
-              item.highlight ? "border-amber-200 bg-amber-50/40" : ""
-            }`}
+            className={`group cursor-pointer rounded-[28px] border p-5 transition hover:border-foreground/20 hover:shadow-sm focus-within:ring-2 focus-within:ring-foreground/20 ${presentation.articleClassName}`}
             tabIndex={0}
             role="link"
             aria-label={`${item.displayName} ansehen`}
             onClick={() => handleNavigate(item.detailHref)}
             onKeyDown={(event) => handleKeyDown(event, item.detailHref)}
           >
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="truncate text-lg font-semibold">{item.displayName}</h2>
-                  <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${badge.className}`}>
-                    {badge.label}
-                  </span>
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 space-y-1">
+                  <h2 className="truncate text-lg font-semibold text-slate-950">{item.displayName}</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {item.offerKindLabel} · {item.offerTitle}
+                  </p>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  {item.offerKindLabel} · {item.offerTitle}
-                </p>
+                <span
+                  className={`inline-flex w-fit shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${presentation.badge.className}`}
+                >
+                  {presentation.badge.label}
+                </span>
               </div>
 
-              <ActionZone>
-                <LifecycleActions action={item.lifecycleAction} />
-                <EditAction href={item.detailHref} />
-                {item.checkIn ? (
-                  <ActionItem label="Check-in">
-                    <CheckInAction item={item} checkedInAt={checkedInAt} onCheckedIn={handleCheckedIn} />
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+                <ActionGroup title="Teilnahmestatus & Verwaltung">
+                  <LifecycleActions action={item.lifecycleAction} />
+                  <EditAction href={item.detailHref} />
+                  <ActionItem label="Archivieren">
+                    <ArchiveAction action={item.archiveAction} />
                   </ActionItem>
-                ) : null}
-                <ActionItem label="E-Mail">
-                  <MailActionLink
-                    href={item.mailHref}
-                    title="E-Mail"
-                    disabledHint="Keine E-Mail-Adresse für diese Person vorhanden"
-                    showLabel={false}
-                  />
-                </ActionItem>
-                <ActionItem label="Kalender">
-                  {item.calendarAction.href ? (
-                    <Link
-                      href={item.calendarAction.href}
-                      className="inline-flex"
-                      title="Kalenderdatei herunterladen"
-                      aria-label="Kalenderdatei herunterladen"
-                    >
-                      <OfferActionIcon title="Kalenderdatei herunterladen" label="Kalenderdatei herunterladen">
+                </ActionGroup>
+
+                <ActionGroup title="Nutzung & Kommunikation">
+                  {item.checkIn ? (
+                    <ActionItem label="Check-in">
+                      <CheckInAction item={item} checkedInAt={checkedInAt} onCheckedIn={handleCheckedIn} />
+                    </ActionItem>
+                  ) : null}
+                  <ActionItem label="Anschreiben">
+                    <MailActionLink
+                      href={item.mailHref}
+                      title="Anschreiben"
+                      disabledHint="Keine E-Mail-Adresse für diese Person vorhanden"
+                      showLabel={false}
+                    />
+                  </ActionItem>
+                  <ActionItem label="Kalender">
+                    {item.calendarAction.href ? (
+                      <Link
+                        href={item.calendarAction.href}
+                        className="inline-flex"
+                        title="Kalenderdatei herunterladen"
+                        aria-label="Kalenderdatei herunterladen"
+                      >
+                        <OfferActionIcon title="Kalenderdatei herunterladen" label="Kalenderdatei herunterladen">
+                          <CalendarGlyph />
+                        </OfferActionIcon>
+                      </Link>
+                    ) : (
+                      <OfferActionIcon
+                        title={item.calendarAction.disabledReason ?? "Kalenderdatei erst mit Termin verfügbar"}
+                        label="Kalenderdatei"
+                        className="border-slate-200 bg-slate-100 text-slate-400"
+                        disabled={true}
+                      >
                         <CalendarGlyph />
                       </OfferActionIcon>
-                    </Link>
-                  ) : (
-                    <OfferActionIcon
-                      title={item.calendarAction.disabledReason ?? "Kalenderdatei erst mit Termin verfügbar"}
-                      label="Kalenderdatei"
-                      className="border-slate-200 bg-slate-100 text-slate-400"
-                      disabled={true}
-                    >
-                      <CalendarGlyph />
-                    </OfferActionIcon>
-                  )}
-                </ActionItem>
-                <ActionItem label="Archiv">
-                  <ArchiveAction action={item.archiveAction} />
-                </ActionItem>
-              </ActionZone>
+                    )}
+                  </ActionItem>
+                </ActionGroup>
+              </div>
 
               <div className="grid gap-3 text-sm text-muted-foreground md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
                 <div className="space-y-1">
