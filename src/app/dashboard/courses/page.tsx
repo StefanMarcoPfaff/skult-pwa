@@ -105,6 +105,13 @@ function formatWorkshopDateTime(value: string | null) {
   });
 }
 
+function formatOfferEndDate(value: string | null) {
+  if (!value) return null;
+  return new Date(value).toLocaleDateString("de-DE", {
+    dateStyle: "medium",
+  });
+}
+
 function formatCourseSchedule(weekday: number | null, startTime: string | null, recurrence: string | null) {
   const weekdayLabel =
     weekday !== null && Number.isInteger(weekday) && weekdayLabels[weekday] ? weekdayLabels[weekday] : null;
@@ -352,6 +359,7 @@ export default async function DashboardCoursesPage({
       title: offer.title,
       kindLabel: getOfferKindLabel(offer.kind),
       statusLabel: displayState.currentStatusLabel,
+      normalizedStatus: displayState.normalizedStatus,
       priceLabel: formatOfferPrice(offer.price_cents, offer.currency),
       visibility,
       visibilityLabel: getOfferVisibilityLabel(offer.visibility),
@@ -361,6 +369,7 @@ export default async function DashboardCoursesPage({
       pauseStartLabel: kind === "course" ? pauseStartLabel : null,
       pauseEndLabel: kind === "course" ? pauseEndLabel : null,
       stopDateLabel: kind === "course" ? stopDateLabel : null,
+      endDateLabel: kind === "course" ? formatOfferEndDate(offer.ends_at ?? null) : null,
       policyTypeLabel: kind === "course" ? "Modell" : "Stornierungsbedingungen",
       policyLabel,
       showActivationHint: displayState.normalizedStatus === "draft" && isMissingPolicy,

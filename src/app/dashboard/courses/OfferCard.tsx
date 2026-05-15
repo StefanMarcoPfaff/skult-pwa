@@ -9,12 +9,15 @@ import { CourseCardShareButton } from "./CourseCardShareButton";
 import { OfferActionIcon, OfferActionItem } from "./OfferActionIcon";
 
 type OneTimeOfferState = "draft" | "published" | "published_with_bookings" | "ended";
+type CourseOfferStatus = "draft" | "active" | "pause_scheduled" | "paused" | "stop_scheduled" | "ended";
+type OfferBadgeTone = "green" | "orange" | "red";
 
 export type OfferCardProps = {
   id: string;
   title: string;
   kindLabel: string;
   statusLabel: string;
+  normalizedStatus: CourseOfferStatus | null;
   priceLabel: string | null;
   visibilityLabel: string;
   visibility: "public" | "private_link";
@@ -24,6 +27,7 @@ export type OfferCardProps = {
   pauseStartLabel: string | null;
   pauseEndLabel: string | null;
   stopDateLabel: string | null;
+  endDateLabel: string | null;
   policyTypeLabel: string;
   policyLabel: string;
   showActivationHint: boolean;
@@ -136,15 +140,15 @@ function TrashGlyph() {
   );
 }
 
-function OneTimeStatusBadge(props: { state: OneTimeOfferState; statusLabel: string }) {
+function StatusBadge(props: { tone: OfferBadgeTone; label: string }) {
   const className =
-    props.state === "draft"
+    props.tone === "orange"
       ? "border-orange-200 bg-orange-50 text-orange-800"
-      : props.state === "ended"
+      : props.tone === "red"
         ? "border-red-200 bg-red-50 text-red-700"
         : "border-green-200 bg-green-50 text-green-700";
 
-  return <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${className}`}>{props.statusLabel}</span>;
+  return <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${className}`}>{props.label}</span>;
 }
 
 function ActionGroupTitle(props: { children: ReactNode }) {
@@ -207,158 +211,170 @@ function OneTimeActionItem(props: {
   );
 }
 
-function LegacyActionRow(props: OfferCardProps) {
+function getCourseBadgeLabel(props: OfferCardProps): string {
+  if (props.normalizedStatus === "paused" || props.normalizedStatus === "pause_scheduled") {
+    if (props.pauseStartLabel && props.pauseEndLabel) {
+      return `Kurs pausiert von ${props.pauseStartLabel} bis ${props.pauseEndLabel}`;
+    }
+    return "Kurs pausiert";
+  }
+
+  if (props.normalizedStatus === "stop_scheduled" || props.normalizedStatus === "ended") {
+    const endLabel = props.stopDateLabel ?? props.endDateLabel;
+    return endLabel ? `Kurs beendet zum ${endLabel}` : "Beendet";
+  }
+
+  if (props.normalizedStatus === "active") {
+    return "Aktiv";
+  }
+
+  return "Entwurf";
+}
+
+function getCourseBadgeTone(status: CourseOfferStatus | null): OfferBadgeTone {
+  if (status === "draft" || status === "paused" || status === "pause_scheduled") return "orange";
+  if (status === "stop_scheduled" || status === "ended") return "red";
+  return "green";
+}
+
+function CourseActionSections(props: OfferCardProps) {
+  const status = props.normalizedStatus ?? "draft";
+  const isDraft = status === "draft";
+  const isActive = status === "active";
+  const isPaused = status === "paused" || status === "pause_scheduled";
+  const isEnded = status === "stop_scheduled" || status === "ended";
+
+  const playLabel = isDraft ? "Jetzt veröffentlichen" : isPaused ? "Pause beenden" : isEnded ? "Reaktivieren" : "Veröffentlicht";
+  const pauseLabel = isDraft ? "Entwurf" : isPaused ? "Pausiert" : "Pausieren";
+  const stopLabel = isEnded ? "Beendet" : "Beenden";
+  const deleteLabel = "Löschen";
+  const deleteReason = props.archiveReason || "Angebot löschen";
+  const playClassName = actionToneClassName({
+    tone: "green",
+    active: isActive,
+    disabled: props.playDisabled,
+  }) ?? props.playIconClass;
+  const pauseClassName = actionToneClassName({
+    tone: "orange",
+    active: isDraft || isPaused,
+    disabled: props.pauseDisabled && !isDraft && !isPaused,
+  }) ?? props.pauseIconClass;
+  const stopClassName = actionToneClassName({
+    tone: "red",
+    active: isEnded,
+    disabled: props.stopDisabled && !isEnded,
+  }) ?? props.stopIconClass;
+  const disableCheckIn = isDraft;
+
   return (
     <div
-      className="flex max-w-full flex-wrap items-start gap-2"
+      className="space-y-4"
       onMouseDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
     >
-      {!props.playDisabled ? (
-        <ConfirmIconAction
-          action={setCoursePublishStateAction}
-          fields={{ course_id: props.id, mode: "play", redirect_to: "/dashboard/courses" }}
-          title="Möchtest du dieses Angebot aktivieren?"
-          text="Nach der Aktivierung ist dein Angebot buchbar. Die Sichtbarkeit in Listen richtet sich nach der gewählten Sichtbarkeitseinstellung."
-          cancelLabel="Nein, abbrechen"
-          confirmLabel="Ja, aktivieren"
-          triggerLabel="aktivieren / starten"
-          clientAction={true}
-          timeoutMs={15000}
-          trigger={
-            <OfferActionIcon title="aktivieren / starten" label="aktivieren / starten" className={props.playIconClass}>
-              <PlayGlyph />
-            </OfferActionIcon>
-          }
-        />
-      ) : (
-        <span className="inline-flex">
-          <OfferActionIcon title="aktivieren / starten" label="aktivieren / starten" className={props.playIconClass} disabled={true}>
-            <PlayGlyph />
-          </OfferActionIcon>
-        </span>
-      )}
+      <div className="space-y-2">
+        <ActionGroupTitle>Angebotsstatus & Verwaltung</ActionGroupTitle>
+        <div className="flex flex-wrap gap-x-4 gap-y-3">
+          {!props.playDisabled ? (
+            <ConfirmIconAction
+              action={setCoursePublishStateAction}
+              fields={{ course_id: props.id, mode: "play", redirect_to: "/dashboard/courses" }}
+              title="Angebot jetzt veröffentlichen?"
+              text="Nach der Veröffentlichung ist dein Angebot sichtbar und buchbar. Die Sichtbarkeit richtet sich nach der gewählten Sichtbarkeitseinstellung."
+              cancelLabel="Nein, abbrechen"
+              confirmLabel="Ja, veröffentlichen"
+              triggerLabel={playLabel}
+              clientAction={true}
+              timeoutMs={15000}
+              trigger={<OneTimeActionButton label={playLabel} title={playLabel} icon={<PlayGlyph />} className={playClassName} />}
+            />
+          ) : (
+            <OneTimeActionItem label={playLabel} title={playLabel} icon={<PlayGlyph />} className={playClassName} disabled={true} />
+          )}
 
-      {props.pauseDisabled ? (
-        <span className="inline-flex">
-          <OfferActionIcon title="pausieren" label="pausieren" className={props.pauseIconClass} disabled={true}>
-            <PauseGlyph />
-          </OfferActionIcon>
-        </span>
-      ) : (
-        <Link href={props.detailHref} className="inline-flex" aria-label="pausieren">
-          <OfferActionIcon title="pausieren" label="pausieren" className={props.pauseIconClass}>
-            <PauseGlyph />
-          </OfferActionIcon>
-        </Link>
-      )}
+          {isDraft || isPaused ? (
+            <OneTimeActionItem label={pauseLabel} title={pauseLabel} icon={<PauseGlyph />} className={pauseClassName} disabled={isPaused} />
+          ) : props.pauseDisabled ? (
+            <OneTimeActionItem label={pauseLabel} title={pauseLabel} icon={<PauseGlyph />} className={pauseClassName} disabled={true} />
+          ) : (
+            <Link href={props.detailHref} className="inline-flex" title={pauseLabel} aria-label={pauseLabel}>
+              <OneTimeActionItem label={pauseLabel} title={pauseLabel} icon={<PauseGlyph />} className={pauseClassName} />
+            </Link>
+          )}
 
-      {props.stopDisabled ? (
-        <span className="inline-flex">
-          <OfferActionIcon title="beenden" label="beenden" className={props.stopIconClass} disabled={true}>
-            <StopGlyph />
-          </OfferActionIcon>
-        </span>
-      ) : (
-        <Link href={props.detailHref} className="inline-flex" aria-label="beenden">
-          <OfferActionIcon title="beenden" label="beenden" className={props.stopIconClass}>
-            <StopGlyph />
-          </OfferActionIcon>
-        </Link>
-      )}
+          {isEnded ? (
+            <OneTimeActionItem label={stopLabel} title={stopLabel} icon={<StopGlyph />} className={stopClassName} disabled={true} />
+          ) : props.stopDisabled ? (
+            <OneTimeActionItem label={stopLabel} title={stopLabel} icon={<StopGlyph />} className={stopClassName} disabled={true} />
+          ) : (
+            <Link href={props.detailHref} className="inline-flex" title={stopLabel} aria-label={stopLabel}>
+              <OneTimeActionItem label={stopLabel} title={stopLabel} icon={<StopGlyph />} className={stopClassName} />
+            </Link>
+          )}
 
-      <Link href={props.editHref} className="inline-flex" title="bearbeiten" aria-label="bearbeiten">
-        <OfferActionIcon title="bearbeiten" label="bearbeiten">
-          <EditGlyph />
-        </OfferActionIcon>
-      </Link>
+          <Link href={props.editHref} className="inline-flex" title="Bearbeiten" aria-label="Bearbeiten">
+            <OneTimeActionItem label="Bearbeiten" title="Bearbeiten" icon={<EditGlyph />} />
+          </Link>
 
-      <Link href={props.checkInHref} className="inline-flex" title="Check-in starten" aria-label="Check-in starten">
-        <OfferActionIcon title="Check-in starten" label="Check-in starten">
-          <CheckInGlyph />
-        </OfferActionIcon>
-      </Link>
+          {props.archiveAllowed ? (
+            <ConfirmIconAction
+              action={archiveCourseAction}
+              fields={{ course_id: props.id, redirect_to: "/dashboard/courses" }}
+              title="Angebot löschen?"
+              text="Das Angebot wird dabei nicht endgültig entfernt, sondern archiviert und aus den aktiven Übersichten ausgeblendet."
+              cancelLabel="Nein, abbrechen"
+              confirmLabel="Ja, löschen"
+              triggerLabel={deleteLabel}
+              trigger={<OneTimeActionButton label={deleteLabel} title={deleteLabel} icon={<TrashGlyph />} />}
+            />
+          ) : (
+            <OneTimeActionItem label={deleteLabel} title={deleteReason} icon={<TrashGlyph />} disabled={true} />
+          )}
+        </div>
+      </div>
 
-      {props.mailHref ? (
-        <a href={props.mailHref} className="inline-flex" title="Teilnehmende per E-Mail kontaktieren" aria-label="Teilnehmende per E-Mail kontaktieren">
-          <OfferActionIcon title="Teilnehmende per E-Mail kontaktieren" label="Teilnehmende per E-Mail kontaktieren">
-            <MailGlyph />
-          </OfferActionIcon>
-        </a>
-      ) : (
-        <span
-          className="inline-flex"
-          title="Keine E-Mail-Adressen für dieses Angebot vorhanden"
-          aria-label="Keine E-Mail-Adressen für dieses Angebot vorhanden"
-        >
-          <OfferActionIcon
-            title="Keine E-Mail-Adressen für dieses Angebot vorhanden"
-            label="Keine E-Mail-Adressen für dieses Angebot vorhanden"
-            className="border-slate-200 bg-slate-100 text-slate-400"
-            disabled={true}
-          >
-            <MailGlyph />
-          </OfferActionIcon>
-        </span>
-      )}
+      <div className="space-y-2 border-t border-slate-200/80 pt-4">
+        <ActionGroupTitle>Angebotsnutzung & Kommunikation</ActionGroupTitle>
+        <div className="flex flex-wrap gap-x-4 gap-y-3">
+          {disableCheckIn ? (
+            <OneTimeActionItem label="Check-in" title="Check-in" icon={<CheckInGlyph />} disabled={true} />
+          ) : (
+            <Link href={props.checkInHref} className="inline-flex" title="Check-in" aria-label="Check-in">
+              <OneTimeActionItem label="Check-in" title="Check-in" icon={<CheckInGlyph />} />
+            </Link>
+          )}
 
-      {props.calendarHref ? (
-        <Link href={props.calendarHref} className="inline-flex" title="Kalenderdatei herunterladen" aria-label="Kalenderdatei herunterladen">
-          <OfferActionIcon title="Kalenderdatei herunterladen" label="Kalenderdatei herunterladen">
-            <CalendarGlyph />
-          </OfferActionIcon>
-        </Link>
-      ) : (
-        <span
-          className="inline-flex"
-          title={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfügbar"}
-          aria-label={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfügbar"}
-        >
-          <OfferActionIcon
-            title={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfügbar"}
-            label="Kalenderdatei"
-            className="border-slate-200 bg-slate-100 text-slate-400"
-            disabled={true}
-          >
-            <CalendarGlyph />
-          </OfferActionIcon>
-        </span>
-      )}
+          {props.mailHref ? (
+            <a href={props.mailHref} className="inline-flex" title="E-Mail an Teilnehmende" aria-label="E-Mail an Teilnehmende">
+              <OneTimeActionItem label="E-Mail" title="E-Mail an Teilnehmende" icon={<MailGlyph />} />
+            </a>
+          ) : (
+            <OneTimeActionItem label="E-Mail" title="E-Mail an Teilnehmende" icon={<MailGlyph />} disabled={true} />
+          )}
 
-      <CourseCardShareButton
-        publicUrl={props.publicUrl}
-        embedUrl={props.embedUrl}
-        visibility={props.visibility}
-        isEnabled={props.publicOfferEnabled}
-      />
+          {props.calendarHref ? (
+            <Link href={props.calendarHref} className="inline-flex" title="Kalender" aria-label="Kalender">
+              <OneTimeActionItem label="Kalender" title="Kalenderdatei herunterladen" icon={<CalendarGlyph />} />
+            </Link>
+          ) : (
+            <OneTimeActionItem
+              label="Kalender"
+              title={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfügbar"}
+              icon={<CalendarGlyph />}
+              disabled={true}
+            />
+          )}
 
-      {props.archiveAllowed ? (
-        <ConfirmIconAction
-          action={archiveCourseAction}
-          fields={{ course_id: props.id, redirect_to: "/dashboard/courses" }}
-          title="Angebot archivieren?"
-          text="Das Angebot bleibt historisch erhalten und wird nur aus den aktiven Übersichten entfernt."
-          cancelLabel="Nein, abbrechen"
-          confirmLabel="Ja, archivieren"
-          triggerLabel="archivieren"
-          trigger={
-            <OfferActionIcon title="archivieren" label="archivieren">
-              <TrashGlyph />
-            </OfferActionIcon>
-          }
-        />
-      ) : (
-        <span className="inline-flex" title={props.archiveReason} aria-label={props.archiveReason}>
-          <OfferActionIcon
-            title={props.archiveReason}
-            label="archivieren"
-            className="border-slate-200 bg-slate-100 text-slate-400"
-            disabled={true}
-          >
-            <TrashGlyph />
-          </OfferActionIcon>
-        </span>
-      )}
+          <CourseCardShareButton
+            publicUrl={props.publicUrl}
+            embedUrl={props.embedUrl}
+            visibility={props.visibility}
+            isEnabled={props.publicOfferEnabled}
+            triggerLabel="Teilen"
+            trigger={<OneTimeActionItem label="Teilen" title="Teilen" icon={<ShareGlyph />} disabled={!props.publicOfferEnabled} />}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -528,7 +544,13 @@ export function OfferCard(props: OfferCardProps) {
         ? "border-red-200 bg-red-50/30 hover:border-red-300"
         : props.oneTimeOfferState
           ? "border-green-200 bg-green-50/25 hover:border-green-300"
-          : "hover:border-foreground/20";
+          : props.normalizedStatus === "draft" || props.normalizedStatus === "paused" || props.normalizedStatus === "pause_scheduled"
+            ? "border-orange-200 bg-orange-50/35 hover:border-orange-300"
+            : props.normalizedStatus === "stop_scheduled" || props.normalizedStatus === "ended"
+              ? "border-red-200 bg-red-50/30 hover:border-red-300"
+              : props.normalizedStatus === "active"
+                ? "border-green-200 bg-green-50/25 hover:border-green-300"
+                : "hover:border-foreground/20";
 
   return (
     <article
@@ -550,15 +572,17 @@ export function OfferCard(props: OfferCardProps) {
               </p>
             </div>
             {props.oneTimeOfferState ? (
-              <OneTimeStatusBadge state={props.oneTimeOfferState} statusLabel={props.statusLabel} />
+              <StatusBadge tone={props.oneTimeOfferState === "draft" ? "orange" : props.oneTimeOfferState === "ended" ? "red" : "green"} label={props.statusLabel} />
+            ) : props.normalizedStatus ? (
+              <StatusBadge tone={getCourseBadgeTone(props.normalizedStatus)} label={getCourseBadgeLabel(props)} />
             ) : null}
           </div>
         </div>
 
-        {props.oneTimeOfferState ? <OneTimeActionSections {...props} state={props.oneTimeOfferState} /> : <LegacyActionRow {...props} />}
+        {props.oneTimeOfferState ? <OneTimeActionSections {...props} state={props.oneTimeOfferState} /> : <CourseActionSections {...props} />}
 
         <div className="space-y-1 text-sm text-muted-foreground">
-          {!props.oneTimeOfferState ? <p>Status: {props.statusLabel}</p> : null}
+          {!props.oneTimeOfferState && !props.normalizedStatus ? <p>Status: {props.statusLabel}</p> : null}
           {props.location ? <p>Ort: {props.location}</p> : null}
           <p>Sichtbarkeit: {props.visibilityLabel}</p>
           {props.workshopTiming ? <p>{props.workshopTiming}</p> : null}
