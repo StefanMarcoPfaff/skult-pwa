@@ -9,6 +9,7 @@ import { MailActionLink } from "@/components/dashboard/MailActionLink";
 import DashboardEmptyState from "../_components/DashboardEmptyState";
 import SortableTableHeader, { type SortDirection } from "../_components/SortableTableHeader";
 import { archiveParticipantAction } from "./actions";
+import { getParticipantStatusPresentation, type ParticipantStatusSource } from "./participant-status-ui";
 import {
   RegisteredParticipantLifecycleButtons,
   TrialParticipantLifecycleButtons,
@@ -35,9 +36,12 @@ type RegisteredLifecycleAction = {
   defaultActiveUntilDate: string;
   defaultPauseEndDate?: string | null;
   defaultStopDate: string;
+  playLabel?: string;
   playClassName: string;
   pauseClassName: string;
   stopClassName: string;
+  pauseLabel?: string;
+  stopLabel?: string;
   pauseDisabled: boolean;
   stopDisabled: boolean;
 };
@@ -53,24 +57,6 @@ type ParticipantLifecycleAction =
   | TrialLifecycleAction
   | RegisteredLifecycleAction
   | WorkshopLifecycleAction;
-
-type TrialStatusSource = {
-  kind: "trial";
-  decisionStatus: string | null;
-  cancelledAt: string | null;
-};
-
-type RegisteredStatusSource = {
-  kind: "registered";
-  subscriptionStatus: string | null;
-};
-
-type WorkshopStatusSource = {
-  kind: "workshop";
-  bookingStatus: string | null;
-};
-
-type ParticipantStatusSource = TrialStatusSource | RegisteredStatusSource | WorkshopStatusSource;
 
 type ParticipantCheckIn = {
   courseId: string;
@@ -101,14 +87,12 @@ type ParticipantCalendarAction = {
   disabledReason: string | null;
 };
 
-type StatusBadge = {
-  label: string;
-  className: string;
-};
-
 type CardPresentation = {
   articleClassName: string;
-  badge: StatusBadge;
+  badge: {
+    label: string;
+    className: string;
+  };
 };
 
 export type ParticipantOverviewItem = {
@@ -146,121 +130,15 @@ function formatDateTime(value: string | null): string {
   });
 }
 
-function getStatusBadge(status: ParticipantStatusSource, checkedInAt: string | null): StatusBadge {
-  if (status.kind === "trial") {
-    if (status.cancelledAt || status.decisionStatus === "rejected") {
-      return {
-        label: "Abgesagt",
-        className: "border-red-200 bg-red-50 text-red-700",
-      };
-    }
-
-    if ((status.decisionStatus ?? "pending") === "pending" && checkedInAt) {
-      return {
-        label: "Eingecheckt",
-        className: "border-emerald-200 bg-emerald-50 text-emerald-700",
-      };
-    }
-
-    if (status.decisionStatus === "approved") {
-      return {
-        label: "Aktiv",
-        className: "border-green-200 bg-green-50 text-green-700",
-      };
-    }
-
-    return {
-      label: "Nicht eingecheckt",
-      className: "border-slate-200 bg-slate-50 text-slate-700",
-    };
-  }
-
-  if (status.kind === "registered") {
-    if (status.subscriptionStatus === "paused" || status.subscriptionStatus === "pause_scheduled") {
-      return {
-        label: "Pausiert",
-        className: "border-orange-200 bg-orange-50 text-orange-800",
-      };
-    }
-
-    if (status.subscriptionStatus === "cancel_scheduled" || status.subscriptionStatus === "cancelled") {
-      return {
-        label: "Gekündigt / gestoppt",
-        className: "border-red-200 bg-red-50 text-red-700",
-      };
-    }
-
-    if (checkedInAt) {
-      return {
-        label: "Eingecheckt",
-        className: "border-emerald-200 bg-emerald-50 text-emerald-700",
-      };
-    }
-
-    return {
-      label: "Aktiv",
-      className: "border-green-200 bg-green-50 text-green-700",
-    };
-  }
-
-  if (checkedInAt) {
-    return {
-      label: "Eingecheckt",
-      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    };
-  }
-
-  if (status.bookingStatus === "paid") {
-    return {
-      label: "Bezahlt",
-      className: "border-green-200 bg-green-50 text-green-700",
-    };
-  }
-
-  return {
-    label: "Gekündigt / gestoppt",
-    className: "border-red-200 bg-red-50 text-red-700",
-  };
-}
-
 function getCardPresentation(item: ParticipantOverviewItem, checkedInAt: string | null): CardPresentation {
-  const badge = getStatusBadge(item.status, checkedInAt);
-
-  if (item.status.kind === "trial") {
-    if (item.status.cancelledAt || item.status.decisionStatus === "rejected") {
-      return { articleClassName: "border-red-200 bg-red-50/60", badge };
-    }
-    if ((item.status.decisionStatus ?? "pending") === "pending" && checkedInAt) {
-      return { articleClassName: "border-amber-200 bg-amber-50/60", badge };
-    }
-    if (item.status.decisionStatus === "approved") {
-      return { articleClassName: "border-green-200 bg-green-50/60", badge };
-    }
-    return { articleClassName: "border-green-200 bg-green-50/45", badge };
-  }
-
-  if (item.status.kind === "registered") {
-    if (item.status.subscriptionStatus === "paused" || item.status.subscriptionStatus === "pause_scheduled") {
-      return { articleClassName: "border-orange-200 bg-orange-50/60", badge };
-    }
-    if (item.status.subscriptionStatus === "cancel_scheduled" || item.status.subscriptionStatus === "cancelled") {
-      return { articleClassName: "border-red-200 bg-red-50/60", badge };
-    }
-    if (checkedInAt) {
-      return { articleClassName: "border-emerald-200 bg-emerald-50/60", badge };
-    }
-    return { articleClassName: "border-green-200 bg-green-50/60", badge };
-  }
-
-  if (checkedInAt) {
-    return { articleClassName: "border-emerald-200 bg-emerald-50/60", badge };
-  }
-
-  if (item.status.bookingStatus === "paid") {
-    return { articleClassName: "border-green-200 bg-green-50/60", badge };
-  }
-
-  return { articleClassName: "border-red-200 bg-red-50/60", badge };
+  const presentation = getParticipantStatusPresentation(item.status, checkedInAt);
+  return {
+    articleClassName: presentation.cardClassName,
+    badge: {
+      label: presentation.badgeLabel,
+      className: presentation.badgeClassName,
+    },
+  };
 }
 
 function getCheckInSummary(item: ParticipantOverviewItem, checkedInAt: string | null) {
@@ -568,9 +446,12 @@ function LifecycleActions(props: { action: ParticipantLifecycleAction }) {
         defaultActiveUntilDate={props.action.defaultActiveUntilDate}
         defaultPauseEndDate={props.action.defaultPauseEndDate}
         defaultStopDate={props.action.defaultStopDate}
+        playLabel={props.action.playLabel}
         playClassName={props.action.playClassName}
         pauseClassName={props.action.pauseClassName}
         stopClassName={props.action.stopClassName}
+        pauseLabel={props.action.pauseLabel}
+        stopLabel={props.action.stopLabel}
         pauseDisabled={props.action.pauseDisabled}
         stopDisabled={props.action.stopDisabled}
       />

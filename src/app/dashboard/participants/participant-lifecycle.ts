@@ -49,7 +49,7 @@ export function getParticipantLifecycleDisplay(input: ParticipantLifecycleInput)
 
     if (subscriptionStatus === "cancel_scheduled" || subscriptionStatus === "cancelled") {
       return {
-        playClassName: subscriptionStatus === "cancelled" ? DISABLED_OFFER_ACTION_ICON_CLASS : ACTIVE_FILLED_CLASS,
+        playClassName: DISABLED_OFFER_ACTION_ICON_CLASS,
         pauseClassName: DISABLED_OFFER_ACTION_ICON_CLASS,
         stopClassName: STOP_CLASS,
         playDisabled: true,
@@ -84,7 +84,7 @@ export function getParticipantLifecycleDisplay(input: ParticipantLifecycleInput)
 
   if (input.reservationDecisionStatus === "approved") {
     return {
-      playClassName: ACTIVE_OUTLINE_CLASS,
+      playClassName: ACTIVE_FILLED_CLASS,
       pauseClassName: DISABLED_OFFER_ACTION_ICON_CLASS,
       stopClassName: DISABLED_OFFER_ACTION_ICON_CLASS,
       playDisabled: true,

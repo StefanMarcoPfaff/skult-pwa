@@ -61,7 +61,7 @@ export function TrialParticipantLifecycleButtons(props: {
   showApprovalAction: boolean;
   showCancellationAction: boolean;
 }) {
-  const playLabel = props.showApprovalAction && !props.playDisabled ? "Jetzt zusagen" : "Probeschüler*in";
+  const playLabel = props.showApprovalAction && !props.playDisabled ? "Jetzt zusagen" : "Zugesagt";
   const stopLabel = props.showApprovalAction ? "Jetzt absagen" : "Stornieren";
 
   return (
@@ -131,23 +131,30 @@ export function RegisteredParticipantLifecycleButtons(props: {
   defaultActiveUntilDate: string;
   defaultPauseEndDate?: string | null;
   defaultStopDate: string;
+  playLabel?: string;
   playClassName: string;
   pauseClassName: string;
   stopClassName: string;
+  pauseLabel?: string;
+  stopLabel?: string;
   pauseDisabled: boolean;
   stopDisabled: boolean;
 }) {
+  const playLabel = props.playLabel ?? "Aktiv";
+  const pauseLabel = props.pauseLabel ?? "Pausieren";
+  const stopLabel = props.stopLabel ?? "Kündigen";
+
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <IconSlot label="Aktiv">
-        <DisabledAction title="Aktiv" className={props.playClassName}>
+      <IconSlot label={playLabel}>
+        <DisabledAction title={playLabel} className={props.playClassName}>
           <PlayGlyph />
         </DisabledAction>
       </IconSlot>
 
-      <IconSlot label="Pausieren">
+      <IconSlot label={pauseLabel}>
         {props.pauseDisabled ? (
-          <DisabledAction title="Pausieren" className={props.pauseClassName}>
+          <DisabledAction title={pauseLabel} className={props.pauseClassName}>
             <PauseGlyph />
           </DisabledAction>
         ) : (
@@ -159,7 +166,7 @@ export function RegisteredParticipantLifecycleButtons(props: {
             defaultPauseEndDate={props.defaultPauseEndDate}
             triggerTitle="pausieren"
             triggerContent={
-              <OfferActionIcon title="Pausieren" label="Pausieren" className={props.pauseClassName}>
+              <OfferActionIcon title={pauseLabel} label={pauseLabel} className={props.pauseClassName}>
                 <PauseGlyph />
               </OfferActionIcon>
             }
@@ -167,9 +174,9 @@ export function RegisteredParticipantLifecycleButtons(props: {
         )}
       </IconSlot>
 
-      <IconSlot label="Kündigen">
+      <IconSlot label={stopLabel}>
         {props.stopDisabled ? (
-          <DisabledAction title="Kündigen" className={props.stopClassName}>
+          <DisabledAction title={stopLabel} className={props.stopClassName}>
             <StopGlyph />
           </DisabledAction>
         ) : (
@@ -180,7 +187,7 @@ export function RegisteredParticipantLifecycleButtons(props: {
             defaultStopDate={props.defaultStopDate}
             triggerTitle="kündigen"
             triggerContent={
-              <OfferActionIcon title="Kündigen" label="Kündigen" className={props.stopClassName}>
+              <OfferActionIcon title={stopLabel} label={stopLabel} className={props.stopClassName}>
                 <StopGlyph />
               </OfferActionIcon>
             }

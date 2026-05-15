@@ -6,6 +6,7 @@ import { buildMailtoHref, buildParticipantMailSubject } from "@/lib/mailto";
 import { getOfferKindLabel } from "@/lib/offer-ui";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import type { ParticipantOverviewItem } from "./ParticipantOverviewList";
+import { getParticipantStatusPresentation } from "./participant-status-ui";
 import { getParticipantLifecycleDisplay, getWorkshopParticipantLifecycleDisplay } from "./participant-lifecycle";
 
 type CourseRow = {
@@ -355,6 +356,12 @@ export async function loadParticipantOverviewItems(input: {
       subject: buildParticipantMailSubject(course.title),
     });
     const trialNeedsDecision = needsTeacherDecision(reservation, checkedInAt);
+    const trialStatus = {
+      kind: "trial" as const,
+      decisionStatus: reservation.decision_status,
+      cancelledAt: reservation.cancelled_at,
+    };
+    const trialStatusPresentation = getParticipantStatusPresentation(trialStatus, checkedInAt);
     const checkInEnabled =
       Boolean(ticket && event) &&
       !checkedInAt &&
@@ -391,20 +398,8 @@ export async function loadParticipantOverviewItems(input: {
             ? `Abgesagt am ${formatDateTime(reservation.decision_taken_at ?? reservation.rejected_at)}`
             : null,
       highlight: trialNeedsDecision,
-      status: {
-        kind: "trial",
-        decisionStatus: reservation.decision_status,
-        cancelledAt: reservation.cancelled_at,
-      },
-      statusLabel: trialNeedsDecision
-        ? "Entscheidung offen"
-        : reservation.cancelled_at || reservation.decision_status === "rejected"
-          ? "Gekündigt / gestoppt"
-          : reservation.decision_status === "approved"
-            ? "Aktiv"
-            : checkedInAt
-              ? "Eingecheckt"
-              : "Nicht eingecheckt",
+      status: trialStatus,
+      statusLabel: trialStatusPresentation.sortLabel,
       mailHref,
       calendarAction: {
         href: trialCalendarEnabled ? buildBookingCalendarPath(reservation.id, "trial") : null,
@@ -488,6 +483,20 @@ export async function loadParticipantOverviewItems(input: {
       recurrenceType: course.recurrence_type,
       sessionCount: (sessionsByCourseId.get(course.id) ?? []).length,
     });
+    const registeredStatus = {
+      kind: "registered" as const,
+      subscriptionStatus: intent.subscription_status,
+      subscriptionStopDate: intent.subscription_stop_date,
+    };
+    const registeredStatusPresentation = getParticipantStatusPresentation(registeredStatus, checkedInAt);
+    const pauseLabel =
+      intent.subscription_status === "paused"
+        ? "Pausiert"
+        : intent.subscription_status === "pause_scheduled"
+          ? "Pause geplant"
+          : "Pausieren";
+    const playLabel = intent.subscription_status === "cancel_scheduled" ? "Kündigung geplant" : "Aktiv";
+    const stopLabel = intent.subscription_status === "cancel_scheduled" ? "Kündigung geplant" : "Kündigen";
     const archiveEligibility = getParticipantArchiveEligibility({
       source: "registered",
       archivedAt: intent.archived_at,
@@ -512,18 +521,8 @@ export async function loadParticipantOverviewItems(input: {
             ? `Endet am ${formatCourseLifecycleDate(intent.subscription_stop_date) ?? "-"}`
             : null,
       highlight: false,
-      status: {
-        kind: "registered",
-        subscriptionStatus: intent.subscription_status,
-      },
-      statusLabel:
-        intent.subscription_status === "pause_scheduled" || intent.subscription_status === "paused"
-          ? "Pausiert"
-          : intent.subscription_status === "cancel_scheduled" || intent.subscription_status === "cancelled"
-            ? "Gekündigt / gestoppt"
-            : checkedInAt
-              ? "Eingecheckt"
-              : "Aktiv",
+      status: registeredStatus,
+      statusLabel: registeredStatusPresentation.sortLabel,
       mailHref,
       calendarAction: {
         href: registeredCalendarEnabled ? buildBookingCalendarPath(intent.trial_reservation_id, "registered") : null,
@@ -536,9 +535,12 @@ export async function loadParticipantOverviewItems(input: {
         defaultActiveUntilDate: defaultMonthEnd,
         defaultPauseEndDate: intent.subscription_pause_end_date,
         defaultStopDate: defaultMonthEnd,
+        playLabel,
         playClassName: lifecycle.playClassName,
         pauseClassName: lifecycle.pauseClassName,
         stopClassName: lifecycle.stopClassName,
+        pauseLabel,
+        stopLabel,
         pauseDisabled: lifecycle.pauseDisabled,
         stopDisabled: lifecycle.stopDisabled,
       },
@@ -595,6 +597,13 @@ export async function loadParticipantOverviewItems(input: {
       to: booking.customer_email ? [booking.customer_email] : [],
       subject: buildParticipantMailSubject(course.title),
     });
+    const workshopStatus = {
+      kind: "workshop" as const,
+      bookingStatus: booking.status,
+      refundedAt: booking.refunded_at,
+      stripeRefundId: booking.stripe_refund_id,
+    };
+    const workshopStatusPresentation = getParticipantStatusPresentation(workshopStatus, checkedInAt);
     const archiveEligibility = getParticipantArchiveEligibility({
       source: "workshop",
       archivedAt: booking.archived_at,
@@ -620,11 +629,8 @@ export async function loadParticipantOverviewItems(input: {
       metaLabel: booking.created_at ? `Gebucht am ${formatDateTime(booking.created_at)}` : null,
       decisionInfo: null,
       highlight: false,
-      status: {
-        kind: "workshop",
-        bookingStatus: booking.status,
-      },
-      statusLabel: checkedInAt ? "Eingecheckt" : booking.status === "paid" ? "Aktiv" : "Gekündigt / gestoppt",
+      status: workshopStatus,
+      statusLabel: workshopStatusPresentation.sortLabel,
       mailHref,
       calendarAction: {
         href: workshopCalendarEnabled ? buildBookingCalendarPath(booking.id, "workshop") : null,
@@ -674,3 +680,5 @@ export async function loadParticipantOverviewItems(input: {
 
   return items;
 }
+
+

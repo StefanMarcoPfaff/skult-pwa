@@ -199,6 +199,27 @@ function formatDateTimeRange(start: string | null, end: string | null): string |
   return `${date} | ${startTime}-${endTime}`;
 }
 
+function getDetailStatusPresentation(normalizedStatus: string) {
+  if (normalizedStatus === "draft" || normalizedStatus === "paused" || normalizedStatus === "pause_scheduled") {
+    return {
+      panelClassName: "border-orange-200 bg-orange-50/70",
+      badgeClassName: "border-orange-200 bg-orange-50 text-orange-800",
+    };
+  }
+
+  if (normalizedStatus === "ended" || normalizedStatus === "stop_scheduled") {
+    return {
+      panelClassName: "border-red-200 bg-red-50/70",
+      badgeClassName: "border-red-200 bg-red-50 text-red-700",
+    };
+  }
+
+  return {
+    panelClassName: "border-green-200 bg-green-50/70",
+    badgeClassName: "border-green-200 bg-green-50 text-green-700",
+  };
+}
+
 export default async function DashboardCourseDetailPage({
   params,
   searchParams,
@@ -340,6 +361,7 @@ export default async function DashboardCourseDetailPage({
   });
   const normalizedStatus = displayState.normalizedStatus;
   const statusLabel = displayState.currentStatusLabel;
+  const detailStatusPresentation = getDetailStatusPresentation(normalizedStatus);
   const pauseStartLabel = formatCourseLifecycleDate(data.pause_start_date);
   const pauseEndLabel = formatCourseLifecycleDate(data.pause_end_date);
   const stopDateLabel = formatCourseLifecycleDate(data.stop_date);
@@ -556,10 +578,21 @@ export default async function DashboardCourseDetailPage({
         Zurück
       </Link>
 
-      <h1 style={{ marginTop: 16, fontSize: 32, fontWeight: 900 }}>{data.title}</h1>
-      <p className="mt-3 text-sm text-muted-foreground">
+      <div className={`mt-4 rounded-[28px] border p-5 ${detailStatusPresentation.panelClassName}`}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-3xl font-black text-slate-950">{data.title}</h1>
+            <p className="mt-3 text-sm text-muted-foreground">
         Dies ist deine interne Vorschau. Prüfe die Angaben, passe sie bei Bedarf an und aktiviere das Angebot erst danach.
       </p>
+          </div>
+          <span
+            className={`inline-flex w-fit shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${detailStatusPresentation.badgeClassName}`}
+          >
+            {statusLabel}
+          </span>
+        </div>
+      </div>
 
       {savedParam === "1" ? (
         <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
@@ -656,7 +689,7 @@ export default async function DashboardCourseDetailPage({
         </p>
       ) : null}
 
-      <div style={{ marginTop: 10, opacity: 0.8 }}>
+      <div className={`mt-4 rounded-2xl border p-4 text-sm text-slate-700 ${detailStatusPresentation.panelClassName}`}>
         <div>Art: {getOfferKindLabel(data.kind)}</div>
         <div>Status: {statusLabel}</div>
         <div>Veröffentlicht: {data.is_published ? "Ja" : "Nein"}</div>
