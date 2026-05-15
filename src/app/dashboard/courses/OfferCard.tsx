@@ -6,7 +6,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 import { ConfirmIconAction } from "./ConfirmIconAction";
 import { archiveCourseAction, setCoursePublishStateAction } from "./[id]/actions";
 import { CourseCardShareButton } from "./CourseCardShareButton";
-import { OfferActionIcon } from "./OfferActionIcon";
+import { OfferActionIcon, OfferActionItem } from "./OfferActionIcon";
 
 type OneTimeOfferState = "draft" | "published" | "published_with_bookings" | "ended";
 
@@ -151,53 +151,59 @@ function ActionGroupTitle(props: { children: ReactNode }) {
   return <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{props.children}</p>;
 }
 
-function actionButtonClasses(props: {
-  importance: "primary" | "secondary";
-  tone?: "neutral" | "green" | "orange" | "red";
-  active?: boolean;
-  disabled?: boolean;
-}) {
-  const base =
-    props.importance === "primary"
-      ? "min-h-11 rounded-xl px-3 py-2 text-sm font-semibold shadow-sm"
-      : "min-h-10 rounded-xl px-3 py-2 text-sm font-medium";
-
-  if (props.disabled && !props.active) {
-    return `${base} border-slate-200 bg-slate-100 text-slate-400`;
-  }
-
-  if (props.tone === "green" && props.active) {
-    return `${base} border-green-600 bg-green-600 text-white`;
-  }
-
-  if (props.tone === "orange" && props.active) {
-    return `${base} border-orange-500 bg-orange-500 text-white`;
-  }
-
-  if (props.tone === "red" && props.active) {
-    return `${base} border-red-600 bg-red-600 text-white`;
-  }
-
-  return `${base} border-slate-200 bg-white text-slate-800 hover:border-slate-300`;
-}
-
-function ActionButtonFrame(props: {
+function OneTimeActionButton(props: {
   label: string;
+  title: string;
   icon: ReactNode;
-  importance: "primary" | "secondary";
-  tone?: "neutral" | "green" | "orange" | "red";
-  active?: boolean;
+  className?: string;
   disabled?: boolean;
 }) {
   return (
-    <span
-      className={`inline-flex w-full items-center gap-2 border transition ${actionButtonClasses(props)} ${
-        props.disabled ? "cursor-not-allowed" : ""
-      }`}
-    >
-      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">{props.icon}</span>
-      <span className="truncate">{props.label}</span>
-    </span>
+    <OfferActionItem label={props.label}>
+      <OfferActionIcon title={props.title} label={props.title} className={props.className} disabled={props.disabled}>
+        {props.icon}
+      </OfferActionIcon>
+    </OfferActionItem>
+  );
+}
+
+function actionToneClassName(props: { tone?: "green" | "orange" | "red"; active?: boolean; disabled?: boolean }) {
+  if (props.disabled && !props.active) {
+    return "border-slate-200 bg-slate-100 text-slate-400";
+  }
+
+  if (props.tone === "green" && props.active) {
+    return "border-green-600 bg-green-600 text-white";
+  }
+
+  if (props.tone === "orange" && props.active) {
+    return "border-orange-500 bg-orange-500 text-white";
+  }
+
+  if (props.tone === "red" && props.active) {
+    return "border-red-600 bg-red-600 text-white";
+  }
+
+  return undefined;
+}
+
+function OneTimeActionItem(props: {
+  label: string;
+  title: string;
+  icon: ReactNode;
+  className?: string;
+  disabled?: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex min-w-16 max-w-24 flex-col items-center gap-2 text-center">
+      {props.children ?? (
+        <OfferActionIcon title={props.title} label={props.title} className={props.className} disabled={props.disabled}>
+          {props.icon}
+        </OfferActionIcon>
+      )}
+      <span className={`text-xs font-medium leading-tight ${props.disabled ? "text-slate-400" : "text-muted-foreground"}`}>{props.label}</span>
+    </div>
   );
 }
 
@@ -364,10 +370,25 @@ function OneTimeActionSections(props: OfferCardProps & { state: OneTimeOfferStat
   const isEnded = props.state === "ended";
 
   const publishLabel = isDraft ? "Jetzt veröffentlichen" : "Veröffentlicht";
-  const draftLabel = isDraft ? "Entwurf" : "Veröffentlichung zurückziehen";
+  const draftLabel = isDraft ? "Entwurf" : "Zurückziehen";
   const deleteReason = props.archiveReason || "Angebot löschen";
-  const deleteLabel = "Angebot löschen";
+  const deleteLabel = "Löschen";
   const canCheckIn = isPublishedWithBookings;
+  const playClassName = actionToneClassName({
+    tone: "green",
+    active: isPublished && !isEnded,
+    disabled: props.playDisabled,
+  }) ?? props.playIconClass;
+  const pauseClassName = actionToneClassName({
+    tone: "orange",
+    active: isDraft,
+    disabled: !isDraft && props.pauseDisabled,
+  }) ?? props.pauseIconClass;
+  const stopClassName = actionToneClassName({
+    tone: "red",
+    active: isEnded,
+    disabled: props.stopDisabled,
+  }) ?? props.stopIconClass;
 
   return (
     <div
@@ -377,7 +398,7 @@ function OneTimeActionSections(props: OfferCardProps & { state: OneTimeOfferStat
     >
       <div className="space-y-2">
         <ActionGroupTitle>Angebotsstatus & Verwaltung</ActionGroupTitle>
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="flex flex-wrap gap-x-4 gap-y-3">
           {!props.playDisabled ? (
             <ConfirmIconAction
               action={setCoursePublishStateAction}
@@ -386,88 +407,42 @@ function OneTimeActionSections(props: OfferCardProps & { state: OneTimeOfferStat
               text="Nach der Veröffentlichung ist dein Angebot sichtbar und buchbar. Die Sichtbarkeit richtet sich nach der gewählten Sichtbarkeitseinstellung."
               cancelLabel="Nein, abbrechen"
               confirmLabel="Ja, veröffentlichen"
-              triggerLabel="Jetzt veröffentlichen"
+              triggerLabel={publishLabel}
               clientAction={true}
               timeoutMs={15000}
               trigger={
-                <ActionButtonFrame
+                <OneTimeActionButton
                   label={publishLabel}
+                  title={publishLabel}
                   icon={<PlayGlyph />}
-                  importance="primary"
-                  tone="green"
-                  active={false}
+                  className={playClassName}
                 />
               }
             />
           ) : (
-            <span className="inline-flex">
-              <ActionButtonFrame
-                label={publishLabel}
-                icon={<PlayGlyph />}
-                importance="primary"
-                tone="green"
-                active={isPublished}
-                disabled={true}
-              />
-            </span>
+            <OneTimeActionItem label={publishLabel} title={publishLabel} icon={<PlayGlyph />} className={playClassName} disabled={true} />
           )}
 
           {isDraft ? (
-            <span className="inline-flex">
-              <ActionButtonFrame
-                label={draftLabel}
-                icon={<PauseGlyph />}
-                importance="primary"
-                tone="orange"
-                active={true}
-                disabled={true}
-              />
-            </span>
+            <OneTimeActionItem label={draftLabel} title={draftLabel} icon={<PauseGlyph />} className={pauseClassName} />
           ) : props.pauseDisabled ? (
-            <span className="inline-flex" title={draftLabel} aria-label={draftLabel}>
-              <ActionButtonFrame
-                label={draftLabel}
-                icon={<PauseGlyph />}
-                importance="primary"
-                disabled={true}
-              />
-            </span>
+            <OneTimeActionItem label={draftLabel} title={draftLabel} icon={<PauseGlyph />} className={pauseClassName} disabled={true} />
           ) : (
             <Link href={props.detailHref} className="inline-flex" title={draftLabel} aria-label={draftLabel}>
-              <ActionButtonFrame
-                label={draftLabel}
-                icon={<PauseGlyph />}
-                importance="primary"
-                tone="orange"
-              />
+              <OneTimeActionItem label={draftLabel} title={draftLabel} icon={<PauseGlyph />} className={pauseClassName} />
             </Link>
           )}
 
           {props.stopDisabled ? (
-            <span className="inline-flex" title="Stornieren" aria-label="Stornieren">
-              <ActionButtonFrame
-                label="Stornieren"
-                icon={<StopGlyph />}
-                importance="primary"
-                tone="red"
-                active={isEnded}
-                disabled={true}
-              />
-            </span>
+            <OneTimeActionItem label="Stornieren" title="Stornieren" icon={<StopGlyph />} className={stopClassName} disabled={true} />
           ) : (
             <Link href={props.detailHref} className="inline-flex" title="Stornieren" aria-label="Stornieren">
-              <ActionButtonFrame
-                label="Stornieren"
-                icon={<StopGlyph />}
-                importance="primary"
-                tone="red"
-                active={isEnded}
-              />
+              <OneTimeActionItem label="Stornieren" title="Stornieren" icon={<StopGlyph />} className={stopClassName} />
             </Link>
           )}
 
           <Link href={props.editHref} className="inline-flex" title="Bearbeiten" aria-label="Bearbeiten">
-            <ActionButtonFrame label="Bearbeiten" icon={<EditGlyph />} importance="primary" />
+            <OneTimeActionItem label="Bearbeiten" title="Bearbeiten" icon={<EditGlyph />} />
           </Link>
 
           {props.archiveAllowed ? (
@@ -479,77 +454,44 @@ function OneTimeActionSections(props: OfferCardProps & { state: OneTimeOfferStat
               cancelLabel="Nein, abbrechen"
               confirmLabel="Ja, löschen"
               triggerLabel={deleteLabel}
-              trigger={
-                <ActionButtonFrame
-                  label={deleteLabel}
-                  icon={<TrashGlyph />}
-                  importance="primary"
-                  tone="red"
-                />
-              }
+              trigger={<OneTimeActionButton label={deleteLabel} title={deleteLabel} icon={<TrashGlyph />} />}
             />
           ) : (
-            <span className="inline-flex" title={deleteReason} aria-label={deleteReason}>
-              <ActionButtonFrame
-                label={deleteLabel}
-                icon={<TrashGlyph />}
-                importance="primary"
-                disabled={true}
-              />
-            </span>
+            <OneTimeActionItem label={deleteLabel} title={deleteReason} icon={<TrashGlyph />} disabled={true} />
           )}
         </div>
       </div>
 
       <div className="space-y-2 border-t border-slate-200/80 pt-4">
         <ActionGroupTitle>Angebotsnutzung & Kommunikation</ActionGroupTitle>
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="flex flex-wrap gap-x-4 gap-y-3">
           {canCheckIn ? (
             <Link href={props.checkInHref} className="inline-flex" title="Check-in" aria-label="Check-in">
-              <ActionButtonFrame label="Check-in" icon={<CheckInGlyph />} importance="secondary" />
+              <OneTimeActionItem label="Check-in" title="Check-in" icon={<CheckInGlyph />} />
             </Link>
           ) : (
-            <span className="inline-flex" title="Check-in" aria-label="Check-in">
-              <ActionButtonFrame label="Check-in" icon={<CheckInGlyph />} importance="secondary" disabled={true} />
-            </span>
+            <OneTimeActionItem label="Check-in" title="Check-in" icon={<CheckInGlyph />} disabled={true} />
           )}
 
           {props.mailHref && isPublishedWithBookings ? (
             <a href={props.mailHref} className="inline-flex" title="E-Mail an Teilnehmende" aria-label="E-Mail an Teilnehmende">
-              <ActionButtonFrame label="E-Mail an Teilnehmende" icon={<MailGlyph />} importance="secondary" />
+              <OneTimeActionItem label="E-Mail" title="E-Mail an Teilnehmende" icon={<MailGlyph />} />
             </a>
           ) : (
-            <span
-              className="inline-flex"
-              title="E-Mail an Teilnehmende"
-              aria-label="E-Mail an Teilnehmende"
-            >
-              <ActionButtonFrame
-                label="E-Mail an Teilnehmende"
-                icon={<MailGlyph />}
-                importance="secondary"
-                disabled={true}
-              />
-            </span>
+            <OneTimeActionItem label="E-Mail" title="E-Mail an Teilnehmende" icon={<MailGlyph />} disabled={true} />
           )}
 
           {props.calendarHref ? (
-            <Link href={props.calendarHref} className="inline-flex" title="In Kalender speichern" aria-label="In Kalender speichern">
-              <ActionButtonFrame label="In Kalender speichern" icon={<CalendarGlyph />} importance="secondary" />
+            <Link href={props.calendarHref} className="inline-flex" title="Kalender" aria-label="Kalender">
+              <OneTimeActionItem label="Kalender" title="Kalenderdatei herunterladen" icon={<CalendarGlyph />} />
             </Link>
           ) : (
-            <span
-              className="inline-flex"
-              title={props.calendarDisabledReason ?? "In Kalender speichern"}
-              aria-label={props.calendarDisabledReason ?? "In Kalender speichern"}
-            >
-              <ActionButtonFrame
-                label="In Kalender speichern"
-                icon={<CalendarGlyph />}
-                importance="secondary"
-                disabled={true}
-              />
-            </span>
+            <OneTimeActionItem
+              label="Kalender"
+              title={props.calendarDisabledReason ?? "Kalenderdatei erst mit Termin verfügbar"}
+              icon={<CalendarGlyph />}
+              disabled={true}
+            />
           )}
 
           <CourseCardShareButton
@@ -557,15 +499,8 @@ function OneTimeActionSections(props: OfferCardProps & { state: OneTimeOfferStat
             embedUrl={props.embedUrl}
             visibility={props.visibility}
             isEnabled={props.publicOfferEnabled}
-            triggerLabel="Angebot teilen"
-            trigger={
-              <ActionButtonFrame
-                label="Angebot teilen"
-                icon={<ShareGlyph />}
-                importance="secondary"
-                disabled={!props.publicOfferEnabled && !isPublished}
-              />
-            }
+            triggerLabel="Teilen"
+            trigger={<OneTimeActionItem label="Teilen" title="Teilen" icon={<ShareGlyph />} disabled={!props.publicOfferEnabled && !isPublished} />}
           />
         </div>
       </div>

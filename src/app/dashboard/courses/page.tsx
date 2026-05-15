@@ -59,6 +59,8 @@ type OfferRow = {
 
 type SessionRow = {
   course_id: string;
+  starts_at: string | null;
+  ends_at: string | null;
 };
 
 type TrialReservationRow = {
@@ -198,7 +200,7 @@ export default async function DashboardCoursesPage({
   if (offerIds.length > 0) {
     const [{ data: sessionData }, { data: reservationData }, { data: intentData }, { data: bookingData }] =
       await Promise.all([
-        supabase.from("course_sessions").select("course_id").in("course_id", offerIds).returns<SessionRow[]>(),
+        supabase.from("course_sessions").select("course_id,starts_at,ends_at").in("course_id", offerIds).returns<SessionRow[]>(),
         admin
           .from("trial_reservations")
           .select("course_id,email,decision_status,cancelled_at,archived_at")
@@ -222,8 +224,15 @@ export default async function DashboardCoursesPage({
   }
 
   const sessionCountByCourseId = new Map<string, number>();
+  const lastSessionEndByCourseId = new Map<string, string | null>();
   for (const row of sessionRows) {
     sessionCountByCourseId.set(row.course_id, (sessionCountByCourseId.get(row.course_id) ?? 0) + 1);
+    const currentLastEnd = lastSessionEndByCourseId.get(row.course_id);
+    const nextEnd = row.ends_at ?? row.starts_at ?? null;
+    if (!nextEnd) continue;
+    if (!currentLastEnd || new Date(nextEnd).getTime() > new Date(currentLastEnd).getTime()) {
+      lastSessionEndByCourseId.set(row.course_id, nextEnd);
+    }
   }
 
   const offerEmailsById = new Map<string, Array<string | null>>();
@@ -249,6 +258,7 @@ export default async function DashboardCoursesPage({
         isPublished: offer.is_published,
         endsAt: offer.ends_at ?? null,
         startsAt: offer.starts_at,
+        lastSessionEndsAt: lastSessionEndByCourseId.get(offer.id) ?? null,
       }),
     ])
   );

@@ -12,6 +12,7 @@ type OfferStatusInput = {
   isPublished: boolean | null;
   endsAt: string | null;
   startsAt?: string | null;
+  lastSessionEndsAt?: string | null;
 };
 
 export type OfferActionVisualState = {
@@ -31,11 +32,27 @@ const ACTIVE_ICON_CLASS = "border-green-600 bg-green-600 text-white";
 const PAUSED_ICON_CLASS = "border-orange-500 bg-orange-500 text-white";
 const STOPPED_ICON_CLASS = "border-red-600 bg-red-600 text-white";
 
+function hasOneTimeOfferEnded(input: OfferStatusInput): boolean {
+  const kind = String(input.kind ?? "").toLowerCase();
+  if (!["workshop", "exclusive_offer"].includes(kind)) {
+    return false;
+  }
+
+  const timestampSource = input.lastSessionEndsAt ?? input.endsAt ?? input.startsAt ?? null;
+  if (!timestampSource) {
+    return false;
+  }
+
+  const timestamp = new Date(timestampSource).getTime();
+  return Number.isFinite(timestamp) && timestamp < Date.now();
+}
+
 export function getDisplayStatus(input: OfferStatusInput) {
+  const oneTimeOfferEnded = hasOneTimeOfferEnded(input);
   const normalizedStatus = resolveDashboardCourseStatus({
-    status: input.status,
-    isPublished: input.isPublished,
-    endsAt: input.endsAt,
+    status: oneTimeOfferEnded ? "ended" : input.status,
+    isPublished: oneTimeOfferEnded ? false : input.isPublished,
+    endsAt: input.lastSessionEndsAt ?? input.endsAt,
   });
 
   let view: Exclude<DashboardOfferView, "all"> = "active";
@@ -43,11 +60,7 @@ export function getDisplayStatus(input: OfferStatusInput) {
     view = "drafts";
   } else if (
     normalizedStatus === "stop_scheduled" ||
-    normalizedStatus === "ended" ||
-    (["workshop", "exclusive_offer"].includes(String(input.kind ?? "").toLowerCase()) &&
-      input.startsAt &&
-      Number.isFinite(new Date(input.startsAt).getTime()) &&
-      new Date(input.startsAt).getTime() < Date.now())
+    normalizedStatus === "ended"
   ) {
     view = "archive";
   }
