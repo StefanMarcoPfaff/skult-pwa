@@ -1,6 +1,6 @@
 import "server-only";
 
-function parseBooleanEnvFlag(value: string | null | undefined): boolean {
+export function parseBooleanEnvFlag(value: string | null | undefined): boolean {
   const normalized = String(value ?? "")
     .trim()
     .toLowerCase();
@@ -10,4 +10,8 @@ function parseBooleanEnvFlag(value: string | null | undefined): boolean {
 
 export function isPaymentsV2SubscriptionsDualWriteEnabled(): boolean {
   return parseBooleanEnvFlag(process.env.PAYMENTS_V2_SUBSCRIPTIONS_DUAL_WRITE);
+}
+
+export function isPaymentsV2SimulationEnabled(): boolean {
+  return parseBooleanEnvFlag(process.env.PAYMENTS_V2_SIMULATION_ENABLED);
 }
