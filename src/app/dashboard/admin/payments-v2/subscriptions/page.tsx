@@ -1,4 +1,6 @@
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { canRunPaymentsV2Simulation } from "@/lib/payments/simulation";
+import { simulateSubscriptionInitialPaymentSuccessAction } from "./actions";
 import { requirePaymentsV2AdminAccess } from "../access";
 import {
   AuditNav,
@@ -97,8 +99,102 @@ type SubscriptionEventRow = {
   created_at: string;
 };
 
-export default async function SubscriptionAuditPage() {
-  await requirePaymentsV2AdminAccess();
+type SearchParams = {
+  action?: string;
+};
+
+function ActionNotice({ action }: { action: string | undefined }) {
+  if (!action) return null;
+
+  let message = "Interne Simulation ausgefuehrt.";
+  let toneClass = "border-slate-200 bg-slate-100 text-slate-700";
+
+  if (action.startsWith("initial-pay-ok-")) {
+    message = "Kurs-Erstzahlung intern simuliert. Keine echte Zahlung, keine echte Auszahlung, keine Kund*innenmail.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+  } else if (action.startsWith("initial-pay-error-")) {
+    const code = action.slice("initial-pay-error-".length);
+    message = `Fehler bei der Kurs-Erstzahlungs-Simulation: ${code}.`;
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+  }
+
+  return <div className={`rounded-2xl border px-4 py-3 text-sm ${toneClass}`}>{message}</div>;
+}
+
+function SimulationForm() {
+  return (
+    <form action={simulateSubscriptionInitialPaymentSuccessAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+      <div className="space-y-3">
+        <div>
+          <div className="text-sm font-semibold text-slate-900">Kurs-Erstzahlung simulieren</div>
+          <div className="mt-1 text-xs text-slate-700">
+            Erzeugt oder aktiviert Contract, erste Periode, erste Charge, interne paid Payment-Transaction, Ledger-Eintrag und Admin-Events.
+          </div>
+        </div>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">course_registration_intent_id</span>
+          <input
+            name="courseRegistrationIntentId"
+            type="text"
+            placeholder="uuid"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Betrag in Cent optional</span>
+          <input
+            name="amountCents"
+            type="text"
+            placeholder="z. B. 7900"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Waehrung optional</span>
+          <input
+            name="currency"
+            type="text"
+            placeholder="EUR"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">paid_at optional</span>
+          <input
+            name="paidAt"
+            type="text"
+            placeholder="2026-05-16T12:00:00.000Z"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Scenario Note optional</span>
+          <input
+            name="scenarioNote"
+            type="text"
+            placeholder="Kurznotiz"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <button
+          type="submit"
+          className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+        >
+          Internal Simulation
+        </button>
+      </div>
+    </form>
+  );
+}
+
+export default async function SubscriptionAuditPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const sp = await searchParams;
+  const user = await requirePaymentsV2AdminAccess();
+  const canUseSimulation = canRunPaymentsV2Simulation(user.email);
 
   const admin = createSupabaseAdmin();
   const [contractsResult, periodsResult, chargesResult, pauseWindowsResult, creditsResult, eventsResult] =
@@ -176,6 +272,27 @@ export default async function SubscriptionAuditPage() {
             Read only
           </div>
         </header>
+
+        <ActionNotice action={sp.action} />
+
+        <Section
+          title="Interne Kurs-Simulation"
+          description="Admin-only Einzelaktion fuer eine erfolgreiche Erstzahlung eines laufenden Angebots. Kein Stripe, kein Mollie, kein PayPal, keine echte Auszahlung."
+        >
+          {canUseSimulation ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-amber-300 bg-amber-100 px-4 py-3 text-sm text-amber-950">
+                Simulation only. Keine echte Zahlung, keine echte Auszahlung, keine Kund*innenmail.
+              </div>
+              <SimulationForm />
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-700">
+              Kurs-Simulation ist derzeit deaktiviert. Erforderlich sind `PAYMENTS_V2_SIMULATION_ENABLED` und eine
+              freigeschaltete Admin-Mail in `PAYMENTS_V2_ADMIN_EMAILS`.
+            </div>
+          )}
+        </Section>
 
         <div className="grid gap-6">
           <Section
