@@ -1,7 +1,9 @@
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { canRunPaymentsV2Simulation } from "@/lib/payments/simulation";
 import {
+  simulateSubscriptionCancelAction,
   simulateSubscriptionInitialPaymentSuccessAction,
+  simulateSubscriptionPauseAction,
   simulateSubscriptionRecurringPaymentAction,
 } from "./actions";
 import { requirePaymentsV2AdminAccess } from "../access";
@@ -131,6 +133,20 @@ function ActionNotice({ action }: { action: string | undefined }) {
   } else if (action.startsWith("recurring-pay-error-")) {
     const code = action.slice("recurring-pay-error-".length);
     message = `Fehler bei der Monatszahlungs-Simulation: ${code}.`;
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+  } else if (action.startsWith("lifecycle-pause-ok-")) {
+    message = "Pause intern simuliert. Keine echten Zahlungen, keine echte Auszahlung, keine Kund*innenmail.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+  } else if (action.startsWith("lifecycle-pause-error-")) {
+    const code = action.slice("lifecycle-pause-error-".length);
+    message = `Fehler bei der Pause-Simulation: ${code}.`;
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+  } else if (action.startsWith("lifecycle-cancel-ok-")) {
+    message = "Kündigung intern simuliert. Keine echten Zahlungen, keine echte Auszahlung, keine Kund*innenmail.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+  } else if (action.startsWith("lifecycle-cancel-error-")) {
+    const code = action.slice("lifecycle-cancel-error-".length);
+    message = `Fehler bei der Kündigungs-Simulation: ${code}.`;
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
   }
 
@@ -278,6 +294,111 @@ function RecurringSimulationForm() {
   );
 }
 
+function LifecyclePauseForm() {
+  return (
+    <form action={simulateSubscriptionPauseAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+      <div className="space-y-3">
+        <div>
+          <div className="text-sm font-semibold text-slate-900">Pause simulieren</div>
+          <div className="mt-1 text-xs text-slate-700">
+            Legt ein contract-scope Pause Window an oder wiederverwendet es, setzt den Contract auf `pause_scheduled` oder `paused` und pausiert betroffene offene Perioden.
+          </div>
+        </div>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">subscription_contract_id</span>
+          <input
+            name="subscriptionContractId"
+            type="text"
+            placeholder="uuid"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Pause Startdatum</span>
+          <input
+            name="pauseStartDate"
+            type="text"
+            placeholder="YYYY-MM-01"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Pause Enddatum</span>
+          <input
+            name="pauseEndDate"
+            type="text"
+            placeholder="YYYY-MM-31"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Scenario Note optional</span>
+          <input
+            name="scenarioNote"
+            type="text"
+            placeholder="Kurznotiz"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <button
+          type="submit"
+          className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+        >
+          Pause simulieren
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function LifecycleCancelForm() {
+  return (
+    <form action={simulateSubscriptionCancelAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+      <div className="space-y-3">
+        <div>
+          <div className="text-sm font-semibold text-slate-900">Kündigung simulieren</div>
+          <div className="mt-1 text-xs text-slate-700">
+            Setzt den Contract auf `cancel_scheduled` oder `cancelled` und storniert zukünftige offene Perioden und Charges nach dem Enddatum.
+          </div>
+        </div>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">subscription_contract_id</span>
+          <input
+            name="subscriptionContractId"
+            type="text"
+            placeholder="uuid"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Kündigungs-/Enddatum</span>
+          <input
+            name="cancelEffectiveDate"
+            type="text"
+            placeholder="YYYY-MM-31"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Scenario Note optional</span>
+          <input
+            name="scenarioNote"
+            type="text"
+            placeholder="Kurznotiz"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <button
+          type="submit"
+          className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+        >
+          Kündigung simulieren
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export default async function SubscriptionAuditPage({
   searchParams,
 }: {
@@ -378,6 +499,13 @@ export default async function SubscriptionAuditPage({
               <div className="grid gap-4 md:grid-cols-2">
                 <SimulationForm />
                 <RecurringSimulationForm />
+              </div>
+              <div className="rounded-2xl border border-amber-300 bg-amber-100 px-4 py-3 text-sm text-amber-950">
+                Kurs-Lifecycle simulieren. Keine echten Zahlungen, keine echte Auszahlung, keine Kund*innenmail.
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <LifecyclePauseForm />
+                <LifecycleCancelForm />
               </div>
             </div>
           ) : (

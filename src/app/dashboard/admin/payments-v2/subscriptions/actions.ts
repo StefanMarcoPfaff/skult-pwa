@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { PaymentSimulationError, requirePaymentsV2SimulationAccess } from "@/lib/payments/simulation";
 import { simulateSubscriptionInitialPaymentSuccess } from "@/lib/payments/simulation/subscription-initial-payment-simulation";
+import {
+  simulateSubscriptionCancel,
+  simulateSubscriptionPause,
+} from "@/lib/payments/simulation/subscription-lifecycle-simulation";
 import { simulateSubscriptionRecurringPayment } from "@/lib/payments/simulation/subscription-recurring-payment-simulation";
 import { PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH } from "../ui";
 
@@ -80,5 +84,52 @@ export async function simulateSubscriptionRecurringPaymentAction(formData: FormD
     }
 
     redirectWithActionState("recurring-pay-error-unknown");
+  }
+}
+
+export async function simulateSubscriptionPauseAction(formData: FormData) {
+  const user = await requirePaymentsV2SimulationAccess();
+  const subscriptionContractId = String(formData.get("subscriptionContractId") ?? "").trim();
+
+  try {
+    const result = await simulateSubscriptionPause({
+      subscriptionContractId,
+      adminUserId: user.id,
+      pauseStartDate: String(formData.get("pauseStartDate") ?? "").trim(),
+      pauseEndDate: String(formData.get("pauseEndDate") ?? "").trim(),
+      scenarioNote: parseOptionalString(formData.get("scenarioNote")),
+    });
+    revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
+    redirectWithActionState(`lifecycle-pause-ok-${result.subscriptionContractId}`);
+  } catch (error) {
+    revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
+    if (error instanceof PaymentSimulationError) {
+      redirectWithActionState(`lifecycle-pause-error-${error.code}`);
+    }
+
+    redirectWithActionState("lifecycle-pause-error-unknown");
+  }
+}
+
+export async function simulateSubscriptionCancelAction(formData: FormData) {
+  const user = await requirePaymentsV2SimulationAccess();
+  const subscriptionContractId = String(formData.get("subscriptionContractId") ?? "").trim();
+
+  try {
+    const result = await simulateSubscriptionCancel({
+      subscriptionContractId,
+      adminUserId: user.id,
+      cancelEffectiveDate: String(formData.get("cancelEffectiveDate") ?? "").trim(),
+      scenarioNote: parseOptionalString(formData.get("scenarioNote")),
+    });
+    revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
+    redirectWithActionState(`lifecycle-cancel-ok-${result.subscriptionContractId}`);
+  } catch (error) {
+    revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
+    if (error instanceof PaymentSimulationError) {
+      redirectWithActionState(`lifecycle-cancel-error-${error.code}`);
+    }
+
+    redirectWithActionState("lifecycle-cancel-error-unknown");
   }
 }
