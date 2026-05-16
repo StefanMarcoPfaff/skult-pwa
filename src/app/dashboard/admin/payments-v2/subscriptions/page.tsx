@@ -1,6 +1,9 @@
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { canRunPaymentsV2Simulation } from "@/lib/payments/simulation";
-import { simulateSubscriptionInitialPaymentSuccessAction } from "./actions";
+import {
+  simulateSubscriptionInitialPaymentSuccessAction,
+  simulateSubscriptionRecurringPaymentAction,
+} from "./actions";
 import { requirePaymentsV2AdminAccess } from "../access";
 import {
   AuditNav,
@@ -116,6 +119,19 @@ function ActionNotice({ action }: { action: string | undefined }) {
     const code = action.slice("initial-pay-error-".length);
     message = `Fehler bei der Kurs-Erstzahlungs-Simulation: ${code}.`;
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+  } else if (action.startsWith("recurring-pay-ok-")) {
+    message = "Monatszahlung intern simuliert. Keine echte Zahlung, keine echte Auszahlung, keine Kund*innenmail.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+  } else if (action.startsWith("recurring-pay-skipped-pause-")) {
+    message = "Monatszahlung wurde wegen voller Pause des Zielmonats intern uebersprungen.";
+    toneClass = "border-amber-200 bg-amber-50 text-amber-800";
+  } else if (action.startsWith("recurring-pay-skipped-contract_ended-")) {
+    message = "Monatszahlung wurde intern uebersprungen, weil der Vertrag vor dem Zielmonat beendet ist.";
+    toneClass = "border-amber-200 bg-amber-50 text-amber-800";
+  } else if (action.startsWith("recurring-pay-error-")) {
+    const code = action.slice("recurring-pay-error-".length);
+    message = `Fehler bei der Monatszahlungs-Simulation: ${code}.`;
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
   }
 
   return <div className={`rounded-2xl border px-4 py-3 text-sm ${toneClass}`}>{message}</div>;
@@ -164,6 +180,81 @@ function SimulationForm() {
             name="paidAt"
             type="text"
             placeholder="2026-05-16T12:00:00.000Z"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Scenario Note optional</span>
+          <input
+            name="scenarioNote"
+            type="text"
+            placeholder="Kurznotiz"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <button
+          type="submit"
+          className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+        >
+          Internal Simulation
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function RecurringSimulationForm() {
+  return (
+    <form action={simulateSubscriptionRecurringPaymentAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+      <div className="space-y-3">
+        <div>
+          <div className="text-sm font-semibold text-slate-900">Monatszahlung simulieren</div>
+          <div className="mt-1 text-xs text-slate-700">
+            Erzeugt genau eine Monatsperiode, eine monthly_recurring-Charge, eine interne paid Payment-Transaction, einen Ledger-Eintrag oder ueberspringt sauber bei voller Pause bzw. beendetem Vertrag.
+          </div>
+        </div>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">subscription_contract_id</span>
+          <input
+            name="subscriptionContractId"
+            type="text"
+            placeholder="uuid"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">target_month optional</span>
+          <input
+            name="targetMonth"
+            type="text"
+            placeholder="YYYY-MM"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Betrag in Cent optional</span>
+          <input
+            name="amountCents"
+            type="text"
+            placeholder="z. B. 7900"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Waehrung optional</span>
+          <input
+            name="currency"
+            type="text"
+            placeholder="EUR"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">paid_at optional</span>
+          <input
+            name="paidAt"
+            type="text"
+            placeholder="2026-06-01T09:00:00.000Z"
             className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
           />
         </label>
@@ -284,7 +375,10 @@ export default async function SubscriptionAuditPage({
               <div className="rounded-2xl border border-amber-300 bg-amber-100 px-4 py-3 text-sm text-amber-950">
                 Simulation only. Keine echte Zahlung, keine echte Auszahlung, keine Kund*innenmail.
               </div>
-              <SimulationForm />
+              <div className="grid gap-4 md:grid-cols-2">
+                <SimulationForm />
+                <RecurringSimulationForm />
+              </div>
             </div>
           ) : (
             <div className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-700">
