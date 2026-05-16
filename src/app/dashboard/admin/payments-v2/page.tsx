@@ -1,9 +1,15 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { canRunPaymentsV2Simulation } from "@/lib/payments/simulation";
 import {
   createSimulatedPayoutBatchAction,
   forceLedgerEntryPayableForTestAction,
   markEligibleLedgerEntriesAsPayableAction,
+  simulateWorkshopCancellationAction,
+  simulateWorkshopPaymentFailedAction,
+  simulateWorkshopPaymentSuccessAction,
+  simulateWorkshopRefundAction,
 } from "./actions";
 import { requirePaymentsV2AdminAccess } from "./access";
 import {
@@ -174,6 +180,34 @@ function ActionNotice({ action }: { action: string | undefined }) {
   } else if (action.startsWith("force-payable-error-")) {
     message = "Fehler beim Force-payable-Test. Nur Testmodus - loest keine echte Auszahlung aus.";
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+  } else if (action.startsWith("workshop-pay-ok-")) {
+    message = "Workshop-Zahlung intern als erfolgreich simuliert. Keine echte Zahlung, keine Auszahlung, keine Kund*innenmail.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+  } else if (action.startsWith("workshop-fail-ok-")) {
+    message = "Workshop-Zahlung intern als fehlgeschlagen simuliert. Keine echte Zahlung, keine Auszahlung, keine Kund*innenmail.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+  } else if (action.startsWith("workshop-refund-ok-")) {
+    message = "Workshop-Refund intern simuliert. Kein Provider-Refund und keine Kund*innenmail.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+  } else if (action.startsWith("workshop-cancel-ok-")) {
+    message = "Workshop-Storno intern simuliert. Keine echte Zahlung, kein echter Refund und keine Kund*innenmail.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+  } else if (action.startsWith("workshop-pay-error-")) {
+    const code = action.slice("workshop-pay-error-".length);
+    message = `Fehler bei der Workshop-Zahlungssimulation: ${code}.`;
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+  } else if (action.startsWith("workshop-fail-error-")) {
+    const code = action.slice("workshop-fail-error-".length);
+    message = `Fehler bei der Workshop-Fehlschlag-Simulation: ${code}.`;
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+  } else if (action.startsWith("workshop-refund-error-")) {
+    const code = action.slice("workshop-refund-error-".length);
+    message = `Fehler bei der Workshop-Refund-Simulation: ${code}.`;
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+  } else if (action.startsWith("workshop-cancel-error-")) {
+    const code = action.slice("workshop-cancel-error-".length);
+    message = `Fehler bei der Workshop-Storno-Simulation: ${code}.`;
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
   }
 
   return <div className={`rounded-2xl border px-4 py-3 text-sm ${toneClass}`}>{message}</div>;
@@ -206,13 +240,66 @@ function ActionButton({
   );
 }
 
+function SimulationForm({
+  action,
+  title,
+  description,
+  children,
+}: {
+  action: (formData: FormData) => Promise<void>;
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <form action={action} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+      <div className="space-y-3">
+        <div>
+          <div className="text-sm font-semibold text-slate-900">{title}</div>
+          <div className="mt-1 text-xs text-slate-700">{description}</div>
+        </div>
+        {children}
+        <button
+          type="submit"
+          className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+        >
+          Internal Simulation
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function TextInput({
+  name,
+  label,
+  placeholder,
+}: {
+  name: string;
+  label: string;
+  placeholder?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">{label}</span>
+      <input
+        name={name}
+        type="text"
+        placeholder={placeholder}
+        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+      />
+    </label>
+  );
+}
+
 export default async function PaymentsV2AdminPage({
   searchParams,
 }: {
   searchParams: Promise<SearchParams>;
 }) {
   const sp = await searchParams;
-  await requirePaymentsV2AdminAccess();
+  const user = await requirePaymentsV2AdminAccess();
+  const canUseSimulation = canRunPaymentsV2Simulation(user.email);
 
   const admin = createSupabaseAdmin();
   const [transactionsResult, ledgerResult, refundsResult, webhooksResult, payoutBatchesResult, payoutItemsResult] =
@@ -344,6 +431,68 @@ export default async function PaymentsV2AdminPage({
             description="Ruft intern createSimulatedPayoutBatch() auf. Nur interne Batch-Simulation."
           />
         </div>
+
+        <Section
+          title="Interne Workshop-Simulation"
+          description="Admin-only Einzelaktionen fuer Workshop-Zahlung, Fehlschlag, Refund und Storno. Kein Stripe, kein Mollie, kein PayPal, keine echte Auszahlung."
+        >
+          {canUseSimulation ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-amber-300 bg-amber-100 px-4 py-3 text-sm text-amber-950">
+                Simulation only. Keine echte Zahlung, keine echte Auszahlung, keine Kund*innenmail.
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <SimulationForm
+                  action={simulateWorkshopPaymentSuccessAction}
+                  title="Zahlung erfolgreich simulieren"
+                  description="Erzeugt eine interne paid payment_transaction und genau einen positiven Ledger-Eintrag."
+                >
+                  <TextInput name="bookingId" label="booking_id" placeholder="uuid" />
+                  <TextInput name="amountCents" label="Betrag in Cent optional" placeholder="z. B. 4900" />
+                  <TextInput name="currency" label="Waehrung optional" placeholder="EUR" />
+                  <TextInput name="scenarioNote" label="Scenario Note optional" placeholder="Kurznotiz" />
+                </SimulationForm>
+
+                <SimulationForm
+                  action={simulateWorkshopPaymentFailedAction}
+                  title="Zahlung fehlgeschlagen simulieren"
+                  description="Erzeugt eine interne failed payment_transaction ohne positiven Ledger-Eintrag."
+                >
+                  <TextInput name="bookingId" label="booking_id" placeholder="uuid" />
+                  <TextInput name="amountCents" label="Betrag in Cent optional" placeholder="z. B. 4900" />
+                  <TextInput name="currency" label="Waehrung optional" placeholder="EUR" />
+                  <TextInput name="scenarioNote" label="Scenario Note optional" placeholder="Kurznotiz" />
+                </SimulationForm>
+
+                <SimulationForm
+                  action={simulateWorkshopRefundAction}
+                  title="Refund simulieren"
+                  description="Erzeugt einen internen succeeded Refund fuer eine simulierte Workshop-Zahlung. booking_id oder payment_transaction_id angeben."
+                >
+                  <TextInput name="bookingId" label="booking_id optional" placeholder="uuid" />
+                  <TextInput name="paymentTransactionId" label="payment_transaction_id optional" placeholder="uuid" />
+                  <TextInput name="refundAmountCents" label="Refund in Cent optional" placeholder="z. B. 4900" />
+                  <TextInput name="reason" label="Grund optional" placeholder="Refund reason" />
+                </SimulationForm>
+
+                <SimulationForm
+                  action={simulateWorkshopCancellationAction}
+                  title="Workshop-Storno simulieren"
+                  description="Bezahlte Simulationen werden ueber den Refund-Pfad abgewickelt. Unbezahlte Faelle werden nur intern als cancelled simuliert."
+                >
+                  <TextInput name="bookingId" label="booking_id" placeholder="uuid" />
+                  <TextInput name="refundAmountCents" label="Refund in Cent optional" placeholder="z. B. 4900" />
+                  <TextInput name="reason" label="Grund optional" placeholder="Cancellation note" />
+                </SimulationForm>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-700">
+              Workshop-Simulation ist derzeit deaktiviert. Erforderlich sind `PAYMENTS_V2_SIMULATION_ENABLED` und eine
+              freigeschaltete Admin-Mail in `PAYMENTS_V2_ADMIN_EMAILS`.
+            </div>
+          )}
+        </Section>
 
         <div className="grid gap-6">
           <Section
