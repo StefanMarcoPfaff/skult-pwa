@@ -22,3 +22,11 @@ export {
 export { requirePaymentsV2SimulationAccess, canRunPaymentsV2Simulation } from "@/lib/payments/simulation/guard";
 export { buildSimulationMetadata } from "@/lib/payments/simulation/metadata";
 export type { SimulationMetadata } from "@/lib/payments/simulation/metadata";
+export {
+  createSimulationKey,
+  createTestBookingSimulationMetadata,
+  ensureSimulationEmail,
+  normalizeSimulationEmail,
+  TEST_BOOKINGS_SOURCE_ADMIN_UI,
+} from "@/lib/payments/simulation/test-booking-metadata";
+export type { TestBookingSimulationScenario } from "@/lib/payments/simulation/test-booking-metadata";
