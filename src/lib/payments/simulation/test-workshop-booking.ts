@@ -8,7 +8,11 @@ import {
 import { sendResendEmail } from "@/lib/resend";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { issueWorkshopTicketForBooking } from "@/lib/tickets";
-import { prepareWorkshopCustomerBookingConfirmation } from "@/lib/workshop-booking-emails";
+import {
+  prepareWorkshopCustomerBookingConfirmation,
+  prepareWorkshopTeacherBookingNotification,
+  type WorkshopBookingEmailData,
+} from "@/lib/workshop-booking-emails";
 import {
   createSimulationKey,
   createTestBookingSimulationMetadata,
@@ -51,6 +55,10 @@ type BookingInsertRow = {
   id: string;
 };
 
+type LedgerEntryRow = {
+  id: string;
+};
+
 type WorkshopMailContext = {
   providerType: "independent_teacher" | "studio_provider" | null;
   providerName: string | null;
@@ -89,6 +97,7 @@ export class WorkshopSimulationError extends Error {
   archivedAt: string | null;
   supabaseMessage: string | null;
   supabaseCode: string | null;
+  duplicateBookingId: string | null;
 
   constructor(input: {
     code: WorkshopSimulationErrorCode;
@@ -100,6 +109,7 @@ export class WorkshopSimulationError extends Error {
     archivedAt?: string | null;
     supabaseMessage?: string | null;
     supabaseCode?: string | null;
+    duplicateBookingId?: string | null;
   }) {
     super(input.message);
     this.name = "WorkshopSimulationError";
@@ -111,6 +121,7 @@ export class WorkshopSimulationError extends Error {
     this.archivedAt = input.archivedAt ?? null;
     this.supabaseMessage = input.supabaseMessage ?? null;
     this.supabaseCode = input.supabaseCode ?? null;
+    this.duplicateBookingId = input.duplicateBookingId ?? null;
   }
 }
 
@@ -121,8 +132,10 @@ export type SimulateWorkshopBookingInput = {
   email: string;
   amountCents?: number | null;
   simulatePayment?: boolean;
-  sendTestMail?: boolean;
-  testMailRecipient?: string | null;
+  sendCustomerTestMail?: boolean;
+  sendProviderTestMail?: boolean;
+  customerTestMailRecipient?: string | null;
+  providerTestMailRecipient?: string | null;
   adminUserId: string;
 };
 
@@ -132,7 +145,10 @@ export type SimulateWorkshopBookingResult = {
   ticketId: string;
   ticketQrToken: string;
   paymentSimulated: boolean;
-  mailSent: boolean;
+  paymentTransactionId: string | null;
+  ledgerEntryId: string | null;
+  customerMailSent: boolean;
+  providerMailSent: boolean;
   mailError: string | null;
   participantsHref: string;
   courseDetailHref: string;
@@ -318,8 +334,10 @@ async function assertNoOpenSimulationDuplicate(courseId: string, email: string) 
     throw new WorkshopSimulationError({
       code: "duplicate_open_simulation",
       step: "booking_insert",
-      message: "Fuer dieses Angebot existiert bereits eine offene Workshop-Testbuchung mit derselben Test-E-Mail.",
+      message:
+        "Es existiert bereits eine offene Testbuchung fuer dieses Angebot und diese Test-E-Mail. Verwende eine andere Test-E-Mail oder storniere/archiviere die bestehende Testbuchung.",
       courseFound: true,
+      duplicateBookingId: data.id,
     });
   }
 }
@@ -375,27 +393,27 @@ async function loadWorkshopSessions(courseId: string): Promise<WorkshopSessionRo
   return data ?? [];
 }
 
-async function sendWorkshopSimulationMail(input: {
+function buildWorkshopEmailData(input: {
   bookingId: string;
   course: WorkshopCourseRow;
   customerName: string;
-  actualRecipientEmail: string;
+  customerEmail: string;
   sessionLines: string[];
   paymentStatus: "paid" | "free";
   qrToken: string;
-}) {
-  const mailContext = await loadWorkshopMailContext(input.course);
-  const email = await prepareWorkshopCustomerBookingConfirmation({
+  mailContext: WorkshopMailContext;
+}): WorkshopBookingEmailData {
+  return {
     bookingId: input.bookingId,
     workshopTitle: input.course.title ?? "Angebot",
-    providerType: mailContext.providerType,
-    providerName: mailContext.providerName,
-    teacherName: mailContext.teacherName,
-    teacherEmail: mailContext.teacherEmail,
-    senderDisplayName: mailContext.senderDisplayName,
-    senderImageUrl: mailContext.senderImageUrl,
+    providerType: input.mailContext.providerType,
+    providerName: input.mailContext.providerName,
+    teacherName: input.mailContext.teacherName,
+    teacherEmail: input.mailContext.teacherEmail,
+    senderDisplayName: input.mailContext.senderDisplayName,
+    senderImageUrl: input.mailContext.senderImageUrl,
     customerName: input.customerName,
-    customerEmail: input.actualRecipientEmail,
+    customerEmail: input.customerEmail,
     location: input.course.location,
     locationDetails: input.course.location_details,
     sessionLines: input.sessionLines,
@@ -403,30 +421,69 @@ async function sendWorkshopSimulationMail(input: {
     priceLabel: formatPrice(input.course.price_cents, input.course.currency),
     paymentStatus: input.paymentStatus,
     qrToken: input.qrToken,
+  };
+}
+
+async function loadPositiveLedgerEntryId(paymentTransactionId: string): Promise<string | null> {
+  const admin = createSupabaseAdmin();
+  const { data } = await admin
+    .from("ledger_entries")
+    .select("id")
+    .eq("source_type", "payment_transaction")
+    .eq("source_id", paymentTransactionId)
+    .eq("entry_type", "payment")
+    .maybeSingle<LedgerEntryRow>();
+
+  return data?.id ?? null;
+}
+
+async function sendWorkshopSimulationCustomerMail(input: {
+  emailData: WorkshopBookingEmailData;
+  actualRecipientEmail: string;
+}) {
+  const email = await prepareWorkshopCustomerBookingConfirmation({
+    ...input.emailData,
+    customerEmail: input.actualRecipientEmail,
   });
 
   const htmlNotice =
     '<div style="margin: 0 0 18px; padding: 12px 14px; border: 1px solid #f59e0b; border-radius: 12px; background: #fffbeb; color: #92400e; font-weight: 700;">TESTMAIL: Diese Nachricht stammt aus einer internen RESER-Simulation.</div>';
   const textNotice = "TESTMAIL: Diese Nachricht stammt aus einer internen RESER-Simulation.\n\n";
 
-  try {
-    const result = await sendResendEmail({
-      to: input.actualRecipientEmail,
-      subject: `[TEST] ${email.subject}`,
-      html: `${htmlNotice}${email.html}`,
-      text: `${textNotice}${email.text}`,
-    });
+  const result = await sendResendEmail({
+    to: input.actualRecipientEmail,
+    subject: `[TEST] ${email.subject}`,
+    html: `${htmlNotice}${email.html}`,
+    text: `${textNotice}${email.text}`,
+  });
 
-    if (result?.error) {
-      throw result.error;
-    }
-  } catch {
-    throw new WorkshopSimulationError({
-      code: "mail_send_failed",
-      step: "test_mail",
-      message: "Die angeforderte Workshop-Testmail konnte nicht verschickt werden.",
-      courseFound: true,
-    });
+  if (result?.error) {
+    throw result.error;
+  }
+}
+
+async function sendWorkshopSimulationProviderMail(input: {
+  emailData: WorkshopBookingEmailData;
+  actualRecipientEmail: string;
+}) {
+  const email = prepareWorkshopTeacherBookingNotification({
+    ...input.emailData,
+    teacherEmail: input.actualRecipientEmail,
+  });
+
+  const htmlNotice =
+    '<div style="margin: 0 0 18px; padding: 12px 14px; border: 1px solid #f59e0b; border-radius: 12px; background: #fffbeb; color: #92400e; font-weight: 700;">TESTMAIL: Diese Nachricht stammt aus einer internen RESER-Simulation.</div>';
+  const textNotice = "TESTMAIL: Diese Nachricht stammt aus einer internen RESER-Simulation.\n\n";
+
+  const result = await sendResendEmail({
+    to: input.actualRecipientEmail,
+    subject: `[TEST] ${email.subject}`,
+    html: `${htmlNotice}${email.html}`,
+    text: `${textNotice}${email.text}`,
+  });
+
+  if (result?.error) {
+    throw result.error;
   }
 }
 
@@ -437,14 +494,17 @@ export async function simulateWorkshopBooking(
   const firstName = input.firstName.trim();
   const lastName = input.lastName.trim();
   const rawEmail = input.email.trim().toLowerCase();
-  const sendTestMail = Boolean(input.sendTestMail);
+  const sendCustomerTestMail = Boolean(input.sendCustomerTestMail);
+  const sendProviderTestMail = Boolean(input.sendProviderTestMail);
   const simulatePayment = Boolean(input.simulatePayment);
-  const overrideRecipient = input.testMailRecipient?.trim().toLowerCase() || null;
+  const customerMailOverride = input.customerTestMailRecipient?.trim().toLowerCase() || null;
+  const providerMailOverride = input.providerTestMailRecipient?.trim().toLowerCase() || null;
 
   logWorkshopSimulationLookup("simulate workshop booking input", {
     courseId,
     simulatePayment,
-    sendTestMail,
+    sendCustomerTestMail,
+    sendProviderTestMail,
     hasAmountCents: input.amountCents !== null && input.amountCents !== undefined,
   });
 
@@ -481,18 +541,35 @@ export async function simulateWorkshopBooking(
     });
   }
 
-  const actualMailRecipient = sendTestMail ? overrideRecipient ?? rawEmail : null;
-  if (sendTestMail && (!actualMailRecipient || !isValidEmail(actualMailRecipient))) {
+  const actualCustomerMailRecipient = sendCustomerTestMail ? customerMailOverride ?? rawEmail : null;
+  if (sendCustomerTestMail && (!actualCustomerMailRecipient || !isValidEmail(actualCustomerMailRecipient))) {
     throw new WorkshopSimulationError({
       code: "invalid_mail_recipient",
       step: "test_mail",
-      message: "Wenn Testmail senden aktiv ist, muss eine gueltige Test-E-Mail-Adresse vorhanden sein.",
+      message: "Wenn Kund*innen-Testmail senden aktiv ist, muss eine gueltige Test-E-Mail-Adresse vorhanden sein.",
     });
   }
 
   const storedSimulationEmail = ensureSimulationEmail(rawEmail);
   const course = await loadCourse(courseId);
   await assertNoOpenSimulationDuplicate(courseId, storedSimulationEmail);
+  const mailContext = await loadWorkshopMailContext(course);
+
+  const actualProviderMailRecipient = sendProviderTestMail
+    ? providerMailOverride ?? mailContext.teacherEmail?.trim().toLowerCase() ?? null
+    : null;
+  if (sendProviderTestMail && (!actualProviderMailRecipient || !isValidEmail(actualProviderMailRecipient))) {
+    throw new WorkshopSimulationError({
+      code: "invalid_mail_recipient",
+      step: "test_mail",
+      message:
+        "Wenn Anbieter*innen-Testmail senden aktiv ist, muss eine gueltige Anbieter*innen- oder Test-E-Mail-Adresse vorhanden sein.",
+      courseFound: true,
+      courseKind: course.kind,
+      courseStatus: course.status,
+      archivedAt: course.archived_at,
+    });
+  }
 
   const amountCents = normalizeAmountCents(input.amountCents, course.price_cents);
   const isFreeBooking = amountCents <= 0;
@@ -514,9 +591,11 @@ export async function simulateWorkshopBooking(
       triggeredByAdminUserId: input.adminUserId,
     }),
     simulate_payment: shouldSimulatePayment,
-    send_test_mail: sendTestMail,
+    send_customer_test_mail: sendCustomerTestMail,
+    send_provider_test_mail: sendProviderTestMail,
     stored_customer_email: storedSimulationEmail,
-    actual_test_mail_recipient: actualMailRecipient,
+    actual_customer_test_mail_recipient: actualCustomerMailRecipient,
+    actual_provider_test_mail_recipient: actualProviderMailRecipient,
     amount_cents: amountCents,
     currency: (course.currency ?? "EUR").trim().toUpperCase() || "EUR",
     course_id: courseId,
@@ -583,6 +662,8 @@ export async function simulateWorkshopBooking(
   });
 
   let paymentSimulated = false;
+  let paymentTransactionId: string | null = null;
+  let ledgerEntryId: string | null = null;
   if (shouldSimulatePayment) {
     logWorkshopSimulationLookup("payment simulation start", {
       bookingId: inserted.id,
@@ -590,7 +671,7 @@ export async function simulateWorkshopBooking(
       courseId,
     });
     try {
-      await simulateWorkshopPaymentSuccess({
+      const paymentResult = await simulateWorkshopPaymentSuccess({
         bookingId: inserted.id,
         adminUserId: input.adminUserId,
         amountCents,
@@ -598,9 +679,13 @@ export async function simulateWorkshopBooking(
         scenarioNote: "admin_test_bookings_workshop_booking",
       });
       paymentSimulated = true;
+      paymentTransactionId = paymentResult.paymentTransactionId;
+      ledgerEntryId = paymentTransactionId ? await loadPositiveLedgerEntryId(paymentTransactionId) : null;
       logWorkshopSimulationLookup("payment simulation success", {
         bookingId: inserted.id,
         courseId,
+        paymentTransactionId,
+        ledgerEntryId,
       });
     } catch (error) {
       logWorkshopSimulationLookup("payment simulation failed", {
@@ -659,23 +744,30 @@ export async function simulateWorkshopBooking(
   const sessionLines =
     sessions.length > 0 ? sessions.map((session) => formatSessionLine(session.starts_at, session.ends_at)) : [];
 
-  let mailSent = false;
+  const emailData = buildWorkshopEmailData({
+    bookingId: inserted.id,
+    course,
+    customerName,
+    customerEmail: storedSimulationEmail,
+    sessionLines,
+    paymentStatus: isFreeBooking ? "free" : "paid",
+    qrToken: ticket.qr_token,
+    mailContext,
+  });
+
+  let customerMailSent = false;
+  let providerMailSent = false;
   let mailError: string | null = null;
-  if (actualMailRecipient) {
-    logWorkshopSimulationLookup("test mail start", {
+  if (actualCustomerMailRecipient) {
+    logWorkshopSimulationLookup("customer test mail start", {
       bookingId: inserted.id,
       courseId,
-      recipient: actualMailRecipient,
+      recipient: actualCustomerMailRecipient,
     });
     try {
-      await sendWorkshopSimulationMail({
-        bookingId: inserted.id,
-        course,
-        customerName,
-        actualRecipientEmail: actualMailRecipient,
-        sessionLines,
-        paymentStatus: isFreeBooking ? "free" : "paid",
-        qrToken: ticket.qr_token,
+      await sendWorkshopSimulationCustomerMail({
+        emailData,
+        actualRecipientEmail: actualCustomerMailRecipient,
       });
 
       const { error: updateError } = await admin
@@ -690,26 +782,83 @@ export async function simulateWorkshopBooking(
           bookingId: inserted.id,
           courseId,
         });
-        mailError = "Testmail wurde gesendet, aber workshop_confirmation_email_sent_at konnte nicht gespeichert werden.";
+        mailError =
+          "Kund*innen-Testmail wurde gesendet, aber workshop_confirmation_email_sent_at konnte nicht gespeichert werden.";
       } else {
-        mailSent = true;
-        logWorkshopSimulationLookup("test mail success", {
+        customerMailSent = true;
+        logWorkshopSimulationLookup("customer test mail success", {
           bookingId: inserted.id,
           courseId,
-          recipient: actualMailRecipient,
+          recipient: actualCustomerMailRecipient,
         });
       }
     } catch (error) {
-      logWorkshopSimulationLookup("test mail failed", {
+      logWorkshopSimulationLookup("customer test mail failed", {
         bookingId: inserted.id,
         courseId,
-        recipient: actualMailRecipient,
+        recipient: actualCustomerMailRecipient,
         reason: error instanceof Error ? error.message : String(error),
       });
       mailError =
         error instanceof WorkshopSimulationError
           ? error.message
-          : "Die angeforderte Workshop-Testmail konnte nicht verschickt werden.";
+          : "Die angeforderte Kund*innen-Testmail konnte nicht verschickt werden.";
+    }
+  }
+
+  if (actualProviderMailRecipient) {
+    logWorkshopSimulationLookup("provider test mail start", {
+      bookingId: inserted.id,
+      courseId,
+      recipient: actualProviderMailRecipient,
+    });
+    try {
+      await sendWorkshopSimulationProviderMail({
+        emailData,
+        actualRecipientEmail: actualProviderMailRecipient,
+      });
+
+      const { error: updateError } = await admin
+        .from("bookings")
+        .update({ workshop_provider_notification_email_sent_at: new Date().toISOString() })
+        .eq("id", inserted.id)
+        .eq("is_simulation", true);
+
+      if (updateError) {
+        logSupabaseStep("provider test mail timestamp update failed", updateError, {
+          step: "test_mail",
+          bookingId: inserted.id,
+          courseId,
+        });
+        mailError = [
+          mailError,
+          "Anbieter*innen-Testmail wurde gesendet, aber workshop_provider_notification_email_sent_at konnte nicht gespeichert werden.",
+        ]
+          .filter(Boolean)
+          .join(" ");
+      } else {
+        providerMailSent = true;
+        logWorkshopSimulationLookup("provider test mail success", {
+          bookingId: inserted.id,
+          courseId,
+          recipient: actualProviderMailRecipient,
+        });
+      }
+    } catch (error) {
+      logWorkshopSimulationLookup("provider test mail failed", {
+        bookingId: inserted.id,
+        courseId,
+        recipient: actualProviderMailRecipient,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      mailError = [
+        mailError,
+        error instanceof WorkshopSimulationError
+          ? error.message
+          : "Die angeforderte Anbieter*innen-Testmail konnte nicht verschickt werden.",
+      ]
+        .filter(Boolean)
+        .join(" ");
     }
   }
 
@@ -719,7 +868,10 @@ export async function simulateWorkshopBooking(
     ticketId: ticket.id,
     ticketQrToken: ticket.qr_token,
     paymentSimulated,
-    mailSent,
+    paymentTransactionId,
+    ledgerEntryId,
+    customerMailSent,
+    providerMailSent,
     mailError,
     participantsHref: "/dashboard/participants",
     courseDetailHref: `/dashboard/courses/${courseId}`,

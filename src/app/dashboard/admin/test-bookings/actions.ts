@@ -54,23 +54,30 @@ export async function prepareWorkshopTestBookingAction(formData: FormData) {
       email: String(formData.get("email") ?? "").trim(),
       amountCents: parseOptionalAmountCents(formData.get("amountCents")),
       simulatePayment: parseCheckbox(formData.get("simulatePayment")),
-      sendTestMail: parseCheckbox(formData.get("sendTestMail")),
-      testMailRecipient: parseOptionalString(formData.get("testMailRecipient")),
+      sendCustomerTestMail: parseCheckbox(formData.get("sendCustomerTestMail")),
+      sendProviderTestMail: parseCheckbox(formData.get("sendProviderTestMail")),
+      customerTestMailRecipient: parseOptionalString(formData.get("customerTestMailRecipient")),
+      providerTestMailRecipient: parseOptionalString(formData.get("providerTestMailRecipient")),
       adminUserId: user.id,
     });
 
     revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
     revalidatePath("/dashboard/participants");
+    revalidatePath("/dashboard/earnings");
+    revalidatePath("/dashboard/admin/payments-v2");
     revalidatePath(`/dashboard/courses/${result.courseId}`);
-    redirectWithParams({
+    redirectWithParams(compactRedirectParams({
       action: "workshop-created",
       bookingId: result.bookingId,
       courseId: result.courseId,
       ticketId: result.ticketId,
       paymentSimulated: result.paymentSimulated ? "yes" : "no",
-      mailSent: result.mailSent ? "yes" : "no",
+      paymentTransactionId: result.paymentTransactionId,
+      ledgerEntryId: result.ledgerEntryId,
+      customerMailSent: result.customerMailSent ? "yes" : "no",
+      providerMailSent: result.providerMailSent ? "yes" : "no",
       message: result.mailError ?? "",
-    });
+    }));
   } catch (error) {
     revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
 
@@ -85,6 +92,7 @@ export async function prepareWorkshopTestBookingAction(formData: FormData) {
         archivedAt: error.archivedAt,
         supabaseMessage: error.supabaseMessage,
         supabaseCode: error.supabaseCode,
+        duplicateBookingId: error.duplicateBookingId,
         message: error.message,
       }));
     }

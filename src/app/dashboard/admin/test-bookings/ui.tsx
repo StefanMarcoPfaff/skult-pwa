@@ -9,16 +9,21 @@ export function TestBookingsNotice({
   archivedAt,
   courseFound,
   courseId,
+  customerMailSent,
+  duplicateBookingId,
   errorCode,
   errorStep,
   errorType,
+  ledgerEntryId,
+  mailSent,
   reservationId,
+  paymentTransactionId,
   status,
   supabaseCode,
   supabaseMessage,
   ticketId,
   paymentSimulated,
-  mailSent,
+  providerMailSent,
   noticeMessage,
 }: {
   action: string | undefined;
@@ -26,16 +31,21 @@ export function TestBookingsNotice({
   archivedAt?: string | undefined;
   courseFound?: string | undefined;
   courseId?: string | undefined;
+  customerMailSent?: string | undefined;
+  duplicateBookingId?: string | undefined;
   errorCode?: string | undefined;
   errorStep?: string | undefined;
   errorType?: string | undefined;
+  ledgerEntryId?: string | undefined;
+  mailSent?: string | undefined;
   reservationId?: string | undefined;
+  paymentTransactionId?: string | undefined;
   status?: string | undefined;
   supabaseCode?: string | undefined;
   supabaseMessage?: string | undefined;
   ticketId?: string | undefined;
   paymentSimulated?: string | undefined;
-  mailSent?: string | undefined;
+  providerMailSent?: string | undefined;
   noticeMessage?: string | undefined;
 }) {
   if (!action) return null;
@@ -47,14 +57,22 @@ export function TestBookingsNotice({
   if (action === "workshop-foundation") {
     message = "Workshop-Testbuchung ist in PR 1 nur als no-op vorbereitet. Es wurden keine Datensaetze erzeugt.";
   } else if (action === "workshop-created") {
-    message = `Workshop-Testbuchung erstellt. Ticket erzeugt. Zahlung simuliert: ${paymentSimulated === "yes" ? "ja" : "nein"}. Mail gesendet: ${mailSent === "yes" ? "ja" : "nein"}.`;
+    message = `Workshop-Testbuchung erstellt. Ticket erzeugt. Zahlung simuliert: ${paymentSimulated === "yes" ? "ja" : "nein"}. Kund*innenmail: ${customerMailSent === "yes" ? "ja" : "nein"}. Anbieter*innenmail: ${providerMailSent === "yes" ? "ja" : "nein"}.`;
     toneClass = "border-green-200 bg-green-50 text-green-900";
     extra = (
       <div className="mt-2 text-xs">
         <div>booking_id: {bookingId ?? "-"}</div>
         <div>ticket_id: {ticketId ?? "-"}</div>
+        <div>payment_transaction_id: {paymentTransactionId ?? "-"}</div>
+        <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
         {noticeMessage ? <div className="mt-2">{noticeMessage}</div> : null}
         <div className="mt-2 flex flex-wrap gap-3">
+          <Link className="font-medium underline" href="/dashboard/admin/payments-v2">
+            Zu Payments V2
+          </Link>
+          <Link className="font-medium underline" href="/dashboard/earnings">
+            Zu Earnings
+          </Link>
           <Link className="font-medium underline" href="/dashboard/participants">
             Zur Teilnehmer*innen-Uebersicht
           </Link>
@@ -100,6 +118,7 @@ export function TestBookingsNotice({
         <div>type: {errorType ?? "-"}</div>
         <div>status: {status ?? "-"}</div>
         <div>archived_at: {archivedAt ?? "-"}</div>
+        <div>existing_booking_id: {duplicateBookingId ?? "-"}</div>
         <div>supabase_code: {supabaseCode ?? "-"}</div>
         <div>supabase_message: {supabaseMessage ?? "-"}</div>
       </div>
@@ -155,7 +174,7 @@ export function TestBookingSkeletonForm({
         <div className="grid gap-3 md:grid-cols-2">{children}</div>
         <div className="rounded-2xl border border-amber-300 bg-amber-100 px-4 py-3 text-xs text-amber-950">
           Simulation only. Keine echte Zahlung, keine echte Auszahlung und keine externen Payment-Calls. Kund*innenmail
-          nur bei ausdruecklichem Opt-in im jeweiligen Formular.
+          oder Anbieter*innenmail nur bei ausdruecklichem Opt-in im jeweiligen Formular.
         </div>
         <button
           type="submit"

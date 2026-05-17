@@ -25,10 +25,15 @@ type SearchParams = {
   code?: string;
   courseFound?: string;
   courseId?: string;
+  customerMailSent?: string;
+  duplicateBookingId?: string;
   kind?: string;
+  ledgerEntryId?: string;
   mailSent?: string;
   message?: string;
   paymentSimulated?: string;
+  paymentTransactionId?: string;
+  providerMailSent?: string;
   reservationId?: string;
   status?: string;
   step?: string;
@@ -146,7 +151,7 @@ export default async function TestBookingsAdminPage({
           </div>
           <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
             Keine echte Zahlung, keine echte Auszahlung, keine Stripe-, Mollie- oder PayPal-Calls und keine
-            Kund*innenmail.
+            Kund*innen- oder Anbieter*innenmail ohne ausdrueckliches Opt-in.
           </div>
           <div className="mt-4 text-xs text-slate-500">
             Guard aktiv fuer User {user.email ?? "-"} via <code>requirePaymentsV2SimulationAccess()</code> auf{" "}
@@ -160,16 +165,21 @@ export default async function TestBookingsAdminPage({
           bookingId={sp.bookingId}
           courseFound={sp.courseFound}
           courseId={sp.courseId}
+          customerMailSent={sp.customerMailSent}
+          duplicateBookingId={sp.duplicateBookingId}
           errorCode={sp.code}
           errorStep={sp.step}
           errorType={sp.kind}
+          ledgerEntryId={sp.ledgerEntryId}
+          mailSent={sp.mailSent}
+          paymentTransactionId={sp.paymentTransactionId}
+          providerMailSent={sp.providerMailSent}
           reservationId={sp.reservationId}
           status={sp.status}
           supabaseCode={sp.supabaseCode}
           supabaseMessage={sp.supabaseMessage}
           ticketId={sp.ticketId}
           paymentSimulated={sp.paymentSimulated}
-          mailSent={sp.mailSent}
           noticeMessage={sp.message}
         />
 
@@ -217,15 +227,26 @@ export default async function TestBookingsAdminPage({
                 description="Erzeugt bei Betrag > 0 eine interne payment_transaction und einen Ledger-Eintrag ohne PSP-Call."
               />
               <CheckboxInput
-                name="sendTestMail"
-                label="Testmail senden"
+                name="sendCustomerTestMail"
+                label="Kund*innen-Testmail senden"
                 description="Diese Testmail wird wirklich verschickt. Ohne Opt-in bleibt die gespeicherte E-Mail rein simuliert auf .invalid."
               />
+              <CheckboxInput
+                name="sendProviderTestMail"
+                label="Anbieter*innen-Testmail senden"
+                description="Diese Testmail wird wirklich verschickt. Ohne Opt-in wird keine Anbieter*innen-Buchungsbenachrichtigung versendet."
+              />
               <TextInput
-                name="testMailRecipient"
-                label="Testmail-Empfaenger optional"
+                name="customerTestMailRecipient"
+                label="Kund*innen-Testmail-Empfaenger optional"
                 type="email"
                 placeholder="qa@example.com"
+              />
+              <TextInput
+                name="providerTestMailRecipient"
+                label="Anbieter*innen-Testmail-Empfaenger optional"
+                type="email"
+                placeholder="provider-qa@example.com"
               />
             </TestBookingSkeletonForm>
           </TestBookingsSection>
