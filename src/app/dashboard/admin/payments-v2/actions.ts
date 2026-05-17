@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createSimulatedPayoutBatch } from "@/lib/payments/payout-batches";
+import { createSimulatedPaidPayoutForLedgerEntry, createSimulatedPayoutBatch } from "@/lib/payments/payout-batches";
 import {
   forceLedgerEntryPayableForTest,
   markEligibleLedgerEntriesAsPayable,
+  simulateLedgerEntryPayableForSelectedBooking,
 } from "@/lib/payments/payout-eligibility";
 import { PaymentSimulationError, requirePaymentsV2SimulationAccess } from "@/lib/payments/simulation";
 import {
@@ -166,6 +167,22 @@ function parseOptionalString(value: FormDataEntryValue | null): string | null {
   return normalized || null;
 }
 
+function compactParams(input: Record<string, string | null | undefined>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(input).filter((entry): entry is [string, string] => Boolean(entry[1]))
+  );
+}
+
+function readPaymentsV2ContextParams(formData: FormData): Record<string, string> {
+  return compactParams({
+    selectedBookingId: parseOptionalString(formData.get("selectedBookingId")),
+    simulationWindow: parseOptionalString(formData.get("simulationWindow")),
+    providerFilter: parseOptionalString(formData.get("providerFilter")),
+    offerFilter: parseOptionalString(formData.get("offerFilter")),
+    businessStatus: parseOptionalString(formData.get("businessStatus")),
+  });
+}
+
 function redirectWithSimulationError(prefix: string, error: unknown) {
   if (error instanceof PaymentSimulationError) {
     redirectWithActionState(`${prefix}-error-${error.code}`);
@@ -173,6 +190,76 @@ function redirectWithSimulationError(prefix: string, error: unknown) {
   }
 
   redirectWithActionState(`${prefix}-error-unknown`);
+}
+
+export async function simulateWorkshopCompletionForPayoutAction(formData: FormData) {
+  await requirePaymentsV2AdminAccess();
+
+  const ledgerEntryId = String(formData.get("ledgerEntryId") ?? "").trim();
+  const contextParams = readPaymentsV2ContextParams(formData);
+
+  try {
+    const result = await simulateLedgerEntryPayableForSelectedBooking({
+      ledgerEntryId,
+    });
+    revalidatePath(PAYMENTS_V2_ADMIN_PATH);
+    redirectWithParams({
+      ...contextParams,
+      action: result.updated ? "selected-workshop-ready-ok" : "selected-workshop-ready-none",
+      ledgerEntryId,
+      message: result.updated
+        ? "Workshop durchgefuehrt + 24h wurde simuliert. Der Anbieterbetrag ist jetzt auszahlbar."
+        : "Keine passenden Ledger-Eintraege gefunden.",
+    });
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    const details = getErrorDetails(error);
+    revalidatePath(PAYMENTS_V2_ADMIN_PATH);
+    redirectWithParams({
+      ...contextParams,
+      action: "selected-workshop-ready-error",
+      ledgerEntryId,
+      errorCode: details.code,
+      message: details.message,
+    });
+  }
+}
+
+export async function simulateSelectedWorkshopPayoutAction(formData: FormData) {
+  await requirePaymentsV2AdminAccess();
+
+  const ledgerEntryId = String(formData.get("ledgerEntryId") ?? "").trim();
+  const contextParams = readPaymentsV2ContextParams(formData);
+
+  try {
+    const result = await createSimulatedPaidPayoutForLedgerEntry({
+      ledgerEntryId,
+    });
+    revalidatePath(PAYMENTS_V2_ADMIN_PATH);
+    redirectWithParams({
+      ...contextParams,
+      action: "selected-payout-ok",
+      ledgerEntryId: result.ledgerEntryId,
+      message: `Simulierte Auszahlung erstellt. payout_batch_id=${result.batchId}`,
+    });
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    const details = getErrorDetails(error);
+    revalidatePath(PAYMENTS_V2_ADMIN_PATH);
+    redirectWithParams({
+      ...contextParams,
+      action: "selected-payout-error",
+      ledgerEntryId,
+      errorCode: details.code,
+      message: details.message,
+    });
+  }
 }
 
 export async function simulateWorkshopPaymentSuccessAction(formData: FormData) {
@@ -227,9 +314,10 @@ export async function simulateWorkshopRefundAction(formData: FormData) {
   const user = await requirePaymentsV2SimulationAccess();
   const bookingId = String(formData.get("bookingId") ?? "").trim();
   const paymentTransactionId = String(formData.get("paymentTransactionId") ?? "").trim();
+  const contextParams = readPaymentsV2ContextParams(formData);
 
   try {
-    const result = await simulateWorkshopRefund({
+    await simulateWorkshopRefund({
       bookingId,
       paymentTransactionId,
       adminUserId: user.id,
@@ -237,20 +325,33 @@ export async function simulateWorkshopRefundAction(formData: FormData) {
       reason: parseOptionalString(formData.get("reason")),
     });
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
-    redirectWithActionState(`workshop-refund-ok-${result.bookingId}`);
+    redirectWithParams({
+      ...contextParams,
+      action: "workshop-refund-selected-ok",
+      selectedBookingId: bookingId || contextParams.selectedBookingId,
+      message: "Workshop-Testbuchung wurde vollstaendig erstattet.",
+    });
   } catch (error) {
     if (isNextRedirectError(error)) {
       throw error;
     }
 
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
-    redirectWithSimulationError("workshop-refund", error);
+    const details = getErrorDetails(error);
+    redirectWithParams({
+      ...contextParams,
+      action: "workshop-refund-selected-error",
+      selectedBookingId: bookingId || contextParams.selectedBookingId,
+      errorCode: details.code,
+      message: details.message,
+    });
   }
 }
 
 export async function simulateWorkshopCancellationAction(formData: FormData) {
   const user = await requirePaymentsV2SimulationAccess();
   const bookingId = String(formData.get("bookingId") ?? "").trim();
+  const contextParams = readPaymentsV2ContextParams(formData);
 
   try {
     const result = await simulateWorkshopCancellation({
@@ -260,13 +361,25 @@ export async function simulateWorkshopCancellationAction(formData: FormData) {
       reason: parseOptionalString(formData.get("reason")),
     });
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
-    redirectWithActionState(`workshop-cancel-ok-${result.bookingId}`);
+    redirectWithParams({
+      ...contextParams,
+      action: "workshop-cancel-selected-ok",
+      selectedBookingId: result.bookingId,
+      message: "Workshop wurde simuliert storniert und vollstaendig erstattet.",
+    });
   } catch (error) {
     if (isNextRedirectError(error)) {
       throw error;
     }
 
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
-    redirectWithSimulationError("workshop-cancel", error);
+    const details = getErrorDetails(error);
+    redirectWithParams({
+      ...contextParams,
+      action: "workshop-cancel-selected-error",
+      selectedBookingId: bookingId || contextParams.selectedBookingId,
+      errorCode: details.code,
+      message: details.message,
+    });
   }
 }

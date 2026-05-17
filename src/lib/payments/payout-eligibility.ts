@@ -19,6 +19,14 @@ type RelatedPaymentTransactionRow = {
   refunded_at: string | null;
 };
 
+type SelectedLedgerEntryContextRow = {
+  id: string;
+  source_id: string;
+  payout_status: string;
+  available_at: string | null;
+  payout_batch_id: string | null;
+};
+
 export function calculatePayoutAvailableAt(input: {
   eventEndsAt?: string | null;
   holdHours?: number;
@@ -142,4 +150,86 @@ export async function forceLedgerEntryPayableForTest(ledgerEntryId: string): Pro
   }
 
   return Boolean(data && data.length > 0);
+}
+
+export async function simulateLedgerEntryPayableForSelectedBooking(input: {
+  ledgerEntryId: string;
+}): Promise<{
+  updated: boolean;
+  availableAt: string | null;
+  payoutStatus: string | null;
+}> {
+  const ledgerEntryId = input.ledgerEntryId.trim();
+  if (!ledgerEntryId) {
+    throw new Error("Kein Ledger-Eintrag vorhanden");
+  }
+
+  const admin = createSupabaseAdmin();
+  const { data: current } = await admin
+    .from("ledger_entries")
+    .select("id,source_id,payout_status,available_at,payout_batch_id")
+    .eq("id", ledgerEntryId)
+    .eq("entry_type", "payment")
+    .eq("source_type", "payment_transaction")
+    .maybeSingle<SelectedLedgerEntryContextRow>();
+
+  if (!current?.id) {
+    throw new Error("Kein Ledger-Eintrag vorhanden");
+  }
+
+  if (current.payout_batch_id) {
+    throw new Error("Bereits in Auszahlung oder ausgezahlt");
+  }
+
+  if (current.payout_status === "paid") {
+    throw new Error("Bereits ausgezahlt");
+  }
+
+  if (current.payout_status === "cancelled" || current.payout_status === "held") {
+    throw new Error("Bereits storniert oder gesperrt");
+  }
+
+  const { data: paymentTransaction } = await admin
+    .from("payment_transactions")
+    .select("id,status,refunded_at")
+    .eq("id", current.source_id)
+    .maybeSingle<{ id: string; status: string | null; refunded_at: string | null }>();
+
+  if (!paymentTransaction?.id) {
+    throw new Error("Keine Zahlung vorhanden");
+  }
+
+  if (paymentTransaction.status === "refunded" || paymentTransaction.refunded_at) {
+    throw new Error("Bereits erstattet");
+  }
+
+  if (paymentTransaction.status !== "paid") {
+    throw new Error("Keine bezahlte Simulation vorhanden");
+  }
+
+  const availableAt = new Date().toISOString();
+  const { data, error } = await admin
+    .from("ledger_entries")
+    .update({
+      payout_status: "payable",
+      available_at: availableAt,
+    })
+    .eq("id", ledgerEntryId)
+    .eq("entry_type", "payment")
+    .eq("source_type", "payment_transaction")
+    .in("payout_status", ["pending", "pending_event_completion", "payable"])
+    .is("payout_batch_id", null)
+    .select("id,payout_status,available_at")
+    .limit(1);
+
+  if (error) {
+    throw error;
+  }
+
+  const updatedRow = data?.[0] ?? null;
+  return {
+    updated: Boolean(updatedRow),
+    availableAt: updatedRow?.available_at ?? availableAt,
+    payoutStatus: updatedRow?.payout_status ?? null,
+  };
 }

@@ -28,6 +28,21 @@ type SimulationGroup = {
   entries: PayableLedgerEntryRow[];
 };
 
+type SelectedPayoutLedgerRow = {
+  id: string;
+  provider_payout_profile_id: string | null;
+  net_amount_cents: number;
+  currency: string;
+  payout_status: string;
+  payout_batch_id: string | null;
+};
+
+type SelectedPayoutProfileRow = {
+  id: string;
+  provider: string;
+  payout_method: string;
+};
+
 export async function createSimulatedPayoutBatch(): Promise<{
   consideredCount: number;
   skippedCount: number;
@@ -182,5 +197,142 @@ export async function createSimulatedPayoutBatch(): Promise<{
     batchCount: createdBatchIds.length,
     itemCount: createdItemCount,
     batchIds: createdBatchIds,
+  };
+}
+
+export async function createSimulatedPaidPayoutForLedgerEntry(input: {
+  ledgerEntryId: string;
+}): Promise<{
+  batchId: string;
+  payoutItemId: string | null;
+  ledgerEntryId: string;
+}> {
+  const ledgerEntryId = input.ledgerEntryId.trim();
+  if (!ledgerEntryId) {
+    throw new Error("Kein Ledger-Eintrag vorhanden");
+  }
+
+  const admin = createSupabaseAdmin();
+  const { data: entry } = await admin
+    .from("ledger_entries")
+    .select("id,provider_payout_profile_id,net_amount_cents,currency,payout_status,payout_batch_id")
+    .eq("id", ledgerEntryId)
+    .eq("entry_type", "payment")
+    .eq("source_type", "payment_transaction")
+    .maybeSingle<SelectedPayoutLedgerRow>();
+
+  if (!entry?.id) {
+    throw new Error("Kein Ledger-Eintrag vorhanden");
+  }
+
+  if (!entry.provider_payout_profile_id) {
+    throw new Error("Kein Provider-Payout-Profil vorhanden");
+  }
+
+  if (entry.payout_status === "cancelled" || entry.payout_status === "held") {
+    throw new Error("Bereits storniert oder gesperrt");
+  }
+
+  if (entry.payout_status === "paid") {
+    throw new Error("Bereits ausgezahlt");
+  }
+
+  if (entry.payout_batch_id) {
+    const { data: existingItem } = await admin
+      .from("payout_items")
+      .select("id")
+      .eq("ledger_entry_id", entry.id)
+      .maybeSingle<{ id: string }>();
+
+    await admin
+      .from("payout_items")
+      .update({
+        status: "paid",
+        executed_at: new Date().toISOString(),
+      })
+      .eq("ledger_entry_id", entry.id);
+
+    await admin
+      .from("payout_batches")
+      .update({
+        status: "paid",
+        executed_at: new Date().toISOString(),
+      })
+      .eq("id", entry.payout_batch_id);
+
+    await admin
+      .from("ledger_entries")
+      .update({
+        payout_status: "paid",
+      })
+      .eq("id", entry.id);
+
+    return {
+      batchId: entry.payout_batch_id,
+      payoutItemId: existingItem?.id ?? null,
+      ledgerEntryId: entry.id,
+    };
+  }
+
+  if (entry.payout_status !== "payable" && entry.payout_status !== "available") {
+    throw new Error("Ledger-Eintrag ist noch nicht auszahlbar");
+  }
+
+  const { data: profile } = await admin
+    .from("provider_payout_profiles")
+    .select("id,provider,payout_method")
+    .eq("id", entry.provider_payout_profile_id)
+    .maybeSingle<SelectedPayoutProfileRow>();
+
+  if (!profile?.id) {
+    throw new Error("Kein Provider-Payout-Profil vorhanden");
+  }
+
+  const { data: batch } = await admin
+    .from("payout_batches")
+    .insert({
+      payout_provider: profile.provider,
+      payout_method: profile.payout_method,
+      total_amount_cents: Math.max(0, entry.net_amount_cents),
+      currency: entry.currency.trim().toUpperCase(),
+      status: "paid",
+      executed_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single<PayoutBatchRow>();
+
+  const batchId = batch?.id ?? null;
+  if (!batchId) {
+    throw new Error("Simulations-Auszahlung konnte nicht angelegt werden");
+  }
+
+  const { data: item } = await admin
+    .from("payout_items")
+    .insert({
+      payout_batch_id: batchId,
+      provider_payout_profile_id: profile.id,
+      ledger_entry_id: entry.id,
+      amount_cents: Math.max(0, entry.net_amount_cents),
+      currency: entry.currency.trim().toUpperCase(),
+      status: "paid",
+      executed_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single<{ id: string }>();
+
+  await admin
+    .from("ledger_entries")
+    .update({
+      payout_batch_id: batchId,
+      payout_status: "paid",
+    })
+    .eq("id", entry.id)
+    .eq("payout_status", entry.payout_status)
+    .is("payout_batch_id", null);
+
+  return {
+    batchId,
+    payoutItemId: item?.id ?? null,
+    ledgerEntryId: entry.id,
   };
 }

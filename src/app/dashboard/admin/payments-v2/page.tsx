@@ -7,6 +7,8 @@ import {
   createSimulatedPayoutBatchAction,
   forceLedgerEntryPayableForTestAction,
   markEligibleLedgerEntriesAsPayableAction,
+  simulateSelectedWorkshopPayoutAction,
+  simulateWorkshopCompletionForPayoutAction,
   simulateWorkshopCancellationAction,
   simulateWorkshopPaymentFailedAction,
   simulateWorkshopPaymentSuccessAction,
@@ -319,11 +321,10 @@ function mapCustomerPaymentStatus(status: string | null | undefined): {
     case "paid":
       return { key: "bezahlt", label: "Bezahlt" };
     case "refunded":
-      return { key: "erstattet", label: "Erstattet" };
+    case "cancelled":
+      return { key: "erstattet", label: "Erstattet/Storniert" };
     case "failed":
       return { key: "fehlgeschlagen", label: "Fehlgeschlagen" };
-    case "cancelled":
-      return { key: "storniert", label: "Storniert" };
     default:
       return { key: "offen", label: "Offen" };
   }
@@ -498,6 +499,50 @@ function ActionNotice({ action, checkedCount, errorCode, ledgerEntryId, markedCo
     extra = (
       <div className="mt-1 space-y-1 text-xs">
         <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
+        <div>code: {errorCode ?? "-"}</div>
+        <div>detail: {detailMessage ?? "-"}</div>
+      </div>
+    );
+  } else if (action === "selected-workshop-ready-ok") {
+    message = detailMessage ?? "Workshop durchgefuehrt + 24h wurde simuliert.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+    extra = ledgerEntryId ? <div className="mt-1 text-xs">ledger_entry_id: {ledgerEntryId}</div> : null;
+  } else if (action === "selected-workshop-ready-none") {
+    message = detailMessage ?? "Keine passenden Ledger-Eintraege gefunden.";
+    toneClass = "border-amber-200 bg-amber-50 text-amber-800";
+    extra = ledgerEntryId ? <div className="mt-1 text-xs">ledger_entry_id: {ledgerEntryId}</div> : null;
+  } else if (action === "selected-workshop-ready-error") {
+    message = "Workshop konnte nicht fuer die Auszahlung vorbereitet werden.";
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+    extra = (
+      <div className="mt-1 space-y-1 text-xs">
+        <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
+        <div>code: {errorCode ?? "-"}</div>
+        <div>detail: {detailMessage ?? "-"}</div>
+      </div>
+    );
+  } else if (action === "selected-payout-ok") {
+    message = detailMessage ?? "Simulierte Auszahlung erfolgreich abgeschlossen.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+    extra = ledgerEntryId ? <div className="mt-1 text-xs">ledger_entry_id: {ledgerEntryId}</div> : null;
+  } else if (action === "selected-payout-error") {
+    message = "Simulierte Auszahlung konnte nicht abgeschlossen werden.";
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+    extra = (
+      <div className="mt-1 space-y-1 text-xs">
+        <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
+        <div>code: {errorCode ?? "-"}</div>
+        <div>detail: {detailMessage ?? "-"}</div>
+      </div>
+    );
+  } else if (action === "workshop-cancel-selected-ok" || action === "workshop-refund-selected-ok") {
+    message = detailMessage ?? "Workshop wurde simuliert storniert und erstattet.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+  } else if (action === "workshop-cancel-selected-error" || action === "workshop-refund-selected-error") {
+    message = "Workshop-Storno/Refund konnte nicht simuliert werden.";
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+    extra = (
+      <div className="mt-1 space-y-1 text-xs">
         <div>code: {errorCode ?? "-"}</div>
         <div>detail: {detailMessage ?? "-"}</div>
       </div>
@@ -935,7 +980,7 @@ export default async function PaymentsV2AdminPage({
       .filter((row) => ["auszahlbar", "in_auszahlung", "ausgezahlt"].includes(row.statusKey))
       .reduce((sum, row) => sum + row.providerShareCents, 0),
     reserFeesCents: filteredReserIncomeRows
-      .filter((row) => row.statusKey !== "storniert")
+      .filter((row) => row.statusKey === "verdient")
       .reduce((sum, row) => sum + row.platformFeeCents, 0),
     refundsCents: filteredRefundRows
       .filter((row) => row.statusKey !== "fehlgeschlagen" && row.statusKey !== "storniert")
@@ -1176,6 +1221,76 @@ export default async function PaymentsV2AdminPage({
                     </div>
                   </div>
                 </div>
+                <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                  <form action={simulateWorkshopCompletionForPayoutAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                    <input type="hidden" name="ledgerEntryId" value={selectedSimulationOption.ledgerEntryId ?? ""} />
+                    <input type="hidden" name="selectedBookingId" value={selectedSimulationOption.bookingId} />
+                    <input type="hidden" name="simulationWindow" value={simulationWindow} />
+                    <input type="hidden" name="providerFilter" value={providerFilter} />
+                    <input type="hidden" name="offerFilter" value={offerFilter} />
+                    <input type="hidden" name="businessStatus" value={businessStatusFilter} />
+                    <div className="space-y-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">Step 2: Workshop durchgefuehrt + 24h simulieren</div>
+                        <div className="mt-1 text-xs text-slate-700">
+                          Setzt den relevanten Anbieterbetrag fuer diese Buchung auf auszahlbar, ohne echte Auszahlung.
+                        </div>
+                      </div>
+                      <button
+                        type="submit"
+                        className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+                      >
+                        Auszahlungsvoraussetzung simulieren
+                      </button>
+                    </div>
+                  </form>
+
+                  <form action={simulateSelectedWorkshopPayoutAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                    <input type="hidden" name="ledgerEntryId" value={selectedSimulationOption.ledgerEntryId ?? ""} />
+                    <input type="hidden" name="selectedBookingId" value={selectedSimulationOption.bookingId} />
+                    <input type="hidden" name="simulationWindow" value={simulationWindow} />
+                    <input type="hidden" name="providerFilter" value={providerFilter} />
+                    <input type="hidden" name="offerFilter" value={offerFilter} />
+                    <input type="hidden" name="businessStatus" value={businessStatusFilter} />
+                    <div className="space-y-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">Step 3: Auszahlung simulieren</div>
+                        <div className="mt-1 text-xs text-slate-700">
+                          Erzeugt fuer genau diese Buchung eine simulierte Auszahlung und markiert sie als ausgezahlt.
+                        </div>
+                      </div>
+                      <button
+                        type="submit"
+                        className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+                      >
+                        Auszahlung simulieren
+                      </button>
+                    </div>
+                  </form>
+
+                  <form action={simulateWorkshopCancellationAction} className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                    <input type="hidden" name="bookingId" value={selectedSimulationOption.bookingId} />
+                    <input type="hidden" name="selectedBookingId" value={selectedSimulationOption.bookingId} />
+                    <input type="hidden" name="simulationWindow" value={simulationWindow} />
+                    <input type="hidden" name="providerFilter" value={providerFilter} />
+                    <input type="hidden" name="offerFilter" value={offerFilter} />
+                    <input type="hidden" name="businessStatus" value={businessStatusFilter} />
+                    <div className="space-y-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">Alternative: Anbieter*in storniert / vollstaendig erstatten</div>
+                        <div className="mt-1 text-xs text-slate-700">
+                          Nutzt den bestehenden Refund-/Storno-Simulationspfad, ohne echte Rueckzahlung und ohne Mail.
+                        </div>
+                      </div>
+                      <button
+                        type="submit"
+                        className="inline-flex rounded-xl bg-rose-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-800"
+                      >
+                        Storno + Rueckzahlung simulieren
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             ) : null}
           </div>
@@ -1311,8 +1426,8 @@ export default async function PaymentsV2AdminPage({
                         <th className="px-3 py-2">Anbieter*in</th>
                         <th className="px-3 py-2">Kund*in</th>
                         <th className="px-3 py-2">Brutto bezahlt</th>
-                        <th className="px-3 py-2">Status</th>
-                        <th className="px-3 py-2">Zahlungsart</th>
+                          <th className="px-3 py-2">Status</th>
+                          <th className="px-3 py-2">Zahlungsart</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1400,7 +1515,7 @@ export default async function PaymentsV2AdminPage({
                               <div className="text-xs text-slate-500">refund_record_id: {shortenId(row.refundRecordId)}</div>
                             </td>
                             <td className="px-3 py-3 text-sm text-slate-700">{row.customer}</td>
-                            <td className="px-3 py-3 font-medium text-slate-900">{formatMoney(row.amountCents, row.currency)}</td>
+                            <td className="px-3 py-3 font-medium text-rose-700">-{formatMoney(row.amountCents, row.currency)}</td>
                             <td className="px-3 py-3 text-sm text-slate-700">{row.reason ?? "Refund/Storno"}</td>
                             <td className="px-3 py-3"><BusinessStatusBadge label={row.statusLabel} statusKey={row.statusKey} /></td>
                           </tr>
