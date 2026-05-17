@@ -161,13 +161,78 @@ type SimulationBookingOption = {
   createdAt: string;
 };
 
+type BusinessCustomerPaymentRow = {
+  bookingId: string;
+  paymentTransactionId: string;
+  date: string;
+  offer: string;
+  provider: string;
+  customer: string;
+  grossCents: number;
+  currency: string;
+  statusKey: string;
+  statusLabel: string;
+  providerName: string;
+  offerName: string;
+  paymentProvider: string;
+};
+
+type BusinessProviderPayoutRow = {
+  bookingId: string;
+  ledgerEntryId: string;
+  payoutBatchId: string | null;
+  offer: string;
+  provider: string;
+  providerShareCents: number;
+  currency: string;
+  availableAt: string | null;
+  statusKey: string;
+  statusLabel: string;
+  providerName: string;
+  offerName: string;
+};
+
+type BusinessRefundRow = {
+  refundRecordId: string;
+  bookingId: string | null;
+  date: string;
+  offer: string;
+  customer: string;
+  amountCents: number;
+  currency: string;
+  reason: string | null;
+  statusKey: string;
+  statusLabel: string;
+  providerName: string;
+  offerName: string;
+};
+
+type BusinessReserIncomeRow = {
+  bookingId: string;
+  ledgerEntryId: string;
+  offer: string;
+  provider: string;
+  grossCents: number;
+  platformFeeCents: number;
+  currency: string;
+  earnedFromAt: string;
+  availableAt: string | null;
+  statusKey: string;
+  statusLabel: string;
+  providerName: string;
+  offerName: string;
+};
+
 type SearchParams = {
   action?: string;
   checkedCount?: string;
+  businessStatus?: string;
   errorCode?: string;
   ledgerEntryId?: string;
   markedCount?: string;
   message?: string;
+  offerFilter?: string;
+  providerFilter?: string;
   selectedBookingId?: string;
   simulationWindow?: string;
 };
@@ -226,6 +291,135 @@ function formatSimulationOptionLabel(option: SimulationBookingOption): string {
     `payment_transaction_id: ${shortenId(option.paymentTransactionId)}`,
     `ledger_entry_id: ${shortenId(option.ledgerEntryId)}`,
   ].join(" | ");
+}
+
+function normalizeBusinessStatus(value: string | undefined): string {
+  const allowed = new Set([
+    "all",
+    "bezahlt",
+    "offen",
+    "fehlgeschlagen",
+    "erstattet",
+    "vorgemerkt",
+    "auszahlbar",
+    "in_auszahlung",
+    "ausgezahlt",
+    "storniert",
+    "verdient",
+  ]);
+
+  return allowed.has(value ?? "") ? (value as string) : "all";
+}
+
+function mapCustomerPaymentStatus(status: string | null | undefined): {
+  key: string;
+  label: string;
+} {
+  switch (status) {
+    case "paid":
+      return { key: "bezahlt", label: "Bezahlt" };
+    case "refunded":
+      return { key: "erstattet", label: "Erstattet" };
+    case "failed":
+      return { key: "fehlgeschlagen", label: "Fehlgeschlagen" };
+    case "cancelled":
+      return { key: "storniert", label: "Storniert" };
+    default:
+      return { key: "offen", label: "Offen" };
+  }
+}
+
+function mapProviderPayoutStatus(input: {
+  payoutStatus: string | null;
+  payoutItemStatus: string | null;
+  paymentStatus: string | null;
+}): {
+  key: string;
+  label: string;
+} {
+  if (input.paymentStatus === "refunded" || input.payoutStatus === "cancelled" || input.payoutStatus === "held") {
+    return { key: "storniert", label: "Storniert/Gesperrt" };
+  }
+
+  if (input.payoutItemStatus === "paid" || input.payoutStatus === "paid") {
+    return { key: "ausgezahlt", label: "Ausgezahlt" };
+  }
+
+  if (
+    input.payoutStatus === "batched" ||
+    input.payoutItemStatus === "simulated_pending" ||
+    input.payoutItemStatus === "planned" ||
+    input.payoutItemStatus === "scheduled" ||
+    input.payoutItemStatus === "processing"
+  ) {
+    return { key: "in_auszahlung", label: "In Auszahlung" };
+  }
+
+  if (input.payoutStatus === "payable" || input.payoutStatus === "available") {
+    return { key: "auszahlbar", label: "Auszahlbar" };
+  }
+
+  return { key: "vorgemerkt", label: "Vorgemerkt" };
+}
+
+function mapRefundStatus(status: string | null | undefined): {
+  key: string;
+  label: string;
+} {
+  switch (status) {
+    case "succeeded":
+      return { key: "erstattet", label: "Erstattet" };
+    case "failed":
+      return { key: "fehlgeschlagen", label: "Fehlgeschlagen" };
+    case "cancelled":
+      return { key: "storniert", label: "Storniert" };
+    default:
+      return { key: "offen", label: "Offen" };
+  }
+}
+
+function mapReserIncomeStatus(input: {
+  payoutStatus: string | null;
+  paymentStatus: string | null;
+}): {
+  key: string;
+  label: string;
+} {
+  if (input.paymentStatus === "refunded" || input.payoutStatus === "cancelled" || input.payoutStatus === "held") {
+    return { key: "storniert", label: "Storniert/Reversed" };
+  }
+
+  if (input.payoutStatus === "pending" || input.payoutStatus === "pending_event_completion") {
+    return { key: "vorgemerkt", label: "Vorgemerkt" };
+  }
+
+  return { key: "verdient", label: "Verdient" };
+}
+
+function businessStatusTone(statusKey: string): string {
+  switch (statusKey) {
+    case "bezahlt":
+    case "auszahlbar":
+    case "ausgezahlt":
+    case "verdient":
+      return "bg-green-100 text-green-800";
+    case "in_auszahlung":
+      return "bg-sky-100 text-sky-800";
+    case "erstattet":
+    case "storniert":
+    case "fehlgeschlagen":
+      return "bg-rose-100 text-rose-800";
+    default:
+      return "bg-amber-100 text-amber-800";
+  }
+}
+
+function BusinessStatusBadge({ label, statusKey }: { label: string; statusKey: string }) {
+  return (
+    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${businessStatusTone(statusKey)}`}>
+      {label}
+    </span>
+  );
 }
 
 function ReferenceCell({
@@ -585,6 +779,168 @@ export default async function PaymentsV2AdminPage({
   const selectedSimulationOption =
     simulationOptions.find((option) => option.bookingId === selectedBookingId) ?? null;
   const invalidSelectedBooking = Boolean(selectedBookingId) && !selectedSimulationOption;
+  const businessStatusFilter = normalizeBusinessStatus(sp.businessStatus);
+  const providerFilter = sp.providerFilter?.trim() || "all";
+  const offerFilter = sp.offerFilter?.trim() || "all";
+  const businessLedgerEntryIds = simulationOptions
+    .map((option) => option.ledgerEntryId)
+    .filter((value): value is string => Boolean(value));
+  const businessPaymentTransactionIds = simulationOptions
+    .map((option) => option.paymentTransactionId)
+    .filter((value): value is string => Boolean(value));
+  const [businessPayoutItemsRaw, businessRefundsRaw] = await Promise.all([
+    businessLedgerEntryIds.length > 0
+      ? admin
+          .from("payout_items")
+          .select("id,payout_batch_id,provider_payout_profile_id,ledger_entry_id,amount_cents,currency,status,created_at")
+          .in("ledger_entry_id", businessLedgerEntryIds)
+          .returns<PayoutItemRow[]>()
+      : Promise.resolve({ data: [] as PayoutItemRow[] }),
+    businessPaymentTransactionIds.length > 0
+      ? admin
+          .from("refund_records")
+          .select("id,payment_transaction_id,provider_refund_id,amount_cents,reason,status,created_at,updated_at")
+          .in("payment_transaction_id", businessPaymentTransactionIds)
+          .order("created_at", { ascending: false })
+          .returns<RefundRecordRow[]>()
+      : Promise.resolve({ data: [] as RefundRecordRow[] }),
+  ]);
+  const businessPayoutItemByLedgerEntryId = new Map(
+    (businessPayoutItemsRaw.data ?? []).map((row) => [row.ledger_entry_id, row] as const)
+  );
+  const paymentTransactionById = new Map(simulationPaymentTransactions.map((row) => [row.id, row] as const));
+  const simulationOptionByPaymentTransactionId = new Map(
+    simulationOptions
+      .filter((option) => option.paymentTransactionId)
+      .map((option) => [option.paymentTransactionId as string, option] as const)
+  );
+  const customerPaymentRows = simulationOptions
+    .filter((option) => typeof option.amountCents === "number" && option.paymentTransactionId)
+    .map((option): BusinessCustomerPaymentRow => {
+      const paymentTransaction = option.paymentTransactionId ? paymentTransactionById.get(option.paymentTransactionId) : undefined;
+      const paymentStatus = mapCustomerPaymentStatus(paymentTransaction?.status);
+
+      return {
+        bookingId: option.bookingId,
+        paymentTransactionId: option.paymentTransactionId as string,
+        date: paymentTransaction?.paid_at ?? paymentTransaction?.created_at ?? option.createdAt,
+        offer: option.courseTitle,
+        provider: option.providerName,
+        customer: option.customerName,
+        grossCents: option.amountCents as number,
+        currency: option.currency ?? "EUR",
+        statusKey: paymentStatus.key,
+        statusLabel: paymentStatus.label,
+        providerName: option.providerName,
+        offerName: option.courseTitle,
+        paymentProvider: paymentTransaction?.provider ?? INTERNAL_SIMULATION_PROVIDER,
+      };
+    });
+  const providerPayoutRows = simulationOptions
+    .filter((option) => typeof option.netAmountCents === "number" && option.ledgerEntryId)
+    .map((option): BusinessProviderPayoutRow => {
+      const paymentTransaction = option.paymentTransactionId ? paymentTransactionById.get(option.paymentTransactionId) : undefined;
+      const payoutItem = option.ledgerEntryId ? businessPayoutItemByLedgerEntryId.get(option.ledgerEntryId) : undefined;
+      const payoutStatus = mapProviderPayoutStatus({
+        payoutStatus: option.payoutStatus,
+        payoutItemStatus: payoutItem?.status ?? null,
+        paymentStatus: paymentTransaction?.status ?? null,
+      });
+
+      return {
+        bookingId: option.bookingId,
+        ledgerEntryId: option.ledgerEntryId as string,
+        payoutBatchId: option.payoutBatchId,
+        offer: option.courseTitle,
+        provider: option.providerName,
+        providerShareCents: option.netAmountCents as number,
+        currency: option.currency ?? "EUR",
+        availableAt: option.availableAt,
+        statusKey: payoutStatus.key,
+        statusLabel: payoutStatus.label,
+        providerName: option.providerName,
+        offerName: option.courseTitle,
+      };
+    });
+  const reserIncomeRows = simulationOptions
+    .filter((option) => typeof option.platformFeeCents === "number" && option.ledgerEntryId)
+    .map((option): BusinessReserIncomeRow => {
+      const paymentTransaction = option.paymentTransactionId ? paymentTransactionById.get(option.paymentTransactionId) : undefined;
+      const incomeStatus = mapReserIncomeStatus({
+        payoutStatus: option.payoutStatus,
+        paymentStatus: paymentTransaction?.status ?? null,
+      });
+
+      return {
+        bookingId: option.bookingId,
+        ledgerEntryId: option.ledgerEntryId as string,
+        offer: option.courseTitle,
+        provider: option.providerName,
+        grossCents: option.grossAmountCents ?? 0,
+        platformFeeCents: option.platformFeeCents as number,
+        currency: option.currency ?? "EUR",
+        earnedFromAt: paymentTransaction?.paid_at ?? option.createdAt,
+        availableAt: option.availableAt,
+        statusKey: incomeStatus.key,
+        statusLabel: incomeStatus.label,
+        providerName: option.providerName,
+        offerName: option.courseTitle,
+      };
+    });
+  const refundRows = (businessRefundsRaw.data ?? []).map((refund): BusinessRefundRow => {
+    const option = simulationOptionByPaymentTransactionId.get(refund.payment_transaction_id);
+    const refundStatus = mapRefundStatus(refund.status);
+
+    return {
+      refundRecordId: refund.id,
+      bookingId: option?.bookingId ?? null,
+      date: refund.updated_at ?? refund.created_at,
+      offer: option?.courseTitle ?? "Angebot",
+      customer: option?.customerName ?? "Kund*in",
+      amountCents: refund.amount_cents,
+      currency: option?.currency ?? "EUR",
+      reason: refund.reason,
+      statusKey: refundStatus.key,
+      statusLabel: refundStatus.label,
+      providerName: option?.providerName ?? "Anbieter*in",
+      offerName: option?.courseTitle ?? "Angebot",
+    };
+  });
+  const providerFilterOptions = Array.from(
+    new Set(simulationOptions.map((option) => option.providerName).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, "de"));
+  const offerFilterOptions = Array.from(
+    new Set(simulationOptions.map((option) => option.courseTitle).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, "de"));
+  const matchesCommonBusinessFilters = (row: {
+    providerName: string;
+    offerName: string;
+    statusKey: string;
+  }) => {
+    if (providerFilter !== "all" && row.providerName !== providerFilter) return false;
+    if (offerFilter !== "all" && row.offerName !== offerFilter) return false;
+    if (businessStatusFilter !== "all" && row.statusKey !== businessStatusFilter) return false;
+    return true;
+  };
+  const filteredCustomerPaymentRows = customerPaymentRows.filter(matchesCommonBusinessFilters);
+  const filteredProviderPayoutRows = providerPayoutRows.filter(matchesCommonBusinessFilters);
+  const filteredRefundRows = refundRows.filter(matchesCommonBusinessFilters);
+  const filteredReserIncomeRows = reserIncomeRows.filter(matchesCommonBusinessFilters);
+  const summaryTotals = {
+    customerPaymentsCents: filteredCustomerPaymentRows.reduce((sum, row) => sum + row.grossCents, 0),
+    pendingProviderPayoutsCents: filteredProviderPayoutRows
+      .filter((row) => row.statusKey === "vorgemerkt")
+      .reduce((sum, row) => sum + row.providerShareCents, 0),
+    readyOrPaidProviderPayoutsCents: filteredProviderPayoutRows
+      .filter((row) => ["auszahlbar", "in_auszahlung", "ausgezahlt"].includes(row.statusKey))
+      .reduce((sum, row) => sum + row.providerShareCents, 0),
+    reserFeesCents: filteredReserIncomeRows
+      .filter((row) => row.statusKey !== "storniert")
+      .reduce((sum, row) => sum + row.platformFeeCents, 0),
+    refundsCents: filteredRefundRows
+      .filter((row) => row.statusKey !== "fehlgeschlagen" && row.statusKey !== "storniert")
+      .reduce((sum, row) => sum + row.amountCents, 0),
+  };
 
   const [transactionsResult, ledgerResult, refundsResult, webhooksResult, payoutBatchesResult, payoutItemsResult] =
     await Promise.all([
@@ -822,6 +1178,285 @@ export default async function PaymentsV2AdminPage({
                 </div>
               </div>
             ) : null}
+          </div>
+        </Section>
+
+        <Section
+          title="Geldfluss - einmalige Angebote"
+          description="Einfache Admin-Uebersicht fuer Kundenzahlungen, Anbieter-Auszahlungen, Rueckzahlungen und RESER-Einnahmen auf Basis bestehender Simulationen fuer Workshops und einmalige Angebote."
+        >
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              Aktuell nur Simulationsbuchungen fuer einmalige Angebote mit <code>bookings.is_simulation = true</code>.
+            </div>
+
+            <form action={PAYMENTS_V2_ADMIN_PATH} className="grid gap-3 md:grid-cols-4 xl:grid-cols-5">
+              <input type="hidden" name="selectedBookingId" value={selectedSimulationOption?.bookingId ?? ""} />
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Zeitraum</span>
+                <select
+                  name="simulationWindow"
+                  defaultValue={simulationWindow}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                >
+                  <option value="today">Heute</option>
+                  <option value="last7">Letzte 7 Tage</option>
+                  <option value="all">Alle Simulationen</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Anbieter*in</span>
+                <select
+                  name="providerFilter"
+                  defaultValue={providerFilter}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                >
+                  <option value="all">Alle</option>
+                  {providerFilterOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Angebot</span>
+                <select
+                  name="offerFilter"
+                  defaultValue={offerFilter}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                >
+                  <option value="all">Alle</option>
+                  {offerFilterOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Status</span>
+                <select
+                  name="businessStatus"
+                  defaultValue={businessStatusFilter}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                >
+                  <option value="all">Alle</option>
+                  <option value="bezahlt">Bezahlt</option>
+                  <option value="offen">Offen</option>
+                  <option value="fehlgeschlagen">Fehlgeschlagen</option>
+                  <option value="erstattet">Erstattet</option>
+                  <option value="vorgemerkt">Vorgemerkt</option>
+                  <option value="auszahlbar">Auszahlbar</option>
+                  <option value="in_auszahlung">In Auszahlung</option>
+                  <option value="ausgezahlt">Ausgezahlt</option>
+                  <option value="storniert">Storniert/Gesperrt</option>
+                  <option value="verdient">Verdient</option>
+                </select>
+              </label>
+              <div className="flex items-end">
+                <button
+                  type="submit"
+                  className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+                >
+                  Uebersicht filtern
+                </button>
+              </div>
+            </form>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="text-sm text-slate-600">Kundenzahlungen gesamt</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">
+                  {formatMoney(summaryTotals.customerPaymentsCents, "EUR")}
+                </div>
+              </article>
+              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="text-sm text-slate-600">Vorgemerkte Anbieter-Auszahlungen</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">
+                  {formatMoney(summaryTotals.pendingProviderPayoutsCents, "EUR")}
+                </div>
+              </article>
+              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="text-sm text-slate-600">Bereits auszahlbar/ausgezahlt</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">
+                  {formatMoney(summaryTotals.readyOrPaidProviderPayoutsCents, "EUR")}
+                </div>
+              </article>
+              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="text-sm text-slate-600">RESER-Provision gesamt</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">
+                  {formatMoney(summaryTotals.reserFeesCents, "EUR")}
+                </div>
+              </article>
+              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="text-sm text-slate-600">Rueckzahlungen gesamt</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">
+                  {formatMoney(summaryTotals.refundsCents, "EUR")}
+                </div>
+              </article>
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-2">
+              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-3">
+                  <h3 className="text-base font-semibold text-slate-900">Kundenzahlungen</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2">Datum</th>
+                        <th className="px-3 py-2">Angebot</th>
+                        <th className="px-3 py-2">Anbieter*in</th>
+                        <th className="px-3 py-2">Kund*in</th>
+                        <th className="px-3 py-2">Brutto bezahlt</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2">Zahlungsart</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredCustomerPaymentRows.map((row) => (
+                        <tr key={row.paymentTransactionId} className="border-b border-slate-100 align-top">
+                          <td className="px-3 py-3 text-xs text-slate-600">{formatDateTime(row.date)}</td>
+                          <td className="px-3 py-3 text-sm text-slate-900">
+                            <div>{row.offer}</div>
+                            <div className="text-xs text-slate-500">booking_id: {shortenId(row.bookingId)}</div>
+                          </td>
+                          <td className="px-3 py-3 text-sm text-slate-700">{row.provider}</td>
+                          <td className="px-3 py-3 text-sm text-slate-700">{row.customer}</td>
+                          <td className="px-3 py-3 font-medium text-slate-900">{formatMoney(row.grossCents, row.currency)}</td>
+                          <td className="px-3 py-3"><BusinessStatusBadge label={row.statusLabel} statusKey={row.statusKey} /></td>
+                          <td className="px-3 py-3 text-xs text-slate-600">{row.paymentProvider}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-3">
+                  <h3 className="text-base font-semibold text-slate-900">Auszahlungen an Anbieter*innen</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2">Angebot</th>
+                        <th className="px-3 py-2">Anbieter*in</th>
+                        <th className="px-3 py-2">Anbieteranteil</th>
+                        <th className="px-3 py-2">Auszahlbar ab</th>
+                        <th className="px-3 py-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredProviderPayoutRows.map((row) => (
+                        <tr key={row.ledgerEntryId} className="border-b border-slate-100 align-top">
+                          <td className="px-3 py-3 text-sm text-slate-900">
+                            <div>{row.offer}</div>
+                            <div className="text-xs text-slate-500">payout_batch_id: {shortenId(row.payoutBatchId)}</div>
+                          </td>
+                          <td className="px-3 py-3 text-sm text-slate-700">{row.provider}</td>
+                          <td className="px-3 py-3 font-medium text-slate-900">
+                            {formatMoney(row.providerShareCents, row.currency)}
+                          </td>
+                          <td className="px-3 py-3 text-xs text-slate-600">{formatDateTime(row.availableAt)}</td>
+                          <td className="px-3 py-3"><BusinessStatusBadge label={row.statusLabel} statusKey={row.statusKey} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-3">
+                  <h3 className="text-base font-semibold text-slate-900">Rueckzahlungen an Kund*innen</h3>
+                </div>
+                {filteredRefundRows.length === 0 ? (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    Noch keine Rueckzahlungen vorhanden.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2">Datum</th>
+                          <th className="px-3 py-2">Angebot</th>
+                          <th className="px-3 py-2">Kund*in</th>
+                          <th className="px-3 py-2">Betrag</th>
+                          <th className="px-3 py-2">Grund/Typ</th>
+                          <th className="px-3 py-2">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredRefundRows.map((row) => (
+                          <tr key={row.refundRecordId} className="border-b border-slate-100 align-top">
+                            <td className="px-3 py-3 text-xs text-slate-600">{formatDateTime(row.date)}</td>
+                            <td className="px-3 py-3 text-sm text-slate-900">
+                              <div>{row.offer}</div>
+                              <div className="text-xs text-slate-500">refund_record_id: {shortenId(row.refundRecordId)}</div>
+                            </td>
+                            <td className="px-3 py-3 text-sm text-slate-700">{row.customer}</td>
+                            <td className="px-3 py-3 font-medium text-slate-900">{formatMoney(row.amountCents, row.currency)}</td>
+                            <td className="px-3 py-3 text-sm text-slate-700">{row.reason ?? "Refund/Storno"}</td>
+                            <td className="px-3 py-3"><BusinessStatusBadge label={row.statusLabel} statusKey={row.statusKey} /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+
+              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-3">
+                  <h3 className="text-base font-semibold text-slate-900">RESER-Einnahmen</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2">Angebot</th>
+                        <th className="px-3 py-2">Anbieter*in</th>
+                        <th className="px-3 py-2">Brutto</th>
+                        <th className="px-3 py-2">RESER-Provision</th>
+                        <th className="px-3 py-2">Entstanden ab / verfuegbar ab</th>
+                        <th className="px-3 py-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredReserIncomeRows.map((row) => (
+                        <tr key={row.ledgerEntryId} className="border-b border-slate-100 align-top">
+                          <td className="px-3 py-3 text-sm text-slate-900">{row.offer}</td>
+                          <td className="px-3 py-3 text-sm text-slate-700">{row.provider}</td>
+                          <td className="px-3 py-3 font-medium text-slate-900">{formatMoney(row.grossCents, row.currency)}</td>
+                          <td className="px-3 py-3 font-medium text-slate-900">
+                            {formatMoney(row.platformFeeCents, row.currency)}
+                          </td>
+                          <td className="px-3 py-3 text-xs text-slate-600">
+                            <div>entstanden: {formatDateTime(row.earnedFromAt)}</div>
+                            <div>verfuegbar: {formatDateTime(row.availableAt)}</div>
+                          </td>
+                          <td className="px-3 py-3"><BusinessStatusBadge label={row.statusLabel} statusKey={row.statusKey} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </div>
+        </Section>
+
+        <Section
+          title="Technische Details / Audit"
+          description="Bestehende technische Kontrollansichten fuer Payment Transactions, Ledger, Batches, Items und Webhooks."
+        >
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            Diese Bereiche bleiben fuer Debugging erhalten und zeigen weiterhin technische Referenzen.
           </div>
         </Section>
 
