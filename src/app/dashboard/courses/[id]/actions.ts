@@ -69,6 +69,7 @@ type WorkshopBookingRefundRow = {
   customer_first_name: string | null;
   customer_last_name: string | null;
   customer_email: string | null;
+  is_simulation: boolean | null;
   status: string | null;
   payment_status: string | null;
   stripe_session_id: string | null;
@@ -661,7 +662,7 @@ export async function cancelWorkshopAction(formData: FormData) {
   const { data: bookings } = await admin
     .from("bookings")
     .select(
-      "id,customer_first_name,customer_last_name,customer_email,status,payment_status,stripe_session_id,refunded_at,stripe_refund_id"
+      "id,customer_first_name,customer_last_name,customer_email,is_simulation,status,payment_status,stripe_session_id,refunded_at,stripe_refund_id"
     )
     .eq("course_id", courseId)
     .returns<WorkshopBookingRefundRow[]>();
@@ -687,7 +688,7 @@ export async function cancelWorkshopAction(formData: FormData) {
       }
 
       const recipientEmail = booking.customer_email?.trim();
-      if (recipientEmail) {
+      if (recipientEmail && !booking.is_simulation) {
         try {
           await sendWorkshopCancellationEmail({
             customerEmail: recipientEmail,
@@ -739,7 +740,7 @@ export async function cancelWorkshopAction(formData: FormData) {
     }
 
     const recipientEmail = booking.customer_email?.trim();
-    if (recipientEmail) {
+    if (recipientEmail && !booking.is_simulation) {
       try {
         await sendWorkshopCancellationEmail({
           customerEmail: recipientEmail,

@@ -18,9 +18,12 @@ export const dynamic = "force-dynamic";
 
 type SearchParams = {
   action?: string;
+  bookingId?: string;
   code?: string;
+  courseId?: string;
   mailSent?: string;
   message?: string;
+  paymentSimulated?: string;
   reservationId?: string;
   ticketId?: string;
 };
@@ -41,9 +44,8 @@ export default async function TestBookingsAdminPage({
           <p className="text-sm font-medium uppercase tracking-[0.16em] text-sky-700">Internal Simulation</p>
           <h1 className="mt-2 text-3xl font-semibold text-slate-900">Test Bookings</h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-600">
-            Foundation fuer spaetere Admin-only Testbuchungen in RESER. Diese Seite ist nur im freigeschalteten
-            Simulationsmodus verfuegbar und fuehrt in PR 1 bewusst keine Buchungs-, Trial- oder
-            Kursanmeldungs-Fachlogik aus.
+            Admin-only Testbuchungen fuer RESER. Diese Seite ist nur im freigeschalteten Simulationsmodus verfuegbar
+            und nutzt bestehende Fachpfade gezielt ohne echte PSP-, Payout- oder Checkout-Calls.
           </p>
           <div className="mt-4 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
             Simulation only
@@ -60,8 +62,11 @@ export default async function TestBookingsAdminPage({
 
         <TestBookingsNotice
           action={sp.action}
+          bookingId={sp.bookingId}
+          courseId={sp.courseId}
           reservationId={sp.reservationId}
           ticketId={sp.ticketId}
+          paymentSimulated={sp.paymentSimulated}
           mailSent={sp.mailSent}
           noticeMessage={sp.message}
         />
@@ -69,18 +74,34 @@ export default async function TestBookingsAdminPage({
         <div className="grid gap-6">
           <TestBookingsSection
             title="Workshop-Testbuchung"
-            description="Foundation-Form fuer spaetere Testbuchungen einmaliger Angebote oder Workshops."
+            description="Erzeugt eine simulierte Workshop-Buchung inklusive Ticket, QR und optional interner Payment-Simulation."
           >
             <TestBookingSkeletonForm
               action={prepareWorkshopTestBookingAction}
-              title="Workshop-Testbuchung vorbereiten"
-              description="PR 1 validiert nur den Admin-Simulationszugriff und legt noch keine bookings, Tickets oder Zahlungen an."
+              title="Workshop-Testbuchung erstellen"
+              description="Erzeugt eine simulierte booking auf dem bestehenden Fachpfad, optional mit interner Workshop-Payment-Simulation."
             >
               <TextInput name="courseId" label="course_id" placeholder="uuid" />
               <TextInput name="firstName" label="Vorname" placeholder="[TEST] Max" />
               <TextInput name="lastName" label="Nachname" placeholder="Mustermann" />
-              <TextInput name="email" label="E-Mail" type="email" placeholder="sim.max@example.invalid" />
+              <TextInput name="email" label="E-Mail" type="email" placeholder="max@example.invalid" />
               <TextInput name="amountCents" label="Betrag optional" type="number" placeholder="4900" />
+              <CheckboxInput
+                name="simulatePayment"
+                label="Interne Zahlung simulieren"
+                description="Erzeugt bei Betrag > 0 eine interne payment_transaction und einen Ledger-Eintrag ohne PSP-Call."
+              />
+              <CheckboxInput
+                name="sendTestMail"
+                label="Testmail senden"
+                description="Diese Testmail wird wirklich verschickt. Ohne Opt-in bleibt die gespeicherte E-Mail rein simuliert auf .invalid."
+              />
+              <TextInput
+                name="testMailRecipient"
+                label="Testmail-Empfaenger optional"
+                type="email"
+                placeholder="qa@example.com"
+              />
             </TestBookingSkeletonForm>
           </TestBookingsSection>
 
@@ -119,7 +140,7 @@ export default async function TestBookingsAdminPage({
             <TestBookingSkeletonForm
               action={prepareDirectCourseTestRegistrationAction}
               title="Direkte Kurs-Testanmeldung vorbereiten"
-              description="PR 1 fuehrt noch keine course_registration_intents, Subscription-Vertraege oder Payment-V2-Buchungen aus."
+              description="Dieser Bereich bleibt vorerst Foundation-only und fuehrt noch keine course_registration_intents, Subscription-Vertraege oder Payment-V2-Buchungen aus."
             >
               <TextInput name="courseId" label="course_id" placeholder="uuid" />
               <TextInput name="firstName" label="Vorname" placeholder="[TEST] Sam" />

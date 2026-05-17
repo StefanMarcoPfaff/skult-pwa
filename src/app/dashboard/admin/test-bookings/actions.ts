@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requirePaymentsV2SimulationAccess } from "@/lib/payments/simulation";
 import { TrialSimulationError, createTrialTestBooking } from "@/lib/payments/simulation/test-trial-booking";
+import {
+  WorkshopSimulationError,
+  simulateWorkshopBooking,
+} from "@/lib/payments/simulation/test-workshop-booking";
 import { TEST_BOOKINGS_ADMIN_PATH } from "./ui";
 
 function redirectWithActionState(actionState: string) {
@@ -24,9 +28,60 @@ function parseCheckbox(value: FormDataEntryValue | null): boolean {
   return String(value ?? "").trim().toLowerCase() === "on";
 }
 
-export async function prepareWorkshopTestBookingAction() {
-  await requirePaymentsV2SimulationAccess();
-  redirectWithActionState("workshop-foundation");
+function parseOptionalAmountCents(value: FormDataEntryValue | null): number | null {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return null;
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Math.round(parsed));
+}
+
+export async function prepareWorkshopTestBookingAction(formData: FormData) {
+  const user = await requirePaymentsV2SimulationAccess();
+
+  try {
+    const result = await simulateWorkshopBooking({
+      courseId: String(formData.get("courseId") ?? "").trim(),
+      firstName: String(formData.get("firstName") ?? "").trim(),
+      lastName: String(formData.get("lastName") ?? "").trim(),
+      email: String(formData.get("email") ?? "").trim(),
+      amountCents: parseOptionalAmountCents(formData.get("amountCents")),
+      simulatePayment: parseCheckbox(formData.get("simulatePayment")),
+      sendTestMail: parseCheckbox(formData.get("sendTestMail")),
+      testMailRecipient: parseOptionalString(formData.get("testMailRecipient")),
+      adminUserId: user.id,
+    });
+
+    revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
+    revalidatePath("/dashboard/participants");
+    revalidatePath(`/dashboard/courses/${result.courseId}`);
+    redirectWithParams({
+      action: "workshop-created",
+      bookingId: result.bookingId,
+      courseId: result.courseId,
+      ticketId: result.ticketId,
+      paymentSimulated: result.paymentSimulated ? "yes" : "no",
+      mailSent: result.mailSent ? "yes" : "no",
+      message: result.mailError ?? "",
+    });
+  } catch (error) {
+    revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
+
+    if (error instanceof WorkshopSimulationError) {
+      redirectWithParams({
+        action: "workshop-error",
+        code: error.code,
+        message: error.message,
+      });
+    }
+
+    redirectWithParams({
+      action: "workshop-error",
+      code: "unknown",
+      message: "Die Workshop-Testbuchung konnte nicht erstellt werden.",
+    });
+  }
 }
 
 export async function prepareTrialTestBookingAction(formData: FormData) {

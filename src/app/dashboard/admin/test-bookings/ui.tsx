@@ -5,14 +5,20 @@ export const TEST_BOOKINGS_ADMIN_PATH = "/dashboard/admin/test-bookings";
 
 export function TestBookingsNotice({
   action,
+  bookingId,
+  courseId,
   reservationId,
   ticketId,
+  paymentSimulated,
   mailSent,
   noticeMessage,
 }: {
   action: string | undefined;
+  bookingId?: string | undefined;
+  courseId?: string | undefined;
   reservationId?: string | undefined;
   ticketId?: string | undefined;
+  paymentSimulated?: string | undefined;
   mailSent?: string | undefined;
   noticeMessage?: string | undefined;
 }) {
@@ -24,6 +30,26 @@ export function TestBookingsNotice({
 
   if (action === "workshop-foundation") {
     message = "Workshop-Testbuchung ist in PR 1 nur als no-op vorbereitet. Es wurden keine Datensaetze erzeugt.";
+  } else if (action === "workshop-created") {
+    message = `Workshop-Testbuchung erstellt. Ticket erzeugt. Zahlung simuliert: ${paymentSimulated === "yes" ? "ja" : "nein"}. Mail gesendet: ${mailSent === "yes" ? "ja" : "nein"}.`;
+    toneClass = "border-green-200 bg-green-50 text-green-900";
+    extra = (
+      <div className="mt-2 text-xs">
+        <div>booking_id: {bookingId ?? "-"}</div>
+        <div>ticket_id: {ticketId ?? "-"}</div>
+        {noticeMessage ? <div className="mt-2">{noticeMessage}</div> : null}
+        <div className="mt-2 flex flex-wrap gap-3">
+          <Link className="font-medium underline" href="/dashboard/participants">
+            Zur Teilnehmer*innen-Uebersicht
+          </Link>
+          {courseId ? (
+            <Link className="font-medium underline" href={`/dashboard/courses/${courseId}`}>
+              Zur Angebotsdetailseite
+            </Link>
+          ) : null}
+        </div>
+      </div>
+    );
   } else if (action === "trial-foundation") {
     message = "Trial-Testbuchung ist in PR 1 nur als no-op vorbereitet. Es wurden keine Datensaetze erzeugt.";
   } else if (action === "direct-course-foundation") {
@@ -46,6 +72,9 @@ export function TestBookingsNotice({
     );
   } else if (action === "trial-error") {
     message = noticeMessage ?? "Die Trial-Testbuchung konnte nicht erstellt werden.";
+    toneClass = "border-rose-200 bg-rose-50 text-rose-900";
+  } else if (action === "workshop-error") {
+    message = noticeMessage ?? "Die Workshop-Testbuchung konnte nicht erstellt werden.";
     toneClass = "border-rose-200 bg-rose-50 text-rose-900";
   }
 
@@ -98,13 +127,13 @@ export function TestBookingSkeletonForm({
         <div className="grid gap-3 md:grid-cols-2">{children}</div>
         <div className="rounded-2xl border border-amber-300 bg-amber-100 px-4 py-3 text-xs text-amber-950">
           Simulation only. Keine echte Zahlung, keine echte Auszahlung und keine externen Payment-Calls. Kund*innenmail
-          nur bei ausdruecklichem Opt-in im Trial-Formular.
+          nur bei ausdruecklichem Opt-in im jeweiligen Formular.
         </div>
         <button
           type="submit"
           className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
         >
-          Foundation no-op
+          Simulation ausfuehren
         </button>
       </div>
     </form>
