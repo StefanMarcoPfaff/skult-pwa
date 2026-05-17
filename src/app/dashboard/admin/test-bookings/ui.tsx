@@ -6,8 +6,16 @@ export const TEST_BOOKINGS_ADMIN_PATH = "/dashboard/admin/test-bookings";
 export function TestBookingsNotice({
   action,
   bookingId,
+  archivedAt,
+  courseFound,
   courseId,
+  errorCode,
+  errorStep,
+  errorType,
   reservationId,
+  status,
+  supabaseCode,
+  supabaseMessage,
   ticketId,
   paymentSimulated,
   mailSent,
@@ -15,8 +23,16 @@ export function TestBookingsNotice({
 }: {
   action: string | undefined;
   bookingId?: string | undefined;
+  archivedAt?: string | undefined;
+  courseFound?: string | undefined;
   courseId?: string | undefined;
+  errorCode?: string | undefined;
+  errorStep?: string | undefined;
+  errorType?: string | undefined;
   reservationId?: string | undefined;
+  status?: string | undefined;
+  supabaseCode?: string | undefined;
+  supabaseMessage?: string | undefined;
   ticketId?: string | undefined;
   paymentSimulated?: string | undefined;
   mailSent?: string | undefined;
@@ -76,6 +92,18 @@ export function TestBookingsNotice({
   } else if (action === "workshop-error") {
     message = noticeMessage ?? "Die Workshop-Testbuchung konnte nicht erstellt werden.";
     toneClass = "border-rose-200 bg-rose-50 text-rose-900";
+    extra = (
+      <div className="mt-2 space-y-1 text-xs">
+        <div>Fehlercode: {errorCode ?? "-"}</div>
+        <div>Schritt: {errorStep ?? "-"}</div>
+        <div>course_found: {courseFound ?? "-"}</div>
+        <div>type: {errorType ?? "-"}</div>
+        <div>status: {status ?? "-"}</div>
+        <div>archived_at: {archivedAt ?? "-"}</div>
+        <div>supabase_code: {supabaseCode ?? "-"}</div>
+        <div>supabase_message: {supabaseMessage ?? "-"}</div>
+      </div>
+    );
   }
 
   return (
@@ -160,6 +188,32 @@ export function TextInput({
         placeholder={placeholder}
         className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
       />
+    </label>
+  );
+}
+
+export function SelectInput({
+  name,
+  label,
+  children,
+}: {
+  name: string;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="block md:col-span-2">
+      <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">{label}</span>
+      <select
+        name={name}
+        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0"
+        defaultValue=""
+      >
+        <option value="" disabled>
+          Bitte Angebot auswaehlen
+        </option>
+        {children}
+      </select>
     </label>
   );
 }

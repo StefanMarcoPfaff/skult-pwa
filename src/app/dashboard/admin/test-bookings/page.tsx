@@ -1,3 +1,4 @@
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import DashboardBackLink from "@/app/dashboard/_components/DashboardBackLink";
 import { requirePaymentsV2SimulationAccess } from "@/lib/payments/simulation";
 import {
@@ -8,6 +9,7 @@ import {
 import {
   TEST_BOOKINGS_ADMIN_PATH,
   CheckboxInput,
+  SelectInput,
   TestBookingSkeletonForm,
   TestBookingsNotice,
   TestBookingsSection,
@@ -18,15 +20,80 @@ export const dynamic = "force-dynamic";
 
 type SearchParams = {
   action?: string;
+  archivedAt?: string;
   bookingId?: string;
   code?: string;
+  courseFound?: string;
   courseId?: string;
+  kind?: string;
   mailSent?: string;
   message?: string;
   paymentSimulated?: string;
   reservationId?: string;
+  status?: string;
+  step?: string;
+  supabaseCode?: string;
+  supabaseMessage?: string;
   ticketId?: string;
 };
+
+type WorkshopOfferOptionRow = {
+  id: string;
+  title: string | null;
+  kind: string | null;
+  status: string | null;
+  archived_at: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  price_cents: number | null;
+  currency: string | null;
+};
+
+type WorkshopOfferSessionRow = {
+  course_id: string;
+  starts_at: string | null;
+  ends_at: string | null;
+};
+
+function formatWorkshopMoney(priceCents: number | null, currency: string | null): string {
+  if (priceCents === null || !Number.isFinite(priceCents)) return "Preis offen";
+  return new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: currency?.trim().toUpperCase() || "EUR",
+  }).format(priceCents / 100);
+}
+
+function formatWorkshopDateTime(startsAt: string | null, endsAt: string | null): string | null {
+  if (!startsAt) return null;
+  const start = new Date(startsAt);
+  if (Number.isNaN(start.getTime())) return null;
+
+  const date = start.toLocaleDateString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+  const startTime = start.toLocaleTimeString("de-DE", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  if (!endsAt) {
+    return `${date} | ${startTime}`;
+  }
+
+  const end = new Date(endsAt);
+  if (Number.isNaN(end.getTime())) {
+    return `${date} | ${startTime}`;
+  }
+
+  const endTime = end.toLocaleTimeString("de-DE", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return `${date} | ${startTime}-${endTime}`;
+}
 
 export default async function TestBookingsAdminPage({
   searchParams,
@@ -35,6 +102,33 @@ export default async function TestBookingsAdminPage({
 }) {
   const sp = await searchParams;
   const user = await requirePaymentsV2SimulationAccess();
+  const admin = createSupabaseAdmin();
+
+  const { data: workshopOffers } = await admin
+    .from("courses")
+    .select("id,title,kind,status,archived_at,starts_at,ends_at,price_cents,currency")
+    .in("kind", ["workshop", "exclusive_offer"])
+    .is("archived_at", null)
+    .order("created_at", { ascending: false })
+    .returns<WorkshopOfferOptionRow[]>();
+
+  const workshopOfferIds = (workshopOffers ?? []).map((offer) => offer.id);
+  const { data: workshopSessions } =
+    workshopOfferIds.length > 0
+      ? await admin
+          .from("course_sessions")
+          .select("course_id,starts_at,ends_at")
+          .in("course_id", workshopOfferIds)
+          .order("starts_at", { ascending: true })
+          .returns<WorkshopOfferSessionRow[]>()
+      : { data: [] as WorkshopOfferSessionRow[] };
+
+  const firstSessionByCourseId = new Map<string, WorkshopOfferSessionRow>();
+  for (const session of workshopSessions ?? []) {
+    if (!firstSessionByCourseId.has(session.course_id)) {
+      firstSessionByCourseId.set(session.course_id, session);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 md:px-8">
@@ -62,9 +156,17 @@ export default async function TestBookingsAdminPage({
 
         <TestBookingsNotice
           action={sp.action}
+          archivedAt={sp.archivedAt}
           bookingId={sp.bookingId}
+          courseFound={sp.courseFound}
           courseId={sp.courseId}
+          errorCode={sp.code}
+          errorStep={sp.step}
+          errorType={sp.kind}
           reservationId={sp.reservationId}
+          status={sp.status}
+          supabaseCode={sp.supabaseCode}
+          supabaseMessage={sp.supabaseMessage}
           ticketId={sp.ticketId}
           paymentSimulated={sp.paymentSimulated}
           mailSent={sp.mailSent}
@@ -81,7 +183,30 @@ export default async function TestBookingsAdminPage({
               title="Workshop-Testbuchung erstellen"
               description="Erzeugt eine simulierte booking auf dem bestehenden Fachpfad, optional mit interner Workshop-Payment-Simulation."
             >
-              <TextInput name="courseId" label="course_id" placeholder="uuid" />
+              <SelectInput name="courseId" label="Angebot auswaehlen">
+                {(workshopOffers ?? []).map((offer) => {
+                  const firstSession = firstSessionByCourseId.get(offer.id);
+                  const timeLabel = formatWorkshopDateTime(
+                    firstSession?.starts_at ?? offer.starts_at,
+                    firstSession?.ends_at ?? offer.ends_at
+                  );
+                  const optionLabel = [
+                    offer.title?.trim() || "Ohne Titel",
+                    timeLabel,
+                    `Status: ${offer.status ?? "-"}`,
+                    `Preis: ${formatWorkshopMoney(offer.price_cents, offer.currency)}`,
+                    `Typ: ${offer.kind ?? "-"}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" | ");
+
+                  return (
+                    <option key={offer.id} value={offer.id}>
+                      {optionLabel}
+                    </option>
+                  );
+                })}
+              </SelectInput>
               <TextInput name="firstName" label="Vorname" placeholder="[TEST] Max" />
               <TextInput name="lastName" label="Nachname" placeholder="Mustermann" />
               <TextInput name="email" label="E-Mail" type="email" placeholder="max@example.invalid" />

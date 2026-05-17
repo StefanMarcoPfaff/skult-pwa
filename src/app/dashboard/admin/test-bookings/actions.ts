@@ -19,6 +19,12 @@ function redirectWithParams(params: Record<string, string>) {
   redirect(`${TEST_BOOKINGS_ADMIN_PATH}?${search.toString()}`);
 }
 
+function compactRedirectParams(input: Record<string, string | null | undefined>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(input).filter((entry): entry is [string, string] => Boolean(entry[1]))
+  );
+}
+
 function parseOptionalString(value: FormDataEntryValue | null): string | null {
   const normalized = String(value ?? "").trim();
   return normalized || null;
@@ -69,11 +75,18 @@ export async function prepareWorkshopTestBookingAction(formData: FormData) {
     revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
 
     if (error instanceof WorkshopSimulationError) {
-      redirectWithParams({
+      redirectWithParams(compactRedirectParams({
         action: "workshop-error",
         code: error.code,
+        step: error.step,
+        courseFound: error.courseFound === null ? null : error.courseFound ? "yes" : "no",
+        kind: error.courseKind,
+        status: error.courseStatus,
+        archivedAt: error.archivedAt,
+        supabaseMessage: error.supabaseMessage,
+        supabaseCode: error.supabaseCode,
         message: error.message,
-      });
+      }));
     }
 
     redirectWithParams({

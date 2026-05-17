@@ -73,13 +73,44 @@ type WorkshopSimulationErrorCode =
   | "booking_insert_failed"
   | "mail_send_failed";
 
+type WorkshopSimulationStep =
+  | "course_lookup"
+  | "booking_insert"
+  | "ticket_create"
+  | "payment_simulation"
+  | "test_mail";
+
 export class WorkshopSimulationError extends Error {
   code: WorkshopSimulationErrorCode;
+  step: WorkshopSimulationStep;
+  courseFound: boolean | null;
+  courseKind: string | null;
+  courseStatus: string | null;
+  archivedAt: string | null;
+  supabaseMessage: string | null;
+  supabaseCode: string | null;
 
-  constructor(code: WorkshopSimulationErrorCode, message: string) {
-    super(message);
+  constructor(input: {
+    code: WorkshopSimulationErrorCode;
+    message: string;
+    step: WorkshopSimulationStep;
+    courseFound?: boolean | null;
+    courseKind?: string | null;
+    courseStatus?: string | null;
+    archivedAt?: string | null;
+    supabaseMessage?: string | null;
+    supabaseCode?: string | null;
+  }) {
+    super(input.message);
     this.name = "WorkshopSimulationError";
-    this.code = code;
+    this.code = input.code;
+    this.step = input.step;
+    this.courseFound = input.courseFound ?? null;
+    this.courseKind = input.courseKind ?? null;
+    this.courseStatus = input.courseStatus ?? null;
+    this.archivedAt = input.archivedAt ?? null;
+    this.supabaseMessage = input.supabaseMessage ?? null;
+    this.supabaseCode = input.supabaseCode ?? null;
   }
 }
 
@@ -189,6 +220,14 @@ function buildCourseDebugSummary(course: Pick<WorkshopCourseRow, "id" | "kind" |
   ].join(" | ");
 }
 
+function logSupabaseStep(message: string, error: { message?: string | null; code?: string | null } | null, extra?: Record<string, unknown>) {
+  logWorkshopSimulationLookup(message, {
+    supabaseMessage: error?.message ?? null,
+    supabaseCode: error?.code ?? null,
+    ...extra,
+  });
+}
+
 async function loadCourse(courseId: string): Promise<WorkshopCourseRow> {
   const admin = createSupabaseAdmin();
   const { data, error } = await admin
@@ -208,25 +247,39 @@ async function loadCourse(courseId: string): Promise<WorkshopCourseRow> {
   });
 
   if (error || !data) {
-    throw new WorkshopSimulationError(
-      "course_not_found",
-      `Angebot fuer Workshop-Testbuchung nicht gefunden. ${buildCourseDebugSummary(null)}`
-    );
+    throw new WorkshopSimulationError({
+      code: "course_not_found",
+      step: "course_lookup",
+      message: `Angebot fuer Workshop-Testbuchung nicht gefunden. ${buildCourseDebugSummary(null)}`,
+      courseFound: false,
+      supabaseMessage: error?.message ?? null,
+      supabaseCode: error?.code ?? null,
+    });
   }
 
   if (data.archived_at) {
-    throw new WorkshopSimulationError(
-      "course_archived",
-      `Angebot ist archiviert und kann nicht fuer Workshop-Testbuchungen verwendet werden. ${buildCourseDebugSummary(data)}`
-    );
+    throw new WorkshopSimulationError({
+      code: "course_archived",
+      step: "course_lookup",
+      message: `Angebot ist archiviert und kann nicht fuer Workshop-Testbuchungen verwendet werden. ${buildCourseDebugSummary(data)}`,
+      courseFound: true,
+      courseKind: data.kind,
+      courseStatus: data.status,
+      archivedAt: data.archived_at,
+    });
   }
 
   const offerKind = String(data.kind ?? "").trim().toLowerCase();
   if (offerKind !== "workshop" && offerKind !== "exclusive_offer") {
-    throw new WorkshopSimulationError(
-      "course_not_supported",
-      `Angebot gefunden, aber Typ ist nicht als einmaliges Angebot geeignet. ${buildCourseDebugSummary(data)}`
-    );
+    throw new WorkshopSimulationError({
+      code: "course_not_supported",
+      step: "course_lookup",
+      message: `Angebot gefunden, aber Typ ist nicht als einmaliges Angebot geeignet. ${buildCourseDebugSummary(data)}`,
+      courseFound: true,
+      courseKind: data.kind,
+      courseStatus: data.status,
+      archivedAt: data.archived_at,
+    });
   }
 
   return data;
@@ -246,14 +299,28 @@ async function assertNoOpenSimulationDuplicate(courseId: string, email: string) 
     .maybeSingle<{ id: string }>();
 
   if (error) {
-    throw new WorkshopSimulationError("booking_insert_failed", "Bestehende Workshop-Simulationen konnten nicht geprueft werden.");
+    logSupabaseStep("duplicate simulation lookup failed", error, {
+      step: "booking_insert",
+      courseId,
+      email,
+    });
+    throw new WorkshopSimulationError({
+      code: "booking_insert_failed",
+      step: "booking_insert",
+      message: "Bestehende Workshop-Simulationen konnten nicht geprueft werden.",
+      courseFound: true,
+      supabaseMessage: error.message ?? null,
+      supabaseCode: error.code ?? null,
+    });
   }
 
   if (data) {
-    throw new WorkshopSimulationError(
-      "duplicate_open_simulation",
-      "Fuer dieses Angebot existiert bereits eine offene Workshop-Testbuchung mit derselben Test-E-Mail."
-    );
+    throw new WorkshopSimulationError({
+      code: "duplicate_open_simulation",
+      step: "booking_insert",
+      message: "Fuer dieses Angebot existiert bereits eine offene Workshop-Testbuchung mit derselben Test-E-Mail.",
+      courseFound: true,
+    });
   }
 }
 
@@ -354,7 +421,12 @@ async function sendWorkshopSimulationMail(input: {
       throw result.error;
     }
   } catch {
-    throw new WorkshopSimulationError("mail_send_failed", "Die angeforderte Workshop-Testmail konnte nicht verschickt werden.");
+    throw new WorkshopSimulationError({
+      code: "mail_send_failed",
+      step: "test_mail",
+      message: "Die angeforderte Workshop-Testmail konnte nicht verschickt werden.",
+      courseFound: true,
+    });
   }
 }
 
@@ -369,28 +441,53 @@ export async function simulateWorkshopBooking(
   const simulatePayment = Boolean(input.simulatePayment);
   const overrideRecipient = input.testMailRecipient?.trim().toLowerCase() || null;
 
+  logWorkshopSimulationLookup("simulate workshop booking input", {
+    courseId,
+    simulatePayment,
+    sendTestMail,
+    hasAmountCents: input.amountCents !== null && input.amountCents !== undefined,
+  });
+
   if (!courseId) {
-    throw new WorkshopSimulationError("missing_course_id", "Bitte gib eine gueltige course_id an.");
+    throw new WorkshopSimulationError({
+      code: "missing_course_id",
+      step: "course_lookup",
+      message: "Bitte gib eine gueltige course_id an.",
+      courseFound: false,
+    });
   }
 
   if (!firstName) {
-    throw new WorkshopSimulationError("missing_first_name", "Bitte gib den Vornamen fuer die Workshop-Testbuchung an.");
+    throw new WorkshopSimulationError({
+      code: "missing_first_name",
+      step: "booking_insert",
+      message: "Bitte gib den Vornamen fuer die Workshop-Testbuchung an.",
+    });
   }
 
   if (!lastName) {
-    throw new WorkshopSimulationError("missing_last_name", "Bitte gib den Nachnamen fuer die Workshop-Testbuchung an.");
+    throw new WorkshopSimulationError({
+      code: "missing_last_name",
+      step: "booking_insert",
+      message: "Bitte gib den Nachnamen fuer die Workshop-Testbuchung an.",
+    });
   }
 
   if (!rawEmail || !isValidEmail(rawEmail)) {
-    throw new WorkshopSimulationError("invalid_email", "Bitte gib eine gueltige E-Mail-Adresse fuer die Workshop-Testbuchung an.");
+    throw new WorkshopSimulationError({
+      code: "invalid_email",
+      step: "booking_insert",
+      message: "Bitte gib eine gueltige E-Mail-Adresse fuer die Workshop-Testbuchung an.",
+    });
   }
 
   const actualMailRecipient = sendTestMail ? overrideRecipient ?? rawEmail : null;
   if (sendTestMail && (!actualMailRecipient || !isValidEmail(actualMailRecipient))) {
-    throw new WorkshopSimulationError(
-      "invalid_mail_recipient",
-      "Wenn Testmail senden aktiv ist, muss eine gueltige Test-E-Mail-Adresse vorhanden sein."
-    );
+    throw new WorkshopSimulationError({
+      code: "invalid_mail_recipient",
+      step: "test_mail",
+      message: "Wenn Testmail senden aktiv ist, muss eine gueltige Test-E-Mail-Adresse vorhanden sein.",
+    });
   }
 
   const storedSimulationEmail = ensureSimulationEmail(rawEmail);
@@ -430,6 +527,13 @@ export async function simulateWorkshopBooking(
   const initialPaymentProvider = isFreeBooking ? "free" : INTERNAL_SIMULATION_PROVIDER;
 
   const admin = createSupabaseAdmin();
+  logWorkshopSimulationLookup("booking insert start", {
+    courseId,
+    amountCents,
+    isFreeBooking,
+    shouldSimulatePayment,
+    storedSimulationEmail,
+  });
   const { data: inserted, error: insertError } = await admin
     .from("bookings")
     .insert({
@@ -453,27 +557,103 @@ export async function simulateWorkshopBooking(
     .single<BookingInsertRow>();
 
   if (insertError || !inserted) {
-    throw new WorkshopSimulationError("booking_insert_failed", "Die Workshop-Testbuchung konnte nicht gespeichert werden.");
+    logSupabaseStep("booking insert failed", insertError, {
+      step: "booking_insert",
+      courseId,
+      kind: course.kind,
+      status: course.status,
+      archivedAt: course.archived_at,
+    });
+    throw new WorkshopSimulationError({
+      code: "booking_insert_failed",
+      step: "booking_insert",
+      message: "Die Workshop-Testbuchung konnte nicht gespeichert werden.",
+      courseFound: true,
+      courseKind: course.kind,
+      courseStatus: course.status,
+      archivedAt: course.archived_at,
+      supabaseMessage: insertError?.message ?? null,
+      supabaseCode: insertError?.code ?? null,
+    });
   }
+
+  logWorkshopSimulationLookup("booking insert success", {
+    bookingId: inserted.id,
+    courseId,
+  });
 
   let paymentSimulated = false;
   if (shouldSimulatePayment) {
-    await simulateWorkshopPaymentSuccess({
+    logWorkshopSimulationLookup("payment simulation start", {
       bookingId: inserted.id,
-      adminUserId: input.adminUserId,
       amountCents,
-      currency: course.currency,
-      scenarioNote: "admin_test_bookings_workshop_booking",
+      courseId,
     });
-    paymentSimulated = true;
+    try {
+      await simulateWorkshopPaymentSuccess({
+        bookingId: inserted.id,
+        adminUserId: input.adminUserId,
+        amountCents,
+        currency: course.currency,
+        scenarioNote: "admin_test_bookings_workshop_booking",
+      });
+      paymentSimulated = true;
+      logWorkshopSimulationLookup("payment simulation success", {
+        bookingId: inserted.id,
+        courseId,
+      });
+    } catch (error) {
+      logWorkshopSimulationLookup("payment simulation failed", {
+        bookingId: inserted.id,
+        courseId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      throw new WorkshopSimulationError({
+        code: "booking_insert_failed",
+        step: "payment_simulation",
+        message: "Die interne Workshop-Payment-Simulation ist fehlgeschlagen.",
+        courseFound: true,
+        courseKind: course.kind,
+        courseStatus: course.status,
+        archivedAt: course.archived_at,
+      });
+    }
   }
 
-  const { ticket } = await issueWorkshopTicketForBooking({
+  logWorkshopSimulationLookup("ticket create start", {
     bookingId: inserted.id,
     courseId,
-    customerName,
-    customerEmail: storedSimulationEmail,
   });
+  let ticket;
+  try {
+    const issued = await issueWorkshopTicketForBooking({
+      bookingId: inserted.id,
+      courseId,
+      customerName,
+      customerEmail: storedSimulationEmail,
+    });
+    ticket = issued.ticket;
+    logWorkshopSimulationLookup("ticket create success", {
+      bookingId: inserted.id,
+      ticketId: ticket.id,
+      courseId,
+    });
+  } catch (error) {
+    logWorkshopSimulationLookup("ticket create failed", {
+      bookingId: inserted.id,
+      courseId,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    throw new WorkshopSimulationError({
+      code: "booking_insert_failed",
+      step: "ticket_create",
+      message: "Das Workshop-Ticket konnte nicht erzeugt werden.",
+      courseFound: true,
+      courseKind: course.kind,
+      courseStatus: course.status,
+      archivedAt: course.archived_at,
+    });
+  }
 
   const sessions = await loadWorkshopSessions(courseId);
   const sessionLines =
@@ -482,6 +662,11 @@ export async function simulateWorkshopBooking(
   let mailSent = false;
   let mailError: string | null = null;
   if (actualMailRecipient) {
+    logWorkshopSimulationLookup("test mail start", {
+      bookingId: inserted.id,
+      courseId,
+      recipient: actualMailRecipient,
+    });
     try {
       await sendWorkshopSimulationMail({
         bookingId: inserted.id,
@@ -500,11 +685,27 @@ export async function simulateWorkshopBooking(
         .eq("is_simulation", true);
 
       if (updateError) {
+        logSupabaseStep("test mail timestamp update failed", updateError, {
+          step: "test_mail",
+          bookingId: inserted.id,
+          courseId,
+        });
         mailError = "Testmail wurde gesendet, aber workshop_confirmation_email_sent_at konnte nicht gespeichert werden.";
       } else {
         mailSent = true;
+        logWorkshopSimulationLookup("test mail success", {
+          bookingId: inserted.id,
+          courseId,
+          recipient: actualMailRecipient,
+        });
       }
     } catch (error) {
+      logWorkshopSimulationLookup("test mail failed", {
+        bookingId: inserted.id,
+        courseId,
+        recipient: actualMailRecipient,
+        reason: error instanceof Error ? error.message : String(error),
+      });
       mailError =
         error instanceof WorkshopSimulationError
           ? error.message
