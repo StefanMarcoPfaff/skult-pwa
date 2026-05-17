@@ -1,11 +1,26 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 export const TEST_BOOKINGS_ADMIN_PATH = "/dashboard/admin/test-bookings";
 
-export function TestBookingsNotice({ action }: { action: string | undefined }) {
+export function TestBookingsNotice({
+  action,
+  reservationId,
+  ticketId,
+  mailSent,
+  noticeMessage,
+}: {
+  action: string | undefined;
+  reservationId?: string | undefined;
+  ticketId?: string | undefined;
+  mailSent?: string | undefined;
+  noticeMessage?: string | undefined;
+}) {
   if (!action) return null;
 
   let message = "Foundation only. Es wurden keine Testbuchungen erzeugt.";
+  let toneClass = "border-sky-200 bg-sky-50 text-sky-900";
+  let extra: ReactNode = null;
 
   if (action === "workshop-foundation") {
     message = "Workshop-Testbuchung ist in PR 1 nur als no-op vorbereitet. Es wurden keine Datensaetze erzeugt.";
@@ -14,9 +29,32 @@ export function TestBookingsNotice({ action }: { action: string | undefined }) {
   } else if (action === "direct-course-foundation") {
     message =
       "Direkte Kurs-Testanmeldung ist in PR 1 nur als no-op vorbereitet. Es wurden keine Datensaetze erzeugt.";
+  } else if (action === "trial-created") {
+    message = `Trial-Testbuchung erstellt. Ticket erzeugt. Mail gesendet: ${mailSent === "yes" ? "ja" : "nein"}.`;
+    toneClass = "border-green-200 bg-green-50 text-green-900";
+    extra = (
+      <div className="mt-2 text-xs">
+        <div>trial_reservation_id: {reservationId ?? "-"}</div>
+        <div>ticket_id: {ticketId ?? "-"}</div>
+        {noticeMessage ? <div className="mt-2">{noticeMessage}</div> : null}
+        <div className="mt-2">
+          <Link className="font-medium underline" href="/dashboard/participants">
+            Zur Teilnehmer*innen-Uebersicht
+          </Link>
+        </div>
+      </div>
+    );
+  } else if (action === "trial-error") {
+    message = noticeMessage ?? "Die Trial-Testbuchung konnte nicht erstellt werden.";
+    toneClass = "border-rose-200 bg-rose-50 text-rose-900";
   }
 
-  return <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">{message}</div>;
+  return (
+    <div className={`rounded-2xl border px-4 py-3 text-sm ${toneClass}`}>
+      <div>{message}</div>
+      {extra}
+    </div>
+  );
 }
 
 export function TestBookingsSection({
@@ -45,7 +83,7 @@ export function TestBookingSkeletonForm({
   description,
   children,
 }: {
-  action: () => Promise<void>;
+  action: (formData: FormData) => Promise<void>;
   title: string;
   description: string;
   children: ReactNode;
@@ -59,8 +97,8 @@ export function TestBookingSkeletonForm({
         </div>
         <div className="grid gap-3 md:grid-cols-2">{children}</div>
         <div className="rounded-2xl border border-amber-300 bg-amber-100 px-4 py-3 text-xs text-amber-950">
-          Simulation only. Keine echte Zahlung, keine echte Auszahlung, keine Kund*innenmail. PR 1 fuehrt noch keine
-          Fachlogik aus.
+          Simulation only. Keine echte Zahlung, keine echte Auszahlung und keine externen Payment-Calls. Kund*innenmail
+          nur bei ausdruecklichem Opt-in im Trial-Formular.
         </div>
         <button
           type="submit"
@@ -93,6 +131,26 @@ export function TextInput({
         placeholder={placeholder}
         className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
       />
+    </label>
+  );
+}
+
+export function CheckboxInput({
+  name,
+  label,
+  description,
+}: {
+  name: string;
+  label: string;
+  description?: string;
+}) {
+  return (
+    <label className="flex items-start gap-3 rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-900">
+      <input name={name} type="checkbox" className="mt-1 h-4 w-4 rounded border-slate-300" />
+      <span>
+        <span className="block font-medium">{label}</span>
+        {description ? <span className="mt-1 block text-xs text-slate-600">{description}</span> : null}
+      </span>
     </label>
   );
 }

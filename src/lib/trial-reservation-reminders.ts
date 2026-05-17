@@ -11,6 +11,7 @@ type TrialReservationReminderRow = {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  is_simulation: boolean | null;
   trial_starts_at: string | null;
   trial_ends_at: string | null;
   cancel_token: string | null;
@@ -159,7 +160,7 @@ export async function runTrialReservationReminderJob(
 
   const { data: reservations, error } = await admin
     .from("trial_reservations")
-    .select("id,course_id,first_name,last_name,email,trial_starts_at,trial_ends_at,cancel_token,reminder_sent_at")
+    .select("id,course_id,first_name,last_name,email,is_simulation,trial_starts_at,trial_ends_at,cancel_token,reminder_sent_at")
     .is("cancelled_at", null)
     .is("reminder_sent_at", null)
     .gte("trial_starts_at", windowStart)
@@ -177,6 +178,11 @@ export async function runTrialReservationReminderJob(
   let failed = 0;
 
   for (const reservation of reservations ?? []) {
+    if (reservation.is_simulation) {
+      skipped += 1;
+      continue;
+    }
+
     const mailContext = await loadMailContext(admin, reservation.course_id);
     const payload = toEmailPayload(reservation, mailContext);
 

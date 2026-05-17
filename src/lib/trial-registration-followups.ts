@@ -14,6 +14,7 @@ type TrialRegistrationFollowupRow = {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  is_simulation: boolean | null;
   decision_status: string | null;
   registration_token: string | null;
   registration_expires_at: string | null;
@@ -238,6 +239,7 @@ export async function runTrialRegistrationFollowupJob(
       first_name,
       last_name,
       email,
+      is_simulation,
       decision_status,
       registration_token,
       registration_expires_at,
@@ -281,6 +283,10 @@ export async function runTrialRegistrationFollowupJob(
   logFollowupInfo("candidates loaded", { scannedCandidateCount: summary.scannedCandidateCount });
 
   for (const reservation of reservations ?? []) {
+    if (reservation.is_simulation) {
+      continue;
+    }
+
     if (isApprovedTrialReservationConverted(reservation, completedIntentReservationIds)) {
       summary.skippedAlreadyConvertedCount += 1;
       summary.skippedReasons.already_converted += 1;

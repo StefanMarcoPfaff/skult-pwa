@@ -11,6 +11,7 @@ type TrialReservationRow = {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  is_simulation: boolean | null;
   trial_starts_at: string | null;
   trial_ends_at: string | null;
   cancelled_at: string | null;
@@ -111,7 +112,7 @@ export async function cancelTrialReservationById(input: {
   const admin = createSupabaseAdmin();
   const { data: reservation } = await admin
     .from("trial_reservations")
-    .select("id,course_id,first_name,last_name,email,trial_starts_at,trial_ends_at,cancelled_at")
+    .select("id,course_id,first_name,last_name,email,is_simulation,trial_starts_at,trial_ends_at,cancelled_at")
     .eq("id", input.reservationId)
     .maybeSingle<TrialReservationRow>();
 
@@ -156,7 +157,13 @@ export async function cancelTrialReservationById(input: {
   }
 
   const mailContext = await loadMailContext(admin, reservation.course_id);
-  if (mailContext && reservation.email && reservation.trial_starts_at && reservation.trial_ends_at) {
+  if (
+    mailContext &&
+    reservation.email &&
+    !reservation.is_simulation &&
+    reservation.trial_starts_at &&
+    reservation.trial_ends_at
+  ) {
     const mailData = {
       reservationId: reservation.id,
       courseTitle: mailContext.courseTitle,

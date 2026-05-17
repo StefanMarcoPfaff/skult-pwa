@@ -19,6 +19,7 @@ type ReservationMailRow = {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  is_simulation?: boolean | null;
   status: string | null;
   decision_status: string | null;
   trial_ends_at: string | null;
@@ -105,7 +106,7 @@ async function requireTeacher() {
 async function loadReservationContext(admin: ReturnType<typeof createSupabaseAdmin>, reservationId: string) {
   const { data: reservation, error: reservationError } = await admin
     .from("trial_reservations")
-    .select("id,course_id,first_name,last_name,email,status,decision_status,trial_ends_at,cancelled_at,archived_at")
+    .select("id,course_id,first_name,last_name,email,is_simulation,status,decision_status,trial_ends_at,cancelled_at,archived_at")
     .eq("id", reservationId)
     .maybeSingle<ReservationMailRow>();
 
@@ -241,7 +242,7 @@ export async function approveTrialReservationAction(formData: FormData) {
     redirect(redirectTo);
   }
 
-  if (context.reservation.email) {
+  if (context.reservation.email && !context.reservation.is_simulation) {
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
     const registrationUrl = `${siteUrl}/trial/register/${registrationToken}`;
 
@@ -341,7 +342,7 @@ export async function rejectTrialReservationAction(formData: FormData) {
     redirect(redirectTo);
   }
 
-  if (context.reservation.email) {
+  if (context.reservation.email && !context.reservation.is_simulation) {
     try {
       await sendTrialRegistrationRejectedEmail({
         reservationId: context.reservation.id,

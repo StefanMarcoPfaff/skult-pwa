@@ -11,6 +11,7 @@ type TrialDecisionReminderRow = {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
+  is_simulation: boolean | null;
   trial_starts_at: string | null;
   trial_ends_at: string | null;
   decision_status: string | null;
@@ -164,7 +165,7 @@ export async function runTrialDecisionReminderJob(
   const { data: reservations, error } = await admin
     .from("trial_reservations")
     .select(
-      "id,course_id,first_name,last_name,email,trial_starts_at,trial_ends_at,decision_status,teacher_decision_reminder_sent_at"
+      "id,course_id,first_name,last_name,email,is_simulation,trial_starts_at,trial_ends_at,decision_status,teacher_decision_reminder_sent_at"
     )
     .eq("decision_status", "pending")
     .is("cancelled_at", null)
@@ -213,6 +214,10 @@ export async function runTrialDecisionReminderJob(
   let updatedReservationCount = 0;
 
   for (const reservation of reservations ?? []) {
+    if (reservation.is_simulation) {
+      continue;
+    }
+
     if (!checkedInReservationIds.has(reservation.id)) {
       skippedReasons.not_checked_in += 1;
       continue;

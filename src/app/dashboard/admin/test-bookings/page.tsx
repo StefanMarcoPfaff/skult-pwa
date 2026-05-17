@@ -7,6 +7,7 @@ import {
 } from "./actions";
 import {
   TEST_BOOKINGS_ADMIN_PATH,
+  CheckboxInput,
   TestBookingSkeletonForm,
   TestBookingsNotice,
   TestBookingsSection,
@@ -17,6 +18,11 @@ export const dynamic = "force-dynamic";
 
 type SearchParams = {
   action?: string;
+  code?: string;
+  mailSent?: string;
+  message?: string;
+  reservationId?: string;
+  ticketId?: string;
 };
 
 export default async function TestBookingsAdminPage({
@@ -52,7 +58,13 @@ export default async function TestBookingsAdminPage({
           </div>
         </header>
 
-        <TestBookingsNotice action={sp.action} />
+        <TestBookingsNotice
+          action={sp.action}
+          reservationId={sp.reservationId}
+          ticketId={sp.ticketId}
+          mailSent={sp.mailSent}
+          noticeMessage={sp.message}
+        />
 
         <div className="grid gap-6">
           <TestBookingsSection
@@ -78,14 +90,25 @@ export default async function TestBookingsAdminPage({
           >
             <TestBookingSkeletonForm
               action={prepareTrialTestBookingAction}
-              title="Trial-Testbuchung vorbereiten"
-              description="PR 1 fuehrt noch keine trial_reservations, Tickets, Reminder oder Mails aus."
+              title="Trial-Testbuchung erstellen"
+              description="Erzeugt eine simulierte trial_reservation inklusive Ticket und QR auf dem bestehenden Fachpfad."
             >
               <TextInput name="courseId" label="course_id" placeholder="uuid" />
               <TextInput name="firstName" label="Vorname" placeholder="[TEST] Erika" />
               <TextInput name="lastName" label="Nachname" placeholder="Muster" />
-              <TextInput name="email" label="E-Mail" type="email" placeholder="sim.erika@example.invalid" />
+              <TextInput name="email" label="E-Mail" type="email" placeholder="erika@example.invalid" />
               <TextInput name="trialSlotId" label="trial_slot_id optional" placeholder="uuid" />
+              <CheckboxInput
+                name="sendTestMail"
+                label="Testmail senden"
+                description="Diese Testmail wird wirklich verschickt. Ohne Opt-in bleibt die gespeicherte E-Mail rein simuliert auf .invalid."
+              />
+              <TextInput
+                name="testMailRecipientOverride"
+                label="Test-E-Mail-Empfaenger ueberschreiben optional"
+                type="email"
+                placeholder="qa@example.com"
+              />
             </TestBookingSkeletonForm>
           </TestBookingsSection>
 
