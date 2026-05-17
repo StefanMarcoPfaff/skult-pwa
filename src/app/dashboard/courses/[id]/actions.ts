@@ -101,6 +101,7 @@ type CourseCopySourceRow = {
   location_details: string | null;
   capacity: number | null;
   starts_at: string | null;
+  ends_at: string | null;
   weekday: number | null;
   start_time: string | null;
   duration_minutes: number | null;
@@ -160,6 +161,12 @@ async function requireOwnedCourse(courseId: string) {
     .maybeSingle<CourseOwnerRow>();
 
   return { admin, user, course };
+}
+
+async function cleanupCopiedCourse(admin: ReturnType<typeof createSupabaseAdmin>, courseId: string) {
+  await admin.from("trial_slots").delete().eq("course_id", courseId);
+  await admin.from("course_sessions").delete().eq("course_id", courseId);
+  await admin.from("courses").delete().eq("id", courseId);
 }
 
 export async function setCoursePublishStateAction(formData: FormData) {
@@ -286,8 +293,7 @@ export async function duplicateCourseAction(formData: FormData) {
   const { data: sourceCourse } = await admin
     .from("courses")
     .select(
-      "id,teacher_id,kind,title,description,location,location_details,capacity,starts_at,weekday,start_time,duration_minutes,recurrence_type,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,price_cents,currency"
-        .replace("price_cents,currency", "visibility,internal_note,price_cents,currency")
+      "id,teacher_id,kind,title,description,location,location_details,capacity,starts_at,ends_at,weekday,start_time,duration_minutes,recurrence_type,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,visibility,internal_note,price_cents,currency"
     )
     .eq("id", courseId)
     .eq("teacher_id", user.id)
@@ -308,6 +314,7 @@ export async function duplicateCourseAction(formData: FormData) {
       location_details: sourceCourse.location_details,
       capacity: sourceCourse.capacity,
       starts_at: sourceCourse.starts_at,
+      ends_at: sourceCourse.ends_at,
       weekday: sourceCourse.weekday,
       start_time: sourceCourse.start_time,
       duration_minutes: sourceCourse.duration_minutes,
@@ -322,12 +329,12 @@ export async function duplicateCourseAction(formData: FormData) {
       currency: sourceCourse.currency,
       status: "draft",
       is_published: false,
-      ends_at: null,
       end_scheduled_at: null,
       end_reason: null,
       pause_start_date: null,
       pause_end_date: null,
       stop_date: null,
+      archived_at: null,
     })
     .select("id")
     .single<{ id: string }>();
@@ -356,6 +363,7 @@ export async function duplicateCourseAction(formData: FormData) {
       );
 
       if (sessionInsertError) {
+        await cleanupCopiedCourse(admin, copiedCourse.id);
         redirect(withSavedParam(`/dashboard/courses/${courseId}`, "copy_error"));
       }
     }
@@ -384,6 +392,7 @@ export async function duplicateCourseAction(formData: FormData) {
       );
 
       if (trialSlotInsertError) {
+        await cleanupCopiedCourse(admin, copiedCourse.id);
         redirect(withSavedParam(`/dashboard/courses/${courseId}`, "copy_error"));
       }
     }

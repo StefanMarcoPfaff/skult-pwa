@@ -5,6 +5,7 @@ import Link from "next/link";
 import { MailActionLink } from "@/components/dashboard/MailActionLink";
 import type { CourseStatus } from "@/lib/course-lifecycle-shared";
 import { ConfirmIconAction } from "../ConfirmIconAction";
+import { DuplicateOfferAction } from "../DuplicateOfferAction";
 import { OfferActionIcon, OfferActionItem } from "../OfferActionIcon";
 import { ShareEmbedDialog } from "../ShareEmbedDialog";
 import { DISABLED_OFFER_ACTION_ICON_CLASS, getDisplayStatus } from "../display-status";
@@ -112,6 +113,15 @@ function EditGlyph() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
       <path d="m4 20 4.5-1 9-9a2.12 2.12 0 1 0-3-3l-9 9L4 20Z" />
       <path d="M13.5 6.5 17.5 10.5" />
+    </svg>
+  );
+}
+
+function DuplicateGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <rect x="9" y="9" width="10" height="10" rx="2" />
+      <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
     </svg>
   );
 }
@@ -263,6 +273,14 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
                 <EditGlyph />
               </OfferActionIcon>
             </Link>
+          </OfferActionItem>
+
+          <OfferActionItem label="Duplizieren">
+            <DuplicateOfferAction courseId={props.courseId}>
+              <OfferActionIcon title="Angebot duplizieren" label="Angebot duplizieren">
+                <DuplicateGlyph />
+              </OfferActionIcon>
+            </DuplicateOfferAction>
           </OfferActionItem>
 
           <OfferActionItem label="Archiv">

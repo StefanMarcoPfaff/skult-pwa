@@ -181,7 +181,7 @@ export default async function EditOfferPage({
         </p>
         {copiedParam === "1" ? (
           <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-            Kopie als Entwurf erstellt. Bitte pruefe vor allem Datum, Preis und Sichtbarkeit vor der Aktivierung.
+            Angebot wurde dupliziert. Bitte Datum und Uhrzeit pruefen.
           </p>
         ) : null}
       </header>

@@ -654,6 +654,11 @@ export default async function DashboardCourseDetailPage({
           Die Absage des einmaligen Angebots konnte nicht abgeschlossen werden.
         </p>
       ) : null}
+      {savedParam === "copy_error" ? (
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Das Angebot konnte nicht dupliziert werden.
+        </p>
+      ) : null}
 
       <CourseDetailActions
         courseId={data.id}
