@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { canRunPaymentsV2Simulation } from "@/lib/payments/simulation";
+import DashboardBackLink from "@/app/dashboard/_components/DashboardBackLink";
 import {
   createSimulatedPayoutBatchAction,
   forceLedgerEntryPayableForTestAction,
@@ -397,6 +398,7 @@ export default async function PaymentsV2AdminPage({
     <main className="min-h-screen bg-slate-50 px-4 py-8 md:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
         <header className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <DashboardBackLink />
           <p className="text-sm font-medium uppercase tracking-[0.16em] text-sky-700">Internal Audit</p>
           <h1 className="mt-2 text-3xl font-semibold text-slate-900">Payments V2</h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-600">
