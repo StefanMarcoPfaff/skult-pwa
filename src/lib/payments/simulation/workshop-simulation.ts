@@ -2,6 +2,7 @@ import "server-only";
 
 import { calculatePlatformFeeAmount, calculateProviderPayoutAmount } from "@/lib/platform-fees";
 import { calculatePayoutAvailableAt } from "@/lib/payments/payout-eligibility";
+import { calculateWorkshopRefund, type SupportedWorkshopRefundPolicy } from "@/lib/payments/simulation/workshop-refund-policy";
 import {
   assertSimulationNotDuplicate,
   assertSimulationTargetId,
@@ -21,18 +22,23 @@ type BookingSimulationRow = {
   payment_status: string | null;
   payment_provider: string | null;
   payment_session_id: string | null;
+  is_simulation: boolean | null;
   refunded_at: string | null;
   refund_amount_cents: number | null;
 };
 
 type WorkshopCourseRow = {
   id: string;
+  kind: string | null;
   teacher_id: string | null;
   price_cents: number | null;
   currency: string | null;
+  starts_at: string | null;
+  workshop_storno_policy: string | null;
 };
 
 type WorkshopSessionRow = {
+  starts_at: string | null;
   ends_at: string | null;
 };
 
@@ -59,7 +65,15 @@ type PaymentTransactionRow = {
 
 type LedgerEntryRow = {
   id: string;
+  provider_payout_profile_id: string | null;
+  gross_amount_cents: number;
+  platform_fee_cents: number;
+  provider_fee_cents: number;
+  net_amount_cents: number;
+  currency: string;
   payout_status: string;
+  available_at: string | null;
+  payout_batch_id: string | null;
 };
 
 type RefundRecordRow = {
@@ -79,6 +93,10 @@ type WorkshopSimulationResult = {
 
 function normalizeCurrency(currency: string | null | undefined): string {
   return (currency ?? "EUR").trim().toUpperCase() || "EUR";
+}
+
+function createSimulationStepError(code: string, message: string): Error & { code: string } {
+  return Object.assign(new Error(message), { code });
 }
 
 function normalizeOptionalAmount(amountCents: number | null | undefined, fallbackAmountCents: number): number {
@@ -111,6 +129,8 @@ function buildSimulationNote(input: {
 async function loadBookingContext(bookingId: string): Promise<{
   booking: BookingSimulationRow;
   course: WorkshopCourseRow | null;
+  lastSessionEndsAt: string | null;
+  workshopStartsAt: string | null;
   providerType: "independent_teacher" | "studio_provider" | null;
   providerPayoutProfileId: string | null;
   availableAt: string | null;
@@ -118,31 +138,44 @@ async function loadBookingContext(bookingId: string): Promise<{
   const admin = createSupabaseAdmin();
   const { data: booking } = await admin
     .from("bookings")
-    .select("id,course_id,status,payment_status,payment_provider,payment_session_id,refunded_at,refund_amount_cents")
+    .select("id,course_id,status,payment_status,payment_provider,payment_session_id,is_simulation,refunded_at,refund_amount_cents")
     .eq("id", bookingId)
     .maybeSingle<BookingSimulationRow>();
 
   if (!booking) {
-    throw new Error("Booking not found");
+    throw createSimulationStepError("booking_not_found", "Buchung nicht gefunden.");
+  }
+
+  if (!booking.is_simulation) {
+    throw createSimulationStepError("booking_not_simulation", "Nur Simulationsbuchungen sind erlaubt.");
   }
 
   let course: WorkshopCourseRow | null = null;
   let providerType: "independent_teacher" | "studio_provider" | null = null;
   let providerPayoutProfileId: string | null = null;
   let availableAt: string | null = null;
+  let workshopStartsAt: string | null = null;
+  let lastSessionEndsAt: string | null = null;
 
   if (booking.course_id) {
-    const [{ data: loadedCourse }, { data: lastSession }, { data: payoutProfile }] = await Promise.all([
+    const [{ data: loadedCourse }, { data: lastSession }, { data: firstSession }, { data: payoutProfile }] = await Promise.all([
       admin
         .from("courses")
-        .select("id,teacher_id,price_cents,currency")
+        .select("id,kind,teacher_id,price_cents,currency,starts_at,workshop_storno_policy")
         .eq("id", booking.course_id)
         .maybeSingle<WorkshopCourseRow>(),
       admin
         .from("course_sessions")
-        .select("ends_at")
+        .select("starts_at,ends_at")
         .eq("course_id", booking.course_id)
         .order("ends_at", { ascending: false })
+        .limit(1)
+        .maybeSingle<WorkshopSessionRow>(),
+      admin
+        .from("course_sessions")
+        .select("starts_at,ends_at")
+        .eq("course_id", booking.course_id)
+        .order("starts_at", { ascending: true })
         .limit(1)
         .maybeSingle<WorkshopSessionRow>(),
       (async () => {
@@ -168,9 +201,9 @@ async function loadBookingContext(bookingId: string): Promise<{
 
     course = loadedCourse ?? null;
     providerPayoutProfileId = payoutProfile?.id ?? null;
-    availableAt = calculatePayoutAvailableAt({
-      eventEndsAt: lastSession?.ends_at ?? null,
-    });
+    lastSessionEndsAt = lastSession?.ends_at ?? null;
+    workshopStartsAt = firstSession?.starts_at ?? loadedCourse?.starts_at ?? null;
+    availableAt = calculatePayoutAvailableAt({ eventEndsAt: lastSessionEndsAt });
 
     if (course?.teacher_id) {
       const { data: profile } = await admin
@@ -186,6 +219,8 @@ async function loadBookingContext(bookingId: string): Promise<{
   return {
     booking,
     course,
+    lastSessionEndsAt,
+    workshopStartsAt,
     providerType,
     providerPayoutProfileId,
     availableAt,
@@ -250,13 +285,27 @@ async function findPositiveLedgerEntryByPaymentTransactionId(paymentTransactionI
   const admin = createSupabaseAdmin();
   const { data } = await admin
     .from("ledger_entries")
-    .select("id,payout_status")
+    .select(
+      "id,provider_payout_profile_id,gross_amount_cents,platform_fee_cents,provider_fee_cents,net_amount_cents,currency,payout_status,available_at,payout_batch_id"
+    )
     .eq("source_type", "payment_transaction")
     .eq("source_id", paymentTransactionId)
     .eq("entry_type", "payment")
     .maybeSingle<LedgerEntryRow>();
 
   return data ?? null;
+}
+
+async function sumSucceededRefundsForPaymentTransaction(paymentTransactionId: string): Promise<number> {
+  const admin = createSupabaseAdmin();
+  const { data } = await admin
+    .from("refund_records")
+    .select("amount_cents,status")
+    .eq("payment_transaction_id", paymentTransactionId)
+    .eq("status", "succeeded")
+    .returns<Array<Pick<RefundRecordRow, "amount_cents" | "status">>>();
+
+  return (data ?? []).reduce((sum, row) => sum + Math.max(0, row.amount_cents ?? 0), 0);
 }
 
 async function markRefundablePositiveLedgerAsCancelled(paymentTransactionId: string): Promise<void> {
@@ -270,6 +319,18 @@ async function markRefundablePositiveLedgerAsCancelled(paymentTransactionId: str
     .eq("source_id", paymentTransactionId)
     .eq("entry_type", "payment")
     .in("payout_status", ["pending_event_completion", "payable", "pending", "available", "held"]);
+}
+
+function buildWorkshopRefundReason(input: {
+  scenario: "workshop_refund" | "workshop_customer_cancellation";
+  scenarioNote?: string | null;
+  metadata: ReturnType<typeof buildSimulationMetadata>;
+}): string {
+  return buildSimulationNote({
+    scenario: input.scenario,
+    scenarioNote: input.scenarioNote,
+    metadata: input.metadata,
+  }).slice(0, 255);
 }
 
 export async function simulateWorkshopPaymentSuccess(input: {
@@ -469,11 +530,11 @@ export async function simulateWorkshopRefund(input: {
   }
 
   const refundAmountCents = normalizeOptionalAmount(input.refundAmountCents, paymentTransaction.amount_cents);
-  const normalizedReason = buildSimulationNote({
+  const normalizedReason = buildWorkshopRefundReason({
     scenario: "workshop_refund",
     scenarioNote: input.reason,
     metadata: simulationMetadata,
-  }).slice(0, 255);
+  });
 
   const admin = createSupabaseAdmin();
   const { data: duplicateRefund } = await admin
@@ -550,6 +611,182 @@ export async function simulateWorkshopRefund(input: {
     paymentTransactionId: paymentTransaction.id,
     refundRecordId,
     simulationMetadata,
+  };
+}
+
+export async function simulateWorkshopCustomerCancellation(input: {
+  bookingId: string;
+  adminUserId: string;
+  cancellationTimestamp?: string | null;
+  reason?: string | null;
+}): Promise<
+  WorkshopSimulationResult & {
+    refundAmountCents: number;
+    retainedAmountCents: number;
+    matchedPolicy: SupportedWorkshopRefundPolicy;
+    explanation: string;
+  }
+> {
+  const bookingId = assertSimulationTargetId(input.bookingId);
+  const cancellationTimestamp = input.cancellationTimestamp?.trim() || new Date().toISOString();
+  const simulationMetadata = buildSimulationMetadata({
+    triggeredByAdminUserId: input.adminUserId,
+    scenario: "workshop_customer_cancellation",
+    sourceAdminUi: "/dashboard/admin/payments-v2",
+  });
+
+  const paymentTransaction = await findPaymentTransactionForRefund({
+    bookingId,
+    paymentTransactionId: null,
+  });
+
+  if (!paymentTransaction?.id || !paymentTransaction.booking_id) {
+    throw createSimulationStepError("payment_missing", "Keine Zahlung vorhanden.");
+  }
+
+  if (paymentTransaction.status !== "paid") {
+    if (paymentTransaction.status === "refunded") {
+      throw createSimulationStepError("already_refunded", "Bereits erstattet.");
+    }
+
+    throw createSimulationStepError("payment_not_paid", "Kund*innenstorno erfordert eine bezahlte Simulationsbuchung.");
+  }
+
+  const existingRefundAmount = await sumSucceededRefundsForPaymentTransaction(paymentTransaction.id);
+  if (existingRefundAmount > 0) {
+    throw createSimulationStepError("already_refunded", "Bereits erstattet.");
+  }
+
+  const { booking, course, providerType, workshopStartsAt } = await loadBookingContext(paymentTransaction.booking_id);
+  if (booking.status === "cancelled" && Math.max(0, booking.refund_amount_cents ?? 0) <= 0) {
+    throw createSimulationStepError("already_cancelled", "Bereits storniert.");
+  }
+  if (!course || (course.kind !== "workshop" && course.kind !== "exclusive_offer")) {
+    throw createSimulationStepError("course_not_supported", "Nur einmalige Angebote koennen so storniert werden.");
+  }
+
+  if (!workshopStartsAt) {
+    throw createSimulationStepError("workshop_date_missing", "Workshopdatum fehlt.");
+  }
+
+  if (!course.workshop_storno_policy) {
+    throw createSimulationStepError("policy_unknown", "Policy unbekannt.");
+  }
+
+  let refundCalculation;
+  try {
+    refundCalculation = calculateWorkshopRefund({
+      workshop_storno_policy: course.workshop_storno_policy,
+      workshop_start_at: workshopStartsAt,
+      cancellation_timestamp: cancellationTimestamp,
+      gross_amount_cents: paymentTransaction.amount_cents,
+    });
+  } catch (error) {
+    throw createSimulationStepError("policy_unknown", error instanceof Error ? error.message : "Policy unbekannt.");
+  }
+
+  const positiveLedgerEntry = await findPositiveLedgerEntryByPaymentTransactionId(paymentTransaction.id);
+  if (!positiveLedgerEntry?.id) {
+    throw createSimulationStepError("ledger_missing", "Kein Ledger-Eintrag vorhanden.");
+  }
+
+  if (positiveLedgerEntry.gross_amount_cents < refundCalculation.refund_amount_cents) {
+    throw createSimulationStepError("refund_exceeds_gross", "Refund groesser als Bruttobetrag.");
+  }
+
+  const retainedGrossAmountCents = refundCalculation.retained_amount_cents;
+  const retainedPlatformFeeCents = calculatePlatformFeeAmount(retainedGrossAmountCents, providerType);
+  const retainedNetAmountCents = calculateProviderPayoutAmount(retainedGrossAmountCents, providerType);
+  const refundedAt = new Date().toISOString();
+  const admin = createSupabaseAdmin();
+
+  let refundRecordId: string | null = null;
+  if (refundCalculation.refund_amount_cents > 0) {
+    const normalizedReason = buildWorkshopRefundReason({
+      scenario: "workshop_customer_cancellation",
+      scenarioNote:
+        input.reason ??
+        `policy=${refundCalculation.matched_policy} refund=${refundCalculation.refund_percentage}% retained=${refundCalculation.retained_percentage}%`,
+      metadata: simulationMetadata,
+    });
+
+    const { data: insertedRefund } = await admin
+      .from("refund_records")
+      .insert({
+        payment_transaction_id: paymentTransaction.id,
+        provider_refund_id: createSimulatedRefundId(),
+        amount_cents: refundCalculation.refund_amount_cents,
+        reason: normalizedReason,
+        status: "succeeded",
+      })
+      .select("id")
+      .single<{ id: string }>();
+
+    refundRecordId = insertedRefund?.id ?? null;
+    if (!refundRecordId) {
+      throw createSimulationStepError("refund_insert_failed", "Refund konnte nicht erzeugt werden.");
+    }
+
+    await admin.from("ledger_entries").insert({
+      source_type: "refund_record",
+      source_id: refundRecordId,
+      entry_type: "refund",
+      gross_amount_cents: refundCalculation.refund_amount_cents,
+      platform_fee_cents: 0,
+      provider_fee_cents: 0,
+      net_amount_cents: 0,
+      currency: paymentTransaction.currency,
+      payout_status: "cancelled",
+      available_at: null,
+    });
+  }
+
+  const nextPaymentStatus = refundCalculation.refund_amount_cents >= paymentTransaction.amount_cents ? "refunded" : "paid";
+  const nextBookingStatus =
+    refundCalculation.refund_amount_cents >= paymentTransaction.amount_cents
+      ? "refunded"
+      : booking.status === "cancelled"
+        ? "cancelled"
+        : "paid";
+
+  await admin
+    .from("payment_transactions")
+    .update({
+      status: nextPaymentStatus,
+      refunded_at: refundCalculation.refund_amount_cents >= paymentTransaction.amount_cents ? refundedAt : null,
+    })
+    .eq("id", paymentTransaction.id);
+
+  await admin
+    .from("ledger_entries")
+    .update({
+      gross_amount_cents: retainedGrossAmountCents,
+      platform_fee_cents: retainedPlatformFeeCents,
+      net_amount_cents: retainedNetAmountCents,
+      payout_status: retainedGrossAmountCents <= 0 ? "cancelled" : positiveLedgerEntry.payout_status,
+    })
+    .eq("id", positiveLedgerEntry.id);
+
+  await admin
+    .from("bookings")
+    .update({
+      status: refundCalculation.refund_amount_cents <= 0 ? "cancelled" : nextBookingStatus,
+      payment_status: nextPaymentStatus,
+      payment_provider: INTERNAL_SIMULATION_PROVIDER,
+      refunded_at: refundCalculation.refund_amount_cents >= paymentTransaction.amount_cents ? refundedAt : null,
+      refund_amount_cents: refundCalculation.refund_amount_cents,
+    })
+    .eq("id", paymentTransaction.booking_id);
+
+  return {
+    bookingId: paymentTransaction.booking_id,
+    paymentTransactionId: paymentTransaction.id,
+    refundRecordId,
+    simulationMetadata,
+    refundAmountCents: refundCalculation.refund_amount_cents,
+    retainedAmountCents: refundCalculation.retained_amount_cents,
+    matchedPolicy: refundCalculation.matched_policy,
+    explanation: refundCalculation.explanation,
   };
 }
 

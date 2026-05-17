@@ -1,13 +1,16 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { calculatePlatformFeeAmount, calculateProviderPayoutAmount } from "@/lib/platform-fees";
 import { canRunPaymentsV2Simulation } from "@/lib/payments/simulation";
+import { calculateWorkshopRefund } from "@/lib/payments/simulation/workshop-refund-policy";
 import DashboardBackLink from "@/app/dashboard/_components/DashboardBackLink";
 import {
   createSimulatedPayoutBatchAction,
   forceLedgerEntryPayableForTestAction,
   markEligibleLedgerEntriesAsPayableAction,
   simulateSelectedWorkshopPayoutAction,
+  simulateWorkshopCustomerCancellationAction,
   simulateWorkshopCompletionForPayoutAction,
   simulateWorkshopCancellationAction,
   simulateWorkshopPaymentFailedAction,
@@ -120,6 +123,8 @@ type SimulationBookingRow = {
   customer_last_name: string | null;
   customer_email: string | null;
   status: string | null;
+  payment_status: string | null;
+  refund_amount_cents: number | null;
   created_at: string;
 };
 
@@ -128,6 +133,8 @@ type SimulationCourseRow = {
   title: string | null;
   kind: string | null;
   teacher_id: string | null;
+  starts_at: string | null;
+  workshop_storno_policy: string | null;
 };
 
 type SimulationProfileRow = {
@@ -135,11 +142,17 @@ type SimulationProfileRow = {
   first_name: string | null;
   last_name: string | null;
   organization_name: string | null;
+  provider_type: "independent_teacher" | "studio_provider" | null;
 };
 
 type SimulationProviderPayoutProfileRow = {
   id: string;
   teacher_id: string | null;
+};
+
+type SimulationCourseSessionRow = {
+  course_id: string;
+  starts_at: string | null;
 };
 
 type SimulationBookingOption = {
@@ -148,11 +161,16 @@ type SimulationBookingOption = {
   ledgerEntryId: string | null;
   courseTitle: string;
   courseKind: string | null;
+  workshopStornoPolicy: string | null;
+  workshopStartAt: string | null;
   providerName: string;
+  providerType: "independent_teacher" | "studio_provider" | null;
   customerName: string;
   amountCents: number | null;
   currency: string | null;
   bookingStatus: string | null;
+  paymentStatus: string | null;
+  refundAmountCents: number;
   grossAmountCents: number | null;
   platformFeeCents: number | null;
   netAmountCents: number | null;
@@ -171,6 +189,7 @@ type BusinessCustomerPaymentRow = {
   provider: string;
   customer: string;
   grossCents: number;
+  refundedAmountCents: number;
   currency: string;
   statusKey: string;
   statusLabel: string;
@@ -186,6 +205,7 @@ type BusinessProviderPayoutRow = {
   offer: string;
   provider: string;
   providerShareCents: number;
+  refundedAmountCents: number;
   currency: string;
   availableAt: string | null;
   statusKey: string;
@@ -216,6 +236,7 @@ type BusinessReserIncomeRow = {
   provider: string;
   grossCents: number;
   platformFeeCents: number;
+  refundedAmountCents: number;
   currency: string;
   earnedFromAt: string;
   availableAt: string | null;
@@ -250,6 +271,28 @@ function normalizeSimulationWindow(value: string | undefined): "today" | "last7"
 
   return "today";
 }
+
+type CustomerPaymentStatusInput = {
+  paymentStatus: string | null;
+  bookingStatus: string | null;
+  grossAmountCents: number;
+  refundedAmountCents: number;
+};
+
+type ProviderPayoutStatusInput = {
+  payoutStatus: string | null;
+  payoutItemStatus: string | null;
+  paymentStatus: string | null;
+  refundedAmountCents: number;
+  grossAmountCents: number;
+};
+
+type ReserIncomeStatusInput = {
+  payoutStatus: string | null;
+  paymentStatus: string | null;
+  refundedAmountCents: number;
+  grossAmountCents: number;
+};
 
 function getSimulationWindowStart(windowKey: "today" | "last7" | "all"): string | null {
   if (windowKey === "all") return null;
@@ -299,9 +342,12 @@ function normalizeBusinessStatus(value: string | undefined): string {
   const allowed = new Set([
     "all",
     "bezahlt",
+    "nicht_erstattet",
+    "teilweise_erstattet",
     "offen",
     "fehlgeschlagen",
     "erstattet",
+    "reduziert",
     "vorgemerkt",
     "auszahlbar",
     "in_auszahlung",
@@ -313,32 +359,38 @@ function normalizeBusinessStatus(value: string | undefined): string {
   return allowed.has(value ?? "") ? (value as string) : "all";
 }
 
-function mapCustomerPaymentStatus(status: string | null | undefined): {
+function mapCustomerPaymentStatus(input: CustomerPaymentStatusInput): {
   key: string;
   label: string;
 } {
-  switch (status) {
-    case "paid":
-      return { key: "bezahlt", label: "Bezahlt" };
-    case "refunded":
-    case "cancelled":
-      return { key: "erstattet", label: "Erstattet/Storniert" };
+  if (input.refundedAmountCents >= input.grossAmountCents && input.grossAmountCents > 0) {
+    return { key: "erstattet", label: "Erstattet/Storniert" };
+  }
+
+  if (input.refundedAmountCents > 0) {
+    return { key: "teilweise_erstattet", label: "Teilweise erstattet" };
+  }
+
+  switch (input.paymentStatus) {
     case "failed":
       return { key: "fehlgeschlagen", label: "Fehlgeschlagen" };
+    case "paid":
+      return { key: "nicht_erstattet", label: "Nicht erstattet" };
     default:
-      return { key: "offen", label: "Offen" };
+      return input.bookingStatus === "cancelled"
+        ? { key: "nicht_erstattet", label: "Nicht erstattet" }
+        : { key: "offen", label: "Offen" };
   }
 }
 
-function mapProviderPayoutStatus(input: {
-  payoutStatus: string | null;
-  payoutItemStatus: string | null;
-  paymentStatus: string | null;
-}): {
+function mapProviderPayoutStatus(input: ProviderPayoutStatusInput): {
   key: string;
   label: string;
 } {
-  if (input.paymentStatus === "refunded" || input.payoutStatus === "cancelled" || input.payoutStatus === "held") {
+  const isFullyRefunded = input.grossAmountCents > 0 && input.refundedAmountCents >= input.grossAmountCents;
+  const isPartiallyRefunded = input.refundedAmountCents > 0 && !isFullyRefunded;
+
+  if (isFullyRefunded || input.paymentStatus === "refunded" || input.payoutStatus === "cancelled" || input.payoutStatus === "held") {
     return { key: "storniert", label: "Storniert/Gesperrt" };
   }
 
@@ -360,6 +412,10 @@ function mapProviderPayoutStatus(input: {
     return { key: "auszahlbar", label: "Auszahlbar" };
   }
 
+  if (isPartiallyRefunded) {
+    return { key: "reduziert", label: "Reduziert" };
+  }
+
   return { key: "vorgemerkt", label: "Vorgemerkt" };
 }
 
@@ -379,19 +435,23 @@ function mapRefundStatus(status: string | null | undefined): {
   }
 }
 
-function mapReserIncomeStatus(input: {
-  payoutStatus: string | null;
-  paymentStatus: string | null;
-}): {
+function mapReserIncomeStatus(input: ReserIncomeStatusInput): {
   key: string;
   label: string;
 } {
-  if (input.paymentStatus === "refunded" || input.payoutStatus === "cancelled" || input.payoutStatus === "held") {
+  const isFullyRefunded = input.grossAmountCents > 0 && input.refundedAmountCents >= input.grossAmountCents;
+  const isPartiallyRefunded = input.refundedAmountCents > 0 && !isFullyRefunded;
+
+  if (isFullyRefunded || input.paymentStatus === "refunded" || input.payoutStatus === "cancelled" || input.payoutStatus === "held") {
     return { key: "storniert", label: "Storniert/Reversed" };
   }
 
   if (input.payoutStatus === "pending" || input.payoutStatus === "pending_event_completion") {
     return { key: "vorgemerkt", label: "Vorgemerkt" };
+  }
+
+  if (isPartiallyRefunded) {
+    return { key: "reduziert", label: "Reduziert verdient" };
   }
 
   return { key: "verdient", label: "Verdient" };
@@ -400,10 +460,14 @@ function mapReserIncomeStatus(input: {
 function businessStatusTone(statusKey: string): string {
   switch (statusKey) {
     case "bezahlt":
+    case "nicht_erstattet":
     case "auszahlbar":
     case "ausgezahlt":
     case "verdient":
       return "bg-green-100 text-green-800";
+    case "teilweise_erstattet":
+    case "reduziert":
+      return "bg-blue-100 text-blue-800";
     case "in_auszahlung":
       return "bg-sky-100 text-sky-800";
     case "erstattet":
@@ -538,6 +602,18 @@ function ActionNotice({ action, checkedCount, errorCode, ledgerEntryId, markedCo
   } else if (action === "workshop-cancel-selected-ok" || action === "workshop-refund-selected-ok") {
     message = detailMessage ?? "Workshop wurde simuliert storniert und erstattet.";
     toneClass = "border-green-200 bg-green-50 text-green-800";
+  } else if (action === "workshop-customer-cancel-selected-ok") {
+    message = detailMessage ?? "Kund*innenstorno wurde policy-gesteuert simuliert.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+  } else if (action === "workshop-customer-cancel-selected-error") {
+    message = "Kund*innenstorno konnte nicht simuliert werden.";
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+    extra = (
+      <div className="mt-1 space-y-1 text-xs">
+        <div>code: {errorCode ?? "-"}</div>
+        <div>detail: {detailMessage ?? "-"}</div>
+      </div>
+    );
   } else if (action === "workshop-cancel-selected-error" || action === "workshop-refund-selected-error") {
     message = "Workshop-Storno/Refund konnte nicht simuliert werden.";
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
@@ -681,7 +757,7 @@ export default async function PaymentsV2AdminPage({
   const admin = createSupabaseAdmin();
   let simulationBookingsQuery = admin
     .from("bookings")
-    .select("id,course_id,customer_first_name,customer_last_name,customer_email,status,created_at")
+    .select("id,course_id,customer_first_name,customer_last_name,customer_email,status,payment_status,refund_amount_cents,created_at")
     .eq("is_simulation", true)
     .order("created_at", { ascending: false })
     .limit(SIMULATION_BOOKING_LIMIT);
@@ -700,7 +776,7 @@ export default async function PaymentsV2AdminPage({
     simulationCourseIds.length > 0
       ? await admin
           .from("courses")
-          .select("id,title,kind,teacher_id")
+          .select("id,title,kind,teacher_id,starts_at,workshop_storno_policy")
           .in("id", simulationCourseIds)
           .returns<SimulationCourseRow[]>()
       : { data: [] as SimulationCourseRow[] };
@@ -718,11 +794,11 @@ export default async function PaymentsV2AdminPage({
         .filter((value): value is string => Boolean(value))
     )
   );
-  const [simulationProfilesRaw, simulationPayoutProfilesRaw, simulationPaymentTransactionsRaw] = await Promise.all([
+  const [simulationProfilesRaw, simulationPayoutProfilesRaw, simulationPaymentTransactionsRaw, simulationCourseSessionsRaw] = await Promise.all([
     simulationTeacherIds.length > 0
       ? admin
           .from("profiles")
-          .select("id,first_name,last_name,organization_name")
+          .select("id,first_name,last_name,organization_name,provider_type")
           .in("id", simulationTeacherIds)
           .returns<SimulationProfileRow[]>()
       : Promise.resolve({ data: [] as SimulationProfileRow[] }),
@@ -744,12 +820,26 @@ export default async function PaymentsV2AdminPage({
           .order("created_at", { ascending: false })
           .returns<PaymentTransactionRow[]>()
       : Promise.resolve({ data: [] as PaymentTransactionRow[] }),
+    eligibleSimulationBookings.length > 0
+      ? admin
+          .from("course_sessions")
+          .select("course_id,starts_at")
+          .in("course_id", eligibleSimulationBookings.map((row) => row.course_id as string))
+          .order("starts_at", { ascending: true })
+          .returns<SimulationCourseSessionRow[]>()
+      : Promise.resolve({ data: [] as SimulationCourseSessionRow[] }),
   ]);
   const simulationProfilesById = new Map((simulationProfilesRaw.data ?? []).map((row) => [row.id, row] as const));
   const simulationPayoutProfilesByTeacherId = new Map(
     (simulationPayoutProfilesRaw.data ?? []).map((row) => [row.teacher_id ?? "", row] as const)
   );
   const simulationPaymentTransactions = simulationPaymentTransactionsRaw.data ?? [];
+  const workshopStartByCourseId = new Map<string, string | null>();
+  for (const row of simulationCourseSessionsRaw.data ?? []) {
+    if (!workshopStartByCourseId.has(row.course_id)) {
+      workshopStartByCourseId.set(row.course_id, row.starts_at ?? null);
+    }
+  }
   const latestSimulationPaymentByBookingId = new Map<string, PaymentTransactionRow>();
   for (const row of simulationPaymentTransactions) {
     if (row.booking_id && !latestSimulationPaymentByBookingId.has(row.booking_id)) {
@@ -797,12 +887,15 @@ export default async function PaymentsV2AdminPage({
       ledgerEntryId: ledgerEntry?.id ?? null,
       courseTitle: course?.title?.trim() || "Angebot",
       courseKind: course?.kind ?? null,
+      workshopStornoPolicy: course?.workshop_storno_policy ?? null,
+      workshopStartAt: (booking.course_id ? workshopStartByCourseId.get(booking.course_id) : null) ?? course?.starts_at ?? null,
       providerName: getDisplayName({
         firstName: profile?.first_name,
         lastName: profile?.last_name,
         organizationName: profile?.organization_name,
         fallback: "Anbieter*in",
       }),
+      providerType: profile?.provider_type ?? null,
       customerName: getDisplayName({
         firstName: booking.customer_first_name,
         lastName: booking.customer_last_name,
@@ -811,6 +904,8 @@ export default async function PaymentsV2AdminPage({
       amountCents: paymentTransaction?.amount_cents ?? null,
       currency: paymentTransaction?.currency ?? null,
       bookingStatus: booking.status,
+      paymentStatus: booking.payment_status,
+      refundAmountCents: Math.max(0, booking.refund_amount_cents ?? 0),
       grossAmountCents: ledgerEntry?.gross_amount_cents ?? paymentTransaction?.amount_cents ?? null,
       platformFeeCents: ledgerEntry?.platform_fee_cents ?? null,
       netAmountCents: ledgerEntry?.net_amount_cents ?? null,
@@ -823,6 +918,44 @@ export default async function PaymentsV2AdminPage({
   });
   const selectedSimulationOption =
     simulationOptions.find((option) => option.bookingId === selectedBookingId) ?? null;
+  let selectedCustomerCancellationPreview:
+    | (ReturnType<typeof calculateWorkshopRefund> & {
+        providerShareCents: number;
+        reserFeeCents: number;
+      })
+    | null = null;
+  let selectedCustomerCancellationPreviewError: string | null = null;
+  if (selectedSimulationOption && typeof selectedSimulationOption.amountCents === "number") {
+    try {
+      if (!selectedSimulationOption.workshopStornoPolicy) {
+        throw new Error("Policy unbekannt.");
+      }
+      if (!selectedSimulationOption.workshopStartAt) {
+        throw new Error("Workshopdatum fehlt.");
+      }
+
+      const calculated = calculateWorkshopRefund({
+        workshop_storno_policy: selectedSimulationOption.workshopStornoPolicy,
+        workshop_start_at: selectedSimulationOption.workshopStartAt,
+        cancellation_timestamp: new Date().toISOString(),
+        gross_amount_cents: selectedSimulationOption.amountCents,
+      });
+      selectedCustomerCancellationPreview = {
+        ...calculated,
+        providerShareCents: calculateProviderPayoutAmount(
+          calculated.retained_amount_cents,
+          selectedSimulationOption.providerType
+        ),
+        reserFeeCents: calculatePlatformFeeAmount(
+          calculated.retained_amount_cents,
+          selectedSimulationOption.providerType
+        ),
+      };
+    } catch (error) {
+      selectedCustomerCancellationPreviewError =
+        error instanceof Error ? error.message : "Kund*innenstorno-Vorschau konnte nicht berechnet werden.";
+    }
+  }
   const invalidSelectedBooking = Boolean(selectedBookingId) && !selectedSimulationOption;
   const businessStatusFilter = normalizeBusinessStatus(sp.businessStatus);
   const providerFilter = sp.providerFilter?.trim() || "all";
@@ -853,6 +986,14 @@ export default async function PaymentsV2AdminPage({
   const businessPayoutItemByLedgerEntryId = new Map(
     (businessPayoutItemsRaw.data ?? []).map((row) => [row.ledger_entry_id, row] as const)
   );
+  const refundAmountByPaymentTransactionId = new Map<string, number>();
+  for (const row of businessRefundsRaw.data ?? []) {
+    if (row.status !== "succeeded") continue;
+    refundAmountByPaymentTransactionId.set(
+      row.payment_transaction_id,
+      (refundAmountByPaymentTransactionId.get(row.payment_transaction_id) ?? 0) + Math.max(0, row.amount_cents)
+    );
+  }
   const paymentTransactionById = new Map(simulationPaymentTransactions.map((row) => [row.id, row] as const));
   const simulationOptionByPaymentTransactionId = new Map(
     simulationOptions
@@ -863,7 +1004,13 @@ export default async function PaymentsV2AdminPage({
     .filter((option) => typeof option.amountCents === "number" && option.paymentTransactionId)
     .map((option): BusinessCustomerPaymentRow => {
       const paymentTransaction = option.paymentTransactionId ? paymentTransactionById.get(option.paymentTransactionId) : undefined;
-      const paymentStatus = mapCustomerPaymentStatus(paymentTransaction?.status);
+      const refundedAmountCents = refundAmountByPaymentTransactionId.get(option.paymentTransactionId as string) ?? option.refundAmountCents;
+      const paymentStatus = mapCustomerPaymentStatus({
+        paymentStatus: paymentTransaction?.status ?? option.paymentStatus ?? null,
+        bookingStatus: option.bookingStatus,
+        grossAmountCents: option.amountCents as number,
+        refundedAmountCents,
+      });
 
       return {
         bookingId: option.bookingId,
@@ -873,6 +1020,7 @@ export default async function PaymentsV2AdminPage({
         provider: option.providerName,
         customer: option.customerName,
         grossCents: option.amountCents as number,
+        refundedAmountCents,
         currency: option.currency ?? "EUR",
         statusKey: paymentStatus.key,
         statusLabel: paymentStatus.label,
@@ -886,10 +1034,15 @@ export default async function PaymentsV2AdminPage({
     .map((option): BusinessProviderPayoutRow => {
       const paymentTransaction = option.paymentTransactionId ? paymentTransactionById.get(option.paymentTransactionId) : undefined;
       const payoutItem = option.ledgerEntryId ? businessPayoutItemByLedgerEntryId.get(option.ledgerEntryId) : undefined;
+      const refundedAmountCents = option.paymentTransactionId
+        ? (refundAmountByPaymentTransactionId.get(option.paymentTransactionId) ?? option.refundAmountCents)
+        : option.refundAmountCents;
       const payoutStatus = mapProviderPayoutStatus({
         payoutStatus: option.payoutStatus,
         payoutItemStatus: payoutItem?.status ?? null,
-        paymentStatus: paymentTransaction?.status ?? null,
+        paymentStatus: paymentTransaction?.status ?? option.paymentStatus ?? null,
+        refundedAmountCents,
+        grossAmountCents: option.amountCents ?? 0,
       });
 
       return {
@@ -899,6 +1052,7 @@ export default async function PaymentsV2AdminPage({
         offer: option.courseTitle,
         provider: option.providerName,
         providerShareCents: option.netAmountCents as number,
+        refundedAmountCents,
         currency: option.currency ?? "EUR",
         availableAt: option.availableAt,
         statusKey: payoutStatus.key,
@@ -911,9 +1065,14 @@ export default async function PaymentsV2AdminPage({
     .filter((option) => typeof option.platformFeeCents === "number" && option.ledgerEntryId)
     .map((option): BusinessReserIncomeRow => {
       const paymentTransaction = option.paymentTransactionId ? paymentTransactionById.get(option.paymentTransactionId) : undefined;
+      const refundedAmountCents = option.paymentTransactionId
+        ? (refundAmountByPaymentTransactionId.get(option.paymentTransactionId) ?? option.refundAmountCents)
+        : option.refundAmountCents;
       const incomeStatus = mapReserIncomeStatus({
         payoutStatus: option.payoutStatus,
-        paymentStatus: paymentTransaction?.status ?? null,
+        paymentStatus: paymentTransaction?.status ?? option.paymentStatus ?? null,
+        refundedAmountCents,
+        grossAmountCents: option.amountCents ?? 0,
       });
 
       return {
@@ -923,6 +1082,7 @@ export default async function PaymentsV2AdminPage({
         provider: option.providerName,
         grossCents: option.grossAmountCents ?? 0,
         platformFeeCents: option.platformFeeCents as number,
+        refundedAmountCents,
         currency: option.currency ?? "EUR",
         earnedFromAt: paymentTransaction?.paid_at ?? option.createdAt,
         availableAt: option.availableAt,
@@ -977,10 +1137,10 @@ export default async function PaymentsV2AdminPage({
       .filter((row) => row.statusKey === "vorgemerkt")
       .reduce((sum, row) => sum + row.providerShareCents, 0),
     readyOrPaidProviderPayoutsCents: filteredProviderPayoutRows
-      .filter((row) => ["auszahlbar", "in_auszahlung", "ausgezahlt"].includes(row.statusKey))
+      .filter((row) => ["reduziert", "auszahlbar", "in_auszahlung", "ausgezahlt"].includes(row.statusKey))
       .reduce((sum, row) => sum + row.providerShareCents, 0),
     reserFeesCents: filteredReserIncomeRows
-      .filter((row) => row.statusKey === "verdient")
+      .filter((row) => row.statusKey === "verdient" || row.statusKey === "reduziert")
       .reduce((sum, row) => sum + row.platformFeeCents, 0),
     refundsCents: filteredRefundRows
       .filter((row) => row.statusKey !== "fehlgeschlagen" && row.statusKey !== "storniert")
@@ -1221,7 +1381,7 @@ export default async function PaymentsV2AdminPage({
                     </div>
                   </div>
                 </div>
-                <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                <div className="mt-4 grid gap-3 lg:grid-cols-4">
                   <form action={simulateWorkshopCompletionForPayoutAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                     <input type="hidden" name="ledgerEntryId" value={selectedSimulationOption.ledgerEntryId ?? ""} />
                     <input type="hidden" name="selectedBookingId" value={selectedSimulationOption.bookingId} />
@@ -1287,6 +1447,52 @@ export default async function PaymentsV2AdminPage({
                         className="inline-flex rounded-xl bg-rose-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-800"
                       >
                         Storno + Rueckzahlung simulieren
+                      </button>
+                    </div>
+                  </form>
+
+                  <form
+                    action={simulateWorkshopCustomerCancellationAction}
+                    className="rounded-2xl border border-sky-200 bg-sky-50 p-4"
+                  >
+                    <input type="hidden" name="bookingId" value={selectedSimulationOption.bookingId} />
+                    <input type="hidden" name="selectedBookingId" value={selectedSimulationOption.bookingId} />
+                    <input type="hidden" name="simulationWindow" value={simulationWindow} />
+                    <input type="hidden" name="providerFilter" value={providerFilter} />
+                    <input type="hidden" name="offerFilter" value={offerFilter} />
+                    <input type="hidden" name="businessStatus" value={businessStatusFilter} />
+                    <div className="space-y-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">Kund*innenstorno simulieren</div>
+                        <div className="mt-1 text-xs text-slate-700">
+                          Nutzt die Workshop-Stornoregel, simuliert Teilrefunds intern und verschickt keine Mail.
+                        </div>
+                      </div>
+                      {selectedCustomerCancellationPreview ? (
+                        <div className="space-y-1 rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs text-slate-700">
+                          <div>Bruttozahlung: {formatMoney(selectedSimulationOption.amountCents ?? 0, selectedSimulationOption.currency ?? "EUR")}</div>
+                          <div>Refund an Kund*in: {formatMoney(selectedCustomerCancellationPreview.refund_amount_cents, selectedSimulationOption.currency ?? "EUR")}</div>
+                          <div>Verbleibender Restbetrag: {formatMoney(selectedCustomerCancellationPreview.retained_amount_cents, selectedSimulationOption.currency ?? "EUR")}</div>
+                          <div>Anbieteranteil aus Restbetrag: {formatMoney(selectedCustomerCancellationPreview.providerShareCents, selectedSimulationOption.currency ?? "EUR")}</div>
+                          <div>RESER-Provision aus Restbetrag: {formatMoney(selectedCustomerCancellationPreview.reserFeeCents, selectedSimulationOption.currency ?? "EUR")}</div>
+                          <div>Verwendete Stornoregel: {selectedCustomerCancellationPreview.matched_policy}</div>
+                          <div>Erklaerung: {selectedCustomerCancellationPreview.explanation}</div>
+                          <div className="pt-1 text-slate-500">
+                            Beispiele: 100 % Refund {"->"} Anbieter 0 EUR, RESER 0 EUR. 50 % Refund {"->"} Restbetrag wird gesplittet.
+                            0 % Refund {"->"} volle Aufteilung bleibt.
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-amber-200 bg-amber-100 px-3 py-2 text-xs text-amber-900">
+                          {selectedCustomerCancellationPreviewError ?? "Kund*innenstorno-Vorschau ist fuer diese Buchung noch nicht verfuegbar."}
+                        </div>
+                      )}
+                      <button
+                        type="submit"
+                        className="inline-flex rounded-xl bg-sky-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-800"
+                        disabled={!selectedCustomerCancellationPreview}
+                      >
+                        Kund*innenstorno ausfuehren
                       </button>
                     </div>
                   </form>
@@ -1358,9 +1564,12 @@ export default async function PaymentsV2AdminPage({
                 >
                   <option value="all">Alle</option>
                   <option value="bezahlt">Bezahlt</option>
+                  <option value="nicht_erstattet">Nicht erstattet</option>
+                  <option value="teilweise_erstattet">Teilweise erstattet</option>
                   <option value="offen">Offen</option>
                   <option value="fehlgeschlagen">Fehlgeschlagen</option>
                   <option value="erstattet">Erstattet</option>
+                  <option value="reduziert">Reduziert</option>
                   <option value="vorgemerkt">Vorgemerkt</option>
                   <option value="auszahlbar">Auszahlbar</option>
                   <option value="in_auszahlung">In Auszahlung</option>

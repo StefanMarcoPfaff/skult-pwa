@@ -11,6 +11,7 @@ import {
 import { PaymentSimulationError, requirePaymentsV2SimulationAccess } from "@/lib/payments/simulation";
 import {
   simulateWorkshopCancellation,
+  simulateWorkshopCustomerCancellation,
   simulateWorkshopPaymentFailed,
   simulateWorkshopPaymentSuccess,
   simulateWorkshopRefund,
@@ -378,6 +379,41 @@ export async function simulateWorkshopCancellationAction(formData: FormData) {
       ...contextParams,
       action: "workshop-cancel-selected-error",
       selectedBookingId: bookingId || contextParams.selectedBookingId,
+      errorCode: details.code,
+      message: details.message,
+    });
+  }
+}
+
+export async function simulateWorkshopCustomerCancellationAction(formData: FormData) {
+  const user = await requirePaymentsV2SimulationAccess();
+
+  const bookingId = String(formData.get("bookingId") ?? "").trim();
+  const contextParams = readPaymentsV2ContextParams(formData);
+
+  try {
+    const result = await simulateWorkshopCustomerCancellation({
+      bookingId,
+      adminUserId: user.id,
+    });
+    revalidatePath(PAYMENTS_V2_ADMIN_PATH);
+    redirectWithParams({
+      ...contextParams,
+      action: "workshop-customer-cancel-selected-ok",
+      selectedBookingId: result.bookingId,
+      message: `Kund*innenstorno simuliert. refund=${result.refundAmountCents} retained=${result.retainedAmountCents} policy=${result.matchedPolicy}`,
+    });
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    const details = getErrorDetails(error);
+    revalidatePath(PAYMENTS_V2_ADMIN_PATH);
+    redirectWithParams({
+      ...contextParams,
+      action: "workshop-customer-cancel-selected-error",
+      selectedBookingId: bookingId,
       errorCode: details.code,
       message: details.message,
     });

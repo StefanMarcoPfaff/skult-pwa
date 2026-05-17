@@ -30,3 +30,8 @@ export {
   TEST_BOOKINGS_SOURCE_ADMIN_UI,
 } from "@/lib/payments/simulation/test-booking-metadata";
 export type { TestBookingSimulationScenario } from "@/lib/payments/simulation/test-booking-metadata";
+export { calculateWorkshopRefund } from "@/lib/payments/simulation/workshop-refund-policy";
+export type {
+  SupportedWorkshopRefundPolicy,
+  WorkshopRefundCalculation,
+} from "@/lib/payments/simulation/workshop-refund-policy";
