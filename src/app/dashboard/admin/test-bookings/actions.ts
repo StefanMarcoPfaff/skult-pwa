@@ -19,6 +19,15 @@ function redirectWithParams(params: Record<string, string>) {
   redirect(`${TEST_BOOKINGS_ADMIN_PATH}?${search.toString()}`);
 }
 
+function isNextRedirectError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "digest" in error &&
+    typeof (error as { digest?: unknown }).digest === "string" &&
+    (error as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+  );
+}
+
 function compactRedirectParams(input: Record<string, string | null | undefined>): Record<string, string> {
   return Object.fromEntries(
     Object.entries(input).filter((entry): entry is [string, string] => Boolean(entry[1]))
@@ -71,6 +80,8 @@ export async function prepareWorkshopTestBookingAction(formData: FormData) {
       bookingId: result.bookingId,
       courseId: result.courseId,
       ticketId: result.ticketId,
+      bookingCreated: result.bookingCreated ? "yes" : "no",
+      ticketCreated: result.ticketCreated ? "yes" : "no",
       paymentSimulated: result.paymentSimulated ? "yes" : "no",
       paymentTransactionId: result.paymentTransactionId,
       ledgerEntryId: result.ledgerEntryId,
@@ -79,6 +90,10 @@ export async function prepareWorkshopTestBookingAction(formData: FormData) {
       message: result.mailError ?? "",
     }));
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
 
     if (error instanceof WorkshopSimulationError) {
@@ -130,6 +145,10 @@ export async function prepareTrialTestBookingAction(formData: FormData) {
       message: result.mailError ?? "",
     });
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
 
     if (error instanceof TrialSimulationError) {

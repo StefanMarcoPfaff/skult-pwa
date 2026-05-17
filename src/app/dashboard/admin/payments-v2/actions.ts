@@ -21,18 +21,70 @@ function redirectWithActionState(actionState: string) {
   redirect(`${PAYMENTS_V2_ADMIN_PATH}?action=${encodeURIComponent(actionState)}`);
 }
 
+function redirectWithParams(params: Record<string, string>) {
+  const search = new URLSearchParams(params);
+  redirect(`${PAYMENTS_V2_ADMIN_PATH}?${search.toString()}`);
+}
+
+function isNextRedirectError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "digest" in error &&
+    typeof (error as { digest?: unknown }).digest === "string" &&
+    (error as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+  );
+}
+
+function getErrorDetails(error: unknown): { code: string; message: string } {
+  if (error instanceof Error) {
+    const code =
+      "code" in error && typeof (error as { code?: unknown }).code === "string"
+        ? (error as { code: string }).code
+        : "unknown";
+    return {
+      code,
+      message: error.message || "Unbekannter Fehler.",
+    };
+  }
+
+  return {
+    code: "unknown",
+    message: String(error),
+  };
+}
+
 export async function markEligibleLedgerEntriesAsPayableAction() {
   await requirePaymentsV2AdminAccess();
 
   try {
     const result = await markEligibleLedgerEntriesAsPayable();
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
-    redirectWithActionState(
-      result.markedCount > 0 ? `eligible-ok-${result.markedCount}` : `eligible-none-${result.checkedCount}`
+    redirectWithParams(
+      result.markedCount > 0
+        ? {
+            action: "eligible-ok",
+            markedCount: String(result.markedCount),
+            checkedCount: String(result.checkedCount),
+          }
+        : {
+            action: "eligible-none",
+            checkedCount: String(result.checkedCount),
+            message: "Keine passenden Ledger-Eintraege gefunden.",
+          }
     );
-  } catch {
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    const details = getErrorDetails(error);
+    console.error("[payments-v2] markEligibleLedgerEntriesAsPayable failed", details);
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
-    redirectWithActionState("eligible-error");
+    redirectWithParams({
+      action: "eligible-error",
+      errorCode: details.code,
+      message: details.message,
+    });
   }
 }
 
@@ -47,7 +99,11 @@ export async function createSimulatedPayoutBatchAction() {
         ? `batch-ok-${result.batchCount}-${result.itemCount}`
         : `batch-none-${result.consideredCount}`
     );
-  } catch {
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
     redirectWithActionState("batch-error");
   }
@@ -61,10 +117,35 @@ export async function forceLedgerEntryPayableForTestAction(formData: FormData) {
   try {
     const updated = await forceLedgerEntryPayableForTest(ledgerEntryId);
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
-    redirectWithActionState(updated ? `force-payable-ok-${ledgerEntryId}` : `force-payable-none-${ledgerEntryId}`);
-  } catch {
+    redirectWithParams(
+      updated
+        ? {
+            action: "force-payable-ok",
+            ledgerEntryId,
+          }
+        : {
+            action: "force-payable-none",
+            ledgerEntryId,
+            message: "Keine passenden Ledger-Eintraege gefunden.",
+          }
+    );
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    const details = getErrorDetails(error);
+    console.error("[payments-v2] forceLedgerEntryPayableForTest failed", {
+      ledgerEntryId,
+      ...details,
+    });
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
-    redirectWithActionState(`force-payable-error-${ledgerEntryId}`);
+    redirectWithParams({
+      action: "force-payable-error",
+      ledgerEntryId,
+      errorCode: details.code,
+      message: details.message,
+    });
   }
 }
 
@@ -109,6 +190,10 @@ export async function simulateWorkshopPaymentSuccessAction(formData: FormData) {
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
     redirectWithActionState(`workshop-pay-ok-${result.bookingId}`);
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
     redirectWithSimulationError("workshop-pay", error);
   }
@@ -129,6 +214,10 @@ export async function simulateWorkshopPaymentFailedAction(formData: FormData) {
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
     redirectWithActionState(`workshop-fail-ok-${result.bookingId}`);
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
     redirectWithSimulationError("workshop-fail", error);
   }
@@ -150,6 +239,10 @@ export async function simulateWorkshopRefundAction(formData: FormData) {
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
     redirectWithActionState(`workshop-refund-ok-${result.bookingId}`);
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
     redirectWithSimulationError("workshop-refund", error);
   }
@@ -169,6 +262,10 @@ export async function simulateWorkshopCancellationAction(formData: FormData) {
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
     redirectWithActionState(`workshop-cancel-ok-${result.bookingId}`);
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
     redirectWithSimulationError("workshop-cancel", error);
   }

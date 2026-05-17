@@ -113,6 +113,11 @@ type RelatedRefundRow = Pick<RefundRecordRow, "id" | "payment_transaction_id">;
 
 type SearchParams = {
   action?: string;
+  checkedCount?: string;
+  errorCode?: string;
+  ledgerEntryId?: string;
+  markedCount?: string;
+  message?: string;
 };
 
 const ROW_LIMIT = 20;
@@ -141,23 +146,31 @@ function ReferenceCell({
   );
 }
 
-function ActionNotice({ action }: { action: string | undefined }) {
+function ActionNotice({ action, checkedCount, errorCode, ledgerEntryId, markedCount, message: detailMessage }: SearchParams) {
   if (!action) return null;
 
   let message = "Interne Simulation ausgefuehrt.";
   let toneClass = "border-slate-200 bg-slate-100 text-slate-700";
+  let extra: ReactNode = null;
 
-  if (action.startsWith("eligible-ok-")) {
-    const count = action.slice("eligible-ok-".length);
-    message = `${count} Ledger-Eintraege wurden als payable markiert.`;
+  if (action === "eligible-ok") {
+    message = `${markedCount ?? "0"} Ledger-Eintraege wurden als payable markiert.`;
     toneClass = "border-green-200 bg-green-50 text-green-800";
-  } else if (action.startsWith("eligible-none-")) {
-    const count = action.slice("eligible-none-".length);
-    message = `Keine neuen payable-Eintraege. Geprueft: ${count}.`;
+    extra = checkedCount ? <div className="mt-1 text-xs">Geprueft: {checkedCount}</div> : null;
+  } else if (action === "eligible-none") {
+    message = detailMessage ?? "Keine passenden Ledger-Eintraege gefunden.";
     toneClass = "border-amber-200 bg-amber-50 text-amber-800";
+    extra = checkedCount ? <div className="mt-1 text-xs">Geprueft: {checkedCount}</div> : null;
   } else if (action === "eligible-error") {
     message = "Fehler beim Markieren von payable Ledger-Eintraegen.";
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+    extra =
+      errorCode || detailMessage ? (
+        <div className="mt-1 space-y-1 text-xs">
+          <div>code: {errorCode ?? "-"}</div>
+          <div>detail: {detailMessage ?? "-"}</div>
+        </div>
+      ) : null;
   } else if (action.startsWith("batch-ok-")) {
     const parts = action.split("-");
     const batchCount = parts[2] ?? "0";
@@ -171,16 +184,24 @@ function ActionNotice({ action }: { action: string | undefined }) {
   } else if (action === "batch-error") {
     message = "Fehler beim Erzeugen des Simulated Payout Batch.";
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
-  } else if (action.startsWith("force-payable-ok-")) {
+  } else if (action === "force-payable-ok") {
     message = "Ledger-Eintrag wurde im Testmodus auf payable gesetzt. Nur Testmodus - loest keine echte Auszahlung aus.";
     toneClass = "border-green-200 bg-green-50 text-green-800";
-  } else if (action.startsWith("force-payable-none-")) {
-    message =
-      "Ledger-Eintrag konnte nicht umgestellt werden. Er muss pending_event_completion sein und darf noch keinem Batch zugeordnet sein.";
+    extra = ledgerEntryId ? <div className="mt-1 text-xs">ledger_entry_id: {ledgerEntryId}</div> : null;
+  } else if (action === "force-payable-none") {
+    message = detailMessage ?? "Keine passenden Ledger-Eintraege gefunden.";
     toneClass = "border-amber-200 bg-amber-50 text-amber-800";
-  } else if (action.startsWith("force-payable-error-")) {
+    extra = ledgerEntryId ? <div className="mt-1 text-xs">ledger_entry_id: {ledgerEntryId}</div> : null;
+  } else if (action === "force-payable-error") {
     message = "Fehler beim Force-payable-Test. Nur Testmodus - loest keine echte Auszahlung aus.";
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+    extra = (
+      <div className="mt-1 space-y-1 text-xs">
+        <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
+        <div>code: {errorCode ?? "-"}</div>
+        <div>detail: {detailMessage ?? "-"}</div>
+      </div>
+    );
   } else if (action.startsWith("workshop-pay-ok-")) {
     message = "Workshop-Zahlung intern als erfolgreich simuliert. Keine echte Zahlung, keine Auszahlung, keine Kund*innenmail.";
     toneClass = "border-green-200 bg-green-50 text-green-800";
@@ -211,7 +232,12 @@ function ActionNotice({ action }: { action: string | undefined }) {
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
   }
 
-  return <div className={`rounded-2xl border px-4 py-3 text-sm ${toneClass}`}>{message}</div>;
+  return (
+    <div className={`rounded-2xl border px-4 py-3 text-sm ${toneClass}`}>
+      <div>{message}</div>
+      {extra}
+    </div>
+  );
 }
 
 function ActionButton({
@@ -419,7 +445,14 @@ export default async function PaymentsV2AdminPage({
           </div>
         </header>
 
-        <ActionNotice action={sp.action} />
+        <ActionNotice
+          action={sp.action}
+          checkedCount={sp.checkedCount}
+          errorCode={sp.errorCode}
+          ledgerEntryId={sp.ledgerEntryId}
+          markedCount={sp.markedCount}
+          message={sp.message}
+        />
 
         <div className="grid gap-4 md:grid-cols-2">
           <ActionButton

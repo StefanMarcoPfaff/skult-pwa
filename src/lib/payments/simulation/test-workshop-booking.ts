@@ -144,6 +144,8 @@ export type SimulateWorkshopBookingResult = {
   courseId: string;
   ticketId: string;
   ticketQrToken: string;
+  bookingCreated: boolean;
+  ticketCreated: boolean;
   paymentSimulated: boolean;
   paymentTransactionId: string | null;
   ledgerEntryId: string | null;
@@ -661,50 +663,6 @@ export async function simulateWorkshopBooking(
     courseId,
   });
 
-  let paymentSimulated = false;
-  let paymentTransactionId: string | null = null;
-  let ledgerEntryId: string | null = null;
-  if (shouldSimulatePayment) {
-    logWorkshopSimulationLookup("payment simulation start", {
-      bookingId: inserted.id,
-      amountCents,
-      courseId,
-    });
-    try {
-      const paymentResult = await simulateWorkshopPaymentSuccess({
-        bookingId: inserted.id,
-        adminUserId: input.adminUserId,
-        amountCents,
-        currency: course.currency,
-        scenarioNote: "admin_test_bookings_workshop_booking",
-      });
-      paymentSimulated = true;
-      paymentTransactionId = paymentResult.paymentTransactionId;
-      ledgerEntryId = paymentTransactionId ? await loadPositiveLedgerEntryId(paymentTransactionId) : null;
-      logWorkshopSimulationLookup("payment simulation success", {
-        bookingId: inserted.id,
-        courseId,
-        paymentTransactionId,
-        ledgerEntryId,
-      });
-    } catch (error) {
-      logWorkshopSimulationLookup("payment simulation failed", {
-        bookingId: inserted.id,
-        courseId,
-        reason: error instanceof Error ? error.message : String(error),
-      });
-      throw new WorkshopSimulationError({
-        code: "booking_insert_failed",
-        step: "payment_simulation",
-        message: "Die interne Workshop-Payment-Simulation ist fehlgeschlagen.",
-        courseFound: true,
-        courseKind: course.kind,
-        courseStatus: course.status,
-        archivedAt: course.archived_at,
-      });
-    }
-  }
-
   logWorkshopSimulationLookup("ticket create start", {
     bookingId: inserted.id,
     courseId,
@@ -744,6 +702,45 @@ export async function simulateWorkshopBooking(
   const sessionLines =
     sessions.length > 0 ? sessions.map((session) => formatSessionLine(session.starts_at, session.ends_at)) : [];
 
+  const warnings: string[] = [];
+  let paymentSimulated = false;
+  let paymentTransactionId: string | null = null;
+  let ledgerEntryId: string | null = null;
+  if (shouldSimulatePayment) {
+    logWorkshopSimulationLookup("payment simulation start", {
+      bookingId: inserted.id,
+      amountCents,
+      courseId,
+    });
+    try {
+      const paymentResult = await simulateWorkshopPaymentSuccess({
+        bookingId: inserted.id,
+        adminUserId: input.adminUserId,
+        amountCents,
+        currency: course.currency,
+        scenarioNote: "admin_test_bookings_workshop_booking",
+      });
+      paymentSimulated = true;
+      paymentTransactionId = paymentResult.paymentTransactionId;
+      ledgerEntryId = paymentTransactionId ? await loadPositiveLedgerEntryId(paymentTransactionId) : null;
+      logWorkshopSimulationLookup("payment simulation success", {
+        bookingId: inserted.id,
+        courseId,
+        paymentTransactionId,
+        ledgerEntryId,
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      logWorkshopSimulationLookup("payment simulation failed", {
+        bookingId: inserted.id,
+        courseId,
+        reason,
+      });
+      warnings.push(`Interne Zahlungssimulation fehlgeschlagen: ${reason}`);
+    }
+  }
+
+  const bookingConfirmed = isFreeBooking || paymentSimulated;
   const emailData = buildWorkshopEmailData({
     bookingId: inserted.id,
     course,
@@ -757,8 +754,9 @@ export async function simulateWorkshopBooking(
 
   let customerMailSent = false;
   let providerMailSent = false;
-  let mailError: string | null = null;
-  if (actualCustomerMailRecipient) {
+  if (actualCustomerMailRecipient && !bookingConfirmed) {
+    warnings.push("Kund*innen-Testmail wurde uebersprungen, weil die Buchung nicht als bestaetigt gilt.");
+  } else if (actualCustomerMailRecipient) {
     logWorkshopSimulationLookup("customer test mail start", {
       bookingId: inserted.id,
       courseId,
@@ -782,8 +780,9 @@ export async function simulateWorkshopBooking(
           bookingId: inserted.id,
           courseId,
         });
-        mailError =
-          "Kund*innen-Testmail wurde gesendet, aber workshop_confirmation_email_sent_at konnte nicht gespeichert werden.";
+        warnings.push(
+          "Kund*innen-Testmail wurde gesendet, aber workshop_confirmation_email_sent_at konnte nicht gespeichert werden."
+        );
       } else {
         customerMailSent = true;
         logWorkshopSimulationLookup("customer test mail success", {
@@ -799,14 +798,17 @@ export async function simulateWorkshopBooking(
         recipient: actualCustomerMailRecipient,
         reason: error instanceof Error ? error.message : String(error),
       });
-      mailError =
+      warnings.push(
         error instanceof WorkshopSimulationError
           ? error.message
-          : "Die angeforderte Kund*innen-Testmail konnte nicht verschickt werden.";
+          : "Die angeforderte Kund*innen-Testmail konnte nicht verschickt werden."
+      );
     }
   }
 
-  if (actualProviderMailRecipient) {
+  if (actualProviderMailRecipient && !bookingConfirmed) {
+    warnings.push("Anbieter*innen-Testmail wurde uebersprungen, weil die Buchung nicht als bestaetigt gilt.");
+  } else if (actualProviderMailRecipient) {
     logWorkshopSimulationLookup("provider test mail start", {
       bookingId: inserted.id,
       courseId,
@@ -830,12 +832,9 @@ export async function simulateWorkshopBooking(
           bookingId: inserted.id,
           courseId,
         });
-        mailError = [
-          mailError,
+        warnings.push(
           "Anbieter*innen-Testmail wurde gesendet, aber workshop_provider_notification_email_sent_at konnte nicht gespeichert werden.",
-        ]
-          .filter(Boolean)
-          .join(" ");
+        );
       } else {
         providerMailSent = true;
         logWorkshopSimulationLookup("provider test mail success", {
@@ -851,14 +850,11 @@ export async function simulateWorkshopBooking(
         recipient: actualProviderMailRecipient,
         reason: error instanceof Error ? error.message : String(error),
       });
-      mailError = [
-        mailError,
+      warnings.push(
         error instanceof WorkshopSimulationError
           ? error.message
           : "Die angeforderte Anbieter*innen-Testmail konnte nicht verschickt werden.",
-      ]
-        .filter(Boolean)
-        .join(" ");
+      );
     }
   }
 
@@ -867,12 +863,14 @@ export async function simulateWorkshopBooking(
     courseId,
     ticketId: ticket.id,
     ticketQrToken: ticket.qr_token,
+    bookingCreated: true,
+    ticketCreated: true,
     paymentSimulated,
     paymentTransactionId,
     ledgerEntryId,
     customerMailSent,
     providerMailSent,
-    mailError,
+    mailError: warnings.length > 0 ? warnings.join(" ") : null,
     participantsHref: "/dashboard/participants",
     courseDetailHref: `/dashboard/courses/${courseId}`,
   };

@@ -22,6 +22,7 @@ type SearchParams = {
   action?: string;
   archivedAt?: string;
   bookingId?: string;
+  bookingCreated?: string;
   code?: string;
   courseFound?: string;
   courseId?: string;
@@ -40,6 +41,7 @@ type SearchParams = {
   supabaseCode?: string;
   supabaseMessage?: string;
   ticketId?: string;
+  ticketCreated?: string;
 };
 
 type WorkshopOfferOptionRow = {
@@ -163,6 +165,7 @@ export default async function TestBookingsAdminPage({
           action={sp.action}
           archivedAt={sp.archivedAt}
           bookingId={sp.bookingId}
+          bookingCreated={sp.bookingCreated}
           courseFound={sp.courseFound}
           courseId={sp.courseId}
           customerMailSent={sp.customerMailSent}
@@ -179,6 +182,7 @@ export default async function TestBookingsAdminPage({
           supabaseCode={sp.supabaseCode}
           supabaseMessage={sp.supabaseMessage}
           ticketId={sp.ticketId}
+          ticketCreated={sp.ticketCreated}
           paymentSimulated={sp.paymentSimulated}
           noticeMessage={sp.message}
         />

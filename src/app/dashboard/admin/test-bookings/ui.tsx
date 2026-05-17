@@ -7,6 +7,7 @@ export function TestBookingsNotice({
   action,
   bookingId,
   archivedAt,
+  bookingCreated,
   courseFound,
   courseId,
   customerMailSent,
@@ -17,6 +18,7 @@ export function TestBookingsNotice({
   ledgerEntryId,
   mailSent,
   reservationId,
+  ticketCreated,
   paymentTransactionId,
   status,
   supabaseCode,
@@ -29,6 +31,7 @@ export function TestBookingsNotice({
   action: string | undefined;
   bookingId?: string | undefined;
   archivedAt?: string | undefined;
+  bookingCreated?: string | undefined;
   courseFound?: string | undefined;
   courseId?: string | undefined;
   customerMailSent?: string | undefined;
@@ -39,6 +42,7 @@ export function TestBookingsNotice({
   ledgerEntryId?: string | undefined;
   mailSent?: string | undefined;
   reservationId?: string | undefined;
+  ticketCreated?: string | undefined;
   paymentTransactionId?: string | undefined;
   status?: string | undefined;
   supabaseCode?: string | undefined;
@@ -57,15 +61,22 @@ export function TestBookingsNotice({
   if (action === "workshop-foundation") {
     message = "Workshop-Testbuchung ist in PR 1 nur als no-op vorbereitet. Es wurden keine Datensaetze erzeugt.";
   } else if (action === "workshop-created") {
-    message = `Workshop-Testbuchung erstellt. Ticket erzeugt. Zahlung simuliert: ${paymentSimulated === "yes" ? "ja" : "nein"}. Kund*innenmail: ${customerMailSent === "yes" ? "ja" : "nein"}. Anbieter*innenmail: ${providerMailSent === "yes" ? "ja" : "nein"}.`;
-    toneClass = "border-green-200 bg-green-50 text-green-900";
+    message = noticeMessage
+      ? "Workshop-Testbuchung erstellt. Optionale Teilschritte hatten Hinweise oder Warnungen."
+      : "Workshop-Testbuchung erfolgreich erstellt.";
+    toneClass = noticeMessage ? "border-amber-200 bg-amber-50 text-amber-900" : "border-green-200 bg-green-50 text-green-900";
     extra = (
       <div className="mt-2 text-xs">
+        <div>Buchung erstellt: {bookingCreated === "yes" ? "ja" : "nein"}</div>
+        <div>Ticket erstellt: {ticketCreated === "yes" ? "ja" : "nein"}</div>
+        <div>Zahlung simuliert: {paymentSimulated === "yes" ? "ja" : "nein"}</div>
+        <div>Kund*innenmail gesendet: {customerMailSent === "yes" ? "ja" : "nein"}</div>
+        <div>Anbieter*innenmail gesendet: {providerMailSent === "yes" ? "ja" : "nein"}</div>
         <div>booking_id: {bookingId ?? "-"}</div>
         <div>ticket_id: {ticketId ?? "-"}</div>
         <div>payment_transaction_id: {paymentTransactionId ?? "-"}</div>
         <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
-        {noticeMessage ? <div className="mt-2">{noticeMessage}</div> : null}
+        {noticeMessage ? <div className="mt-2">Warnung: {noticeMessage}</div> : null}
         <div className="mt-2 flex flex-wrap gap-3">
           <Link className="font-medium underline" href="/dashboard/admin/payments-v2">
             Zu Payments V2
