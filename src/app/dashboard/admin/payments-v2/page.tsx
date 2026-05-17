@@ -111,6 +111,56 @@ type RelatedPaymentTransactionRow = Pick<
 
 type RelatedRefundRow = Pick<RefundRecordRow, "id" | "payment_transaction_id">;
 
+type SimulationBookingRow = {
+  id: string;
+  course_id: string | null;
+  customer_first_name: string | null;
+  customer_last_name: string | null;
+  customer_email: string | null;
+  status: string | null;
+  created_at: string;
+};
+
+type SimulationCourseRow = {
+  id: string;
+  title: string | null;
+  kind: string | null;
+  teacher_id: string | null;
+};
+
+type SimulationProfileRow = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  organization_name: string | null;
+};
+
+type SimulationProviderPayoutProfileRow = {
+  id: string;
+  teacher_id: string | null;
+};
+
+type SimulationBookingOption = {
+  bookingId: string;
+  paymentTransactionId: string | null;
+  ledgerEntryId: string | null;
+  courseTitle: string;
+  courseKind: string | null;
+  providerName: string;
+  customerName: string;
+  amountCents: number | null;
+  currency: string | null;
+  bookingStatus: string | null;
+  grossAmountCents: number | null;
+  platformFeeCents: number | null;
+  netAmountCents: number | null;
+  availableAt: string | null;
+  payoutStatus: string | null;
+  providerPayoutProfileId: string | null;
+  payoutBatchId: string | null;
+  createdAt: string;
+};
+
 type SearchParams = {
   action?: string;
   checkedCount?: string;
@@ -118,9 +168,65 @@ type SearchParams = {
   ledgerEntryId?: string;
   markedCount?: string;
   message?: string;
+  selectedBookingId?: string;
+  simulationWindow?: string;
 };
 
 const ROW_LIMIT = 20;
+const SIMULATION_BOOKING_LIMIT = 120;
+const INTERNAL_SIMULATION_PROVIDER = "internal_simulation";
+
+function normalizeSimulationWindow(value: string | undefined): "today" | "last7" | "all" {
+  if (value === "today" || value === "last7" || value === "all") {
+    return value;
+  }
+
+  return "today";
+}
+
+function getSimulationWindowStart(windowKey: "today" | "last7" | "all"): string | null {
+  if (windowKey === "all") return null;
+
+  const now = new Date();
+  if (windowKey === "today") {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    return start.toISOString();
+  }
+
+  const start = new Date(now);
+  start.setDate(start.getDate() - 7);
+  return start.toISOString();
+}
+
+function getDisplayName(input: {
+  firstName?: string | null;
+  lastName?: string | null;
+  organizationName?: string | null;
+  fallback: string;
+}): string {
+  const organizationName = input.organizationName?.trim();
+  if (organizationName) return organizationName;
+
+  const fullName = [input.firstName?.trim(), input.lastName?.trim()].filter(Boolean).join(" ").trim();
+  return fullName || input.fallback;
+}
+
+function formatSimulationOptionLabel(option: SimulationBookingOption): string {
+  const amountLabel =
+    typeof option.amountCents === "number" ? formatMoney(option.amountCents, option.currency ?? "EUR") : "Betrag offen";
+
+  return [
+    option.courseTitle,
+    `Anbieter*in: ${option.providerName}`,
+    `Kund*in: ${option.customerName}`,
+    `Betrag: ${amountLabel}`,
+    `Status: ${option.bookingStatus ?? "-"}`,
+    `booking_id: ${shortenId(option.bookingId)}`,
+    `payment_transaction_id: ${shortenId(option.paymentTransactionId)}`,
+    `ledger_entry_id: ${shortenId(option.ledgerEntryId)}`,
+  ].join(" | ");
+}
 
 function ReferenceCell({
   bookingId,
@@ -301,10 +407,12 @@ function TextInput({
   name,
   label,
   placeholder,
+  defaultValue,
 }: {
   name: string;
   label: string;
   placeholder?: string;
+  defaultValue?: string;
 }) {
   return (
     <label className="block">
@@ -313,6 +421,7 @@ function TextInput({
         name={name}
         type="text"
         placeholder={placeholder}
+        defaultValue={defaultValue}
         className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
       />
     </label>
@@ -325,10 +434,158 @@ export default async function PaymentsV2AdminPage({
   searchParams: Promise<SearchParams>;
 }) {
   const sp = await searchParams;
+  const simulationWindow = normalizeSimulationWindow(sp.simulationWindow);
+  const selectedBookingId = sp.selectedBookingId?.trim() || "";
   const user = await requirePaymentsV2AdminAccess();
   const canUseSimulation = canRunPaymentsV2Simulation(user.email);
 
   const admin = createSupabaseAdmin();
+  let simulationBookingsQuery = admin
+    .from("bookings")
+    .select("id,course_id,customer_first_name,customer_last_name,customer_email,status,created_at")
+    .eq("is_simulation", true)
+    .order("created_at", { ascending: false })
+    .limit(SIMULATION_BOOKING_LIMIT);
+
+  const simulationWindowStart = getSimulationWindowStart(simulationWindow);
+  if (simulationWindowStart) {
+    simulationBookingsQuery = simulationBookingsQuery.gte("created_at", simulationWindowStart);
+  }
+
+  const { data: simulationBookingsRaw } = await simulationBookingsQuery.returns<SimulationBookingRow[]>();
+  const simulationBookings = simulationBookingsRaw ?? [];
+  const simulationCourseIds = Array.from(
+    new Set(simulationBookings.map((row) => row.course_id).filter((value): value is string => Boolean(value)))
+  );
+  const { data: simulationCoursesRaw } =
+    simulationCourseIds.length > 0
+      ? await admin
+          .from("courses")
+          .select("id,title,kind,teacher_id")
+          .in("id", simulationCourseIds)
+          .returns<SimulationCourseRow[]>()
+      : { data: [] as SimulationCourseRow[] };
+  const simulationCourses = (simulationCoursesRaw ?? []).filter(
+    (row) => row.kind === "workshop" || row.kind === "exclusive_offer"
+  );
+  const simulationCoursesById = new Map(simulationCourses.map((row) => [row.id, row] as const));
+  const eligibleSimulationBookings = simulationBookings.filter(
+    (row) => row.course_id && simulationCoursesById.has(row.course_id)
+  );
+  const simulationTeacherIds = Array.from(
+    new Set(
+      simulationCourses
+        .map((row) => row.teacher_id)
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const [simulationProfilesRaw, simulationPayoutProfilesRaw, simulationPaymentTransactionsRaw] = await Promise.all([
+    simulationTeacherIds.length > 0
+      ? admin
+          .from("profiles")
+          .select("id,first_name,last_name,organization_name")
+          .in("id", simulationTeacherIds)
+          .returns<SimulationProfileRow[]>()
+      : Promise.resolve({ data: [] as SimulationProfileRow[] }),
+    simulationTeacherIds.length > 0
+      ? admin
+          .from("provider_payout_profiles")
+          .select("id,teacher_id")
+          .in("teacher_id", simulationTeacherIds)
+          .returns<SimulationProviderPayoutProfileRow[]>()
+      : Promise.resolve({ data: [] as SimulationProviderPayoutProfileRow[] }),
+    eligibleSimulationBookings.length > 0
+      ? admin
+          .from("payment_transactions")
+          .select(
+            "id,booking_id,course_registration_intent_id,provider,provider_payment_id,provider_checkout_id,provider_customer_id,provider_subscription_id,amount_cents,currency,payment_method,status,paid_at,refunded_at,failed_at,created_at"
+          )
+          .in("booking_id", eligibleSimulationBookings.map((row) => row.id))
+          .eq("provider", INTERNAL_SIMULATION_PROVIDER)
+          .order("created_at", { ascending: false })
+          .returns<PaymentTransactionRow[]>()
+      : Promise.resolve({ data: [] as PaymentTransactionRow[] }),
+  ]);
+  const simulationProfilesById = new Map((simulationProfilesRaw.data ?? []).map((row) => [row.id, row] as const));
+  const simulationPayoutProfilesByTeacherId = new Map(
+    (simulationPayoutProfilesRaw.data ?? []).map((row) => [row.teacher_id ?? "", row] as const)
+  );
+  const simulationPaymentTransactions = simulationPaymentTransactionsRaw.data ?? [];
+  const latestSimulationPaymentByBookingId = new Map<string, PaymentTransactionRow>();
+  for (const row of simulationPaymentTransactions) {
+    if (row.booking_id && !latestSimulationPaymentByBookingId.has(row.booking_id)) {
+      latestSimulationPaymentByBookingId.set(row.booking_id, row);
+    }
+  }
+  const simulationPaymentTransactionIds = Array.from(
+    new Set(
+      Array.from(latestSimulationPaymentByBookingId.values())
+        .map((row) => row.id)
+        .filter(Boolean)
+    )
+  );
+  const { data: simulationLedgerEntriesRaw } =
+    simulationPaymentTransactionIds.length > 0
+      ? await admin
+          .from("ledger_entries")
+          .select(
+            "id,provider_payout_profile_id,source_type,source_id,entry_type,gross_amount_cents,platform_fee_cents,provider_fee_cents,net_amount_cents,currency,payout_status,available_at,payout_batch_id,created_at"
+          )
+          .eq("source_type", "payment_transaction")
+          .eq("entry_type", "payment")
+          .in("source_id", simulationPaymentTransactionIds)
+          .order("created_at", { ascending: false })
+          .returns<LedgerEntryRow[]>()
+      : { data: [] as LedgerEntryRow[] };
+  const latestSimulationLedgerByPaymentTransactionId = new Map<string, LedgerEntryRow>();
+  for (const row of simulationLedgerEntriesRaw ?? []) {
+    if (!latestSimulationLedgerByPaymentTransactionId.has(row.source_id)) {
+      latestSimulationLedgerByPaymentTransactionId.set(row.source_id, row);
+    }
+  }
+  const simulationOptions: SimulationBookingOption[] = eligibleSimulationBookings.map((booking) => {
+    const course = booking.course_id ? simulationCoursesById.get(booking.course_id) : undefined;
+    const profile = course?.teacher_id ? simulationProfilesById.get(course.teacher_id) : undefined;
+    const payoutProfile = course?.teacher_id ? simulationPayoutProfilesByTeacherId.get(course.teacher_id) : undefined;
+    const paymentTransaction = latestSimulationPaymentByBookingId.get(booking.id);
+    const ledgerEntry = paymentTransaction?.id
+      ? latestSimulationLedgerByPaymentTransactionId.get(paymentTransaction.id)
+      : undefined;
+
+    return {
+      bookingId: booking.id,
+      paymentTransactionId: paymentTransaction?.id ?? null,
+      ledgerEntryId: ledgerEntry?.id ?? null,
+      courseTitle: course?.title?.trim() || "Angebot",
+      courseKind: course?.kind ?? null,
+      providerName: getDisplayName({
+        firstName: profile?.first_name,
+        lastName: profile?.last_name,
+        organizationName: profile?.organization_name,
+        fallback: "Anbieter*in",
+      }),
+      customerName: getDisplayName({
+        firstName: booking.customer_first_name,
+        lastName: booking.customer_last_name,
+        fallback: booking.customer_email?.trim() || "Kund*in",
+      }),
+      amountCents: paymentTransaction?.amount_cents ?? null,
+      currency: paymentTransaction?.currency ?? null,
+      bookingStatus: booking.status,
+      grossAmountCents: ledgerEntry?.gross_amount_cents ?? paymentTransaction?.amount_cents ?? null,
+      platformFeeCents: ledgerEntry?.platform_fee_cents ?? null,
+      netAmountCents: ledgerEntry?.net_amount_cents ?? null,
+      availableAt: ledgerEntry?.available_at ?? null,
+      payoutStatus: ledgerEntry?.payout_status ?? null,
+      providerPayoutProfileId: ledgerEntry?.provider_payout_profile_id ?? payoutProfile?.id ?? null,
+      payoutBatchId: ledgerEntry?.payout_batch_id ?? null,
+      createdAt: booking.created_at,
+    };
+  });
+  const selectedSimulationOption =
+    simulationOptions.find((option) => option.bookingId === selectedBookingId) ?? null;
+  const invalidSelectedBooking = Boolean(selectedBookingId) && !selectedSimulationOption;
+
   const [transactionsResult, ledgerResult, refundsResult, webhooksResult, payoutBatchesResult, payoutItemsResult] =
     await Promise.all([
     admin
@@ -454,6 +711,120 @@ export default async function PaymentsV2AdminPage({
           message={sp.message}
         />
 
+        <Section
+          title="Simulationsbuchung auswaehlen"
+          description="Bestehende Workshop-Simulationsbuchungen serverseitig laden, auswaehlen und den Payment-/Ledger-Kontext ohne UUID-Suche einsehen."
+        >
+          <div className="space-y-4">
+            <form action={PAYMENTS_V2_ADMIN_PATH} className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)_auto]">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Zeitraum</span>
+                <select
+                  name="simulationWindow"
+                  defaultValue={simulationWindow}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                >
+                  <option value="today">Heute</option>
+                  <option value="last7">Letzte 7 Tage</option>
+                  <option value="all">Alle Simulationen</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">
+                  Simulationsbuchung
+                </span>
+                <select
+                  name="selectedBookingId"
+                  defaultValue={selectedSimulationOption?.bookingId ?? ""}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                >
+                  <option value="">Bitte Simulationsbuchung auswaehlen</option>
+                  {simulationOptions.map((option) => (
+                    <option key={option.bookingId} value={option.bookingId}>
+                      {formatSimulationOptionLabel(option)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex items-end">
+                <button
+                  type="submit"
+                  className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+                >
+                  Kontext laden
+                </button>
+              </div>
+            </form>
+
+            {simulationOptions.length === 0 ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Keine Simulationsbuchungen im gewaehlten Zeitraum gefunden.
+              </div>
+            ) : null}
+
+            {invalidSelectedBooking ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Die ausgewaehlte Simulationsbuchung ist im aktuellen Zeitraum nicht verfuegbar oder ungueltig.
+              </div>
+            ) : null}
+
+            {selectedSimulationOption ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="space-y-1 text-sm text-slate-700">
+                    <div className="font-semibold text-slate-900">Buchung</div>
+                    <div>booking_id: {selectedSimulationOption.bookingId}</div>
+                    <div>payment_transaction_id: {selectedSimulationOption.paymentTransactionId ?? "-"}</div>
+                    <div>ledger_entry_id: {selectedSimulationOption.ledgerEntryId ?? "-"}</div>
+                    <div>payout_batch_id: {selectedSimulationOption.payoutBatchId ?? "-"}</div>
+                  </div>
+                  <div className="space-y-1 text-sm text-slate-700">
+                    <div className="font-semibold text-slate-900">Kontext</div>
+                    <div>Angebot: {selectedSimulationOption.courseTitle}</div>
+                    <div>Anbieter*in: {selectedSimulationOption.providerName}</div>
+                    <div>Kund*in: {selectedSimulationOption.customerName}</div>
+                    <div>Status: {selectedSimulationOption.bookingStatus ?? "-"}</div>
+                    <div>Erstellt: {formatDateTime(selectedSimulationOption.createdAt)}</div>
+                  </div>
+                  <div className="space-y-1 text-sm text-slate-700">
+                    <div className="font-semibold text-slate-900">Payment / Ledger</div>
+                    <div>
+                      Brutto:{" "}
+                      {selectedSimulationOption.grossAmountCents === null
+                        ? "-"
+                        : formatMoney(
+                            selectedSimulationOption.grossAmountCents,
+                            selectedSimulationOption.currency ?? "EUR"
+                          )}
+                    </div>
+                    <div>
+                      RESER-Provision:{" "}
+                      {selectedSimulationOption.platformFeeCents === null
+                        ? "-"
+                        : formatMoney(
+                            selectedSimulationOption.platformFeeCents,
+                            selectedSimulationOption.currency ?? "EUR"
+                          )}
+                    </div>
+                    <div>
+                      Anbieteranteil:{" "}
+                      {selectedSimulationOption.netAmountCents === null
+                        ? "-"
+                        : formatMoney(selectedSimulationOption.netAmountCents, selectedSimulationOption.currency ?? "EUR")}
+                    </div>
+                    <div>available_at: {formatDateTime(selectedSimulationOption.availableAt)}</div>
+                    <div>payout_status: {selectedSimulationOption.payoutStatus ?? "-"}</div>
+                    <div>
+                      provider_payout_profile vorhanden:{" "}
+                      {selectedSimulationOption.providerPayoutProfileId ? "ja" : "nein"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </Section>
+
         <div className="grid gap-4 md:grid-cols-2">
           <ActionButton
             action={markEligibleLedgerEntriesAsPayableAction}
@@ -482,7 +853,12 @@ export default async function PaymentsV2AdminPage({
                   title="Zahlung erfolgreich simulieren"
                   description="Erzeugt eine interne paid payment_transaction und genau einen positiven Ledger-Eintrag."
                 >
-                  <TextInput name="bookingId" label="booking_id" placeholder="uuid" />
+                  <TextInput
+                    name="bookingId"
+                    label="booking_id"
+                    placeholder="uuid"
+                    defaultValue={selectedSimulationOption?.bookingId ?? ""}
+                  />
                   <TextInput name="amountCents" label="Betrag in Cent optional" placeholder="z. B. 4900" />
                   <TextInput name="currency" label="Waehrung optional" placeholder="EUR" />
                   <TextInput name="scenarioNote" label="Scenario Note optional" placeholder="Kurznotiz" />
@@ -493,7 +869,12 @@ export default async function PaymentsV2AdminPage({
                   title="Zahlung fehlgeschlagen simulieren"
                   description="Erzeugt eine interne failed payment_transaction ohne positiven Ledger-Eintrag."
                 >
-                  <TextInput name="bookingId" label="booking_id" placeholder="uuid" />
+                  <TextInput
+                    name="bookingId"
+                    label="booking_id"
+                    placeholder="uuid"
+                    defaultValue={selectedSimulationOption?.bookingId ?? ""}
+                  />
                   <TextInput name="amountCents" label="Betrag in Cent optional" placeholder="z. B. 4900" />
                   <TextInput name="currency" label="Waehrung optional" placeholder="EUR" />
                   <TextInput name="scenarioNote" label="Scenario Note optional" placeholder="Kurznotiz" />
@@ -504,8 +885,18 @@ export default async function PaymentsV2AdminPage({
                   title="Refund simulieren"
                   description="Erzeugt einen internen succeeded Refund fuer eine simulierte Workshop-Zahlung. booking_id oder payment_transaction_id angeben."
                 >
-                  <TextInput name="bookingId" label="booking_id optional" placeholder="uuid" />
-                  <TextInput name="paymentTransactionId" label="payment_transaction_id optional" placeholder="uuid" />
+                  <TextInput
+                    name="bookingId"
+                    label="booking_id optional"
+                    placeholder="uuid"
+                    defaultValue={selectedSimulationOption?.bookingId ?? ""}
+                  />
+                  <TextInput
+                    name="paymentTransactionId"
+                    label="payment_transaction_id optional"
+                    placeholder="uuid"
+                    defaultValue={selectedSimulationOption?.paymentTransactionId ?? ""}
+                  />
                   <TextInput name="refundAmountCents" label="Refund in Cent optional" placeholder="z. B. 4900" />
                   <TextInput name="reason" label="Grund optional" placeholder="Refund reason" />
                 </SimulationForm>
@@ -515,7 +906,12 @@ export default async function PaymentsV2AdminPage({
                   title="Workshop-Storno simulieren"
                   description="Bezahlte Simulationen werden ueber den Refund-Pfad abgewickelt. Unbezahlte Faelle werden nur intern als cancelled simuliert."
                 >
-                  <TextInput name="bookingId" label="booking_id" placeholder="uuid" />
+                  <TextInput
+                    name="bookingId"
+                    label="booking_id"
+                    placeholder="uuid"
+                    defaultValue={selectedSimulationOption?.bookingId ?? ""}
+                  />
                   <TextInput name="refundAmountCents" label="Refund in Cent optional" placeholder="z. B. 4900" />
                   <TextInput name="reason" label="Grund optional" placeholder="Cancellation note" />
                 </SimulationForm>
