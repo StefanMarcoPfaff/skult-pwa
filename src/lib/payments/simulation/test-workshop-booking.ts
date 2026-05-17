@@ -23,7 +23,7 @@ type WorkshopCourseRow = {
   id: string;
   title: string | null;
   kind: string | null;
-  offer_type: string | null;
+  status: string | null;
   archived_at: string | null;
   teacher_id: string | null;
   instructor_name: string | null;
@@ -170,25 +170,63 @@ function formatSessionLine(startsAt: string | null, endsAt: string | null): stri
   return `${date} | ${startTime}-${endTime}`;
 }
 
+function logWorkshopSimulationLookup(message: string, payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV === "production") return;
+  console.log("[workshop test simulation]", message, payload);
+}
+
+function buildCourseDebugSummary(course: Pick<WorkshopCourseRow, "id" | "kind" | "status" | "archived_at"> | null): string {
+  if (!course) {
+    return "course_found=no";
+  }
+
+  return [
+    "course_found=yes",
+    `course_id=${course.id}`,
+    `status=${course.status ?? "null"}`,
+    `type=${course.kind ?? "null"}`,
+    `archived_at=${course.archived_at ?? "null"}`,
+  ].join(" | ");
+}
+
 async function loadCourse(courseId: string): Promise<WorkshopCourseRow> {
   const admin = createSupabaseAdmin();
   const { data, error } = await admin
     .from("courses")
-    .select("id,title,kind,offer_type,archived_at,teacher_id,instructor_name,location,location_details,workshop_storno_policy,price_cents,currency")
+    .select("id,title,kind,status,archived_at,teacher_id,instructor_name,location,location_details,workshop_storno_policy,price_cents,currency")
     .eq("id", courseId)
     .maybeSingle<WorkshopCourseRow>();
 
+  logWorkshopSimulationLookup("course lookup result", {
+    requestedCourseId: courseId,
+    found: Boolean(data),
+    errorMessage: error?.message ?? null,
+    errorCode: error?.code ?? null,
+    kind: data?.kind ?? null,
+    status: data?.status ?? null,
+    archivedAt: data?.archived_at ?? null,
+  });
+
   if (error || !data) {
-    throw new WorkshopSimulationError("course_not_found", "Angebot fuer Workshop-Testbuchung nicht gefunden.");
+    throw new WorkshopSimulationError(
+      "course_not_found",
+      `Angebot fuer Workshop-Testbuchung nicht gefunden. ${buildCourseDebugSummary(null)}`
+    );
   }
 
   if (data.archived_at) {
-    throw new WorkshopSimulationError("course_archived", "Archivierte Angebote koennen nicht fuer Workshop-Testbuchungen verwendet werden.");
+    throw new WorkshopSimulationError(
+      "course_archived",
+      `Angebot ist archiviert und kann nicht fuer Workshop-Testbuchungen verwendet werden. ${buildCourseDebugSummary(data)}`
+    );
   }
 
-  const offerKind = data.offer_type ?? data.kind;
+  const offerKind = String(data.kind ?? "").trim().toLowerCase();
   if (offerKind !== "workshop" && offerKind !== "exclusive_offer") {
-    throw new WorkshopSimulationError("course_not_supported", "Workshop-Testbuchungen sind nur fuer einmalige Angebote verfuegbar.");
+    throw new WorkshopSimulationError(
+      "course_not_supported",
+      `Angebot gefunden, aber Typ ist nicht als einmaliges Angebot geeignet. ${buildCourseDebugSummary(data)}`
+    );
   }
 
   return data;
