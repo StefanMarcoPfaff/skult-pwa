@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
 import { getCourseParticipantTicketBindingId } from "@/lib/course-participant-bindings";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import {
@@ -167,6 +168,10 @@ function normalizeOptionalStartDate(value: string | null | undefined): string | 
   }
 
   return trimmed;
+}
+
+function createSimulationRegistrationToken(): string {
+  return `sim_direct_${randomUUID()}`;
 }
 
 async function loadCourse(courseId: string): Promise<DirectCourseRow> {
@@ -438,6 +443,8 @@ export async function createDirectCourseTestRegistration(
   const customerFirstName = markSimulationName(firstName);
   const customerLastName = lastName;
   const customerName = `${customerFirstName} ${customerLastName}`.trim();
+  const now = new Date().toISOString();
+  const registrationToken = createSimulationRegistrationToken();
   const simulationMetadata = {
     ...createTestBookingSimulationMetadata({
       scenario: DIRECT_COURSE_SCENARIO,
@@ -462,18 +469,22 @@ export async function createDirectCourseTestRegistration(
     .insert({
       trial_reservation_id: null,
       course_id: courseId,
-      registration_token: null,
+      registration_token: registrationToken,
       first_name: customerFirstName,
       last_name: customerLastName,
       email: storedSimulationEmail,
-      phone: null,
-      street_and_number: null,
-      postal_code: null,
-      city: null,
-      country: null,
+      phone: "SIMULATION",
+      street_and_number: "Simulationsadresse 1",
+      postal_code: "00000",
+      city: "Simulation City",
+      country: "DE",
       notes: null,
+      binding_registration_confirmed_at: now,
+      agb_accepted_at: now,
+      privacy_accepted_at: now,
+      cancellation_terms_accepted_at: now,
       status: "pending_checkout",
-      subscription_status: null,
+      subscription_status: "inactive",
       completed_at: null,
       stripe_checkout_session_id: null,
       stripe_customer_id: null,
