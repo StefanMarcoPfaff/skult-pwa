@@ -22,6 +22,9 @@ export function TestBookingsNotice({
   ticketCreated,
   paymentTransactionId,
   status,
+  subscriptionChargeId,
+  subscriptionContractId,
+  subscriptionPeriodId,
   supabaseCode,
   supabaseMessage,
   ticketId,
@@ -47,6 +50,9 @@ export function TestBookingsNotice({
   ticketCreated?: string | undefined;
   paymentTransactionId?: string | undefined;
   status?: string | undefined;
+  subscriptionChargeId?: string | undefined;
+  subscriptionContractId?: string | undefined;
+  subscriptionPeriodId?: string | undefined;
   supabaseCode?: string | undefined;
   supabaseMessage?: string | undefined;
   ticketId?: string | undefined;
@@ -114,6 +120,43 @@ export function TestBookingsNotice({
     );
   } else if (action === "direct-course-error") {
     message = noticeMessage ?? "Die direkte Kurs-Testanmeldung konnte nicht erstellt werden.";
+    toneClass = "border-rose-200 bg-rose-50 text-rose-900";
+    extra = (
+      <div className="mt-2 space-y-1 text-xs">
+        <div>Fehlercode: {errorCode ?? "-"}</div>
+        <div>Schritt: {errorStep ?? "-"}</div>
+        <div>existing_intent_id: {duplicateBookingId ?? "-"}</div>
+        <div>supabase_code: {supabaseCode ?? "-"}</div>
+        <div>supabase_message: {supabaseMessage ?? "-"}</div>
+      </div>
+    );
+  } else if (action === "direct-course-payment-created") {
+    message = "Interne Erstzahlung fuer die direkte Kurs-Testanmeldung simuliert.";
+    toneClass = "border-green-200 bg-green-50 text-green-900";
+    extra = (
+      <div className="mt-2 text-xs">
+        <div>course_registration_intent_id: {courseRegistrationIntentId ?? "-"}</div>
+        <div>course_id: {courseId ?? "-"}</div>
+        <div>subscription_contract_id: {subscriptionContractId ?? "-"}</div>
+        <div>subscription_period_id: {subscriptionPeriodId ?? "-"}</div>
+        <div>subscription_charge_id: {subscriptionChargeId ?? "-"}</div>
+        <div>payment_transaction_id: {paymentTransactionId ?? "-"}</div>
+        <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
+        <div className="mt-2">
+          {noticeMessage ?? "Keine echte Zahlung, keine Auszahlung, keine Mail. Subscription-Audit siehe Payments V2."}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-3">
+          <Link className="font-medium underline" href="/dashboard/admin/payments-v2/subscriptions">
+            Zur Subscription-Audit-Seite
+          </Link>
+          <Link className="font-medium underline" href="/dashboard/admin/payments-v2">
+            Zu Payments V2
+          </Link>
+        </div>
+      </div>
+    );
+  } else if (action === "direct-course-payment-error") {
+    message = noticeMessage ?? "Die interne Erstzahlungs-Simulation konnte nicht ausgefuehrt werden.";
     toneClass = "border-rose-200 bg-rose-50 text-rose-900";
     extra = (
       <div className="mt-2 space-y-1 text-xs">

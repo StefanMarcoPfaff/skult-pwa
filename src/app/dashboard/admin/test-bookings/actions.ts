@@ -2,11 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { requirePaymentsV2SimulationAccess } from "@/lib/payments/simulation";
 import {
   createDirectCourseTestRegistration,
   DirectCourseSimulationError,
+  loadSimulatableDirectCourseIntent,
 } from "@/lib/payments/simulation/test-direct-course-registration";
+import { simulateSubscriptionInitialPaymentSuccess } from "@/lib/payments/simulation/subscription-initial-payment-simulation";
 import { TrialSimulationError, createTrialTestBooking } from "@/lib/payments/simulation/test-trial-booking";
 import {
   WorkshopSimulationError,
@@ -50,6 +53,20 @@ function parseOptionalAmountCents(value: FormDataEntryValue | null): number | nu
   const parsed = Number(normalized);
   if (!Number.isFinite(parsed)) return null;
   return Math.max(0, Math.round(parsed));
+}
+
+async function hasExistingSimulatedInitialPayment(courseRegistrationIntentId: string): Promise<boolean> {
+  const admin = createSupabaseAdmin();
+  const { data } = await admin
+    .from("payment_transactions")
+    .select("id")
+    .eq("provider", "internal_simulation")
+    .eq("course_registration_intent_id", courseRegistrationIntentId)
+    .eq("status", "paid")
+    .limit(1)
+    .maybeSingle<{ id: string }>();
+
+  return Boolean(data?.id);
 }
 
 export async function prepareWorkshopTestBookingAction(formData: FormData) {
@@ -171,6 +188,7 @@ export async function prepareDirectCourseTestRegistrationAction(formData: FormDa
   const user = await requirePaymentsV2SimulationAccess();
 
   try {
+    const simulateInitialPayment = parseCheckbox(formData.get("simulateInitialPayment"));
     const result = await createDirectCourseTestRegistration({
       courseId: String(formData.get("courseId") ?? "").trim(),
       firstName: String(formData.get("firstName") ?? "").trim(),
@@ -182,11 +200,37 @@ export async function prepareDirectCourseTestRegistrationAction(formData: FormDa
     });
 
     revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
-    redirectWithParams({
-      action: "direct-course-created",
-      courseId: result.courseId,
+
+    if (!simulateInitialPayment) {
+      redirectWithParams({
+        action: "direct-course-created",
+        courseId: result.courseId,
+        courseRegistrationIntentId: result.courseRegistrationIntentId,
+        message: `Testkund*in: ${result.customerName}. Noch keine Zahlung, kein Ticket, kein Ledger - das folgt in PR 2.`,
+      });
+    }
+
+    const alreadySimulated = await hasExistingSimulatedInitialPayment(result.courseRegistrationIntentId);
+    const paymentResult = await simulateDirectCourseInitialPayment({
       courseRegistrationIntentId: result.courseRegistrationIntentId,
-      message: `Testkund*in: ${result.customerName}. Noch keine Zahlung, kein Ticket, kein Ledger - das folgt in PR 2.`,
+      adminUserId: user.id,
+      amountCents: parseOptionalAmountCents(formData.get("amountCents")),
+      currency: parseOptionalString(formData.get("currency")),
+    });
+
+    revalidatePath("/dashboard/admin/payments-v2/subscriptions");
+    redirectWithParams({
+      action: "direct-course-payment-created",
+      courseId: result.courseId,
+      courseRegistrationIntentId: paymentResult.courseRegistrationIntentId,
+      subscriptionContractId: paymentResult.subscriptionContractId,
+      subscriptionPeriodId: paymentResult.subscriptionPeriodId,
+      subscriptionChargeId: paymentResult.subscriptionChargeId,
+      paymentTransactionId: paymentResult.paymentTransactionId,
+      ledgerEntryId: paymentResult.ledgerEntryId,
+      message: alreadySimulated
+        ? `Testkund*in: ${result.customerName}. Bereits simulierte Initialzahlung wurde wiederverwendet. Keine echte Zahlung, keine Auszahlung, keine Mail.`
+        : `Testkund*in: ${result.customerName}. Initialzahlung intern simuliert. Keine echte Zahlung, keine Auszahlung, keine Mail.`,
     });
   } catch (error) {
     revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
@@ -207,6 +251,76 @@ export async function prepareDirectCourseTestRegistrationAction(formData: FormDa
       action: "direct-course-error",
       code: "unknown",
       message: "Die direkte Kurs-Testanmeldung konnte nicht erstellt werden.",
+    });
+  }
+}
+
+async function simulateDirectCourseInitialPayment(input: {
+  courseRegistrationIntentId: string;
+  adminUserId: string;
+  amountCents?: number | null;
+  currency?: string | null;
+}) {
+  await loadSimulatableDirectCourseIntent(input.courseRegistrationIntentId);
+
+  return simulateSubscriptionInitialPaymentSuccess({
+    courseRegistrationIntentId: input.courseRegistrationIntentId,
+    adminUserId: input.adminUserId,
+    amountCents: input.amountCents,
+    currency: input.currency,
+    scenarioNote: "admin_test_bookings_direct_course",
+  });
+}
+
+export async function simulateDirectCourseInitialPaymentAction(formData: FormData) {
+  const user = await requirePaymentsV2SimulationAccess();
+  const courseRegistrationIntentId = String(formData.get("courseRegistrationIntentId") ?? "").trim();
+
+  try {
+    const validatedIntent = await loadSimulatableDirectCourseIntent(courseRegistrationIntentId);
+    const alreadySimulated = await hasExistingSimulatedInitialPayment(courseRegistrationIntentId);
+    const result = await simulateDirectCourseInitialPayment({
+      courseRegistrationIntentId,
+      adminUserId: user.id,
+      amountCents: parseOptionalAmountCents(formData.get("amountCents")),
+      currency: parseOptionalString(formData.get("currency")),
+    });
+
+    revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
+    revalidatePath("/dashboard/admin/payments-v2/subscriptions");
+    redirectWithParams({
+      action: "direct-course-payment-created",
+      courseId: validatedIntent.course_id,
+      courseRegistrationIntentId: result.courseRegistrationIntentId,
+      subscriptionContractId: result.subscriptionContractId,
+      subscriptionPeriodId: result.subscriptionPeriodId,
+      subscriptionChargeId: result.subscriptionChargeId,
+      paymentTransactionId: result.paymentTransactionId,
+      ledgerEntryId: result.ledgerEntryId,
+      message: alreadySimulated
+        ? "Bereits simulierte Initialzahlung wurde wiederverwendet. Keine echte Zahlung, keine Auszahlung, keine Mail."
+        : "Initialzahlung intern simuliert. Keine echte Zahlung, keine Auszahlung, keine Mail.",
+    });
+  } catch (error) {
+    revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
+    revalidatePath("/dashboard/admin/payments-v2/subscriptions");
+
+    if (error instanceof DirectCourseSimulationError) {
+      redirectWithParams(compactRedirectParams({
+        action: "direct-course-payment-error",
+        code: error.code,
+        step: error.step,
+        duplicateBookingId: error.duplicateIntentId,
+        supabaseCode: error.supabaseCode,
+        supabaseMessage: error.supabaseMessage,
+        message: error.message,
+      }));
+    }
+
+    redirectWithParams({
+      action: "direct-course-payment-error",
+      code: "unknown",
+      message: "Die interne Erstzahlungs-Simulation konnte nicht ausgefuehrt werden.",
     });
   }
 }

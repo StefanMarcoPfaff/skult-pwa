@@ -5,6 +5,7 @@ import DashboardBackLink from "@/app/dashboard/_components/DashboardBackLink";
 import { requirePaymentsV2SimulationAccess } from "@/lib/payments/simulation";
 import {
   prepareDirectCourseTestRegistrationAction,
+  simulateDirectCourseInitialPaymentAction,
   prepareTrialTestBookingAction,
   prepareWorkshopTestBookingAction,
 } from "./actions";
@@ -41,6 +42,9 @@ type SearchParams = {
   reservationId?: string;
   status?: string;
   step?: string;
+  subscriptionChargeId?: string;
+  subscriptionContractId?: string;
+  subscriptionPeriodId?: string;
   supabaseCode?: string;
   supabaseMessage?: string;
   ticketId?: string;
@@ -233,6 +237,9 @@ export default async function TestBookingsAdminPage({
           providerMailSent={sp.providerMailSent}
           reservationId={sp.reservationId}
           status={sp.status}
+          subscriptionChargeId={sp.subscriptionChargeId}
+          subscriptionContractId={sp.subscriptionContractId}
+          subscriptionPeriodId={sp.subscriptionPeriodId}
           supabaseCode={sp.supabaseCode}
           supabaseMessage={sp.supabaseMessage}
           ticketId={sp.ticketId}
@@ -339,12 +346,12 @@ export default async function TestBookingsAdminPage({
 
           <TestBookingsSection
             title="Direkte Kurs-Testanmeldung"
-            description="Erzeugt einen internen course_registration_intent im Simulationsmodus, noch ohne Zahlung, Ticket, Ledger oder Subscription-Domain-Writes."
+            description="Erzeugt einen internen course_registration_intent und kann optional direkt die interne Erstzahlung bis Contract, Period, Charge, Payment und Ledger simulieren."
           >
             <TestBookingSkeletonForm
               action={prepareDirectCourseTestRegistrationAction}
               title="Direkte Kurs-Testanmeldung erstellen"
-              description="Erzeugt nur einen unbezahlten Test-Intent fuer ein laufendes Angebot. Keine PSP-Calls, keine Zahlung, kein Ticket, kein Ledger."
+              description="Erzeugt einen Test-Intent fuer ein laufendes Angebot. Optional kann die interne Erstzahlung direkt simuliert werden. Keine PSP-Calls, keine Mails, kein Ticket."
             >
               <SelectInput name="courseId" label="Laufendes Angebot auswaehlen">
                 {(directCourseOffers ?? []).map((offer) => {
@@ -371,7 +378,29 @@ export default async function TestBookingsAdminPage({
               <TextInput name="email" label="E-Mail" type="email" placeholder="sim.sam@example.invalid" />
               <TextInput name="startDate" label="Startdatum optional" type="date" />
               <TextInput name="amountCents" label="Betrag optional" type="number" placeholder="6900" />
+              <TextInput name="currency" label="Waehrung optional" placeholder="EUR" />
+              <CheckboxInput
+                name="simulateInitialPayment"
+                label="Initialzahlung direkt simulieren"
+                description="Erzeugt nach dem Test-Intent intern Contract, erste Period, erste Charge, payment_transaction und ledger_entry."
+              />
             </TestBookingSkeletonForm>
+
+            <div className="mt-4">
+              <TestBookingSkeletonForm
+                action={simulateDirectCourseInitialPaymentAction}
+                title="Initialzahlung fuer bestehenden Test-Intent simulieren"
+                description="Nutzt einen vorhandenen Simulations-Intent und erzeugt intern Contract, erste Period, erste Charge, payment_transaction und ledger_entry."
+              >
+                <TextInput
+                  name="courseRegistrationIntentId"
+                  label="course_registration_intent_id"
+                  placeholder="uuid"
+                />
+                <TextInput name="amountCents" label="Betrag optional" type="number" placeholder="6900" />
+                <TextInput name="currency" label="Waehrung optional" placeholder="EUR" />
+              </TestBookingSkeletonForm>
+            </div>
           </TestBookingsSection>
         </div>
       </div>

@@ -37,15 +37,29 @@ type InsertedIntentRow = {
   id: string;
 };
 
+type DirectCourseIntentValidationRow = {
+  id: string;
+  course_id: string;
+  status: string | null;
+  is_simulation: boolean | null;
+  stripe_subscription_id: string | null;
+  subscription_contract_id: string | null;
+};
+
 type DirectCourseSimulationErrorCode =
   | "missing_course_id"
   | "missing_first_name"
   | "missing_last_name"
   | "invalid_email"
+  | "missing_intent_id"
   | "course_not_found"
   | "course_archived"
   | "course_not_supported"
   | "duplicate_open_simulation"
+  | "intent_not_found"
+  | "intent_not_simulation"
+  | "intent_status_invalid"
+  | "intent_has_external_subscription"
   | "intent_insert_failed";
 
 type DirectCourseSimulationStep = "course_lookup" | "intent_insert";
@@ -216,6 +230,62 @@ async function assertNoOpenSimulationDuplicate(simulationKey: string): Promise<v
       duplicateIntentId: data.id,
     });
   }
+}
+
+export async function loadSimulatableDirectCourseIntent(
+  courseRegistrationIntentId: string
+): Promise<DirectCourseIntentValidationRow> {
+  const normalizedId = courseRegistrationIntentId.trim();
+  if (!normalizedId) {
+    throw new DirectCourseSimulationError({
+      code: "missing_intent_id",
+      step: "intent_insert",
+      message: "Bitte gib eine gueltige course_registration_intent_id an.",
+    });
+  }
+
+  const admin = createSupabaseAdmin();
+  const { data, error } = await admin
+    .from("course_registration_intents")
+    .select("id,course_id,status,is_simulation,stripe_subscription_id,subscription_contract_id")
+    .eq("id", normalizedId)
+    .maybeSingle<DirectCourseIntentValidationRow>();
+
+  if (error || !data) {
+    throw new DirectCourseSimulationError({
+      code: "intent_not_found",
+      step: "intent_insert",
+      message: "Der angegebene course_registration_intent wurde nicht gefunden.",
+      supabaseMessage: error?.message ?? null,
+      supabaseCode: error?.code ?? null,
+    });
+  }
+
+  if (!data.is_simulation) {
+    throw new DirectCourseSimulationError({
+      code: "intent_not_simulation",
+      step: "intent_insert",
+      message: "Nur Simulations-Intents duerfen intern weiterverarbeitet werden.",
+    });
+  }
+
+  if (data.stripe_subscription_id) {
+    throw new DirectCourseSimulationError({
+      code: "intent_has_external_subscription",
+      step: "intent_insert",
+      message: "Dieser Intent hat bereits eine echte externe Subscription-Referenz und ist kein reiner Testfall mehr.",
+    });
+  }
+
+  if (!["pending_checkout", "checkout_completed"].includes(data.status ?? "")) {
+    throw new DirectCourseSimulationError({
+      code: "intent_status_invalid",
+      step: "intent_insert",
+      message: "Dieser Simulations-Intent ist nicht in einem fuer die Erstzahlungs-Simulation zulaessigen Status.",
+    });
+  }
+
+  return data;
 }
 
 export async function createDirectCourseTestRegistration(
