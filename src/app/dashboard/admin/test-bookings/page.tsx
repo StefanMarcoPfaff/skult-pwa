@@ -40,6 +40,11 @@ type SearchParams = {
   paymentSimulated?: string;
   paymentTransactionId?: string;
   providerMailSent?: string;
+  rawErrorJson?: string;
+  rawErrorMessage?: string;
+  rawErrorName?: string;
+  rawErrorStackFirstLine?: string;
+  rawErrorStep?: string;
   reservationId?: string;
   status?: string;
   step?: string;
@@ -50,8 +55,12 @@ type SearchParams = {
   supabaseDetails?: string;
   supabaseHint?: string;
   supabaseMessage?: string;
+  actionVersion?: string;
+  intentCreated?: string;
+  initialPaymentCreated?: string;
   ticketId?: string;
   ticketQrToken?: string;
+  ticketPrepared?: string;
   ticketCreated?: string;
 };
 
@@ -239,6 +248,11 @@ export default async function TestBookingsAdminPage({
           mailSent={sp.mailSent}
           paymentTransactionId={sp.paymentTransactionId}
           providerMailSent={sp.providerMailSent}
+          rawErrorJson={sp.rawErrorJson}
+          rawErrorMessage={sp.rawErrorMessage}
+          rawErrorName={sp.rawErrorName}
+          rawErrorStackFirstLine={sp.rawErrorStackFirstLine}
+          rawErrorStep={sp.rawErrorStep}
           reservationId={sp.reservationId}
           status={sp.status}
           subscriptionChargeId={sp.subscriptionChargeId}
@@ -248,8 +262,12 @@ export default async function TestBookingsAdminPage({
           supabaseDetails={sp.supabaseDetails}
           supabaseHint={sp.supabaseHint}
           supabaseMessage={sp.supabaseMessage}
+          actionVersion={sp.actionVersion}
+          intentCreated={sp.intentCreated}
+          initialPaymentCreated={sp.initialPaymentCreated}
           ticketId={sp.ticketId}
           ticketQrToken={sp.ticketQrToken}
+          ticketPrepared={sp.ticketPrepared}
           ticketCreated={sp.ticketCreated}
           paymentSimulated={sp.paymentSimulated}
           noticeMessage={sp.message}

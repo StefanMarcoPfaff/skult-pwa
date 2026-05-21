@@ -18,6 +18,8 @@ import {
 } from "@/lib/payments/simulation/test-workshop-booking";
 import { TEST_BOOKINGS_ADMIN_PATH } from "./ui";
 
+const DIRECT_COURSE_ACTION_VERSION = "DIRECT_COURSE_ACTION_VERSION_20260521_DEBUG";
+
 function redirectWithParams(params: Record<string, string>) {
   const search = new URLSearchParams(params);
   redirect(`${TEST_BOOKINGS_ADMIN_PATH}?${search.toString()}`);
@@ -41,10 +43,90 @@ function logDirectCourseActionSubmission(input: {
   courseId: string;
   formData: FormData;
 }) {
-  console.info("[admin-test-bookings] direct-course action submit", {
+  console.info(DIRECT_COURSE_ACTION_VERSION, {
     selectedAction: input.selectedAction,
+    actionName: input.selectedAction,
+    courseIdPresent: Boolean(input.courseId),
     receivedCourseId: input.courseId || null,
     formValueKeys: Array.from(input.formData.keys()),
+  });
+}
+
+function stringifyUnknownError(error: unknown): string | null {
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return null;
+  }
+}
+
+function buildDirectCourseErrorParams(input: {
+  action: "direct-course-error" | "direct-course-payment-error";
+  error: unknown;
+  rawErrorStep?: string | null;
+  intentCreated?: boolean;
+  initialPaymentCreated?: boolean;
+  ticketPrepared?: boolean;
+  courseId?: string | null;
+  courseRegistrationIntentId?: string | null;
+}) {
+  const errorName =
+    input.error instanceof Error
+      ? input.error.name
+      : typeof input.error === "object" && input.error !== null && "name" in input.error
+        ? String((input.error as { name?: unknown }).name ?? "")
+        : "UnknownError";
+  const errorMessage =
+    input.error instanceof Error
+      ? input.error.message
+      : typeof input.error === "object" && input.error !== null && "message" in input.error
+        ? String((input.error as { message?: unknown }).message ?? "")
+        : typeof input.error === "string"
+          ? input.error
+          : "Die direkte Kurs-Testanmeldung konnte nicht erstellt werden.";
+  const stackFirstLine =
+    input.error instanceof Error ? input.error.stack?.split("\n")[0]?.trim() ?? null : null;
+
+  if (input.error instanceof DirectCourseSimulationError) {
+    return compactRedirectParams({
+      action: input.action,
+      code: input.error.code,
+      step: input.error.step,
+      duplicateBookingId: input.error.duplicateIntentId,
+      supabaseCode: input.error.supabaseCode,
+      supabaseMessage: input.error.supabaseMessage,
+      supabaseDetails: input.error.supabaseDetails,
+      supabaseHint: input.error.supabaseHint,
+      message: input.error.message,
+      rawErrorName: input.error.name,
+      rawErrorMessage: input.error.message,
+      rawErrorStep: input.rawErrorStep ?? input.error.step,
+      rawErrorStackFirstLine: stackFirstLine,
+      rawErrorJson: stringifyUnknownError(input.error),
+      actionVersion: DIRECT_COURSE_ACTION_VERSION,
+      intentCreated: input.intentCreated ? "yes" : "no",
+      initialPaymentCreated: input.initialPaymentCreated ? "yes" : "no",
+      ticketPrepared: input.ticketPrepared ? "yes" : "no",
+      courseId: input.courseId,
+      courseRegistrationIntentId: input.courseRegistrationIntentId,
+    });
+  }
+
+  return compactRedirectParams({
+    action: input.action,
+    code: "unknown",
+    message: errorMessage,
+    rawErrorName: errorName,
+    rawErrorMessage: errorMessage,
+    rawErrorStep: input.rawErrorStep,
+    rawErrorStackFirstLine: stackFirstLine,
+    rawErrorJson: stringifyUnknownError(input.error),
+    actionVersion: DIRECT_COURSE_ACTION_VERSION,
+    intentCreated: input.intentCreated ? "yes" : "no",
+    initialPaymentCreated: input.initialPaymentCreated ? "yes" : "no",
+    ticketPrepared: input.ticketPrepared ? "yes" : "no",
+    courseId: input.courseId,
+    courseRegistrationIntentId: input.courseRegistrationIntentId,
   });
 }
 
@@ -203,9 +285,15 @@ export async function prepareTrialTestBookingAction(formData: FormData) {
 
 export async function prepareDirectCourseTestRegistrationAction(formData: FormData) {
   const user = await requirePaymentsV2SimulationAccess();
+  let rawErrorStep = "action_start";
+  let createdIntentId: string | null = null;
+  let courseId: string | null = null;
+  let intentCreated = false;
+  let initialPaymentCreated = false;
+  let ticketPrepared = false;
 
   try {
-    const courseId = String(formData.get("courseId") ?? "").trim();
+    courseId = String(formData.get("courseId") ?? "").trim();
     const firstName = String(formData.get("firstName") ?? "").trim();
     const lastName = String(formData.get("lastName") ?? "").trim();
     const email = String(formData.get("email") ?? "").trim();
@@ -218,14 +306,28 @@ export async function prepareDirectCourseTestRegistrationAction(formData: FormDa
     });
 
     if (!courseId) {
+      console.info(DIRECT_COURSE_ACTION_VERSION, {
+        step: "course_lookup",
+        reason: "missing_course_id",
+      });
       redirectWithParams({
         action: "direct-course-error",
         code: "missing_course_id",
         step: "course_lookup",
+        rawErrorStep: "course_lookup",
+        rawErrorName: "DirectCourseValidationError",
+        rawErrorMessage: "Bitte ein laufendes Angebot auswaehlen.",
+        actionVersion: DIRECT_COURSE_ACTION_VERSION,
         message: "Bitte ein laufendes Angebot auswaehlen.",
       });
     }
 
+    rawErrorStep = "intent_insert";
+    console.info(DIRECT_COURSE_ACTION_VERSION, {
+      step: rawErrorStep,
+      actionName: "prepareDirectCourseTestRegistrationAction",
+      courseId,
+    });
     const result = await createDirectCourseTestRegistration({
       courseId,
       firstName,
@@ -235,32 +337,81 @@ export async function prepareDirectCourseTestRegistrationAction(formData: FormDa
       amountCents: parseOptionalAmountCents(formData.get("amountCents")),
       adminUserId: user.id,
     });
+    createdIntentId = result.courseRegistrationIntentId;
+    intentCreated = true;
+    console.info(DIRECT_COURSE_ACTION_VERSION, {
+      step: "intent_insert_success",
+      courseId: result.courseId,
+      courseRegistrationIntentId: result.courseRegistrationIntentId,
+    });
 
+    rawErrorStep = "revalidate_after_intent";
     revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
+    console.info(DIRECT_COURSE_ACTION_VERSION, {
+      step: rawErrorStep,
+      ok: true,
+    });
 
     if (!simulateInitialPayment) {
-      redirectWithParams({
-        action: "direct-course-created",
+      rawErrorStep = "redirect_intent_created";
+      console.info(DIRECT_COURSE_ACTION_VERSION, {
+        step: rawErrorStep,
         courseId: result.courseId,
         courseRegistrationIntentId: result.courseRegistrationIntentId,
+      });
+      redirectWithParams({
+        action: "direct-course-created",
+        actionVersion: DIRECT_COURSE_ACTION_VERSION,
+        courseId: result.courseId,
+        courseRegistrationIntentId: result.courseRegistrationIntentId,
+        intentCreated: "yes",
+        initialPaymentCreated: "no",
+        ticketPrepared: "no",
         message: `Testkund*in: ${result.customerName}. Noch keine Zahlung, kein Ticket, kein Ledger - das folgt in PR 2.`,
       });
     }
 
+    rawErrorStep = "initial_payment_lookup";
     const alreadySimulated = await hasExistingSimulatedInitialPayment(result.courseRegistrationIntentId);
+    console.info(DIRECT_COURSE_ACTION_VERSION, {
+      step: rawErrorStep,
+      alreadySimulated,
+      courseRegistrationIntentId: result.courseRegistrationIntentId,
+    });
+    rawErrorStep = "initial_payment";
     const paymentResult = await simulateDirectCourseInitialPayment({
       courseRegistrationIntentId: result.courseRegistrationIntentId,
       adminUserId: user.id,
       amountCents: parseOptionalAmountCents(formData.get("amountCents")),
       currency: parseOptionalString(formData.get("currency")),
     });
+    initialPaymentCreated = true;
+    console.info(DIRECT_COURSE_ACTION_VERSION, {
+      step: "initial_payment_success",
+      courseRegistrationIntentId: paymentResult.courseRegistrationIntentId,
+      subscriptionContractId: paymentResult.subscriptionContractId,
+    });
 
     if (prepareParticipantTicket) {
+      rawErrorStep = "ticket_prepare";
       const ticketResult = await prepareDirectCourseParticipantTicket(result.courseRegistrationIntentId);
+      ticketPrepared = true;
+      console.info(DIRECT_COURSE_ACTION_VERSION, {
+        step: "ticket_prepare_success",
+        courseRegistrationIntentId: ticketResult.courseRegistrationIntentId,
+        ticketId: ticketResult.ticketId,
+      });
+      rawErrorStep = "revalidate_after_ticket";
       revalidatePath("/dashboard/participants");
       revalidatePath(`/dashboard/courses/${result.courseId}/check-in`);
+      console.info(DIRECT_COURSE_ACTION_VERSION, {
+        step: rawErrorStep,
+        ok: true,
+      });
+      rawErrorStep = "redirect_ticket_prepared";
       redirectWithParams({
         action: "direct-course-ticket-prepared",
+        actionVersion: DIRECT_COURSE_ACTION_VERSION,
         courseId: result.courseId,
         courseRegistrationIntentId: ticketResult.courseRegistrationIntentId,
         subscriptionContractId: paymentResult.subscriptionContractId,
@@ -270,15 +421,25 @@ export async function prepareDirectCourseTestRegistrationAction(formData: FormDa
         ledgerEntryId: paymentResult.ledgerEntryId,
         ticketId: ticketResult.ticketId,
         ticketQrToken: ticketResult.ticketQrToken,
+        intentCreated: "yes",
+        initialPaymentCreated: "yes",
+        ticketPrepared: "yes",
         message: ticketResult.ticketCreated
           ? `Testkund*in: ${result.customerName}. Initialzahlung intern simuliert und Kursticket vorbereitet. Keine echte Zahlung, keine Auszahlung, keine Mail.`
           : `Testkund*in: ${result.customerName}. Initialzahlung war bereits simuliert und das vorhandene Kursticket wurde wiederverwendet.`,
       });
     }
 
+    rawErrorStep = "revalidate_after_payment";
     revalidatePath("/dashboard/admin/payments-v2/subscriptions");
+    console.info(DIRECT_COURSE_ACTION_VERSION, {
+      step: rawErrorStep,
+      ok: true,
+    });
+    rawErrorStep = "redirect_payment_created";
     redirectWithParams({
       action: "direct-course-payment-created",
+      actionVersion: DIRECT_COURSE_ACTION_VERSION,
       courseId: result.courseId,
       courseRegistrationIntentId: paymentResult.courseRegistrationIntentId,
       subscriptionContractId: paymentResult.subscriptionContractId,
@@ -286,6 +447,9 @@ export async function prepareDirectCourseTestRegistrationAction(formData: FormDa
       subscriptionChargeId: paymentResult.subscriptionChargeId,
       paymentTransactionId: paymentResult.paymentTransactionId,
       ledgerEntryId: paymentResult.ledgerEntryId,
+      intentCreated: "yes",
+      initialPaymentCreated: "yes",
+      ticketPrepared: "no",
       message: alreadySimulated
         ? `Testkund*in: ${result.customerName}. Bereits simulierte Initialzahlung wurde wiederverwendet. Keine echte Zahlung, keine Auszahlung, keine Mail.`
         : `Testkund*in: ${result.customerName}. Initialzahlung intern simuliert. Keine echte Zahlung, keine Auszahlung, keine Mail.`,
@@ -296,28 +460,20 @@ export async function prepareDirectCourseTestRegistrationAction(formData: FormDa
     }
 
     revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
-
-    if (error instanceof DirectCourseSimulationError) {
-      redirectWithParams(compactRedirectParams({
-        action: "direct-course-error",
-        code: error.code,
-        step: error.step,
-        duplicateBookingId: error.duplicateIntentId,
-        supabaseCode: error.supabaseCode,
-        supabaseMessage: error.supabaseMessage,
-        supabaseDetails: error.supabaseDetails,
-        supabaseHint: error.supabaseHint,
-        message: error.message,
-      }));
-    }
-
     logUnexpectedDirectCourseError("prepareDirectCourseTestRegistrationAction", error);
-
-    redirectWithParams(compactRedirectParams({
-      action: "direct-course-error",
-      code: "unknown",
-      message: error instanceof Error ? error.message : "Die direkte Kurs-Testanmeldung konnte nicht erstellt werden.",
-    }));
+    const action = intentCreated ? "direct-course-payment-error" : "direct-course-error";
+    redirectWithParams(
+      buildDirectCourseErrorParams({
+        action,
+        error,
+        rawErrorStep,
+        intentCreated,
+        initialPaymentCreated,
+        ticketPrepared,
+        courseId,
+        courseRegistrationIntentId: createdIntentId,
+      })
+    );
   }
 }
 

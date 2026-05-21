@@ -29,6 +29,15 @@ export function TestBookingsNotice({
   supabaseDetails,
   supabaseHint,
   supabaseMessage,
+  rawErrorJson,
+  rawErrorMessage,
+  rawErrorName,
+  rawErrorStackFirstLine,
+  rawErrorStep,
+  actionVersion,
+  intentCreated,
+  initialPaymentCreated,
+  ticketPrepared,
   ticketId,
   paymentSimulated,
   providerMailSent,
@@ -60,6 +69,15 @@ export function TestBookingsNotice({
   supabaseDetails?: string | undefined;
   supabaseHint?: string | undefined;
   supabaseMessage?: string | undefined;
+  rawErrorJson?: string | undefined;
+  rawErrorMessage?: string | undefined;
+  rawErrorName?: string | undefined;
+  rawErrorStackFirstLine?: string | undefined;
+  rawErrorStep?: string | undefined;
+  actionVersion?: string | undefined;
+  intentCreated?: string | undefined;
+  initialPaymentCreated?: string | undefined;
+  ticketPrepared?: string | undefined;
   ticketId?: string | undefined;
   paymentSimulated?: string | undefined;
   providerMailSent?: string | undefined;
@@ -131,11 +149,20 @@ export function TestBookingsNotice({
       <div className="mt-2 space-y-1 text-xs">
         <div>Fehlercode: {errorCode ?? "-"}</div>
         <div>Schritt: {errorStep ?? "-"}</div>
+        <div>Intent erstellt: {intentCreated === "yes" ? "ja" : "nein"}</div>
+        <div>Initialzahlung: {initialPaymentCreated === "yes" ? "ja" : "nein"}</div>
+        <div>Ticket: {ticketPrepared === "yes" ? "ja" : "nein"}</div>
         <div>existing_intent_id: {duplicateBookingId ?? "-"}</div>
         <div>supabase_code: {supabaseCode ?? "-"}</div>
         <div>supabase_message: {supabaseMessage ?? "-"}</div>
         <div>supabase_details: {supabaseDetails ?? "-"}</div>
         <div>supabase_hint: {supabaseHint ?? "-"}</div>
+        <div>raw_error_name: {rawErrorName ?? "-"}</div>
+        <div>raw_error_message: {rawErrorMessage ?? "-"}</div>
+        <div>raw_error_step: {rawErrorStep ?? "-"}</div>
+        <div>raw_error_stack_first_line: {rawErrorStackFirstLine ?? "-"}</div>
+        <div>raw_error_json: {rawErrorJson ?? "-"}</div>
+        <div>action_version: {actionVersion ?? "-"}</div>
       </div>
     );
   } else if (action === "direct-course-payment-created") {
@@ -202,11 +229,20 @@ export function TestBookingsNotice({
       <div className="mt-2 space-y-1 text-xs">
         <div>Fehlercode: {errorCode ?? "-"}</div>
         <div>Schritt: {errorStep ?? "-"}</div>
+        <div>Intent erstellt: {intentCreated === "yes" ? "ja" : "nein"}</div>
+        <div>Initialzahlung: {initialPaymentCreated === "yes" ? "ja" : "nein"}</div>
+        <div>Ticket: {ticketPrepared === "yes" ? "ja" : "nein"}</div>
         <div>existing_intent_id: {duplicateBookingId ?? "-"}</div>
         <div>supabase_code: {supabaseCode ?? "-"}</div>
         <div>supabase_message: {supabaseMessage ?? "-"}</div>
         <div>supabase_details: {supabaseDetails ?? "-"}</div>
         <div>supabase_hint: {supabaseHint ?? "-"}</div>
+        <div>raw_error_name: {rawErrorName ?? "-"}</div>
+        <div>raw_error_message: {rawErrorMessage ?? "-"}</div>
+        <div>raw_error_step: {rawErrorStep ?? "-"}</div>
+        <div>raw_error_stack_first_line: {rawErrorStackFirstLine ?? "-"}</div>
+        <div>raw_error_json: {rawErrorJson ?? "-"}</div>
+        <div>action_version: {actionVersion ?? "-"}</div>
       </div>
     );
   } else if (action === "trial-created") {
