@@ -3,16 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requirePaymentsV2SimulationAccess } from "@/lib/payments/simulation";
+import {
+  createDirectCourseTestRegistration,
+  DirectCourseSimulationError,
+} from "@/lib/payments/simulation/test-direct-course-registration";
 import { TrialSimulationError, createTrialTestBooking } from "@/lib/payments/simulation/test-trial-booking";
 import {
   WorkshopSimulationError,
   simulateWorkshopBooking,
 } from "@/lib/payments/simulation/test-workshop-booking";
 import { TEST_BOOKINGS_ADMIN_PATH } from "./ui";
-
-function redirectWithActionState(actionState: string) {
-  redirect(`${TEST_BOOKINGS_ADMIN_PATH}?action=${encodeURIComponent(actionState)}`);
-}
 
 function redirectWithParams(params: Record<string, string>) {
   const search = new URLSearchParams(params);
@@ -167,7 +167,46 @@ export async function prepareTrialTestBookingAction(formData: FormData) {
   }
 }
 
-export async function prepareDirectCourseTestRegistrationAction() {
-  await requirePaymentsV2SimulationAccess();
-  redirectWithActionState("direct-course-foundation");
+export async function prepareDirectCourseTestRegistrationAction(formData: FormData) {
+  const user = await requirePaymentsV2SimulationAccess();
+
+  try {
+    const result = await createDirectCourseTestRegistration({
+      courseId: String(formData.get("courseId") ?? "").trim(),
+      firstName: String(formData.get("firstName") ?? "").trim(),
+      lastName: String(formData.get("lastName") ?? "").trim(),
+      email: String(formData.get("email") ?? "").trim(),
+      startDate: parseOptionalString(formData.get("startDate")),
+      amountCents: parseOptionalAmountCents(formData.get("amountCents")),
+      adminUserId: user.id,
+    });
+
+    revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
+    redirectWithParams({
+      action: "direct-course-created",
+      courseId: result.courseId,
+      courseRegistrationIntentId: result.courseRegistrationIntentId,
+      message: `Testkund*in: ${result.customerName}. Noch keine Zahlung, kein Ticket, kein Ledger - das folgt in PR 2.`,
+    });
+  } catch (error) {
+    revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
+
+    if (error instanceof DirectCourseSimulationError) {
+      redirectWithParams(compactRedirectParams({
+        action: "direct-course-error",
+        code: error.code,
+        step: error.step,
+        duplicateBookingId: error.duplicateIntentId,
+        supabaseCode: error.supabaseCode,
+        supabaseMessage: error.supabaseMessage,
+        message: error.message,
+      }));
+    }
+
+    redirectWithParams({
+      action: "direct-course-error",
+      code: "unknown",
+      message: "Die direkte Kurs-Testanmeldung konnte nicht erstellt werden.",
+    });
+  }
 }

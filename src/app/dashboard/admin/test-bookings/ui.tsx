@@ -8,6 +8,7 @@ export function TestBookingsNotice({
   bookingId,
   archivedAt,
   bookingCreated,
+  courseRegistrationIntentId,
   courseFound,
   courseId,
   customerMailSent,
@@ -32,6 +33,7 @@ export function TestBookingsNotice({
   bookingId?: string | undefined;
   archivedAt?: string | undefined;
   bookingCreated?: string | undefined;
+  courseRegistrationIntentId?: string | undefined;
   courseFound?: string | undefined;
   courseId?: string | undefined;
   customerMailSent?: string | undefined;
@@ -100,6 +102,28 @@ export function TestBookingsNotice({
   } else if (action === "direct-course-foundation") {
     message =
       "Direkte Kurs-Testanmeldung ist in PR 1 nur als no-op vorbereitet. Es wurden keine Datensaetze erzeugt.";
+  } else if (action === "direct-course-created") {
+    message = "Direkte Kurs-Testanmeldung als interner course_registration_intent erstellt.";
+    toneClass = "border-green-200 bg-green-50 text-green-900";
+    extra = (
+      <div className="mt-2 text-xs">
+        <div>course_registration_intent_id: {courseRegistrationIntentId ?? "-"}</div>
+        <div>course_id: {courseId ?? "-"}</div>
+        <div>{noticeMessage ?? "Noch keine Zahlung, kein Ticket, kein Ledger - das folgt in PR 2."}</div>
+      </div>
+    );
+  } else if (action === "direct-course-error") {
+    message = noticeMessage ?? "Die direkte Kurs-Testanmeldung konnte nicht erstellt werden.";
+    toneClass = "border-rose-200 bg-rose-50 text-rose-900";
+    extra = (
+      <div className="mt-2 space-y-1 text-xs">
+        <div>Fehlercode: {errorCode ?? "-"}</div>
+        <div>Schritt: {errorStep ?? "-"}</div>
+        <div>existing_intent_id: {duplicateBookingId ?? "-"}</div>
+        <div>supabase_code: {supabaseCode ?? "-"}</div>
+        <div>supabase_message: {supabaseMessage ?? "-"}</div>
+      </div>
+    );
   } else if (action === "trial-created") {
     message = `Trial-Testbuchung erstellt. Ticket erzeugt. Mail gesendet: ${mailSent === "yes" ? "ja" : "nein"}.`;
     toneClass = "border-green-200 bg-green-50 text-green-900";

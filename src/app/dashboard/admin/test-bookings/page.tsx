@@ -1,4 +1,6 @@
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { formatRecurringCoursePrice } from "@/lib/course-display";
+import { getProviderDisplayName } from "@/lib/provider-profiles";
 import DashboardBackLink from "@/app/dashboard/_components/DashboardBackLink";
 import { requirePaymentsV2SimulationAccess } from "@/lib/payments/simulation";
 import {
@@ -24,6 +26,7 @@ type SearchParams = {
   bookingId?: string;
   bookingCreated?: string;
   code?: string;
+  courseRegistrationIntentId?: string;
   courseFound?: string;
   courseId?: string;
   customerMailSent?: string;
@@ -60,6 +63,24 @@ type WorkshopOfferSessionRow = {
   course_id: string;
   starts_at: string | null;
   ends_at: string | null;
+};
+
+type DirectCourseOfferRow = {
+  id: string;
+  title: string | null;
+  teacher_id: string | null;
+  status: string | null;
+  archived_at: string | null;
+  price_cents: number | null;
+  currency: string | null;
+};
+
+type DirectCourseProviderRow = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  provider_type: "independent_teacher" | "studio_provider" | null;
+  organization_name: string | null;
 };
 
 function formatWorkshopMoney(priceCents: number | null, currency: string | null): string {
@@ -102,6 +123,10 @@ function formatWorkshopDateTime(startsAt: string | null, endsAt: string | null):
   return `${date} | ${startTime}-${endTime}`;
 }
 
+function formatDirectCoursePrice(priceCents: number | null, currency: string | null): string {
+  return formatRecurringCoursePrice(priceCents, currency) ?? "Preis offen";
+}
+
 export default async function TestBookingsAdminPage({
   searchParams,
 }: {
@@ -137,6 +162,34 @@ export default async function TestBookingsAdminPage({
     }
   }
 
+  const { data: directCourseOffers } = await admin
+    .from("courses")
+    .select("id,title,teacher_id,status,archived_at,price_cents,currency")
+    .eq("kind", "course")
+    .is("archived_at", null)
+    .order("created_at", { ascending: false })
+    .returns<DirectCourseOfferRow[]>();
+
+  const directCourseTeacherIds = Array.from(
+    new Set(
+      (directCourseOffers ?? [])
+        .map((offer) => offer.teacher_id)
+        .filter((teacherId): teacherId is string => Boolean(teacherId))
+    )
+  );
+  const { data: directCourseProviders } =
+    directCourseTeacherIds.length > 0
+      ? await admin
+          .from("profiles")
+          .select("id,first_name,last_name,provider_type,organization_name")
+          .in("id", directCourseTeacherIds)
+          .returns<DirectCourseProviderRow[]>()
+      : { data: [] as DirectCourseProviderRow[] };
+
+  const directCourseProviderById = new Map(
+    (directCourseProviders ?? []).map((provider) => [provider.id, provider] as const)
+  );
+
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 md:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -166,6 +219,7 @@ export default async function TestBookingsAdminPage({
           archivedAt={sp.archivedAt}
           bookingId={sp.bookingId}
           bookingCreated={sp.bookingCreated}
+          courseRegistrationIntentId={sp.courseRegistrationIntentId}
           courseFound={sp.courseFound}
           courseId={sp.courseId}
           customerMailSent={sp.customerMailSent}
@@ -285,14 +339,33 @@ export default async function TestBookingsAdminPage({
 
           <TestBookingsSection
             title="Direkte Kurs-Testanmeldung"
-            description="Foundation-Form fuer spaetere interne Kursanmeldungen ohne echten Checkout."
+            description="Erzeugt einen internen course_registration_intent im Simulationsmodus, noch ohne Zahlung, Ticket, Ledger oder Subscription-Domain-Writes."
           >
             <TestBookingSkeletonForm
               action={prepareDirectCourseTestRegistrationAction}
-              title="Direkte Kurs-Testanmeldung vorbereiten"
-              description="Dieser Bereich bleibt vorerst Foundation-only und fuehrt noch keine course_registration_intents, Subscription-Vertraege oder Payment-V2-Buchungen aus."
+              title="Direkte Kurs-Testanmeldung erstellen"
+              description="Erzeugt nur einen unbezahlten Test-Intent fuer ein laufendes Angebot. Keine PSP-Calls, keine Zahlung, kein Ticket, kein Ledger."
             >
-              <TextInput name="courseId" label="course_id" placeholder="uuid" />
+              <SelectInput name="courseId" label="Laufendes Angebot auswaehlen">
+                {(directCourseOffers ?? []).map((offer) => {
+                  const provider = offer.teacher_id ? directCourseProviderById.get(offer.teacher_id) : null;
+                  const providerLabel = provider?.provider_type
+                    ? getProviderDisplayName(provider.provider_type, provider)
+                    : [provider?.first_name, provider?.last_name].filter(Boolean).join(" ").trim() || "Anbieter*in offen";
+                  const optionLabel = [
+                    offer.title?.trim() || "Ohne Titel",
+                    `Anbieter*in: ${providerLabel}`,
+                    `Monatsbetrag: ${formatDirectCoursePrice(offer.price_cents, offer.currency)}`,
+                    `Status: ${offer.status ?? "-"}`,
+                  ].join(" | ");
+
+                  return (
+                    <option key={offer.id} value={offer.id}>
+                      {optionLabel}
+                    </option>
+                  );
+                })}
+              </SelectInput>
               <TextInput name="firstName" label="Vorname" placeholder="[TEST] Sam" />
               <TextInput name="lastName" label="Nachname" placeholder="Beispiel" />
               <TextInput name="email" label="E-Mail" type="email" placeholder="sim.sam@example.invalid" />
