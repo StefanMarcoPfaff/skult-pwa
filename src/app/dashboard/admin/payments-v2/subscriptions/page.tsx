@@ -1,4 +1,5 @@
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { calculatePlatformFeeAmount, calculateProviderPayoutAmount } from "@/lib/platform-fees";
 import { canRunPaymentsV2Simulation } from "@/lib/payments/simulation";
 import DashboardBackLink from "@/app/dashboard/_components/DashboardBackLink";
 import {
@@ -7,6 +8,7 @@ import {
   simulateSubscriptionCancelAction,
   simulateSubscriptionInitialPaymentSuccessAction,
   simulateSubscriptionPauseAction,
+  simulateSubscriptionPayoutAction,
   simulateSubscriptionRecurringPaymentAction,
 } from "./actions";
 import { requirePaymentsV2AdminAccess } from "../access";
@@ -121,10 +123,53 @@ type SimulationCourseRow = {
   title: string | null;
 };
 
+type SimulationProfileRow = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  organization_name: string | null;
+  provider_type: "independent_teacher" | "studio_provider" | null;
+};
+
+type PaymentTransactionRow = {
+  id: string;
+  course_registration_intent_id: string | null;
+  amount_cents: number;
+  currency: string;
+  status: string;
+  paid_at: string | null;
+  failed_at: string | null;
+  created_at: string;
+};
+
+type LedgerEntryRow = {
+  id: string;
+  source_id: string;
+  source_type: string;
+  entry_type: string;
+  gross_amount_cents: number;
+  platform_fee_cents: number;
+  net_amount_cents: number;
+  currency: string;
+  payout_status: string;
+  available_at: string | null;
+  payout_batch_id: string | null;
+  created_at: string;
+};
+
+type PayoutItemRow = {
+  id: string;
+  payout_batch_id: string;
+  ledger_entry_id: string;
+  status: string;
+  created_at: string;
+};
+
 type SearchParams = {
   action?: string;
   contractId?: string;
   courseRegistrationIntentId?: string;
+  errorMessage?: string;
   pauseWindowId?: string;
   eventId?: string;
   lifecycleStatus?: string;
@@ -133,6 +178,8 @@ type SearchParams = {
   chargeId?: string;
   paymentTransactionId?: string;
   ledgerEntryId?: string;
+  payoutBatchId?: string;
+  selectedContractId?: string;
 };
 
 type SimulationContractOption = {
@@ -145,10 +192,46 @@ type SimulationParticipantOption = {
   label: string;
 };
 
+type BusinessSubscriptionRow = {
+  contractId: string;
+  courseRegistrationIntentId: string | null;
+  periodId: string;
+  month: string;
+  courseTitle: string;
+  participantName: string;
+  providerName: string;
+  contractStatus: string;
+  subscriptionStatus: string | null;
+  grossAmountCents: number;
+  providerShareCents: number;
+  reserFeeCents: number;
+  currency: string;
+  chargeId: string | null;
+  chargeStatus: string | null;
+  paymentTransactionId: string | null;
+  paymentStatus: string | null;
+  payoutLedgerEntryId: string | null;
+  payoutStatus: string | null;
+  payoutItemStatus: string | null;
+  periodStatus: string;
+  pauseMode: string | null;
+};
+
+type BusinessLifecycleRow = {
+  id: string;
+  courseTitle: string;
+  participantLabel: string;
+  periodLabel: string;
+  typeLabel: string;
+  statusLabel: string;
+  statusKey: string;
+};
+
 function ActionNotice({
   action,
   contractId,
   courseRegistrationIntentId,
+  errorMessage,
   pauseWindowId,
   eventId,
   lifecycleStatus,
@@ -157,10 +240,12 @@ function ActionNotice({
   chargeId,
   paymentTransactionId,
   ledgerEntryId,
+  payoutBatchId,
 }: {
   action: string | undefined;
   contractId?: string | undefined;
   courseRegistrationIntentId?: string | undefined;
+  errorMessage?: string | undefined;
   pauseWindowId?: string | undefined;
   eventId?: string | undefined;
   lifecycleStatus?: string | undefined;
@@ -169,6 +254,7 @@ function ActionNotice({
   chargeId?: string | undefined;
   paymentTransactionId?: string | undefined;
   ledgerEntryId?: string | undefined;
+  payoutBatchId?: string | undefined;
 }) {
   if (!action) return null;
 
@@ -291,6 +377,26 @@ function ActionNotice({
     const code = action.slice("participant-lifecycle-cancel-error-".length);
     message = `Fehler bei der Teilnehmer*innen-Kuendigungs-Simulation: ${code}.`;
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+  } else if (action.startsWith("subscription-payout-ok-")) {
+    message = "Simulierte Auszahlung fuer laufendes Angebot abgeschlossen. Keine echte Auszahlung, kein Provider-Call.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+    details = (
+      <div className="mt-2 text-xs">
+        <div>course_registration_intent_id: {courseRegistrationIntentId ?? "-"}</div>
+        <div>contract_id: {contractId ?? "-"}</div>
+        <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
+        <div>payout_batch_id: {payoutBatchId ?? "-"}</div>
+      </div>
+    );
+  } else if (action.startsWith("subscription-payout-error-")) {
+    message = "Simulierte Auszahlung fuer laufendes Angebot konnte nicht abgeschlossen werden.";
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+    details = (
+      <div className="mt-2 text-xs">
+        <div>contract_id: {contractId ?? "-"}</div>
+        <div>detail: {errorMessage ?? "-"}</div>
+      </div>
+    );
   }
 
   return (
@@ -299,6 +405,121 @@ function ActionNotice({
       {details}
     </div>
   );
+}
+
+function displayName(input: {
+  firstName?: string | null;
+  lastName?: string | null;
+  organizationName?: string | null;
+  fallback: string;
+}) {
+  const organizationName = input.organizationName?.trim();
+  if (organizationName) return organizationName;
+
+  const fullName = [input.firstName?.trim(), input.lastName?.trim()].filter(Boolean).join(" ").trim();
+  return fullName || input.fallback;
+}
+
+function businessTone(statusKey: string) {
+  switch (statusKey) {
+    case "bezahlt":
+    case "auszahlbar":
+    case "ausbezahlt":
+    case "verdient":
+      return "bg-green-100 text-green-800";
+    case "pausiert":
+      return "bg-amber-100 text-amber-900";
+    case "beendet":
+    case "fehlgeschlagen":
+      return "bg-rose-100 text-rose-800";
+    default:
+      return "bg-slate-100 text-slate-700";
+  }
+}
+
+function BusinessBadge({ label, statusKey }: { label: string; statusKey: string }) {
+  return (
+    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${businessTone(statusKey)}`}>{label}</span>
+  );
+}
+
+function mapCustomerPaymentBusinessStatus(input: {
+  periodStatus: string;
+  pauseMode: string | null;
+  chargeStatus: string | null;
+  paymentStatus: string | null;
+  contractStatus: string;
+  subscriptionStatus: string | null;
+}) {
+  if (input.paymentStatus === "failed" || input.chargeStatus === "failed") {
+    return { key: "fehlgeschlagen", label: "Fehlgeschlagen" };
+  }
+
+  if (input.paymentStatus === "paid") {
+    return { key: "bezahlt", label: "Bezahlt" };
+  }
+
+  if (
+    input.periodStatus === "paused" ||
+    input.pauseMode ||
+    (!input.chargeStatus && ["paused", "pause_scheduled"].includes(input.subscriptionStatus ?? ""))
+  ) {
+    return { key: "pausiert", label: "Pausiert" };
+  }
+
+  if (
+    input.periodStatus === "cancelled" ||
+    (!input.chargeStatus &&
+      (["cancelled", "ended"].includes(input.contractStatus) ||
+        ["cancelled", "inactive"].includes(input.subscriptionStatus ?? "")))
+  ) {
+    return { key: "beendet", label: "Beendet" };
+  }
+
+  return { key: "vorgemerkt", label: "Vorgemerkt" };
+}
+
+function mapPayoutBusinessStatus(input: {
+  payoutStatus: string | null;
+  payoutItemStatus: string | null;
+  paymentStatusKey: string;
+}) {
+  if (input.paymentStatusKey === "pausiert") {
+    return { key: "pausiert", label: "Pausiert" };
+  }
+
+  if (input.paymentStatusKey === "beendet") {
+    return { key: "beendet", label: "Beendet" };
+  }
+
+  if (input.payoutItemStatus === "paid" || input.payoutStatus === "paid") {
+    return { key: "ausbezahlt", label: "Ausbezahlt" };
+  }
+
+  if (input.payoutStatus === "payable" || input.payoutStatus === "available" || input.payoutStatus === "batched") {
+    return { key: "auszahlbar", label: "Auszahlbar" };
+  }
+
+  return { key: "vorgemerkt", label: "Vorgemerkt" };
+}
+
+function mapReserBusinessStatus(input: {
+  payoutStatus: string | null;
+  paymentStatusKey: string;
+}) {
+  if (input.paymentStatusKey === "pausiert") {
+    return { key: "pausiert", label: "Pausiert" };
+  }
+
+  if (input.paymentStatusKey === "beendet") {
+    return { key: "beendet", label: "Beendet" };
+  }
+
+  if (input.payoutStatus === "pending" || input.payoutStatus === "pending_event_completion" || !input.payoutStatus) {
+    return { key: "vorgemerkt", label: "Vorgemerkt" };
+  }
+
+  return { key: "verdient", label: "Verdient" };
 }
 
 function SimulationForm() {
@@ -810,7 +1031,8 @@ export default async function SubscriptionAuditPage({
     )
   );
   const simulationCourseIds = Array.from(new Set(contracts.map((contract) => contract.course_id)));
-  const [{ data: simulationIntents }, { data: simulationCourses }] = await Promise.all([
+  const teacherIds = Array.from(new Set(contracts.map((contract) => contract.teacher_id).filter(Boolean)));
+  const [{ data: simulationIntents }, { data: simulationCourses }, { data: providerProfiles }, { data: paymentTransactions }] = await Promise.all([
     simulationIntentIds.length > 0
       ? admin
           .from("course_registration_intents")
@@ -821,9 +1043,77 @@ export default async function SubscriptionAuditPage({
     simulationCourseIds.length > 0
       ? admin.from("courses").select("id,title").in("id", simulationCourseIds).returns<SimulationCourseRow[]>()
       : { data: [] as SimulationCourseRow[] },
+    teacherIds.length > 0
+      ? admin
+          .from("profiles")
+          .select("id,first_name,last_name,organization_name,provider_type")
+          .in("id", teacherIds)
+          .returns<SimulationProfileRow[]>()
+      : { data: [] as SimulationProfileRow[] },
+    simulationIntentIds.length > 0
+      ? admin
+          .from("payment_transactions")
+          .select("id,course_registration_intent_id,amount_cents,currency,status,paid_at,failed_at,created_at")
+          .in("course_registration_intent_id", simulationIntentIds)
+          .returns<PaymentTransactionRow[]>()
+      : { data: [] as PaymentTransactionRow[] },
+  ]);
+  const paymentTransactionIds = Array.from(new Set((paymentTransactions ?? []).map((row) => row.id)));
+  const [{ data: payoutLedgerEntries }, { data: payoutItems }] = await Promise.all([
+    paymentTransactionIds.length > 0
+      ? admin
+          .from("ledger_entries")
+          .select(
+            "id,source_id,source_type,entry_type,gross_amount_cents,platform_fee_cents,net_amount_cents,currency,payout_status,available_at,payout_batch_id,created_at"
+          )
+          .eq("source_type", "payment_transaction")
+          .eq("entry_type", "payment")
+          .in("source_id", paymentTransactionIds)
+          .returns<LedgerEntryRow[]>()
+      : { data: [] as LedgerEntryRow[] },
+    paymentTransactionIds.length > 0
+      ? admin
+          .from("ledger_entries")
+          .select("id")
+          .eq("source_type", "payment_transaction")
+          .eq("entry_type", "payment")
+          .in("source_id", paymentTransactionIds)
+          .returns<Array<{ id: string }>>()
+          .then(async (ledgerIdResult) => {
+            const ledgerIds = Array.from(new Set((ledgerIdResult.data ?? []).map((row) => row.id)));
+            if (ledgerIds.length === 0) {
+              return { data: [] as PayoutItemRow[] };
+            }
+
+            return admin
+              .from("payout_items")
+              .select("id,payout_batch_id,ledger_entry_id,status,created_at")
+              .in("ledger_entry_id", ledgerIds)
+              .returns<PayoutItemRow[]>();
+          })
+      : { data: [] as PayoutItemRow[] },
   ]);
   const simulationIntentById = new Map((simulationIntents ?? []).map((intent) => [intent.id, intent] as const));
   const simulationCourseById = new Map((simulationCourses ?? []).map((course) => [course.id, course] as const));
+  const providerProfileById = new Map((providerProfiles ?? []).map((profile) => [profile.id, profile] as const));
+  const paymentTransactionById = new Map((paymentTransactions ?? []).map((row) => [row.id, row] as const));
+  const latestChargeByPeriodId = new Map<string, SubscriptionChargeRow>();
+  for (const charge of [...charges].sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))) {
+    if (!charge.subscription_period_id || latestChargeByPeriodId.has(charge.subscription_period_id)) continue;
+    latestChargeByPeriodId.set(charge.subscription_period_id, charge);
+  }
+  const payoutLedgerBySourceId = new Map<string, LedgerEntryRow>();
+  for (const row of [...(payoutLedgerEntries ?? [])].sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))) {
+    if (!payoutLedgerBySourceId.has(row.source_id)) {
+      payoutLedgerBySourceId.set(row.source_id, row);
+    }
+  }
+  const payoutItemByLedgerEntryId = new Map(
+    [...(payoutItems ?? [])]
+      .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))
+      .map((row) => [row.ledger_entry_id, row] as const)
+  );
+  const contractById = new Map(contracts.map((contract) => [contract.id, contract] as const));
   const contractOptions = contracts
     .filter((contract) => {
       const intent = contract.course_registration_intent_id
@@ -884,6 +1174,130 @@ export default async function SubscriptionAuditPage({
         ].join(" | "),
       };
     });
+  const businessRows = periods
+    .map<BusinessSubscriptionRow | null>((period) => {
+      const contract = contractById.get(period.subscription_contract_id);
+      if (!contract) return null;
+
+      const intent = contract.course_registration_intent_id
+        ? simulationIntentById.get(contract.course_registration_intent_id)
+        : null;
+      if (intent?.is_simulation !== true) return null;
+
+      const course = simulationCourseById.get(contract.course_id);
+      const providerProfile = providerProfileById.get(contract.teacher_id);
+      const charge = latestChargeByPeriodId.get(period.id) ?? null;
+      const paymentTransaction = charge?.payment_transaction_id
+        ? paymentTransactionById.get(charge.payment_transaction_id) ?? null
+        : null;
+      const payoutLedger = paymentTransaction ? payoutLedgerBySourceId.get(paymentTransaction.id) ?? null : null;
+      const payoutItem = payoutLedger ? payoutItemByLedgerEntryId.get(payoutLedger.id) ?? null : null;
+      const grossAmountCents = charge?.gross_amount_cents ?? contract.base_amount_cents;
+      const currency = charge?.currency ?? contract.currency;
+
+      return {
+        contractId: contract.id,
+        courseRegistrationIntentId: intent?.id ?? null,
+        periodId: period.id,
+        month: period.service_month,
+        courseTitle: course?.title?.trim() || "Laufendes Angebot",
+        participantName: [intent?.first_name, intent?.last_name].filter(Boolean).join(" ").trim() || "Teilnehmer*in",
+        providerName: displayName({
+          firstName: providerProfile?.first_name,
+          lastName: providerProfile?.last_name,
+          organizationName: providerProfile?.organization_name,
+          fallback: "Anbieter*in",
+        }),
+        contractStatus: contract.status,
+        subscriptionStatus: intent?.subscription_status ?? null,
+        grossAmountCents,
+        providerShareCents:
+          payoutLedger?.net_amount_cents ?? calculateProviderPayoutAmount(grossAmountCents, providerProfile?.provider_type),
+        reserFeeCents:
+          payoutLedger?.platform_fee_cents ?? calculatePlatformFeeAmount(grossAmountCents, providerProfile?.provider_type),
+        currency,
+        chargeId: charge?.id ?? null,
+        chargeStatus: charge?.status ?? null,
+        paymentTransactionId: paymentTransaction?.id ?? null,
+        paymentStatus: paymentTransaction?.status ?? null,
+        payoutLedgerEntryId: payoutLedger?.id ?? null,
+        payoutStatus: payoutLedger?.payout_status ?? null,
+        payoutItemStatus: payoutItem?.status ?? null,
+        periodStatus: period.status,
+        pauseMode: period.pause_mode,
+      };
+    })
+    .filter((row): row is BusinessSubscriptionRow => Boolean(row))
+    .sort((left, right) => String(right.month).localeCompare(String(left.month)));
+  const lifecycleRows = [
+    ...pauseWindows
+      .map<BusinessLifecycleRow | null>((row) => {
+        const contract = row.subscription_contract_id ? contractById.get(row.subscription_contract_id) ?? null : null;
+        const intent =
+          row.scope_type === "participant"
+            ? simulationIntentById.get(row.scope_id) ?? null
+            : contract?.course_registration_intent_id
+              ? simulationIntentById.get(contract.course_registration_intent_id) ?? null
+              : null;
+        const course = contract ? simulationCourseById.get(contract.course_id) ?? null : intent ? simulationCourseById.get(intent.course_id) ?? null : null;
+        return {
+          id: row.id,
+          courseTitle: course?.title?.trim() || "Laufendes Angebot",
+          participantLabel:
+            row.scope_type === "participant"
+              ? ([intent?.first_name, intent?.last_name].filter(Boolean).join(" ").trim() || "Teilnehmer*in")
+              : contract?.course_registration_intent_id
+                ? ([intent?.first_name, intent?.last_name].filter(Boolean).join(" ").trim() || "Teilnehmer*in")
+                : "ganzer Kurs",
+          periodLabel: `${formatDate(row.start_date)} - ${formatDate(row.end_date)}`,
+          typeLabel: row.scope_type === "participant" ? "Teilnehmer-Pause" : "Kurs-Pause",
+          statusLabel: row.status === "active" ? "Pausiert" : "Vorgemerkt",
+          statusKey: row.status === "active" ? "pausiert" : "vorgemerkt",
+        };
+      })
+      .filter((row): row is BusinessLifecycleRow => Boolean(row)),
+    ...contracts
+      .filter((contract) => ["cancel_scheduled", "cancelled", "ended"].includes(contract.status))
+      .map<BusinessLifecycleRow>((contract) => {
+        const intent = contract.course_registration_intent_id
+          ? simulationIntentById.get(contract.course_registration_intent_id)
+          : null;
+        const course = simulationCourseById.get(contract.course_id);
+        return {
+          id: `contract-cancel-${contract.id}`,
+          courseTitle: course?.title?.trim() || "Laufendes Angebot",
+          participantLabel: [intent?.first_name, intent?.last_name].filter(Boolean).join(" ").trim() || "Teilnehmer*in",
+          periodLabel: formatDate(contract.cancel_effective_date ?? contract.ended_at ?? null),
+          typeLabel: "Kuendigung",
+          statusLabel: contract.status === "cancel_scheduled" ? "Vorgemerkt" : "Beendet",
+          statusKey: contract.status === "cancel_scheduled" ? "vorgemerkt" : "beendet",
+        };
+      }),
+    ...(simulationIntents ?? [])
+      .filter((intent) => ["cancel_scheduled", "cancelled", "inactive"].includes(intent.subscription_status ?? ""))
+      .map<BusinessLifecycleRow>((intent) => {
+        const contract = contracts.find((row) => row.course_registration_intent_id === intent.id) ?? null;
+        const course = simulationCourseById.get(intent.course_id);
+        return {
+          id: `intent-cancel-${intent.id}`,
+          courseTitle: course?.title?.trim() || "Laufendes Angebot",
+          participantLabel: [intent.first_name, intent.last_name].filter(Boolean).join(" ").trim() || "Teilnehmer*in",
+          periodLabel: formatDate(contract?.cancel_effective_date ?? contract?.ended_at ?? null),
+          typeLabel: "Kuendigung",
+          statusLabel: intent.subscription_status === "cancel_scheduled" ? "Vorgemerkt" : "Beendet",
+          statusKey: intent.subscription_status === "cancel_scheduled" ? "vorgemerkt" : "beendet",
+        };
+      }),
+  ].sort((left, right) => String(right.periodLabel).localeCompare(String(left.periodLabel)));
+  const selectedContractId = sp.selectedContractId ?? contractOptions[0]?.id ?? null;
+  const selectedContract = selectedContractId ? contractById.get(selectedContractId) ?? null : null;
+  const selectedIntent =
+    selectedContract?.course_registration_intent_id
+      ? simulationIntentById.get(selectedContract.course_registration_intent_id) ?? null
+      : null;
+  const selectedCourse = selectedContract ? simulationCourseById.get(selectedContract.course_id) ?? null : null;
+  const selectedProviderProfile = selectedContract ? providerProfileById.get(selectedContract.teacher_id) ?? null : null;
+  const selectedParticipantOptionId = selectedIntent?.id ?? null;
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 md:px-8">
@@ -909,6 +1323,7 @@ export default async function SubscriptionAuditPage({
           action={sp.action}
           contractId={sp.contractId}
           courseRegistrationIntentId={sp.courseRegistrationIntentId}
+          errorMessage={sp.errorMessage}
           pauseWindowId={sp.pauseWindowId}
           eventId={sp.eventId}
           lifecycleStatus={sp.lifecycleStatus}
@@ -917,7 +1332,293 @@ export default async function SubscriptionAuditPage({
           chargeId={sp.chargeId}
           paymentTransactionId={sp.paymentTransactionId}
           ledgerEntryId={sp.ledgerEntryId}
+          payoutBatchId={sp.payoutBatchId}
         />
+
+        <Section
+          title="Teststeuerung"
+          description="Ausgewaehlte Simulations-Subscription fuer laufende Angebote. Alle Aktionen bleiben intern und triggern keine PSPs, Mails oder echten Auszahlungen."
+        >
+          {contractOptions.length > 0 ? (
+            <div className="space-y-4">
+              <form method="get" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+                  <SimulationContractSelect
+                    options={contractOptions}
+                    inputName="selectedContractId"
+                    label="laufende Simulations-Subscription"
+                  />
+                  <button
+                    type="submit"
+                    className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+                  >
+                    Auswahl laden
+                  </button>
+                </div>
+              </form>
+
+              {selectedContract ? (
+                <>
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Kurs</div>
+                      <div className="mt-2 text-sm font-semibold text-slate-900">{selectedCourse?.title?.trim() || "Laufendes Angebot"}</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Teilnehmer*in</div>
+                      <div className="mt-2 text-sm font-semibold text-slate-900">
+                        {[selectedIntent?.first_name, selectedIntent?.last_name].filter(Boolean).join(" ").trim() || "Teilnehmer*in"}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Status / naechster Monat</div>
+                      <div className="mt-2 text-sm font-semibold text-slate-900">{selectedContract.status}</div>
+                      <div className="mt-1 text-xs text-slate-600">{selectedContract.next_charge_at ? formatDateTime(selectedContract.next_charge_at) : "offen"}</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="text-xs uppercase tracking-wide text-slate-500">Betrag / Anbieter*in</div>
+                      <div className="mt-2 text-sm font-semibold text-slate-900">{formatMoney(selectedContract.base_amount_cents, selectedContract.currency)}</div>
+                      <div className="mt-1 text-xs text-slate-600">
+                        {displayName({
+                          firstName: selectedProviderProfile?.first_name,
+                          lastName: selectedProviderProfile?.last_name,
+                          organizationName: selectedProviderProfile?.organization_name,
+                          fallback: "Anbieter*in",
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <form action={simulateSubscriptionRecurringPaymentAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+                      <input type="hidden" name="subscriptionContractId" value={selectedContract.id} />
+                      <div className="space-y-3">
+                        <div className="text-sm font-semibold text-slate-900">Monatszahlung simulieren</div>
+                        <input name="targetMonth" type="text" placeholder="YYYY-MM" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+                        <button type="submit" className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">Monatszahlung simulieren</button>
+                      </div>
+                    </form>
+
+                    <form action={simulateSubscriptionPauseAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+                      <input type="hidden" name="subscriptionContractId" value={selectedContract.id} />
+                      <div className="space-y-3">
+                        <div className="text-sm font-semibold text-slate-900">Kurs-Pause simulieren</div>
+                        <input name="pauseStartDate" type="text" placeholder="YYYY-MM-01" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+                        <input name="pauseEndDate" type="text" placeholder="YYYY-MM-31" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+                        <button type="submit" className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">Kurs-Pause simulieren</button>
+                      </div>
+                    </form>
+
+                    <form action={simulateSubscriptionCancelAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+                      <input type="hidden" name="subscriptionContractId" value={selectedContract.id} />
+                      <div className="space-y-3">
+                        <div className="text-sm font-semibold text-slate-900">Kurs-Kuendigung simulieren</div>
+                        <input name="cancelEffectiveDate" type="text" placeholder="YYYY-MM-31" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+                        <button type="submit" className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">Kurs-Kuendigung simulieren</button>
+                      </div>
+                    </form>
+
+                    <form action={simulateParticipantSubscriptionPauseAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+                      <input type="hidden" name="courseRegistrationIntentId" value={selectedParticipantOptionId ?? ""} />
+                      <div className="space-y-3">
+                        <div className="text-sm font-semibold text-slate-900">Teilnehmer-Pause simulieren</div>
+                        <input name="pauseStartDate" type="text" placeholder="YYYY-MM-01" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+                        <input name="pauseEndDate" type="text" placeholder="YYYY-MM-31" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+                        <button type="submit" disabled={!selectedParticipantOptionId} className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-400">Teilnehmer-Pause simulieren</button>
+                      </div>
+                    </form>
+
+                    <form action={simulateParticipantSubscriptionCancelAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+                      <input type="hidden" name="courseRegistrationIntentId" value={selectedParticipantOptionId ?? ""} />
+                      <div className="space-y-3">
+                        <div className="text-sm font-semibold text-slate-900">Teilnehmer-Kuendigung simulieren</div>
+                        <input name="cancelEffectiveDate" type="text" placeholder="YYYY-MM-31" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900" />
+                        <button type="submit" disabled={!selectedParticipantOptionId} className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-400">Teilnehmer-Kuendigung simulieren</button>
+                      </div>
+                    </form>
+
+                    <form action={simulateSubscriptionPayoutAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+                      <input type="hidden" name="subscriptionContractId" value={selectedContract.id} />
+                      <div className="space-y-3">
+                        <div className="text-sm font-semibold text-slate-900">Auszahlung simulieren</div>
+                        <div className="text-xs text-slate-700">
+                          Nutzt den neuesten positiven Ledger-Eintrag dieser Subscription und fuehrt nur eine interne Simulations-Auszahlung aus.
+                        </div>
+                        <button type="submit" className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">Auszahlung simulieren</button>
+                      </div>
+                    </form>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-700">
+              Noch keine aktive Simulations-Subscription vorhanden.
+            </div>
+          )}
+        </Section>
+
+        <Section
+          title="Geldfluss laufende Angebote"
+          description="Business-Sicht fuer Monatszahlungen, Anbieteranteile, RESER-Einnahmen sowie Pausen und Kuendigungen. Die technischen Audit-Tabellen bleiben darunter unveraendert."
+        >
+          <div className="grid gap-6">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-3 text-sm font-semibold text-slate-900">Kundenzahlungen / Monatszahlungen</div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Monat</th>
+                      <th className="px-3 py-2">Kurs</th>
+                      <th className="px-3 py-2">Teilnehmer*in</th>
+                      <th className="px-3 py-2">Brutto</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">Charge</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {businessRows.map((row) => {
+                      const status = mapCustomerPaymentBusinessStatus({
+                        periodStatus: row.periodStatus,
+                        pauseMode: row.pauseMode,
+                        chargeStatus: row.chargeStatus,
+                        paymentStatus: row.paymentStatus,
+                        contractStatus: row.contractStatus,
+                        subscriptionStatus: row.subscriptionStatus,
+                      });
+                      return (
+                        <tr key={`payment-${row.periodId}`} className="border-b border-slate-100 align-top">
+                          <td className="px-3 py-3 text-xs text-slate-600">{formatDate(row.month)}</td>
+                          <td className="px-3 py-3 text-xs text-slate-900">{row.courseTitle}</td>
+                          <td className="px-3 py-3 text-xs text-slate-700">{row.participantName}</td>
+                          <td className="px-3 py-3 text-xs font-medium text-slate-900">{formatMoney(row.grossAmountCents, row.currency)}</td>
+                          <td className="px-3 py-3"><BusinessBadge label={status.label} statusKey={status.key} /></td>
+                          <td className="px-3 py-3 text-xs text-slate-600">{row.chargeId ? shortenId(row.chargeId) : "-"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-3 text-sm font-semibold text-slate-900">Auszahlungen an Anbieter*innen</div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Kurs</th>
+                      <th className="px-3 py-2">Anbieter*in</th>
+                      <th className="px-3 py-2">Teilnehmer*in</th>
+                      <th className="px-3 py-2">Monat</th>
+                      <th className="px-3 py-2">Anbieteranteil</th>
+                      <th className="px-3 py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {businessRows.map((row) => {
+                      const paymentStatus = mapCustomerPaymentBusinessStatus({
+                        periodStatus: row.periodStatus,
+                        pauseMode: row.pauseMode,
+                        chargeStatus: row.chargeStatus,
+                        paymentStatus: row.paymentStatus,
+                        contractStatus: row.contractStatus,
+                        subscriptionStatus: row.subscriptionStatus,
+                      });
+                      const payoutStatus = mapPayoutBusinessStatus({
+                        payoutStatus: row.payoutStatus,
+                        payoutItemStatus: row.payoutItemStatus,
+                        paymentStatusKey: paymentStatus.key,
+                      });
+                      return (
+                        <tr key={`payout-${row.periodId}`} className="border-b border-slate-100 align-top">
+                          <td className="px-3 py-3 text-xs text-slate-900">{row.courseTitle}</td>
+                          <td className="px-3 py-3 text-xs text-slate-700">{row.providerName}</td>
+                          <td className="px-3 py-3 text-xs text-slate-700">{row.participantName}</td>
+                          <td className="px-3 py-3 text-xs text-slate-600">{formatDate(row.month)}</td>
+                          <td className="px-3 py-3 text-xs font-medium text-slate-900">{formatMoney(row.providerShareCents, row.currency)}</td>
+                          <td className="px-3 py-3"><BusinessBadge label={payoutStatus.label} statusKey={payoutStatus.key} /></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-3 text-sm font-semibold text-slate-900">RESER-Einnahmen</div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Kurs</th>
+                      <th className="px-3 py-2">Teilnehmer*in</th>
+                      <th className="px-3 py-2">Monat</th>
+                      <th className="px-3 py-2">RESER-Provision</th>
+                      <th className="px-3 py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {businessRows.map((row) => {
+                      const paymentStatus = mapCustomerPaymentBusinessStatus({
+                        periodStatus: row.periodStatus,
+                        pauseMode: row.pauseMode,
+                        chargeStatus: row.chargeStatus,
+                        paymentStatus: row.paymentStatus,
+                        contractStatus: row.contractStatus,
+                        subscriptionStatus: row.subscriptionStatus,
+                      });
+                      const reserStatus = mapReserBusinessStatus({
+                        payoutStatus: row.payoutStatus,
+                        paymentStatusKey: paymentStatus.key,
+                      });
+                      return (
+                        <tr key={`reser-${row.periodId}`} className="border-b border-slate-100 align-top">
+                          <td className="px-3 py-3 text-xs text-slate-900">{row.courseTitle}</td>
+                          <td className="px-3 py-3 text-xs text-slate-700">{row.participantName}</td>
+                          <td className="px-3 py-3 text-xs text-slate-600">{formatDate(row.month)}</td>
+                          <td className="px-3 py-3 text-xs font-medium text-slate-900">{formatMoney(row.reserFeeCents, row.currency)}</td>
+                          <td className="px-3 py-3"><BusinessBadge label={reserStatus.label} statusKey={reserStatus.key} /></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-3 text-sm font-semibold text-slate-900">Pausen & Kuendigungen</div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Kurs</th>
+                      <th className="px-3 py-2">Teilnehmer*in / Scope</th>
+                      <th className="px-3 py-2">Zeitraum</th>
+                      <th className="px-3 py-2">Typ</th>
+                      <th className="px-3 py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lifecycleRows.map((row) => (
+                      <tr key={row.id} className="border-b border-slate-100 align-top">
+                        <td className="px-3 py-3 text-xs text-slate-900">{row.courseTitle}</td>
+                        <td className="px-3 py-3 text-xs text-slate-700">{row.participantLabel}</td>
+                        <td className="px-3 py-3 text-xs text-slate-600">{row.periodLabel}</td>
+                        <td className="px-3 py-3 text-xs text-slate-700">{row.typeLabel}</td>
+                        <td className="px-3 py-3"><BusinessBadge label={row.statusLabel} statusKey={row.statusKey} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </Section>
 
         <Section
           title="Interne Kurs-Simulation"

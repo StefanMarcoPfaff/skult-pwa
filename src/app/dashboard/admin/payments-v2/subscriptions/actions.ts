@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { createSimulatedPaidPayoutForLedgerEntry } from "@/lib/payments/payout-batches";
 import { PaymentSimulationError, requirePaymentsV2SimulationAccess } from "@/lib/payments/simulation";
 import { simulateSubscriptionInitialPaymentSuccess } from "@/lib/payments/simulation/subscription-initial-payment-simulation";
 import {
@@ -11,6 +12,7 @@ import {
   simulateSubscriptionPause,
 } from "@/lib/payments/simulation/subscription-lifecycle-simulation";
 import { simulateSubscriptionRecurringPayment } from "@/lib/payments/simulation/subscription-recurring-payment-simulation";
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH } from "../ui";
 
 function redirectWithActionState(actionState: string, params?: Record<string, string | null | undefined>) {
@@ -37,6 +39,72 @@ function parseOptionalAmountCents(value: FormDataEntryValue | null): number | nu
 function parseOptionalString(value: FormDataEntryValue | null): string | null {
   const normalized = String(value ?? "").trim();
   return normalized || null;
+}
+
+async function loadLatestSubscriptionLedgerEntryContext(subscriptionContractId: string) {
+  const admin = createSupabaseAdmin();
+  const { data: contract } = await admin
+    .from("subscription_contracts")
+    .select("id,course_registration_intent_id")
+    .eq("id", subscriptionContractId)
+    .maybeSingle<{ id: string; course_registration_intent_id: string | null }>();
+
+  if (!contract?.id || !contract.course_registration_intent_id) {
+    throw new Error("Keine Simulations-Subscription mit Intent-Verknuepfung gefunden");
+  }
+
+  const { data: transactions } = await admin
+    .from("payment_transactions")
+    .select("id,course_registration_intent_id,created_at")
+    .eq("course_registration_intent_id", contract.course_registration_intent_id)
+    .eq("provider", "internal_simulation")
+    .order("created_at", { ascending: false })
+    .limit(20)
+    .returns<Array<{ id: string; course_registration_intent_id: string | null; created_at: string }>>();
+
+  const txList = transactions ?? [];
+  if (txList.length === 0) {
+    throw new Error("Keine simulierte Zahlung fuer diese Subscription gefunden");
+  }
+
+  const txIds = txList.map((tx) => tx.id);
+  const txOrder = new Map(txIds.map((txId, index) => [txId, index] as const));
+  const { data: ledgerEntries } = await admin
+    .from("ledger_entries")
+    .select("id,source_id,payout_status,payout_batch_id,available_at,created_at")
+    .eq("entry_type", "payment")
+    .eq("source_type", "payment_transaction")
+    .in("source_id", txIds)
+    .returns<
+      Array<{
+        id: string;
+        source_id: string;
+        payout_status: string | null;
+        payout_batch_id: string | null;
+        available_at: string | null;
+        created_at: string;
+      }>
+    >();
+
+  const ledgerEntry = (ledgerEntries ?? [])
+    .sort((left, right) => {
+      const txIndexDiff = (txOrder.get(left.source_id) ?? 999) - (txOrder.get(right.source_id) ?? 999);
+      if (txIndexDiff !== 0) return txIndexDiff;
+      return String(right.created_at).localeCompare(String(left.created_at));
+    })
+    .find((entry) => Boolean(entry.id));
+
+  if (!ledgerEntry?.id) {
+    throw new Error("Kein Ledger-Eintrag fuer diese Subscription gefunden");
+  }
+
+  return {
+    contractId: contract.id,
+    courseRegistrationIntentId: contract.course_registration_intent_id,
+    ledgerEntryId: ledgerEntry.id,
+    payoutStatus: ledgerEntry.payout_status ?? null,
+    payoutBatchId: ledgerEntry.payout_batch_id ?? null,
+  };
 }
 
 export async function simulateSubscriptionInitialPaymentSuccessAction(formData: FormData) {
@@ -84,6 +152,7 @@ export async function simulateSubscriptionRecurringPaymentAction(formData: FormD
         ? `recurring-pay-skipped-${result.skippedReason}-${result.subscriptionContractId}`
         : `recurring-pay-ok-${result.subscriptionContractId}`,
       {
+        selectedContractId: result.subscriptionContractId,
         contractId: result.subscriptionContractId,
         courseRegistrationIntentId: result.courseRegistrationIntentId,
         periodId: result.subscriptionPeriodId,
@@ -117,6 +186,7 @@ export async function simulateSubscriptionPauseAction(formData: FormData) {
     });
     revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
     redirectWithActionState(`lifecycle-pause-ok-${result.subscriptionContractId}`, {
+      selectedContractId: result.subscriptionContractId,
       contractId: result.subscriptionContractId,
       pauseWindowId: result.pauseWindowId,
       eventId: result.eventId,
@@ -147,6 +217,7 @@ export async function simulateSubscriptionCancelAction(formData: FormData) {
     });
     revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
     redirectWithActionState(`lifecycle-cancel-ok-${result.subscriptionContractId}`, {
+      selectedContractId: result.subscriptionContractId,
       contractId: result.subscriptionContractId,
       eventId: result.eventId,
       lifecycleStatus: result.newStatus,
@@ -177,6 +248,7 @@ export async function simulateParticipantSubscriptionPauseAction(formData: FormD
     });
     revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
     redirectWithActionState(`participant-lifecycle-pause-ok-${result.courseRegistrationIntentId ?? result.subscriptionContractId}`, {
+      selectedContractId: result.subscriptionContractId,
       contractId: result.subscriptionContractId,
       courseRegistrationIntentId: result.courseRegistrationIntentId,
       pauseWindowId: result.pauseWindowId,
@@ -208,6 +280,7 @@ export async function simulateParticipantSubscriptionCancelAction(formData: Form
     });
     revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
     redirectWithActionState(`participant-lifecycle-cancel-ok-${result.courseRegistrationIntentId ?? result.subscriptionContractId}`, {
+      selectedContractId: result.subscriptionContractId,
       contractId: result.subscriptionContractId,
       courseRegistrationIntentId: result.courseRegistrationIntentId,
       eventId: result.eventId,
@@ -221,5 +294,59 @@ export async function simulateParticipantSubscriptionCancelAction(formData: Form
     }
 
     redirectWithActionState("participant-lifecycle-cancel-error-unknown");
+  }
+}
+
+export async function simulateSubscriptionPayoutAction(formData: FormData) {
+  await requirePaymentsV2SimulationAccess();
+  const subscriptionContractId = String(formData.get("subscriptionContractId") ?? "").trim();
+
+  try {
+    const ledgerContext = await loadLatestSubscriptionLedgerEntryContext(subscriptionContractId);
+    const admin = createSupabaseAdmin();
+
+    if (
+      ledgerContext.payoutBatchId === null &&
+      (ledgerContext.payoutStatus === "pending" || ledgerContext.payoutStatus === "pending_event_completion")
+    ) {
+      await admin
+        .from("ledger_entries")
+        .update({
+          payout_status: "payable",
+          available_at: new Date().toISOString(),
+        })
+        .eq("id", ledgerContext.ledgerEntryId)
+        .in("payout_status", ["pending", "pending_event_completion"])
+        .is("payout_batch_id", null);
+    }
+
+    const result = await createSimulatedPaidPayoutForLedgerEntry({
+      ledgerEntryId: ledgerContext.ledgerEntryId,
+    });
+
+    revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
+    redirectWithActionState(`subscription-payout-ok-${result.ledgerEntryId}`, {
+      selectedContractId: ledgerContext.contractId,
+      contractId: ledgerContext.contractId,
+      courseRegistrationIntentId: ledgerContext.courseRegistrationIntentId,
+      ledgerEntryId: result.ledgerEntryId,
+      payoutBatchId: result.batchId,
+    });
+  } catch (error) {
+    revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
+    if (error instanceof PaymentSimulationError) {
+      redirectWithActionState(`subscription-payout-error-${error.code}`, {
+        selectedContractId: subscriptionContractId,
+        contractId: subscriptionContractId,
+      });
+      return;
+    }
+
+    const message = error instanceof Error ? error.message : "unknown";
+    redirectWithActionState("subscription-payout-error-generic", {
+      selectedContractId: subscriptionContractId,
+      contractId: subscriptionContractId,
+      errorMessage: message,
+    });
   }
 }
