@@ -47,6 +47,8 @@ type SearchParams = {
   subscriptionContractId?: string;
   subscriptionPeriodId?: string;
   supabaseCode?: string;
+  supabaseDetails?: string;
+  supabaseHint?: string;
   supabaseMessage?: string;
   ticketId?: string;
   ticketQrToken?: string;
@@ -243,6 +245,8 @@ export default async function TestBookingsAdminPage({
           subscriptionContractId={sp.subscriptionContractId}
           subscriptionPeriodId={sp.subscriptionPeriodId}
           supabaseCode={sp.supabaseCode}
+          supabaseDetails={sp.supabaseDetails}
+          supabaseHint={sp.supabaseHint}
           supabaseMessage={sp.supabaseMessage}
           ticketId={sp.ticketId}
           ticketQrToken={sp.ticketQrToken}

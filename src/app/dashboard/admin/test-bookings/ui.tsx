@@ -26,6 +26,8 @@ export function TestBookingsNotice({
   subscriptionContractId,
   subscriptionPeriodId,
   supabaseCode,
+  supabaseDetails,
+  supabaseHint,
   supabaseMessage,
   ticketId,
   paymentSimulated,
@@ -55,6 +57,8 @@ export function TestBookingsNotice({
   subscriptionContractId?: string | undefined;
   subscriptionPeriodId?: string | undefined;
   supabaseCode?: string | undefined;
+  supabaseDetails?: string | undefined;
+  supabaseHint?: string | undefined;
   supabaseMessage?: string | undefined;
   ticketId?: string | undefined;
   paymentSimulated?: string | undefined;
@@ -130,6 +134,8 @@ export function TestBookingsNotice({
         <div>existing_intent_id: {duplicateBookingId ?? "-"}</div>
         <div>supabase_code: {supabaseCode ?? "-"}</div>
         <div>supabase_message: {supabaseMessage ?? "-"}</div>
+        <div>supabase_details: {supabaseDetails ?? "-"}</div>
+        <div>supabase_hint: {supabaseHint ?? "-"}</div>
       </div>
     );
   } else if (action === "direct-course-payment-created") {
@@ -199,6 +205,8 @@ export function TestBookingsNotice({
         <div>existing_intent_id: {duplicateBookingId ?? "-"}</div>
         <div>supabase_code: {supabaseCode ?? "-"}</div>
         <div>supabase_message: {supabaseMessage ?? "-"}</div>
+        <div>supabase_details: {supabaseDetails ?? "-"}</div>
+        <div>supabase_hint: {supabaseHint ?? "-"}</div>
       </div>
     );
   } else if (action === "trial-created") {

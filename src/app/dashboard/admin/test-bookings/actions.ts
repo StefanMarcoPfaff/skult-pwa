@@ -32,6 +32,10 @@ function isNextRedirectError(error: unknown): boolean {
   );
 }
 
+function logUnexpectedDirectCourseError(context: string, error: unknown) {
+  console.error(`[admin-test-bookings] ${context}`, error);
+}
+
 function compactRedirectParams(input: Record<string, string | null | undefined>): Record<string, string> {
   return Object.fromEntries(
     Object.entries(input).filter((entry): entry is [string, string] => Boolean(entry[1]))
@@ -256,6 +260,10 @@ export async function prepareDirectCourseTestRegistrationAction(formData: FormDa
         : `Testkund*in: ${result.customerName}. Initialzahlung intern simuliert. Keine echte Zahlung, keine Auszahlung, keine Mail.`,
     });
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
 
     if (error instanceof DirectCourseSimulationError) {
@@ -266,15 +274,19 @@ export async function prepareDirectCourseTestRegistrationAction(formData: FormDa
         duplicateBookingId: error.duplicateIntentId,
         supabaseCode: error.supabaseCode,
         supabaseMessage: error.supabaseMessage,
+        supabaseDetails: error.supabaseDetails,
+        supabaseHint: error.supabaseHint,
         message: error.message,
       }));
     }
 
-    redirectWithParams({
+    logUnexpectedDirectCourseError("prepareDirectCourseTestRegistrationAction", error);
+
+    redirectWithParams(compactRedirectParams({
       action: "direct-course-error",
       code: "unknown",
-      message: "Die direkte Kurs-Testanmeldung konnte nicht erstellt werden.",
-    });
+      message: error instanceof Error ? error.message : "Die direkte Kurs-Testanmeldung konnte nicht erstellt werden.",
+    }));
   }
 }
 
@@ -349,6 +361,10 @@ export async function simulateDirectCourseInitialPaymentAction(formData: FormDat
         : "Initialzahlung intern simuliert. Keine echte Zahlung, keine Auszahlung, keine Mail.",
     });
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
     revalidatePath("/dashboard/admin/payments-v2/subscriptions");
 
@@ -360,15 +376,19 @@ export async function simulateDirectCourseInitialPaymentAction(formData: FormDat
         duplicateBookingId: error.duplicateIntentId,
         supabaseCode: error.supabaseCode,
         supabaseMessage: error.supabaseMessage,
+        supabaseDetails: error.supabaseDetails,
+        supabaseHint: error.supabaseHint,
         message: error.message,
       }));
     }
 
-    redirectWithParams({
+    logUnexpectedDirectCourseError("simulateDirectCourseInitialPaymentAction", error);
+
+    redirectWithParams(compactRedirectParams({
       action: "direct-course-payment-error",
       code: "unknown",
-      message: "Die interne Erstzahlungs-Simulation konnte nicht ausgefuehrt werden.",
-    });
+      message: error instanceof Error ? error.message : "Die interne Erstzahlungs-Simulation konnte nicht ausgefuehrt werden.",
+    }));
   }
 }
 
@@ -394,6 +414,10 @@ export async function prepareDirectCourseParticipantTicketAction(formData: FormD
         : `Vorhandenes Kursticket fuer ${result.customerName} wiederverwendet. Teilnehmeransicht und Check-in koennen jetzt contract-aware darauf zugreifen.`,
     });
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     revalidatePath(TEST_BOOKINGS_ADMIN_PATH);
 
     if (error instanceof DirectCourseSimulationError) {
@@ -404,14 +428,18 @@ export async function prepareDirectCourseParticipantTicketAction(formData: FormD
         duplicateBookingId: error.duplicateIntentId,
         supabaseCode: error.supabaseCode,
         supabaseMessage: error.supabaseMessage,
+        supabaseDetails: error.supabaseDetails,
+        supabaseHint: error.supabaseHint,
         message: error.message,
       }));
     }
 
-    redirectWithParams({
+    logUnexpectedDirectCourseError("prepareDirectCourseParticipantTicketAction", error);
+
+    redirectWithParams(compactRedirectParams({
       action: "direct-course-payment-error",
       code: "unknown",
-      message: "Das Kursticket fuer die Simulations-Teilnahme konnte nicht vorbereitet werden.",
-    });
+      message: error instanceof Error ? error.message : "Das Kursticket fuer die Simulations-Teilnahme konnte nicht vorbereitet werden.",
+    }));
   }
 }

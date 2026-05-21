@@ -58,6 +58,35 @@ type SubscriptionContractValidationRow = {
   status: string | null;
 };
 
+type DirectCourseIntentInsertPayload = {
+  trial_reservation_id: null;
+  course_id: string;
+  registration_token: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  street_and_number: string;
+  postal_code: string;
+  city: string;
+  country: string;
+  notes: null;
+  binding_registration_confirmed_at: string;
+  agb_accepted_at: string;
+  privacy_accepted_at: string;
+  cancellation_terms_accepted_at: string;
+  status: "pending_checkout";
+  subscription_status: "inactive";
+  completed_at: null;
+  stripe_checkout_session_id: null;
+  stripe_customer_id: null;
+  stripe_subscription_id: null;
+  subscription_contract_id: null;
+  is_simulation: true;
+  simulation_key: string;
+  simulation_metadata: Record<string, unknown>;
+};
+
 type DirectCourseSimulationErrorCode =
   | "missing_course_id"
   | "missing_first_name"
@@ -86,6 +115,8 @@ export class DirectCourseSimulationError extends Error {
   duplicateIntentId: string | null;
   supabaseMessage: string | null;
   supabaseCode: string | null;
+  supabaseDetails: string | null;
+  supabaseHint: string | null;
 
   constructor(input: {
     code: DirectCourseSimulationErrorCode;
@@ -94,6 +125,8 @@ export class DirectCourseSimulationError extends Error {
     duplicateIntentId?: string | null;
     supabaseMessage?: string | null;
     supabaseCode?: string | null;
+    supabaseDetails?: string | null;
+    supabaseHint?: string | null;
   }) {
     super(input.message);
     this.name = "DirectCourseSimulationError";
@@ -102,6 +135,8 @@ export class DirectCourseSimulationError extends Error {
     this.duplicateIntentId = input.duplicateIntentId ?? null;
     this.supabaseMessage = input.supabaseMessage ?? null;
     this.supabaseCode = input.supabaseCode ?? null;
+    this.supabaseDetails = input.supabaseDetails ?? null;
+    this.supabaseHint = input.supabaseHint ?? null;
   }
 }
 
@@ -172,6 +207,38 @@ function normalizeOptionalStartDate(value: string | null | undefined): string | 
 
 function createSimulationRegistrationToken(): string {
   return `sim_direct_${randomUUID()}`;
+}
+
+function sanitizeIntentInsertPayload(payload: DirectCourseIntentInsertPayload) {
+  return {
+    trial_reservation_id: payload.trial_reservation_id,
+    course_id: payload.course_id,
+    registration_token_prefix: payload.registration_token.slice(0, 20),
+    registration_token_length: payload.registration_token.length,
+    first_name_is_test: payload.first_name.startsWith("[TEST]"),
+    last_name_present: Boolean(payload.last_name),
+    email_domain: payload.email.split("@")[1] ?? null,
+    phone: payload.phone,
+    street_and_number: payload.street_and_number,
+    postal_code: payload.postal_code,
+    city: payload.city,
+    country: payload.country,
+    notes_present: payload.notes !== null,
+    binding_registration_confirmed_at: payload.binding_registration_confirmed_at,
+    agb_accepted_at: payload.agb_accepted_at,
+    privacy_accepted_at: payload.privacy_accepted_at,
+    cancellation_terms_accepted_at: payload.cancellation_terms_accepted_at,
+    status: payload.status,
+    subscription_status: payload.subscription_status,
+    completed_at: payload.completed_at,
+    stripe_checkout_session_id: payload.stripe_checkout_session_id,
+    stripe_customer_id: payload.stripe_customer_id,
+    stripe_subscription_id: payload.stripe_subscription_id,
+    subscription_contract_id: payload.subscription_contract_id,
+    is_simulation: payload.is_simulation,
+    simulation_key: payload.simulation_key,
+    simulation_metadata_keys: Object.keys(payload.simulation_metadata).sort(),
+  };
 }
 
 async function loadCourse(courseId: string): Promise<DirectCourseRow> {
@@ -462,48 +529,59 @@ export async function createDirectCourseTestRegistration(
     pending_ticket: true,
     pending_ledger: true,
   };
+  const insertPayload: DirectCourseIntentInsertPayload = {
+    trial_reservation_id: null,
+    course_id: courseId,
+    registration_token: registrationToken,
+    first_name: customerFirstName,
+    last_name: customerLastName,
+    email: storedSimulationEmail,
+    phone: "SIMULATION",
+    street_and_number: "Simulationsadresse 1",
+    postal_code: "00000",
+    city: "Simulation City",
+    country: "DE",
+    notes: null,
+    binding_registration_confirmed_at: now,
+    agb_accepted_at: now,
+    privacy_accepted_at: now,
+    cancellation_terms_accepted_at: now,
+    status: "pending_checkout",
+    subscription_status: "inactive",
+    completed_at: null,
+    stripe_checkout_session_id: null,
+    stripe_customer_id: null,
+    stripe_subscription_id: null,
+    subscription_contract_id: null,
+    is_simulation: true,
+    simulation_key: simulationKey,
+    simulation_metadata: simulationMetadata,
+  };
+
+  console.info("[direct-course-simulation] inserting course_registration_intent", {
+    payload: sanitizeIntentInsertPayload(insertPayload),
+  });
 
   const admin = createSupabaseAdmin();
   const { data, error } = await admin
     .from("course_registration_intents")
-    .insert({
-      trial_reservation_id: null,
-      course_id: courseId,
-      registration_token: registrationToken,
-      first_name: customerFirstName,
-      last_name: customerLastName,
-      email: storedSimulationEmail,
-      phone: "SIMULATION",
-      street_and_number: "Simulationsadresse 1",
-      postal_code: "00000",
-      city: "Simulation City",
-      country: "DE",
-      notes: null,
-      binding_registration_confirmed_at: now,
-      agb_accepted_at: now,
-      privacy_accepted_at: now,
-      cancellation_terms_accepted_at: now,
-      status: "pending_checkout",
-      subscription_status: "inactive",
-      completed_at: null,
-      stripe_checkout_session_id: null,
-      stripe_customer_id: null,
-      stripe_subscription_id: null,
-      subscription_contract_id: null,
-      is_simulation: true,
-      simulation_key: simulationKey,
-      simulation_metadata: simulationMetadata,
-    })
+    .insert(insertPayload)
     .select("id")
     .single<InsertedIntentRow>();
 
   if (error || !data?.id) {
+    console.error("[direct-course-simulation] insert failed", {
+      payload: sanitizeIntentInsertPayload(insertPayload),
+      error,
+    });
     throw new DirectCourseSimulationError({
       code: "intent_insert_failed",
       step: "intent_insert",
       message: "Die direkte Kurs-Testanmeldung konnte nicht gespeichert werden.",
       supabaseMessage: error?.message ?? null,
       supabaseCode: error?.code ?? null,
+      supabaseDetails: error?.details ?? null,
+      supabaseHint: error?.hint ?? null,
     });
   }
 
