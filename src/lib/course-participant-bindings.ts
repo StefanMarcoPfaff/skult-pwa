@@ -24,8 +24,12 @@ export function getCourseParticipantTicketBindingId(
   if (
     intent.is_simulation === true &&
     internalContractId &&
-    intent.subscription_status === "active" &&
-    subscriptionContractStatus === "active"
+    ["active", "pause_scheduled", "paused", "cancel_scheduled", "cancelled", "inactive"].includes(
+      intent.subscription_status ?? "active"
+    ) &&
+    ["active", "pause_scheduled", "paused", "cancel_scheduled", "cancelled", "ended"].includes(
+      subscriptionContractStatus ?? "active"
+    )
   ) {
     return internalContractId;
   }

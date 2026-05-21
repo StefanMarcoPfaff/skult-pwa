@@ -32,6 +32,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 type SubscriptionLifecycleResult = {
   subscriptionContractId: string;
+  courseRegistrationIntentId?: string | null;
   pauseWindowId?: string | null;
   eventId: string;
   newStatus: string;
@@ -39,6 +40,17 @@ type SubscriptionLifecycleResult = {
   affectedPeriodIds: string[];
   affectedChargeIds: string[];
   simulationMetadata: ReturnType<typeof buildSimulationMetadata>;
+};
+
+type CourseRegistrationIntentLifecycleRow = {
+  id: string;
+  subscription_contract_id: string | null;
+  is_simulation: boolean | null;
+  subscription_status: string | null;
+  subscription_pause_start_date: string | null;
+  subscription_pause_end_date: string | null;
+  subscription_stop_date: string | null;
+  subscription_cancel_scheduled_at: string | null;
 };
 
 function normalizeRequiredDate(value: string | null | undefined, fieldName: string): string {
@@ -64,6 +76,10 @@ function ensureMonthLast(value: string, fieldName: string) {
 
 function isContractLifecycleSimulationAllowed(contract: SubscriptionContract): boolean {
   return ["active", "pause_scheduled", "paused"].includes(contract.status);
+}
+
+function isParticipantLifecycleSimulationAllowed(contract: SubscriptionContract): boolean {
+  return ["active", "pause_scheduled", "paused", "cancel_scheduled"].includes(contract.status);
 }
 
 function isDateWithinRange(value: string, startDate: string, endDate: string): boolean {
@@ -147,6 +163,62 @@ async function maybeUpdateIntentSubscriptionStatus(input: {
         input.subscriptionStatus === "cancel_scheduled" ? new Date().toISOString() : null,
     })
     .eq("id", input.contract.courseRegistrationIntentId);
+}
+
+async function loadParticipantSimulationIntent(courseRegistrationIntentId: string) {
+  const normalizedId = assertSimulationTargetId(courseRegistrationIntentId);
+  const admin = createSupabaseAdmin();
+  const { data } = await admin
+    .from("course_registration_intents")
+    .select(
+      "id,subscription_contract_id,is_simulation,subscription_status,subscription_pause_start_date,subscription_pause_end_date,subscription_stop_date,subscription_cancel_scheduled_at"
+    )
+    .eq("id", normalizedId)
+    .maybeSingle<CourseRegistrationIntentLifecycleRow>();
+
+  if (!data) {
+    throw new Error("Course registration intent not found");
+  }
+
+  if (!data.is_simulation) {
+    throw new Error("Participant lifecycle simulation is only allowed for simulation intents");
+  }
+
+  if (!data.subscription_contract_id) {
+    throw new Error("Participant simulation requires a linked subscription contract");
+  }
+
+  return data;
+}
+
+async function updateParticipantIntentLifecycle(input: {
+  courseRegistrationIntentId: string;
+  subscriptionStatus: "pause_scheduled" | "paused" | "cancel_scheduled" | "cancelled";
+  pauseStartDate?: string | null;
+  pauseEndDate?: string | null;
+  stopDate?: string | null;
+}) {
+  const admin = createSupabaseAdmin();
+  await admin
+    .from("course_registration_intents")
+    .update({
+      subscription_status: input.subscriptionStatus,
+      subscription_pause_start_date:
+        input.subscriptionStatus === "pause_scheduled" || input.subscriptionStatus === "paused"
+          ? input.pauseStartDate ?? null
+          : null,
+      subscription_pause_end_date:
+        input.subscriptionStatus === "pause_scheduled" || input.subscriptionStatus === "paused"
+          ? input.pauseEndDate ?? null
+          : null,
+      subscription_stop_date:
+        input.subscriptionStatus === "cancel_scheduled" || input.subscriptionStatus === "cancelled"
+          ? input.stopDate ?? null
+          : null,
+      subscription_cancel_scheduled_at:
+        input.subscriptionStatus === "cancel_scheduled" ? new Date().toISOString() : null,
+    })
+    .eq("id", input.courseRegistrationIntentId);
 }
 
 function isNextRenewalBlockedByPause(nextChargeAt: string | null, pauseStartDate: string, pauseEndDate: string): boolean {
@@ -366,6 +438,7 @@ export async function simulateSubscriptionPause(input: {
 
   return {
     subscriptionContractId: contract.id,
+    courseRegistrationIntentId: updatedContract.courseRegistrationIntentId,
     pauseWindowId: pauseWindow.id,
     eventId: event.id,
     newStatus: nextStatus,
@@ -450,12 +523,191 @@ export async function simulateSubscriptionCancel(input: {
 
   return {
     subscriptionContractId: contract.id,
+    courseRegistrationIntentId: updatedContract.courseRegistrationIntentId,
     eventId: event.id,
     newStatus: nextStatus,
     nextRenewalBlocked:
       nextStatus === "cancelled" || isNextRenewalBlockedByCancel(updatedContract.nextChargeAt, cancelEffectiveDate),
     affectedPeriodIds,
     affectedChargeIds,
+    simulationMetadata,
+  };
+}
+
+export async function simulateParticipantSubscriptionPause(input: {
+  courseRegistrationIntentId: string;
+  adminUserId: string;
+  pauseStartDate: string;
+  pauseEndDate: string;
+  scenarioNote?: string | null;
+  reason?: string | null;
+}): Promise<SubscriptionLifecycleResult> {
+  const pauseStartDate = normalizeRequiredDate(input.pauseStartDate, "pauseStartDate");
+  const pauseEndDate = normalizeRequiredDate(input.pauseEndDate, "pauseEndDate");
+  ensureMonthFirst(pauseStartDate, "pauseStartDate");
+  ensureMonthLast(pauseEndDate, "pauseEndDate");
+
+  if (pauseEndDate <= pauseStartDate) {
+    throw new Error("pauseEndDate must be after pauseStartDate");
+  }
+
+  const simulationMetadata = buildSimulationMetadata({
+    triggeredByAdminUserId: input.adminUserId,
+    scenario: input.scenarioNote?.trim()
+      ? `participant_subscription_pause:${input.scenarioNote.trim()}`
+      : "participant_subscription_pause",
+    sourceAdminUi: "/dashboard/admin/payments-v2/subscriptions",
+  });
+
+  const intent = await loadParticipantSimulationIntent(input.courseRegistrationIntentId);
+  const contract = await findSubscriptionContractById(intent.subscription_contract_id as string);
+  if (!contract) {
+    throw new Error("Subscription contract not found");
+  }
+
+  if (!isParticipantLifecycleSimulationAllowed(contract)) {
+    throw new Error(`Subscription contract status not allowed for participant pause simulation: ${contract.status}`);
+  }
+
+  const today = getBerlinTodayDate();
+  const nextStatus = isDateWithinRange(today, pauseStartDate, pauseEndDate) ? "paused" : "pause_scheduled";
+  const pauseWindows = await listSubscriptionPauseWindowsByContractId(contract.id);
+  const existingPauseWindow =
+    pauseWindows.find(
+      (window) =>
+        window.scopeType === "participant" &&
+        window.scopeId === intent.id &&
+        window.startDate === pauseStartDate &&
+        window.endDate === pauseEndDate
+    ) ?? null;
+
+  let pauseWindow: SubscriptionPauseWindow;
+  if (existingPauseWindow) {
+    const desiredStatus = nextStatus === "paused" ? "active" : "scheduled";
+    if (
+      existingPauseWindow.status !== desiredStatus &&
+      canTransitionSubscriptionPauseWindowStatus(existingPauseWindow.status, desiredStatus)
+    ) {
+      pauseWindow = await updateSubscriptionPauseWindow(existingPauseWindow.id, {
+        status: desiredStatus,
+      });
+    } else {
+      pauseWindow = existingPauseWindow;
+    }
+  } else {
+    pauseWindow = await createSubscriptionPauseWindow({
+      subscriptionContractId: contract.id,
+      scopeType: "participant",
+      scopeId: intent.id,
+      startDate: pauseStartDate,
+      endDate: pauseEndDate,
+      status: nextStatus === "paused" ? "active" : "scheduled",
+      metadata: {
+        simulation: true,
+        scenario: simulationMetadata.scenario,
+        sourceAdminUi: simulationMetadata.source_admin_ui,
+        reason: input.reason?.trim() || null,
+      },
+    });
+  }
+
+  await updateParticipantIntentLifecycle({
+    courseRegistrationIntentId: intent.id,
+    subscriptionStatus: nextStatus,
+    pauseStartDate,
+    pauseEndDate,
+  });
+
+  const events = await listSubscriptionEventsByContractId(contract.id);
+  const event = await ensureSimulationEvent({
+    events,
+    contractId: contract.id,
+    eventType: "participant_subscription_pause_simulated",
+    referenceId: `${intent.id}:${pauseStartDate}:${pauseEndDate}`,
+    simulationMetadata,
+    payload: {
+      course_registration_intent_id: intent.id,
+      pause_window_id: pauseWindow.id,
+      pause_start_date: pauseStartDate,
+      pause_end_date: pauseEndDate,
+      participant_status: nextStatus,
+      reason: input.reason?.trim() || null,
+    },
+  });
+
+  return {
+    subscriptionContractId: contract.id,
+    courseRegistrationIntentId: intent.id,
+    pauseWindowId: pauseWindow.id,
+    eventId: event.id,
+    newStatus: nextStatus,
+    nextRenewalBlocked: isNextRenewalBlockedByPause(contract.nextChargeAt, pauseStartDate, pauseEndDate),
+    affectedPeriodIds: [],
+    affectedChargeIds: [],
+    simulationMetadata,
+  };
+}
+
+export async function simulateParticipantSubscriptionCancel(input: {
+  courseRegistrationIntentId: string;
+  adminUserId: string;
+  cancelEffectiveDate: string;
+  scenarioNote?: string | null;
+  reason?: string | null;
+}): Promise<SubscriptionLifecycleResult> {
+  const cancelEffectiveDate = normalizeRequiredDate(input.cancelEffectiveDate, "cancelEffectiveDate");
+  ensureMonthLast(cancelEffectiveDate, "cancelEffectiveDate");
+
+  const simulationMetadata = buildSimulationMetadata({
+    triggeredByAdminUserId: input.adminUserId,
+    scenario: input.scenarioNote?.trim()
+      ? `participant_subscription_cancel:${input.scenarioNote.trim()}`
+      : "participant_subscription_cancel",
+    sourceAdminUi: "/dashboard/admin/payments-v2/subscriptions",
+  });
+
+  const intent = await loadParticipantSimulationIntent(input.courseRegistrationIntentId);
+  const contract = await findSubscriptionContractById(intent.subscription_contract_id as string);
+  if (!contract) {
+    throw new Error("Subscription contract not found");
+  }
+
+  if (!isParticipantLifecycleSimulationAllowed(contract)) {
+    throw new Error(`Subscription contract status not allowed for participant cancel simulation: ${contract.status}`);
+  }
+
+  const today = getBerlinTodayDate();
+  const nextStatus = cancelEffectiveDate <= today ? "cancelled" : "cancel_scheduled";
+
+  await updateParticipantIntentLifecycle({
+    courseRegistrationIntentId: intent.id,
+    subscriptionStatus: nextStatus,
+    stopDate: cancelEffectiveDate,
+  });
+
+  const events = await listSubscriptionEventsByContractId(contract.id);
+  const event = await ensureSimulationEvent({
+    events,
+    contractId: contract.id,
+    eventType: "participant_subscription_cancel_simulated",
+    referenceId: `${intent.id}:${cancelEffectiveDate}`,
+    simulationMetadata,
+    payload: {
+      course_registration_intent_id: intent.id,
+      cancel_effective_date: cancelEffectiveDate,
+      participant_status: nextStatus,
+      reason: input.reason?.trim() || null,
+    },
+  });
+
+  return {
+    subscriptionContractId: contract.id,
+    courseRegistrationIntentId: intent.id,
+    eventId: event.id,
+    newStatus: nextStatus,
+    nextRenewalBlocked: isNextRenewalBlockedByCancel(contract.nextChargeAt, cancelEffectiveDate),
+    affectedPeriodIds: [],
+    affectedChargeIds: [],
     simulationMetadata,
   };
 }

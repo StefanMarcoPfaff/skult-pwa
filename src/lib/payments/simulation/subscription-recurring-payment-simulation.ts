@@ -51,13 +51,22 @@ type LedgerEntryRow = {
   id: string;
 };
 
+type ParticipantIntentRecurringRow = {
+  id: string;
+  subscription_status: string | null;
+  subscription_pause_start_date: string | null;
+  subscription_pause_end_date: string | null;
+  subscription_stop_date: string | null;
+};
+
 type RecurringSimulationResult = {
   subscriptionContractId: string;
+  courseRegistrationIntentId: string | null;
   subscriptionPeriodId: string | null;
   subscriptionChargeId: string | null;
   paymentTransactionId: string | null;
   ledgerEntryId: string | null;
-  skippedReason: "pause" | "contract_ended" | null;
+  skippedReason: "pause" | "contract_ended" | "participant_pause" | "participant_ended" | null;
   simulationMetadata: ReturnType<typeof buildSimulationMetadata>;
 };
 
@@ -478,6 +487,32 @@ async function loadRelevantPauseWindows(contract: SubscriptionContract): Promise
   return [...byContract, ...byCourse];
 }
 
+async function loadParticipantPauseWindows(contract: SubscriptionContract): Promise<SubscriptionPauseWindow[]> {
+  if (!contract.courseRegistrationIntentId) {
+    return [];
+  }
+
+  return listSubscriptionPauseWindowsByScope({
+    scopeType: "participant",
+    scopeId: contract.courseRegistrationIntentId,
+  });
+}
+
+async function loadParticipantIntent(contract: SubscriptionContract): Promise<ParticipantIntentRecurringRow | null> {
+  if (!contract.courseRegistrationIntentId) {
+    return null;
+  }
+
+  const admin = createSupabaseAdmin();
+  const { data } = await admin
+    .from("course_registration_intents")
+    .select("id,subscription_status,subscription_pause_start_date,subscription_pause_end_date,subscription_stop_date")
+    .eq("id", contract.courseRegistrationIntentId)
+    .maybeSingle<ParticipantIntentRecurringRow>();
+
+  return data ?? null;
+}
+
 async function findExistingRecurringSimulation(input: {
   contractId: string;
   serviceMonth: string;
@@ -567,6 +602,7 @@ export async function simulateSubscriptionRecurringPayment(input: {
   if (existingSimulation) {
     return {
       subscriptionContractId: contract.id,
+      courseRegistrationIntentId: contract.courseRegistrationIntentId,
       subscriptionPeriodId: existingSimulation.period.id,
       subscriptionChargeId: existingSimulation.charge.id,
       paymentTransactionId: existingSimulation.paymentTransactionId,
@@ -587,6 +623,7 @@ export async function simulateSubscriptionRecurringPayment(input: {
 
     return {
       subscriptionContractId: contract.id,
+      courseRegistrationIntentId: contract.courseRegistrationIntentId,
       subscriptionPeriodId: null,
       subscriptionChargeId: null,
       paymentTransactionId: null,
@@ -623,11 +660,65 @@ export async function simulateSubscriptionRecurringPayment(input: {
 
     return {
       subscriptionContractId: contract.id,
+      courseRegistrationIntentId: contract.courseRegistrationIntentId,
       subscriptionPeriodId: period.id,
       subscriptionChargeId: null,
       paymentTransactionId: null,
       ledgerEntryId: null,
       skippedReason: "pause",
+      simulationMetadata,
+    };
+  }
+
+  const participantIntent = await loadParticipantIntent(contract);
+  const participantPauseWindows = await loadParticipantPauseWindows(contract);
+  const participantPauseWindow =
+    participantPauseWindows.find((window) => isFullyCoveredByPauseWindow(window, monthStart, monthEnd)) ?? null;
+  const participantPauseFromIntent =
+    participantIntent &&
+    ["paused", "pause_scheduled"].includes(participantIntent.subscription_status ?? "") &&
+    participantIntent.subscription_pause_start_date &&
+    participantIntent.subscription_pause_end_date &&
+    participantIntent.subscription_pause_start_date <= monthStart &&
+    participantIntent.subscription_pause_end_date >= monthEnd;
+  if (participantPauseWindow || participantPauseFromIntent) {
+    await ensureSimulationEvent({
+      events,
+      contractId: contract.id,
+      eventType: "recurring_charge_skipped_due_to_participant_pause",
+      simulationMetadata,
+      referenceId: participantPauseWindow?.id ?? `${participantIntent?.id ?? contract.id}:${monthStart}`,
+    });
+
+    return {
+      subscriptionContractId: contract.id,
+      courseRegistrationIntentId: contract.courseRegistrationIntentId,
+      subscriptionPeriodId: null,
+      subscriptionChargeId: null,
+      paymentTransactionId: null,
+      ledgerEntryId: null,
+      skippedReason: "participant_pause",
+      simulationMetadata,
+    };
+  }
+
+  if (participantIntent?.subscription_stop_date && participantIntent.subscription_stop_date < monthEnd) {
+    await ensureSimulationEvent({
+      events,
+      contractId: contract.id,
+      eventType: "recurring_charge_skipped_due_to_participant_end",
+      simulationMetadata,
+      referenceId: participantIntent.subscription_stop_date,
+    });
+
+    return {
+      subscriptionContractId: contract.id,
+      courseRegistrationIntentId: contract.courseRegistrationIntentId,
+      subscriptionPeriodId: null,
+      subscriptionChargeId: null,
+      paymentTransactionId: null,
+      ledgerEntryId: null,
+      skippedReason: "participant_ended",
       simulationMetadata,
     };
   }
@@ -718,6 +809,7 @@ export async function simulateSubscriptionRecurringPayment(input: {
 
   return {
     subscriptionContractId: contract.id,
+    courseRegistrationIntentId: contract.courseRegistrationIntentId,
     subscriptionPeriodId: period.id,
     subscriptionChargeId: charge.id,
     paymentTransactionId,

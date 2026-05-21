@@ -2,6 +2,8 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { canRunPaymentsV2Simulation } from "@/lib/payments/simulation";
 import DashboardBackLink from "@/app/dashboard/_components/DashboardBackLink";
 import {
+  simulateParticipantSubscriptionCancelAction,
+  simulateParticipantSubscriptionPauseAction,
   simulateSubscriptionCancelAction,
   simulateSubscriptionInitialPaymentSuccessAction,
   simulateSubscriptionPauseAction,
@@ -111,6 +113,7 @@ type SimulationIntentRow = {
   first_name: string | null;
   last_name: string | null;
   is_simulation: boolean | null;
+  subscription_status: string | null;
 };
 
 type SimulationCourseRow = {
@@ -121,6 +124,7 @@ type SimulationCourseRow = {
 type SearchParams = {
   action?: string;
   contractId?: string;
+  courseRegistrationIntentId?: string;
   pauseWindowId?: string;
   eventId?: string;
   lifecycleStatus?: string;
@@ -136,9 +140,15 @@ type SimulationContractOption = {
   label: string;
 };
 
+type SimulationParticipantOption = {
+  id: string;
+  label: string;
+};
+
 function ActionNotice({
   action,
   contractId,
+  courseRegistrationIntentId,
   pauseWindowId,
   eventId,
   lifecycleStatus,
@@ -150,6 +160,7 @@ function ActionNotice({
 }: {
   action: string | undefined;
   contractId?: string | undefined;
+  courseRegistrationIntentId?: string | undefined;
   pauseWindowId?: string | undefined;
   eventId?: string | undefined;
   lifecycleStatus?: string | undefined;
@@ -192,6 +203,24 @@ function ActionNotice({
     message = "Monatszahlung wurde intern uebersprungen, weil der Vertrag vor dem Zielmonat beendet ist.";
     toneClass = "border-amber-200 bg-amber-50 text-amber-800";
     details = <div className="mt-2 text-xs">contract_id: {contractId ?? "-"}</div>;
+  } else if (action.startsWith("recurring-pay-skipped-participant_pause-")) {
+    message = "Monatszahlung wurde wegen einer aktiven Teilnehmer*innen-Pause des Zielmonats intern uebersprungen.";
+    toneClass = "border-amber-200 bg-amber-50 text-amber-800";
+    details = (
+      <div className="mt-2 text-xs">
+        <div>contract_id: {contractId ?? "-"}</div>
+        <div>course_registration_intent_id: {courseRegistrationIntentId ?? "-"}</div>
+      </div>
+    );
+  } else if (action.startsWith("recurring-pay-skipped-participant_ended-")) {
+    message = "Monatszahlung wurde intern uebersprungen, weil die Teilnehmer*innen-Teilnahme vor dem Zielmonat beendet ist.";
+    toneClass = "border-amber-200 bg-amber-50 text-amber-800";
+    details = (
+      <div className="mt-2 text-xs">
+        <div>contract_id: {contractId ?? "-"}</div>
+        <div>course_registration_intent_id: {courseRegistrationIntentId ?? "-"}</div>
+      </div>
+    );
   } else if (action.startsWith("recurring-pay-error-")) {
     const code = action.slice("recurring-pay-error-".length);
     message = `Fehler bei der Monatszahlungs-Simulation: ${code}.`;
@@ -226,6 +255,41 @@ function ActionNotice({
   } else if (action.startsWith("lifecycle-cancel-error-")) {
     const code = action.slice("lifecycle-cancel-error-".length);
     message = `Fehler bei der Kündigungs-Simulation: ${code}.`;
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+  } else if (action.startsWith("participant-lifecycle-pause-ok-")) {
+    message =
+      "Teilnehmer*innen-Pause intern simuliert. Keine echten Zahlungen, keine echte Auszahlung, keine Kund*innenmail.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+    details = (
+      <div className="mt-2 text-xs">
+        <div>course_registration_intent_id: {courseRegistrationIntentId ?? "-"}</div>
+        <div>contract_id: {contractId ?? "-"}</div>
+        <div>pause_window_id: {pauseWindowId ?? "-"}</div>
+        <div>event_id: {eventId ?? "-"}</div>
+        <div>neuer Status: {lifecycleStatus ?? "-"}</div>
+        <div>naechstes Renewal blockiert: {renewalBlocked === "yes" ? "ja" : renewalBlocked === "no" ? "nein" : "-"}</div>
+      </div>
+    );
+  } else if (action.startsWith("participant-lifecycle-pause-error-")) {
+    const code = action.slice("participant-lifecycle-pause-error-".length);
+    message = `Fehler bei der Teilnehmer*innen-Pause-Simulation: ${code}.`;
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+  } else if (action.startsWith("participant-lifecycle-cancel-ok-")) {
+    message =
+      "Teilnehmer*innen-Kuendigung intern simuliert. Keine echten Zahlungen, keine echte Auszahlung, keine Kund*innenmail.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+    details = (
+      <div className="mt-2 text-xs">
+        <div>course_registration_intent_id: {courseRegistrationIntentId ?? "-"}</div>
+        <div>contract_id: {contractId ?? "-"}</div>
+        <div>event_id: {eventId ?? "-"}</div>
+        <div>neuer Status: {lifecycleStatus ?? "-"}</div>
+        <div>naechstes Renewal blockiert: {renewalBlocked === "yes" ? "ja" : renewalBlocked === "no" ? "nein" : "-"}</div>
+      </div>
+    );
+  } else if (action.startsWith("participant-lifecycle-cancel-error-")) {
+    const code = action.slice("participant-lifecycle-cancel-error-".length);
+    message = `Fehler bei der Teilnehmer*innen-Kuendigungs-Simulation: ${code}.`;
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
   }
 
@@ -322,6 +386,36 @@ function SimulationContractSelect({
       >
         <option value="" disabled>
           Bitte Simulations-Contract auswaehlen
+        </option>
+        {options.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function SimulationParticipantSelect({
+  options,
+  inputName,
+  label,
+}: {
+  options: SimulationParticipantOption[];
+  inputName: string;
+  label: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">{label}</span>
+      <select
+        name={inputName}
+        defaultValue=""
+        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0"
+      >
+        <option value="" disabled>
+          Bitte Simulations-Teilnehmer*in auswaehlen
         </option>
         {options.map((option) => (
           <option key={option.id} value={option.id}>
@@ -519,6 +613,129 @@ function LifecycleCancelForm({ contractOptions }: { contractOptions: SimulationC
   );
 }
 
+function ParticipantLifecyclePauseForm({ participantOptions }: { participantOptions: SimulationParticipantOption[] }) {
+  return (
+    <form
+      action={simulateParticipantSubscriptionPauseAction}
+      className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm"
+    >
+      <div className="space-y-3">
+        <div>
+          <div className="text-sm font-semibold text-slate-900">Teilnehmer*innen-Pause simulieren</div>
+          <div className="mt-1 text-xs text-slate-700">
+            Legt ein participant-scope Pause Window an, aktualisiert nur den simulierten Intent und laesst den Contract
+            fuer andere Teilnehmer*innen unberuehrt.
+          </div>
+        </div>
+        <SimulationParticipantSelect
+          options={participantOptions}
+          inputName="courseRegistrationIntentId"
+          label="course_registration_intent_id"
+        />
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Pause Startdatum</span>
+          <input
+            name="pauseStartDate"
+            type="text"
+            placeholder="YYYY-MM-01"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Pause Enddatum</span>
+          <input
+            name="pauseEndDate"
+            type="text"
+            placeholder="YYYY-MM-31"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Grund optional</span>
+          <input
+            name="reason"
+            type="text"
+            placeholder="z. B. Urlaub eines Kindes"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Scenario Note optional</span>
+          <input
+            name="scenarioNote"
+            type="text"
+            placeholder="Kurznotiz"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <button
+          type="submit"
+          className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+        >
+          Teilnehmer*innen-Pause simulieren
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function ParticipantLifecycleCancelForm({ participantOptions }: { participantOptions: SimulationParticipantOption[] }) {
+  return (
+    <form
+      action={simulateParticipantSubscriptionCancelAction}
+      className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm"
+    >
+      <div className="space-y-3">
+        <div>
+          <div className="text-sm font-semibold text-slate-900">Teilnehmer*innen-Kuendigung simulieren</div>
+          <div className="mt-1 text-xs text-slate-700">
+            Beendet nur die simulierte Teilnahme zum Monatsende. Der Contract bleibt fuer andere Teilnehmer*innen
+            unveraendert.
+          </div>
+        </div>
+        <SimulationParticipantSelect
+          options={participantOptions}
+          inputName="courseRegistrationIntentId"
+          label="course_registration_intent_id"
+        />
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Kuendigungs-/Enddatum</span>
+          <input
+            name="cancelEffectiveDate"
+            type="text"
+            placeholder="YYYY-MM-31"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Grund optional</span>
+          <input
+            name="reason"
+            type="text"
+            placeholder="z. B. Teilnehmer*in beendet Kurs"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Scenario Note optional</span>
+          <input
+            name="scenarioNote"
+            type="text"
+            placeholder="Kurznotiz"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <button
+          type="submit"
+          className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+        >
+          Teilnehmer*innen-Kuendigung simulieren
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export default async function SubscriptionAuditPage({
   searchParams,
 }: {
@@ -597,7 +814,7 @@ export default async function SubscriptionAuditPage({
     simulationIntentIds.length > 0
       ? admin
           .from("course_registration_intents")
-          .select("id,course_id,first_name,last_name,is_simulation")
+          .select("id,course_id,first_name,last_name,is_simulation,subscription_status")
           .in("id", simulationIntentIds)
           .returns<SimulationIntentRow[]>()
       : { data: [] as SimulationIntentRow[] },
@@ -636,6 +853,37 @@ export default async function SubscriptionAuditPage({
         ].join(" | "),
       };
     });
+  const participantOptions = contracts
+    .filter((contract) => {
+      const intent = contract.course_registration_intent_id
+        ? simulationIntentById.get(contract.course_registration_intent_id)
+        : null;
+      return (
+        intent?.is_simulation === true &&
+        ["active", "pause_scheduled", "paused", "cancel_scheduled", "cancelled"].includes(contract.status) &&
+        ["active", "pause_scheduled", "paused", "cancel_scheduled", "cancelled"].includes(intent.subscription_status ?? "")
+      );
+    })
+    .map<SimulationParticipantOption>((contract) => {
+      const intent = contract.course_registration_intent_id
+        ? simulationIntentById.get(contract.course_registration_intent_id)
+        : null;
+      const course = simulationCourseById.get(contract.course_id);
+      const participantName =
+        [intent?.first_name, intent?.last_name].filter(Boolean).join(" ").trim() || "Teilnehmer*in";
+      const nextPeriod = contract.next_charge_at ? formatDateTime(contract.next_charge_at) : "offen";
+      return {
+        id: intent?.id ?? contract.id,
+        label: [
+          course?.title?.trim() || "Laufendes Angebot",
+          participantName,
+          `Status: ${intent?.subscription_status ?? "-"}`,
+          `contract: ${contract.id}`,
+          `naechster Zeitraum: ${nextPeriod}`,
+          `Betrag: ${formatMoney(contract.base_amount_cents, contract.currency)}`,
+        ].join(" | "),
+      };
+    });
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 md:px-8">
@@ -660,6 +908,7 @@ export default async function SubscriptionAuditPage({
         <ActionNotice
           action={sp.action}
           contractId={sp.contractId}
+          courseRegistrationIntentId={sp.courseRegistrationIntentId}
           pauseWindowId={sp.pauseWindowId}
           eventId={sp.eventId}
           lifecycleStatus={sp.lifecycleStatus}
@@ -689,6 +938,13 @@ export default async function SubscriptionAuditPage({
               <div className="grid gap-4 md:grid-cols-2">
                 <LifecyclePauseForm contractOptions={contractOptions} />
                 <LifecycleCancelForm contractOptions={contractOptions} />
+              </div>
+              <div className="rounded-2xl border border-amber-300 bg-amber-100 px-4 py-3 text-sm text-amber-950">
+                Teilnehmer*innen-Lifecycle simulieren. Nur Simulations-Intents, keine Provider-Calls, keine Mails.
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <ParticipantLifecyclePauseForm participantOptions={participantOptions} />
+                <ParticipantLifecycleCancelForm participantOptions={participantOptions} />
               </div>
             </div>
           ) : (
