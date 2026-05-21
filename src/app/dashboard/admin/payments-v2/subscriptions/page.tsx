@@ -105,15 +105,65 @@ type SubscriptionEventRow = {
   created_at: string;
 };
 
-type SearchParams = {
-  action?: string;
+type SimulationIntentRow = {
+  id: string;
+  course_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  is_simulation: boolean | null;
 };
 
-function ActionNotice({ action }: { action: string | undefined }) {
+type SimulationCourseRow = {
+  id: string;
+  title: string | null;
+};
+
+type SearchParams = {
+  action?: string;
+  contractId?: string;
+  pauseWindowId?: string;
+  eventId?: string;
+  lifecycleStatus?: string;
+  renewalBlocked?: string;
+  periodId?: string;
+  chargeId?: string;
+  paymentTransactionId?: string;
+  ledgerEntryId?: string;
+};
+
+type SimulationContractOption = {
+  id: string;
+  label: string;
+};
+
+function ActionNotice({
+  action,
+  contractId,
+  pauseWindowId,
+  eventId,
+  lifecycleStatus,
+  renewalBlocked,
+  periodId,
+  chargeId,
+  paymentTransactionId,
+  ledgerEntryId,
+}: {
+  action: string | undefined;
+  contractId?: string | undefined;
+  pauseWindowId?: string | undefined;
+  eventId?: string | undefined;
+  lifecycleStatus?: string | undefined;
+  renewalBlocked?: string | undefined;
+  periodId?: string | undefined;
+  chargeId?: string | undefined;
+  paymentTransactionId?: string | undefined;
+  ledgerEntryId?: string | undefined;
+}) {
   if (!action) return null;
 
   let message = "Interne Simulation ausgefuehrt.";
   let toneClass = "border-slate-200 bg-slate-100 text-slate-700";
+  let details = null;
 
   if (action.startsWith("initial-pay-ok-")) {
     message = "Kurs-Erstzahlung intern simuliert. Keine echte Zahlung, keine echte Auszahlung, keine Kund*innenmail.";
@@ -125,12 +175,23 @@ function ActionNotice({ action }: { action: string | undefined }) {
   } else if (action.startsWith("recurring-pay-ok-")) {
     message = "Monatszahlung intern simuliert. Keine echte Zahlung, keine echte Auszahlung, keine Kund*innenmail.";
     toneClass = "border-green-200 bg-green-50 text-green-800";
+    details = (
+      <div className="mt-2 text-xs">
+        <div>contract_id: {contractId ?? "-"}</div>
+        <div>period_id: {periodId ?? "-"}</div>
+        <div>charge_id: {chargeId ?? "-"}</div>
+        <div>payment_transaction_id: {paymentTransactionId ?? "-"}</div>
+        <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
+      </div>
+    );
   } else if (action.startsWith("recurring-pay-skipped-pause-")) {
     message = "Monatszahlung wurde wegen voller Pause des Zielmonats intern uebersprungen.";
     toneClass = "border-amber-200 bg-amber-50 text-amber-800";
+    details = <div className="mt-2 text-xs">contract_id: {contractId ?? "-"}</div>;
   } else if (action.startsWith("recurring-pay-skipped-contract_ended-")) {
     message = "Monatszahlung wurde intern uebersprungen, weil der Vertrag vor dem Zielmonat beendet ist.";
     toneClass = "border-amber-200 bg-amber-50 text-amber-800";
+    details = <div className="mt-2 text-xs">contract_id: {contractId ?? "-"}</div>;
   } else if (action.startsWith("recurring-pay-error-")) {
     const code = action.slice("recurring-pay-error-".length);
     message = `Fehler bei der Monatszahlungs-Simulation: ${code}.`;
@@ -138,6 +199,15 @@ function ActionNotice({ action }: { action: string | undefined }) {
   } else if (action.startsWith("lifecycle-pause-ok-")) {
     message = "Pause intern simuliert. Keine echten Zahlungen, keine echte Auszahlung, keine Kund*innenmail.";
     toneClass = "border-green-200 bg-green-50 text-green-800";
+    details = (
+      <div className="mt-2 text-xs">
+        <div>contract_id: {contractId ?? "-"}</div>
+        <div>pause_window_id: {pauseWindowId ?? "-"}</div>
+        <div>event_id: {eventId ?? "-"}</div>
+        <div>neuer Status: {lifecycleStatus ?? "-"}</div>
+        <div>naechstes Renewal blockiert: {renewalBlocked === "yes" ? "ja" : renewalBlocked === "no" ? "nein" : "-"}</div>
+      </div>
+    );
   } else if (action.startsWith("lifecycle-pause-error-")) {
     const code = action.slice("lifecycle-pause-error-".length);
     message = `Fehler bei der Pause-Simulation: ${code}.`;
@@ -145,13 +215,26 @@ function ActionNotice({ action }: { action: string | undefined }) {
   } else if (action.startsWith("lifecycle-cancel-ok-")) {
     message = "Kündigung intern simuliert. Keine echten Zahlungen, keine echte Auszahlung, keine Kund*innenmail.";
     toneClass = "border-green-200 bg-green-50 text-green-800";
+    details = (
+      <div className="mt-2 text-xs">
+        <div>contract_id: {contractId ?? "-"}</div>
+        <div>event_id: {eventId ?? "-"}</div>
+        <div>neuer Status: {lifecycleStatus ?? "-"}</div>
+        <div>naechstes Renewal blockiert: {renewalBlocked === "yes" ? "ja" : renewalBlocked === "no" ? "nein" : "-"}</div>
+      </div>
+    );
   } else if (action.startsWith("lifecycle-cancel-error-")) {
     const code = action.slice("lifecycle-cancel-error-".length);
     message = `Fehler bei der Kündigungs-Simulation: ${code}.`;
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
   }
 
-  return <div className={`rounded-2xl border px-4 py-3 text-sm ${toneClass}`}>{message}</div>;
+  return (
+    <div className={`rounded-2xl border px-4 py-3 text-sm ${toneClass}`}>
+      <div>{message}</div>
+      {details}
+    </div>
+  );
 }
 
 function SimulationForm() {
@@ -220,7 +303,37 @@ function SimulationForm() {
   );
 }
 
-function RecurringSimulationForm() {
+function SimulationContractSelect({
+  options,
+  inputName,
+  label,
+}: {
+  options: SimulationContractOption[];
+  inputName: string;
+  label: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">{label}</span>
+      <select
+        name={inputName}
+        defaultValue=""
+        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0"
+      >
+        <option value="" disabled>
+          Bitte Simulations-Contract auswaehlen
+        </option>
+        {options.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function RecurringSimulationForm({ contractOptions }: { contractOptions: SimulationContractOption[] }) {
   return (
     <form action={simulateSubscriptionRecurringPaymentAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
       <div className="space-y-3">
@@ -230,15 +343,11 @@ function RecurringSimulationForm() {
             Erzeugt genau eine Monatsperiode, eine monthly_recurring-Charge, eine interne paid Payment-Transaction, einen Ledger-Eintrag oder ueberspringt sauber bei voller Pause bzw. beendetem Vertrag.
           </div>
         </div>
-        <label className="block">
-          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">subscription_contract_id</span>
-          <input
-            name="subscriptionContractId"
-            type="text"
-            placeholder="uuid"
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
-          />
-        </label>
+        <SimulationContractSelect
+          options={contractOptions}
+          inputName="subscriptionContractId"
+          label="subscription_contract_id"
+        />
         <label className="block">
           <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">target_month optional</span>
           <input
@@ -295,7 +404,7 @@ function RecurringSimulationForm() {
   );
 }
 
-function LifecyclePauseForm() {
+function LifecyclePauseForm({ contractOptions }: { contractOptions: SimulationContractOption[] }) {
   return (
     <form action={simulateSubscriptionPauseAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
       <div className="space-y-3">
@@ -305,15 +414,11 @@ function LifecyclePauseForm() {
             Legt ein contract-scope Pause Window an oder wiederverwendet es, setzt den Contract auf `pause_scheduled` oder `paused` und pausiert betroffene offene Perioden.
           </div>
         </div>
-        <label className="block">
-          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">subscription_contract_id</span>
-          <input
-            name="subscriptionContractId"
-            type="text"
-            placeholder="uuid"
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
-          />
-        </label>
+        <SimulationContractSelect
+          options={contractOptions}
+          inputName="subscriptionContractId"
+          label="subscription_contract_id"
+        />
         <label className="block">
           <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Pause Startdatum</span>
           <input
@@ -329,6 +434,15 @@ function LifecyclePauseForm() {
             name="pauseEndDate"
             type="text"
             placeholder="YYYY-MM-31"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Grund optional</span>
+          <input
+            name="reason"
+            type="text"
+            placeholder="z. B. Sommerpause"
             className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
           />
         </label>
@@ -352,7 +466,7 @@ function LifecyclePauseForm() {
   );
 }
 
-function LifecycleCancelForm() {
+function LifecycleCancelForm({ contractOptions }: { contractOptions: SimulationContractOption[] }) {
   return (
     <form action={simulateSubscriptionCancelAction} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
       <div className="space-y-3">
@@ -362,21 +476,26 @@ function LifecycleCancelForm() {
             Setzt den Contract auf `cancel_scheduled` oder `cancelled` und storniert zukünftige offene Perioden und Charges nach dem Enddatum.
           </div>
         </div>
-        <label className="block">
-          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">subscription_contract_id</span>
-          <input
-            name="subscriptionContractId"
-            type="text"
-            placeholder="uuid"
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
-          />
-        </label>
+        <SimulationContractSelect
+          options={contractOptions}
+          inputName="subscriptionContractId"
+          label="subscription_contract_id"
+        />
         <label className="block">
           <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Kündigungs-/Enddatum</span>
           <input
             name="cancelEffectiveDate"
             type="text"
             placeholder="YYYY-MM-31"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">Grund optional</span>
+          <input
+            name="reason"
+            type="text"
+            placeholder="z. B. Kuendigung zum Monatsende"
             className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
           />
         </label>
@@ -466,6 +585,57 @@ export default async function SubscriptionAuditPage({
   const pauseWindows = pauseWindowsResult.data ?? [];
   const credits = creditsResult.data ?? [];
   const events = eventsResult.data ?? [];
+  const simulationIntentIds = Array.from(
+    new Set(
+      contracts
+        .map((contract) => contract.course_registration_intent_id)
+        .filter((intentId): intentId is string => Boolean(intentId))
+    )
+  );
+  const simulationCourseIds = Array.from(new Set(contracts.map((contract) => contract.course_id)));
+  const [{ data: simulationIntents }, { data: simulationCourses }] = await Promise.all([
+    simulationIntentIds.length > 0
+      ? admin
+          .from("course_registration_intents")
+          .select("id,course_id,first_name,last_name,is_simulation")
+          .in("id", simulationIntentIds)
+          .returns<SimulationIntentRow[]>()
+      : { data: [] as SimulationIntentRow[] },
+    simulationCourseIds.length > 0
+      ? admin.from("courses").select("id,title").in("id", simulationCourseIds).returns<SimulationCourseRow[]>()
+      : { data: [] as SimulationCourseRow[] },
+  ]);
+  const simulationIntentById = new Map((simulationIntents ?? []).map((intent) => [intent.id, intent] as const));
+  const simulationCourseById = new Map((simulationCourses ?? []).map((course) => [course.id, course] as const));
+  const contractOptions = contracts
+    .filter((contract) => {
+      const intent = contract.course_registration_intent_id
+        ? simulationIntentById.get(contract.course_registration_intent_id)
+        : null;
+      return (
+        intent?.is_simulation === true &&
+        ["active", "pause_scheduled", "paused", "cancel_scheduled", "cancelled"].includes(contract.status)
+      );
+    })
+    .map<SimulationContractOption>((contract) => {
+      const intent = contract.course_registration_intent_id
+        ? simulationIntentById.get(contract.course_registration_intent_id)
+        : null;
+      const course = simulationCourseById.get(contract.course_id);
+      const participantName =
+        [intent?.first_name, intent?.last_name].filter(Boolean).join(" ").trim() || "Teilnehmer*in";
+      const nextPeriod = contract.next_charge_at ? formatDateTime(contract.next_charge_at) : "offen";
+      return {
+        id: contract.id,
+        label: [
+          course?.title?.trim() || "Laufendes Angebot",
+          participantName,
+          `Status: ${contract.status}`,
+          `naechster Zeitraum: ${nextPeriod}`,
+          `Betrag: ${formatMoney(contract.base_amount_cents, contract.currency)}`,
+        ].join(" | "),
+      };
+    });
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 md:px-8">
@@ -487,7 +657,18 @@ export default async function SubscriptionAuditPage({
           </div>
         </header>
 
-        <ActionNotice action={sp.action} />
+        <ActionNotice
+          action={sp.action}
+          contractId={sp.contractId}
+          pauseWindowId={sp.pauseWindowId}
+          eventId={sp.eventId}
+          lifecycleStatus={sp.lifecycleStatus}
+          renewalBlocked={sp.renewalBlocked}
+          periodId={sp.periodId}
+          chargeId={sp.chargeId}
+          paymentTransactionId={sp.paymentTransactionId}
+          ledgerEntryId={sp.ledgerEntryId}
+        />
 
         <Section
           title="Interne Kurs-Simulation"
@@ -500,14 +681,14 @@ export default async function SubscriptionAuditPage({
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <SimulationForm />
-                <RecurringSimulationForm />
+                <RecurringSimulationForm contractOptions={contractOptions} />
               </div>
               <div className="rounded-2xl border border-amber-300 bg-amber-100 px-4 py-3 text-sm text-amber-950">
                 Kurs-Lifecycle simulieren. Keine echten Zahlungen, keine echte Auszahlung, keine Kund*innenmail.
               </div>
               <div className="grid gap-4 md:grid-cols-2">
-                <LifecyclePauseForm />
-                <LifecycleCancelForm />
+                <LifecyclePauseForm contractOptions={contractOptions} />
+                <LifecycleCancelForm contractOptions={contractOptions} />
               </div>
             </div>
           ) : (

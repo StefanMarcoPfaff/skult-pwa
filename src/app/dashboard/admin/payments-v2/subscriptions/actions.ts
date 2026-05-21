@@ -11,8 +11,13 @@ import {
 import { simulateSubscriptionRecurringPayment } from "@/lib/payments/simulation/subscription-recurring-payment-simulation";
 import { PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH } from "../ui";
 
-function redirectWithActionState(actionState: string) {
-  redirect(`${PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH}?action=${encodeURIComponent(actionState)}`);
+function redirectWithActionState(actionState: string, params?: Record<string, string | null | undefined>) {
+  const search = new URLSearchParams({ action: actionState });
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (!value) continue;
+    search.set(key, value);
+  }
+  redirect(`${PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH}?${search.toString()}`);
 }
 
 function parseOptionalAmountCents(value: FormDataEntryValue | null): number | null {
@@ -75,7 +80,14 @@ export async function simulateSubscriptionRecurringPaymentAction(formData: FormD
     redirectWithActionState(
       result.skippedReason
         ? `recurring-pay-skipped-${result.skippedReason}-${result.subscriptionContractId}`
-        : `recurring-pay-ok-${result.subscriptionContractId}`
+        : `recurring-pay-ok-${result.subscriptionContractId}`,
+      {
+        contractId: result.subscriptionContractId,
+        periodId: result.subscriptionPeriodId,
+        chargeId: result.subscriptionChargeId,
+        paymentTransactionId: result.paymentTransactionId,
+        ledgerEntryId: result.ledgerEntryId,
+      }
     );
   } catch (error) {
     revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
@@ -98,9 +110,16 @@ export async function simulateSubscriptionPauseAction(formData: FormData) {
       pauseStartDate: String(formData.get("pauseStartDate") ?? "").trim(),
       pauseEndDate: String(formData.get("pauseEndDate") ?? "").trim(),
       scenarioNote: parseOptionalString(formData.get("scenarioNote")),
+      reason: parseOptionalString(formData.get("reason")),
     });
     revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
-    redirectWithActionState(`lifecycle-pause-ok-${result.subscriptionContractId}`);
+    redirectWithActionState(`lifecycle-pause-ok-${result.subscriptionContractId}`, {
+      contractId: result.subscriptionContractId,
+      pauseWindowId: result.pauseWindowId,
+      eventId: result.eventId,
+      lifecycleStatus: result.newStatus,
+      renewalBlocked: result.nextRenewalBlocked ? "yes" : "no",
+    });
   } catch (error) {
     revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
     if (error instanceof PaymentSimulationError) {
@@ -121,9 +140,15 @@ export async function simulateSubscriptionCancelAction(formData: FormData) {
       adminUserId: user.id,
       cancelEffectiveDate: String(formData.get("cancelEffectiveDate") ?? "").trim(),
       scenarioNote: parseOptionalString(formData.get("scenarioNote")),
+      reason: parseOptionalString(formData.get("reason")),
     });
     revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
-    redirectWithActionState(`lifecycle-cancel-ok-${result.subscriptionContractId}`);
+    redirectWithActionState(`lifecycle-cancel-ok-${result.subscriptionContractId}`, {
+      contractId: result.subscriptionContractId,
+      eventId: result.eventId,
+      lifecycleStatus: result.newStatus,
+      renewalBlocked: result.nextRenewalBlocked ? "yes" : "no",
+    });
   } catch (error) {
     revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
     if (error instanceof PaymentSimulationError) {

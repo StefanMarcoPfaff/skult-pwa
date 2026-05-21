@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getCourseParticipantTicketBindingId } from "@/lib/course-participant-bindings";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import {
   createSimulationKey,
@@ -8,6 +9,7 @@ import {
   type TestBookingSimulationScenario,
 } from "@/lib/payments/simulation/test-booking-metadata";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { issueCourseParticipantTicketForContract } from "@/lib/tickets";
 
 const DIRECT_COURSE_SCENARIO: TestBookingSimulationScenario = "direct_course_test_registration";
 
@@ -42,8 +44,17 @@ type DirectCourseIntentValidationRow = {
   course_id: string;
   status: string | null;
   is_simulation: boolean | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  subscription_status?: string | null;
   stripe_subscription_id: string | null;
   subscription_contract_id: string | null;
+};
+
+type SubscriptionContractValidationRow = {
+  id: string;
+  status: string | null;
 };
 
 type DirectCourseSimulationErrorCode =
@@ -60,6 +71,10 @@ type DirectCourseSimulationErrorCode =
   | "intent_not_simulation"
   | "intent_status_invalid"
   | "intent_has_external_subscription"
+  | "intent_missing_contract"
+  | "intent_not_active"
+  | "contract_not_found"
+  | "contract_not_active"
   | "intent_insert_failed";
 
 type DirectCourseSimulationStep = "course_lookup" | "intent_insert";
@@ -104,6 +119,16 @@ export type CreateDirectCourseTestRegistrationResult = {
   courseId: string;
   customerName: string;
   storedSimulationEmail: string;
+};
+
+export type PrepareDirectCourseParticipantTicketResult = {
+  courseRegistrationIntentId: string;
+  courseId: string;
+  subscriptionContractId: string;
+  ticketId: string;
+  ticketCreated: boolean;
+  ticketQrToken: string;
+  customerName: string;
 };
 
 function isValidEmail(email: string): boolean {
@@ -247,7 +272,9 @@ export async function loadSimulatableDirectCourseIntent(
   const admin = createSupabaseAdmin();
   const { data, error } = await admin
     .from("course_registration_intents")
-    .select("id,course_id,status,is_simulation,stripe_subscription_id,subscription_contract_id")
+    .select(
+      "id,course_id,status,is_simulation,first_name,last_name,email,subscription_status,stripe_subscription_id,subscription_contract_id"
+    )
     .eq("id", normalizedId)
     .maybeSingle<DirectCourseIntentValidationRow>();
 
@@ -286,6 +313,71 @@ export async function loadSimulatableDirectCourseIntent(
   }
 
   return data;
+}
+
+export async function prepareDirectCourseParticipantTicket(
+  courseRegistrationIntentId: string
+): Promise<PrepareDirectCourseParticipantTicketResult> {
+  const intent = await loadSimulatableDirectCourseIntent(courseRegistrationIntentId);
+  if (!intent.subscription_contract_id) {
+    throw new DirectCourseSimulationError({
+      code: "intent_missing_contract",
+      step: "intent_insert",
+      message: "Fuer diesen Simulations-Intent existiert noch kein subscription_contract. Bitte zuerst die Initialzahlung simulieren.",
+    });
+  }
+
+  if (intent.subscription_status !== "active") {
+    throw new DirectCourseSimulationError({
+      code: "intent_not_active",
+      step: "intent_insert",
+      message: "Nur aktive Simulations-Teilnahmen duerfen als Kursticket vorbereitet werden.",
+    });
+  }
+
+  const admin = createSupabaseAdmin();
+  const { data: contract, error: contractError } = await admin
+    .from("subscription_contracts")
+    .select("id,status")
+    .eq("id", intent.subscription_contract_id)
+    .maybeSingle<SubscriptionContractValidationRow>();
+
+  if (contractError || !contract) {
+    throw new DirectCourseSimulationError({
+      code: "contract_not_found",
+      step: "intent_insert",
+      message: "Der zugehoerige subscription_contract fuer diese Simulations-Teilnahme wurde nicht gefunden.",
+      supabaseMessage: contractError?.message ?? null,
+      supabaseCode: contractError?.code ?? null,
+    });
+  }
+
+  const participantBindingId = getCourseParticipantTicketBindingId(intent, contract.status ?? null);
+  if (!participantBindingId) {
+    throw new DirectCourseSimulationError({
+      code: "contract_not_active",
+      step: "intent_insert",
+      message: "Der Simulations-Contract ist nicht aktiv genug fuer ein Kursticket oder die Teilnahme ist nicht als aktiv markiert.",
+    });
+  }
+
+  const customerName = [intent.first_name, intent.last_name].filter(Boolean).join(" ").trim() || "Teilnehmer*in";
+  const result = await issueCourseParticipantTicketForContract({
+    subscriptionContractId: participantBindingId,
+    courseId: intent.course_id,
+    customerName,
+    customerEmail: intent.email ?? "simulation@example.invalid",
+  });
+
+  return {
+    courseRegistrationIntentId: intent.id,
+    courseId: intent.course_id,
+    subscriptionContractId: intent.subscription_contract_id,
+    ticketId: result.ticket.id,
+    ticketCreated: result.created,
+    ticketQrToken: result.ticket.qr_token,
+    customerName,
+  };
 }
 
 export async function createDirectCourseTestRegistration(

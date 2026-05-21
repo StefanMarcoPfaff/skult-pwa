@@ -197,16 +197,48 @@ export async function issueCourseParticipantTicketForSubscription(input: {
   customerName: string;
   customerEmail: string;
 }): Promise<TicketIssueResult> {
+  return issueCourseParticipantTicketForBinding({
+    participantBindingId: input.subscriptionId,
+    bindingKind: "subscription",
+    courseId: input.courseId,
+    customerName: input.customerName,
+    customerEmail: input.customerEmail,
+  });
+}
+
+export async function issueCourseParticipantTicketForContract(input: {
+  subscriptionContractId: string;
+  courseId: string | null;
+  customerName: string;
+  customerEmail: string;
+}): Promise<TicketIssueResult> {
+  return issueCourseParticipantTicketForBinding({
+    participantBindingId: input.subscriptionContractId,
+    bindingKind: "contract",
+    courseId: input.courseId,
+    customerName: input.customerName,
+    customerEmail: input.customerEmail,
+  });
+}
+
+async function issueCourseParticipantTicketForBinding(input: {
+  participantBindingId: string;
+  bindingKind: "subscription" | "contract";
+  courseId: string | null;
+  customerName: string;
+  customerEmail: string;
+}): Promise<TicketIssueResult> {
   const result = await createTicketRecordInternal({
     type: "course_participant",
-    subscriptionId: input.subscriptionId,
+    subscriptionId: input.participantBindingId,
     courseId: input.courseId,
     customerName: input.customerName,
     customerEmail: input.customerEmail,
   });
 
   logTicketEvent(result.created ? "course participant ticket created" : "course participant ticket reused", {
-    subscriptionId: input.subscriptionId,
+    bindingKind: input.bindingKind,
+    participantBindingId: input.participantBindingId,
     ticketId: result.ticket.id,
   });
 
@@ -214,7 +246,11 @@ export async function issueCourseParticipantTicketForSubscription(input: {
 }
 
 export async function loadTicketBySubscriptionId(subscriptionId: string): Promise<TicketRow | null> {
-  const normalizedId = subscriptionId.trim();
+  return loadCourseParticipantTicketByBindingId(subscriptionId);
+}
+
+export async function loadCourseParticipantTicketByBindingId(bindingId: string): Promise<TicketRow | null> {
+  const normalizedId = bindingId.trim();
   if (!normalizedId) return null;
 
   const admin = createSupabaseAdmin();

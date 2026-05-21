@@ -5,6 +5,7 @@ import DashboardBackLink from "@/app/dashboard/_components/DashboardBackLink";
 import { requirePaymentsV2SimulationAccess } from "@/lib/payments/simulation";
 import {
   prepareDirectCourseTestRegistrationAction,
+  prepareDirectCourseParticipantTicketAction,
   simulateDirectCourseInitialPaymentAction,
   prepareTrialTestBookingAction,
   prepareWorkshopTestBookingAction,
@@ -48,6 +49,7 @@ type SearchParams = {
   supabaseCode?: string;
   supabaseMessage?: string;
   ticketId?: string;
+  ticketQrToken?: string;
   ticketCreated?: string;
 };
 
@@ -243,6 +245,7 @@ export default async function TestBookingsAdminPage({
           supabaseCode={sp.supabaseCode}
           supabaseMessage={sp.supabaseMessage}
           ticketId={sp.ticketId}
+          ticketQrToken={sp.ticketQrToken}
           ticketCreated={sp.ticketCreated}
           paymentSimulated={sp.paymentSimulated}
           noticeMessage={sp.message}
@@ -351,7 +354,7 @@ export default async function TestBookingsAdminPage({
             <TestBookingSkeletonForm
               action={prepareDirectCourseTestRegistrationAction}
               title="Direkte Kurs-Testanmeldung erstellen"
-              description="Erzeugt einen Test-Intent fuer ein laufendes Angebot. Optional kann die interne Erstzahlung direkt simuliert werden. Keine PSP-Calls, keine Mails, kein Ticket."
+              description="Erzeugt einen Test-Intent fuer ein laufendes Angebot. Optional kann die interne Erstzahlung direkt simuliert und direkt danach das Kursticket fuer Teilnehmeransicht und Check-in vorbereitet werden."
             >
               <SelectInput name="courseId" label="Laufendes Angebot auswaehlen">
                 {(directCourseOffers ?? []).map((offer) => {
@@ -384,13 +387,19 @@ export default async function TestBookingsAdminPage({
                 label="Initialzahlung direkt simulieren"
                 description="Erzeugt nach dem Test-Intent intern Contract, erste Period, erste Charge, payment_transaction und ledger_entry."
               />
+              <CheckboxInput
+                name="prepareParticipantTicket"
+                label="Kursticket danach vorbereiten"
+                description="Nur zusammen mit der Initialzahlung: erzeugt oder reused das contract-basierte Kursticket fuer Teilnehmeransicht und Check-in."
+              />
             </TestBookingSkeletonForm>
 
             <div className="mt-4">
               <TestBookingSkeletonForm
                 action={simulateDirectCourseInitialPaymentAction}
                 title="Initialzahlung fuer bestehenden Test-Intent simulieren"
-                description="Nutzt einen vorhandenen Simulations-Intent und erzeugt intern Contract, erste Period, erste Charge, payment_transaction und ledger_entry."
+                description="Nutzt einen vorhandenen Simulations-Intent und erzeugt intern Contract, erste Period, erste Charge, payment_transaction und ledger_entry. Optional kann direkt danach das Kursticket vorbereitet werden."
+                submitLabel="Initialzahlung simulieren"
               >
                 <TextInput
                   name="courseRegistrationIntentId"
@@ -399,6 +408,26 @@ export default async function TestBookingsAdminPage({
                 />
                 <TextInput name="amountCents" label="Betrag optional" type="number" placeholder="6900" />
                 <TextInput name="currency" label="Waehrung optional" placeholder="EUR" />
+                <CheckboxInput
+                  name="prepareParticipantTicket"
+                  label="Kursticket danach vorbereiten"
+                  description="Erzeugt oder reused das contract-basierte Kursticket fuer Teilnehmeransicht und Check-in."
+                />
+              </TestBookingSkeletonForm>
+            </div>
+
+            <div className="mt-4">
+              <TestBookingSkeletonForm
+                action={prepareDirectCourseParticipantTicketAction}
+                title="Kurs-Ticket / Teilnehmeransicht vorbereiten"
+                description="Erzeugt oder reused fuer einen aktiven Simulations-Contract das Kursticket inklusive QR-Binding. Keine Stripe-Felder, keine Mail, kein Payment."
+                submitLabel="Ticket vorbereiten"
+              >
+                <TextInput
+                  name="courseRegistrationIntentId"
+                  label="course_registration_intent_id"
+                  placeholder="uuid"
+                />
               </TestBookingSkeletonForm>
             </div>
           </TestBookingsSection>

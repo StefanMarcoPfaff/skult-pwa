@@ -33,6 +33,9 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 type SubscriptionLifecycleResult = {
   subscriptionContractId: string;
   pauseWindowId?: string | null;
+  eventId: string;
+  newStatus: string;
+  nextRenewalBlocked: boolean;
   affectedPeriodIds: string[];
   affectedChargeIds: string[];
   simulationMetadata: ReturnType<typeof buildSimulationMetadata>;
@@ -115,6 +118,9 @@ async function ensureSimulationEvent(input: {
 async function maybeUpdateIntentSubscriptionStatus(input: {
   contract: SubscriptionContract;
   subscriptionStatus: "pause_scheduled" | "paused" | "cancel_scheduled" | "cancelled";
+  pauseStartDate?: string | null;
+  pauseEndDate?: string | null;
+  stopDate?: string | null;
 }) {
   if (!input.contract.courseRegistrationIntentId) {
     return;
@@ -125,8 +131,34 @@ async function maybeUpdateIntentSubscriptionStatus(input: {
     .from("course_registration_intents")
     .update({
       subscription_status: input.subscriptionStatus,
+      subscription_pause_start_date:
+        input.subscriptionStatus === "pause_scheduled" || input.subscriptionStatus === "paused"
+          ? input.pauseStartDate ?? null
+          : null,
+      subscription_pause_end_date:
+        input.subscriptionStatus === "pause_scheduled" || input.subscriptionStatus === "paused"
+          ? input.pauseEndDate ?? null
+          : null,
+      subscription_stop_date:
+        input.subscriptionStatus === "cancel_scheduled" || input.subscriptionStatus === "cancelled"
+          ? input.stopDate ?? null
+          : null,
+      subscription_cancel_scheduled_at:
+        input.subscriptionStatus === "cancel_scheduled" ? new Date().toISOString() : null,
     })
     .eq("id", input.contract.courseRegistrationIntentId);
+}
+
+function isNextRenewalBlockedByPause(nextChargeAt: string | null, pauseStartDate: string, pauseEndDate: string): boolean {
+  const nextChargeDate = normalizeSubscriptionDateString(nextChargeAt?.slice(0, 10) ?? null);
+  if (!nextChargeDate) return false;
+  return nextChargeDate >= pauseStartDate && nextChargeDate <= pauseEndDate;
+}
+
+function isNextRenewalBlockedByCancel(nextChargeAt: string | null, cancelEffectiveDate: string): boolean {
+  const nextChargeDate = normalizeSubscriptionDateString(nextChargeAt?.slice(0, 10) ?? null);
+  if (!nextChargeDate) return false;
+  return nextChargeDate > cancelEffectiveDate;
 }
 
 async function updatePeriodsAndChargesForPause(input: {
@@ -219,6 +251,7 @@ export async function simulateSubscriptionPause(input: {
   pauseStartDate: string;
   pauseEndDate: string;
   scenarioNote?: string | null;
+  reason?: string | null;
 }): Promise<SubscriptionLifecycleResult> {
   const subscriptionContractId = assertSimulationTargetId(input.subscriptionContractId);
   const pauseStartDate = normalizeRequiredDate(input.pauseStartDate, "pauseStartDate");
@@ -288,6 +321,7 @@ export async function simulateSubscriptionPause(input: {
         simulation: true,
         scenario: simulationMetadata.scenario,
         sourceAdminUi: simulationMetadata.source_admin_ui,
+        reason: input.reason?.trim() || null,
       },
     });
   }
@@ -310,10 +344,12 @@ export async function simulateSubscriptionPause(input: {
   await maybeUpdateIntentSubscriptionStatus({
     contract: updatedContract,
     subscriptionStatus: nextStatus,
+    pauseStartDate,
+    pauseEndDate,
   });
 
   const events = await listSubscriptionEventsByContractId(contract.id);
-  await ensureSimulationEvent({
+  const event = await ensureSimulationEvent({
     events,
     contractId: contract.id,
     eventType: "subscription_pause_simulated",
@@ -324,12 +360,17 @@ export async function simulateSubscriptionPause(input: {
       pause_start_date: pauseStartDate,
       pause_end_date: pauseEndDate,
       contract_status: nextStatus,
+      reason: input.reason?.trim() || null,
     },
   });
 
   return {
     subscriptionContractId: contract.id,
     pauseWindowId: pauseWindow.id,
+    eventId: event.id,
+    newStatus: nextStatus,
+    nextRenewalBlocked:
+      nextStatus === "paused" || isNextRenewalBlockedByPause(updatedContract.nextChargeAt, pauseStartDate, pauseEndDate),
     affectedPeriodIds,
     affectedChargeIds,
     simulationMetadata,
@@ -341,6 +382,7 @@ export async function simulateSubscriptionCancel(input: {
   adminUserId: string;
   cancelEffectiveDate: string;
   scenarioNote?: string | null;
+  reason?: string | null;
 }): Promise<SubscriptionLifecycleResult> {
   const subscriptionContractId = assertSimulationTargetId(input.subscriptionContractId);
   const cancelEffectiveDate = normalizeRequiredDate(input.cancelEffectiveDate, "cancelEffectiveDate");
@@ -388,10 +430,11 @@ export async function simulateSubscriptionCancel(input: {
   await maybeUpdateIntentSubscriptionStatus({
     contract: updatedContract,
     subscriptionStatus: nextStatus,
+    stopDate: cancelEffectiveDate,
   });
 
   const events = await listSubscriptionEventsByContractId(contract.id);
-  await ensureSimulationEvent({
+  const event = await ensureSimulationEvent({
     events,
     contractId: contract.id,
     eventType: "subscription_cancel_simulated",
@@ -401,11 +444,16 @@ export async function simulateSubscriptionCancel(input: {
       cancel_effective_date: cancelEffectiveDate,
       contract_status: nextStatus,
       ended_at: cancelEffectiveDate <= today ? toBerlinEndOfDayIso(cancelEffectiveDate) : null,
+      reason: input.reason?.trim() || null,
     },
   });
 
   return {
     subscriptionContractId: contract.id,
+    eventId: event.id,
+    newStatus: nextStatus,
+    nextRenewalBlocked:
+      nextStatus === "cancelled" || isNextRenewalBlockedByCancel(updatedContract.nextChargeAt, cancelEffectiveDate),
     affectedPeriodIds,
     affectedChargeIds,
     simulationMetadata,

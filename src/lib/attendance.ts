@@ -1,4 +1,5 @@
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { getContractParticipationGate } from "@/lib/subscription-participation";
 import { loadTicketByQrToken, type TicketRow, type TicketStatus } from "@/lib/tickets";
 
 export type AttendanceMethod = "teacher_scan" | "participant_scan" | "manual";
@@ -38,6 +39,20 @@ type AttendanceRecordResult = {
   attendance: AttendanceRow;
   ticket: AttendanceTicketRow;
   alreadyRecorded: boolean;
+};
+
+type ContractAttendanceRow = {
+  id: string;
+  status: string | null;
+  cancel_effective_date: string | null;
+  course_registration_intent_id: string | null;
+};
+
+type IntentAttendanceRow = {
+  subscription_status: string | null;
+  subscription_pause_start_date: string | null;
+  subscription_pause_end_date: string | null;
+  subscription_stop_date: string | null;
 };
 
 type AttendanceScope = {
@@ -116,6 +131,45 @@ async function markLegacyTicketCheckedIn(
   }
 }
 
+async function assertTicketAttendanceAllowed(ticket: AttendanceTicketRow, eventDate: string | null | undefined): Promise<void> {
+  if (!ticket.subscription_id) {
+    return;
+  }
+
+  const admin = createSupabaseAdmin();
+  const { data: contract } = await admin
+    .from("subscription_contracts")
+    .select("id,status,cancel_effective_date,course_registration_intent_id")
+    .eq("id", ticket.subscription_id)
+    .maybeSingle<ContractAttendanceRow>();
+
+  if (!contract) {
+    return;
+  }
+
+  const { data: intent } = contract.course_registration_intent_id
+    ? await admin
+        .from("course_registration_intents")
+        .select("subscription_status,subscription_pause_start_date,subscription_pause_end_date,subscription_stop_date")
+        .eq("id", contract.course_registration_intent_id)
+        .maybeSingle<IntentAttendanceRow>()
+    : { data: null as IntentAttendanceRow | null };
+
+  const gate = getContractParticipationGate({
+    contractStatus: contract.status,
+    subscriptionStatus: intent?.subscription_status ?? null,
+    pauseStartDate: intent?.subscription_pause_start_date ?? null,
+    pauseEndDate: intent?.subscription_pause_end_date ?? null,
+    cancelEffectiveDate: contract.cancel_effective_date,
+    subscriptionStopDate: intent?.subscription_stop_date ?? null,
+    eventDate: eventDate ?? null,
+  });
+
+  if (!gate.allowed) {
+    throw new Error(gate.reason ?? "Ticket is not valid for check-in.");
+  }
+}
+
 export async function recordAttendanceForTicket(input: {
   ticketId: string;
   courseId: string;
@@ -138,6 +192,8 @@ export async function recordAttendanceForTicket(input: {
   if (ticket.status === "cancelled" || ticket.status === "expired") {
     throw new Error("Ticket is not valid for check-in.");
   }
+
+  await assertTicketAttendanceAllowed(ticket, input.eventDate);
 
   const scope: AttendanceScope = {
     courseId: input.courseId,

@@ -31,6 +31,7 @@ export function TestBookingsNotice({
   paymentSimulated,
   providerMailSent,
   noticeMessage,
+  ticketQrToken,
 }: {
   action: string | undefined;
   bookingId?: string | undefined;
@@ -59,6 +60,7 @@ export function TestBookingsNotice({
   paymentSimulated?: string | undefined;
   providerMailSent?: string | undefined;
   noticeMessage?: string | undefined;
+  ticketQrToken?: string | undefined;
 }) {
   if (!action) return null;
 
@@ -155,6 +157,38 @@ export function TestBookingsNotice({
         </div>
       </div>
     );
+  } else if (action === "direct-course-ticket-prepared") {
+    message = "Kursticket und Teilnehmeransicht fuer die direkte Kurs-Simulation vorbereitet.";
+    toneClass = "border-green-200 bg-green-50 text-green-900";
+    extra = (
+      <div className="mt-2 text-xs">
+        <div>course_registration_intent_id: {courseRegistrationIntentId ?? "-"}</div>
+        <div>course_id: {courseId ?? "-"}</div>
+        <div>subscription_contract_id: {subscriptionContractId ?? "-"}</div>
+        <div>ticket_id: {ticketId ?? "-"}</div>
+        <div className="mt-2">
+          {noticeMessage ?? "Ticket/QR wurde intern vorbereitet. Keine Mail, keine echte Zahlung, kein externer Provider."}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-3">
+          {ticketQrToken ? (
+            <Link className="font-medium underline" href={`/ticket/qr/${ticketQrToken}`}>
+              Zum Kursticket
+            </Link>
+          ) : null}
+          {courseRegistrationIntentId ? (
+            <Link
+              className="font-medium underline"
+              href={`/dashboard/participants/${courseRegistrationIntentId}?source=registered`}
+            >
+              Zur Teilnehmerdetailseite
+            </Link>
+          ) : null}
+          <Link className="font-medium underline" href="/dashboard/participants">
+            Zur Teilnehmer*innen-Uebersicht
+          </Link>
+        </div>
+      </div>
+    );
   } else if (action === "direct-course-payment-error") {
     message = noticeMessage ?? "Die interne Erstzahlungs-Simulation konnte nicht ausgefuehrt werden.";
     toneClass = "border-rose-200 bg-rose-50 text-rose-900";
@@ -236,11 +270,13 @@ export function TestBookingSkeletonForm({
   title,
   description,
   children,
+  submitLabel,
 }: {
   action: (formData: FormData) => Promise<void>;
   title: string;
   description: string;
   children: ReactNode;
+  submitLabel?: string;
 }) {
   return (
     <form action={action} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
@@ -258,7 +294,7 @@ export function TestBookingSkeletonForm({
           type="submit"
           className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
         >
-          Simulation ausfuehren
+          {submitLabel ?? "Simulation ausfuehren"}
         </button>
       </div>
     </form>

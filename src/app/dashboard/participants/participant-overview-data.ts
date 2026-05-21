@@ -1,10 +1,15 @@
 import { getParticipantArchiveEligibility } from "@/app/dashboard/archive-rules";
 import { buildBookingCalendarPath } from "@/lib/calendar";
 import { hasOfferCalendarData } from "@/lib/calendar-resolver";
+import {
+  getCourseParticipantTicketBindingId,
+  hasActiveRegisteredCourseParticipation,
+} from "@/lib/course-participant-bindings";
 import { formatCourseLifecycleDate, getNextMonthEndDate } from "@/lib/course-lifecycle-shared";
 import { buildMailtoHref, buildParticipantMailSubject } from "@/lib/mailto";
 import { getOfferKindLabel } from "@/lib/offer-ui";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { getContractParticipationGate } from "@/lib/subscription-participation";
 import type { ParticipantOverviewItem } from "./ParticipantOverviewList";
 import { getParticipantStatusPresentation } from "./participant-status-ui";
 import { getParticipantLifecycleDisplay, getWorkshopParticipantLifecycleDisplay } from "./participant-lifecycle";
@@ -51,10 +56,13 @@ type TrialReservationRow = {
 type RegistrationIntentRow = {
   id: string;
   course_id: string;
-  trial_reservation_id: string;
+  trial_reservation_id: string | null;
   status: string | null;
+  is_simulation: boolean | null;
   stripe_subscription_id: string | null;
+  subscription_contract_id: string | null;
   subscription_status: string | null;
+  subscription_pause_start_date: string | null;
   subscription_pause_end_date: string | null;
   subscription_stop_date: string | null;
   first_name: string | null;
@@ -62,6 +70,12 @@ type RegistrationIntentRow = {
   email: string | null;
   completed_at: string | null;
   archived_at: string | null;
+};
+
+type SubscriptionContractRow = {
+  id: string;
+  status: string | null;
+  cancel_effective_date?: string | null;
 };
 
 type BookingRow = {
@@ -227,7 +241,7 @@ export async function loadParticipantOverviewItems(input: {
     admin
       .from("course_registration_intents")
       .select(
-        "id,course_id,trial_reservation_id,status,stripe_subscription_id,subscription_status,subscription_pause_end_date,subscription_stop_date,first_name,last_name,email,completed_at,archived_at"
+        "id,course_id,trial_reservation_id,status,is_simulation,stripe_subscription_id,subscription_contract_id,subscription_status,subscription_pause_start_date,subscription_pause_end_date,subscription_stop_date,first_name,last_name,email,completed_at,archived_at"
       )
       .in("course_id", courseIds)
       .returns<RegistrationIntentRow[]>(),
@@ -244,11 +258,32 @@ export async function loadParticipantOverviewItems(input: {
   const reservations = (reservationsResult.data ?? []).filter((reservation) => !reservation.archived_at);
   const intents = (intentsResult.data ?? []).filter((intent) => !intent.archived_at);
   const bookings = (bookingsResult.data ?? []).filter((booking) => !booking.archived_at);
+  const subscriptionContractIds = Array.from(
+    new Set(
+      intents
+        .map((intent) => intent.subscription_contract_id)
+        .filter((contractId): contractId is string => Boolean(contractId))
+    )
+  );
+  const { data: subscriptionContracts } =
+    subscriptionContractIds.length > 0
+      ? await admin
+          .from("subscription_contracts")
+          .select("id,status,cancel_effective_date")
+          .in("id", subscriptionContractIds)
+          .returns<SubscriptionContractRow[]>()
+      : { data: [] as SubscriptionContractRow[] };
+  const contractStatusById = new Map(
+    (subscriptionContracts ?? []).map((contract) => [contract.id, contract.status ?? null] as const)
+  );
+  const contractById = new Map((subscriptionContracts ?? []).map((contract) => [contract.id, contract] as const));
 
   const trialReservationIds = reservations.map((reservation) => reservation.id);
   const subscriptionIds = intents
-    .filter((intent) => intent.status === "checkout_completed" && intent.stripe_subscription_id)
-    .map((intent) => intent.stripe_subscription_id as string);
+    .map((intent) =>
+      getCourseParticipantTicketBindingId(intent, contractStatusById.get(intent.subscription_contract_id ?? "") ?? null)
+    )
+    .filter((bindingId): bindingId is string => Boolean(bindingId));
   const bookingIds = bookings.map((booking) => booking.id);
 
   const [trialTicketsResult, subscriptionTicketsResult, workshopTicketsResult] = await Promise.all([
@@ -302,8 +337,12 @@ export async function loadParticipantOverviewItems(input: {
 
   const completedIntentByReservationId = new Map(
     intents
-      .filter((intent) => intent.status === "checkout_completed" && intent.stripe_subscription_id)
-      .map((intent) => [intent.trial_reservation_id, intent])
+      .filter(
+        (intent) =>
+          intent.trial_reservation_id &&
+          hasActiveRegisteredCourseParticipation(intent, contractStatusById.get(intent.subscription_contract_id ?? "") ?? null)
+      )
+      .map((intent) => [intent.trial_reservation_id as string, intent])
   );
   const trialTicketByReservationId = new Map(
     (trialTicketsResult.data ?? [])
@@ -451,13 +490,24 @@ export async function loadParticipantOverviewItems(input: {
   }
 
   for (const intent of intents) {
-    if (intent.status !== "checkout_completed" || !intent.stripe_subscription_id) continue;
+    const subscriptionContractStatus = contractStatusById.get(intent.subscription_contract_id ?? "") ?? null;
+    const participantBindingId = getCourseParticipantTicketBindingId(intent, subscriptionContractStatus);
+    if (!participantBindingId) continue;
 
     const course = courseById.get(intent.course_id);
     if (!course) continue;
 
-    const ticket = subscriptionTicketById.get(intent.stripe_subscription_id);
+    const ticket = subscriptionTicketById.get(participantBindingId);
     const event = getDefaultCourseEvent(course, sessionsByCourseId.get(course.id) ?? []);
+    const participationGate = getContractParticipationGate({
+      contractStatus: subscriptionContractStatus,
+      subscriptionStatus: intent.subscription_status ?? null,
+      pauseStartDate: intent.subscription_pause_start_date,
+      pauseEndDate: intent.subscription_pause_end_date,
+      cancelEffectiveDate: contractById.get(intent.subscription_contract_id ?? "")?.cancel_effective_date ?? null,
+      subscriptionStopDate: intent.subscription_stop_date,
+      eventDate: event?.eventDate ?? null,
+    });
     const checkedInAt =
       ticket && event
         ? attendanceByKey.get(createAttendanceKey(course.id, event.sessionId, event.eventDate, ticket.id))
@@ -474,7 +524,7 @@ export async function loadParticipantOverviewItems(input: {
     const checkInEnabled =
       Boolean(ticket && event) &&
       !checkedInAt &&
-      ["active", "pause_scheduled"].includes(intent.subscription_status ?? "active");
+      participationGate.allowed;
     const registeredCalendarEnabled = hasOfferCalendarData({
       kind: course.kind,
       startsAt: course.starts_at,
@@ -501,19 +551,25 @@ export async function loadParticipantOverviewItems(input: {
       source: "registered",
       archivedAt: intent.archived_at,
       subscriptionStatus: intent.subscription_status,
-      stripeSubscriptionId: intent.stripe_subscription_id,
+      stripeSubscriptionId: participantBindingId,
       completedAt: intent.completed_at,
     });
+    const hasLifecycleReservation = Boolean(intent.trial_reservation_id);
+    const hasInteractiveLifecycle = hasLifecycleReservation && !intent.is_simulation;
 
     items.push({
       id: `registered-${intent.id}`,
-      detailHref: `/dashboard/participants/${intent.trial_reservation_id}?source=trial`,
+      detailHref: `/dashboard/participants/${intent.id}?source=registered`,
       displayName: participantName(intent.first_name, intent.last_name, "Teilnehmer*in"),
       email: intent.email,
       offerTitle: course.title,
       offerKindLabel: getOfferKindLabel(course.kind),
       sourceLabel: "Verbindliche Anmeldung",
-      metaLabel: intent.completed_at ? `Angemeldet am ${formatDateTime(intent.completed_at)}` : null,
+      metaLabel: intent.completed_at
+        ? `Angemeldet am ${formatDateTime(intent.completed_at)}`
+        : intent.is_simulation
+          ? "Intern aktiviert (Simulation)"
+          : null,
       decisionInfo:
         intent.subscription_status === "pause_scheduled"
           ? `Pause endet am ${formatCourseLifecycleDate(intent.subscription_pause_end_date) ?? "-"}`
@@ -525,24 +581,27 @@ export async function loadParticipantOverviewItems(input: {
       statusLabel: registeredStatusPresentation.sortLabel,
       mailHref,
       calendarAction: {
-        href: registeredCalendarEnabled ? buildBookingCalendarPath(intent.trial_reservation_id, "registered") : null,
+        href:
+          registeredCalendarEnabled && intent.trial_reservation_id
+            ? buildBookingCalendarPath(intent.trial_reservation_id, "registered")
+            : null,
         disabledReason: registeredCalendarEnabled ? null : "Kalenderdatei erst mit Termin verfügbar",
       },
       lifecycleAction: {
         kind: "registered",
-        reservationId: intent.trial_reservation_id,
+        reservationId: intent.trial_reservation_id ?? "",
         redirectTo: "/dashboard/participants",
         defaultActiveUntilDate: defaultMonthEnd,
         defaultPauseEndDate: intent.subscription_pause_end_date,
         defaultStopDate: defaultMonthEnd,
-        playLabel,
+        playLabel: intent.is_simulation && !hasLifecycleReservation ? "Simulation aktiv" : playLabel,
         playClassName: lifecycle.playClassName,
         pauseClassName: lifecycle.pauseClassName,
         stopClassName: lifecycle.stopClassName,
-        pauseLabel,
-        stopLabel,
-        pauseDisabled: lifecycle.pauseDisabled,
-        stopDisabled: lifecycle.stopDisabled,
+        pauseLabel: intent.is_simulation && !hasLifecycleReservation ? "Pause spaeter" : pauseLabel,
+        stopLabel: intent.is_simulation && !hasLifecycleReservation ? "Kuendigung spaeter" : stopLabel,
+        pauseDisabled: lifecycle.pauseDisabled || !hasInteractiveLifecycle,
+        stopDisabled: lifecycle.stopDisabled || !hasInteractiveLifecycle,
       },
       checkIn:
         ticket && event
@@ -558,20 +617,22 @@ export async function loadParticipantOverviewItems(input: {
               enabled: checkInEnabled,
               disabledReason: checkedInAt
                 ? "Bereits eingecheckt"
-                : ["paused", "cancel_scheduled", "cancelled"].includes(intent.subscription_status ?? "")
-                  ? "Derzeit nicht eincheckbar"
+                : !participationGate.allowed
+                  ? participationGate.reason ?? "Derzeit nicht eincheckbar"
                   : "Nicht eincheckbar",
               checkedInAt,
             }
           : null,
       archiveAction: {
-        participantId: intent.trial_reservation_id,
+        participantId: intent.trial_reservation_id ?? intent.id,
         source: "registered",
         redirectTo: "/dashboard/participants",
         title: "Teilnahme archivieren?",
         text: "Die Teilnahme bleibt historisch erhalten und wird nur aus den aktiven Übersichten entfernt.",
-        allowed: archiveEligibility.allowed,
-        reason: archiveEligibility.reason,
+        allowed: hasLifecycleReservation ? archiveEligibility.allowed : false,
+        reason: hasLifecycleReservation
+          ? archiveEligibility.reason
+          : "Direkte Kurssimulationen ohne Probeteilnahme werden erst in einem spaeteren PR archiviert.",
       },
       sortDate: intent.completed_at ?? "",
     });

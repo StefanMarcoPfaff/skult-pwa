@@ -132,7 +132,7 @@ function getPreviousServiceMonth(serviceMonth: string): string {
 }
 
 function isContractAllowedForRecurringSimulation(contract: SubscriptionContract): boolean {
-  return ["active", "pause_scheduled", "paused"].includes(contract.status);
+  return ["active", "pause_scheduled", "paused", "cancel_scheduled", "cancelled"].includes(contract.status);
 }
 
 function isFullyCoveredByPauseWindow(window: SubscriptionPauseWindow, monthStart: string, monthEnd: string): boolean {
@@ -154,6 +154,18 @@ function isContractEndedBeforeMonth(contract: SubscriptionContract, monthStart: 
   }
 
   return false;
+}
+
+function isContractEndedForTargetMonth(contract: SubscriptionContract, monthStart: string, monthEnd: string): boolean {
+  if (contract.status === "cancelled" || contract.status === "ended") {
+    if (!contract.cancelEffectiveDate) {
+      return true;
+    }
+
+    return contract.cancelEffectiveDate < monthEnd;
+  }
+
+  return isContractEndedBeforeMonth(contract, monthStart);
 }
 
 async function ensureSimulationEvent(input: {
@@ -564,7 +576,7 @@ export async function simulateSubscriptionRecurringPayment(input: {
     };
   }
 
-  if (isContractEndedBeforeMonth(contract, monthStart)) {
+  if (isContractEndedForTargetMonth(contract, monthStart, monthEnd)) {
     await ensureSimulationEvent({
       events,
       contractId: contract.id,

@@ -2,8 +2,10 @@ import Link from "next/link";
 import QRCode from "react-qr-code";
 import { redirect } from "next/navigation";
 import { loadAttendanceMap } from "@/lib/attendance";
+import { getCourseParticipantTicketBindingId } from "@/lib/course-participant-bindings";
 import { getSiteUrl } from "@/lib/site-url";
 import { createSessionCheckInToken } from "@/lib/session-checkin-token";
+import { getContractParticipationGate } from "@/lib/subscription-participation";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import ManualAttendanceClient, { type ManualAttendanceEntry } from "./ManualAttendanceClient";
@@ -47,13 +49,25 @@ type TrialTicketRow = {
 
 type RegistrationIntentRow = {
   id: string;
-  trial_reservation_id: string;
+  trial_reservation_id: string | null;
+  is_simulation: boolean | null;
   status: string | null;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
   stripe_subscription_id: string | null;
+  subscription_contract_id: string | null;
+  subscription_status: string | null;
+  subscription_pause_start_date: string | null;
+  subscription_pause_end_date: string | null;
+  subscription_stop_date: string | null;
   completed_at: string | null;
+};
+
+type SubscriptionContractRow = {
+  id: string;
+  status: string | null;
+  cancel_effective_date: string | null;
 };
 
 type SubscriptionTicketRow = {
@@ -297,7 +311,9 @@ export default async function DashboardCourseCheckInPage({
           .returns<TrialReservationRow[]>(),
         admin
           .from("course_registration_intents")
-          .select("id,trial_reservation_id,status,first_name,last_name,email,stripe_subscription_id,completed_at")
+          .select(
+            "id,trial_reservation_id,is_simulation,status,first_name,last_name,email,stripe_subscription_id,subscription_contract_id,subscription_status,subscription_pause_start_date,subscription_pause_end_date,subscription_stop_date,completed_at"
+          )
           .eq("course_id", course.id)
           .returns<RegistrationIntentRow[]>(),
       ]);
@@ -306,9 +322,30 @@ export default async function DashboardCourseCheckInPage({
         matchesCourseTrialToEvent(reservation, selectedEvent)
       );
       const trialReservationIds = relevantTrials.map((reservation) => reservation.id);
+      const subscriptionContractIds = Array.from(
+        new Set(
+          (intents ?? [])
+            .map((intent) => intent.subscription_contract_id)
+            .filter((contractId): contractId is string => Boolean(contractId))
+        )
+      );
+      const { data: subscriptionContracts } =
+        subscriptionContractIds.length > 0
+          ? await admin
+              .from("subscription_contracts")
+              .select("id,status,cancel_effective_date")
+              .in("id", subscriptionContractIds)
+              .returns<SubscriptionContractRow[]>()
+          : { data: [] as SubscriptionContractRow[] };
+      const contractStatusById = new Map(
+        (subscriptionContracts ?? []).map((contract) => [contract.id, contract.status ?? null] as const)
+      );
+      const contractById = new Map((subscriptionContracts ?? []).map((contract) => [contract.id, contract] as const));
       const subscriptionIds = (intents ?? [])
-        .filter((intent) => intent.status === "checkout_completed" && intent.stripe_subscription_id)
-        .map((intent) => intent.stripe_subscription_id as string);
+        .map((intent) =>
+          getCourseParticipantTicketBindingId(intent, contractStatusById.get(intent.subscription_contract_id ?? "") ?? null)
+        )
+        .filter((bindingId): bindingId is string => Boolean(bindingId));
 
       const [{ data: trialTickets }, { data: subscriptionTickets }] = await Promise.all([
         trialReservationIds.length > 0
@@ -362,17 +399,39 @@ export default async function DashboardCourseCheckInPage({
         .filter(isManualEntry);
 
       const registeredEntries = (intents ?? [])
-        .filter((intent) => intent.status === "checkout_completed" && intent.stripe_subscription_id)
+        .filter((intent) =>
+          Boolean(
+            getCourseParticipantTicketBindingId(intent, contractStatusById.get(intent.subscription_contract_id ?? "") ?? null)
+          )
+        )
         .map<ManualAttendanceEntry | null>((intent) => {
-          const ticket = subscriptionTicketById.get(intent.stripe_subscription_id as string);
+          const participantBindingId = getCourseParticipantTicketBindingId(
+            intent,
+            contractStatusById.get(intent.subscription_contract_id ?? "") ?? null
+          );
+          const ticket = participantBindingId ? subscriptionTicketById.get(participantBindingId) : null;
           if (!ticket) return null;
+          const participationGate = getContractParticipationGate({
+            contractStatus: contractStatusById.get(intent.subscription_contract_id ?? "") ?? null,
+            subscriptionStatus: intent.subscription_status ?? null,
+            pauseStartDate: intent.subscription_pause_start_date,
+            pauseEndDate: intent.subscription_pause_end_date,
+            cancelEffectiveDate: contractById.get(intent.subscription_contract_id ?? "")?.cancel_effective_date ?? null,
+            subscriptionStopDate: intent.subscription_stop_date,
+            eventDate: selectedEvent.eventDate,
+          });
+          if (!participationGate.allowed) return null;
           return {
             id: intent.id,
             ticketId: ticket.id,
             name: formatName(intent.first_name, intent.last_name, ticket.customer_name || "Teilnehmer*in"),
             email: intent.email ?? ticket.customer_email ?? null,
             typeLabel: "Verbindliche Anmeldung",
-            meta: intent.completed_at ? `Angemeldet am ${formatDateTime(intent.completed_at)}` : null,
+            meta: intent.completed_at
+              ? `Angemeldet am ${formatDateTime(intent.completed_at)}`
+              : intent.is_simulation
+                ? "Intern aktiviert (Simulation)"
+                : null,
             legacyCheckedInAt: ticket.checked_in_at,
             attendanceCheckedInAt: attendanceMap.get(ticket.id)?.checked_in_at ?? null,
           };
