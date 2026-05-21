@@ -44,7 +44,7 @@ type TrialReservationRow = {
 type RegistrationIntentRow = {
   id: string;
   course_id: string;
-  trial_reservation_id: string;
+  trial_reservation_id: string | null;
   status: string | null;
   completed_at: string | null;
   stripe_subscription_id: string | null;

@@ -16,7 +16,7 @@ import {
 
 type CourseRegistrationIntentRow = {
   id: string;
-  trial_reservation_id: string;
+  trial_reservation_id: string | null;
   course_id: string;
   first_name: string | null;
   last_name: string | null;

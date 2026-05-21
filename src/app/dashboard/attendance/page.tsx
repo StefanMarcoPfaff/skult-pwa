@@ -70,7 +70,7 @@ type TrialReservationRow = {
 type RegistrationIntentRow = {
   id: string;
   course_id: string;
-  trial_reservation_id: string;
+  trial_reservation_id: string | null;
   status: string | null;
   first_name: string | null;
   last_name: string | null;

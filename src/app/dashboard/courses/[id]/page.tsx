@@ -100,7 +100,7 @@ type TrialTicketRow = {
 
 type RegistrationIntentRow = {
   id: string;
-  trial_reservation_id: string;
+  trial_reservation_id: string | null;
   status: string | null;
   subscription_status?: string | null;
   archived_at?: string | null;
