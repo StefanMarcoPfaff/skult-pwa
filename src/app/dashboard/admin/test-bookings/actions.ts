@@ -36,6 +36,18 @@ function logUnexpectedDirectCourseError(context: string, error: unknown) {
   console.error(`[admin-test-bookings] ${context}`, error);
 }
 
+function logDirectCourseActionSubmission(input: {
+  selectedAction: string;
+  courseId: string;
+  formData: FormData;
+}) {
+  console.info("[admin-test-bookings] direct-course action submit", {
+    selectedAction: input.selectedAction,
+    receivedCourseId: input.courseId || null,
+    formValueKeys: Array.from(input.formData.keys()),
+  });
+}
+
 function compactRedirectParams(input: Record<string, string | null | undefined>): Record<string, string> {
   return Object.fromEntries(
     Object.entries(input).filter((entry): entry is [string, string] => Boolean(entry[1]))
@@ -193,13 +205,32 @@ export async function prepareDirectCourseTestRegistrationAction(formData: FormDa
   const user = await requirePaymentsV2SimulationAccess();
 
   try {
+    const courseId = String(formData.get("courseId") ?? "").trim();
+    const firstName = String(formData.get("firstName") ?? "").trim();
+    const lastName = String(formData.get("lastName") ?? "").trim();
+    const email = String(formData.get("email") ?? "").trim();
     const simulateInitialPayment = parseCheckbox(formData.get("simulateInitialPayment"));
     const prepareParticipantTicket = parseCheckbox(formData.get("prepareParticipantTicket"));
+    logDirectCourseActionSubmission({
+      selectedAction: "prepareDirectCourseTestRegistrationAction",
+      courseId,
+      formData,
+    });
+
+    if (!courseId) {
+      redirectWithParams({
+        action: "direct-course-error",
+        code: "missing_course_id",
+        step: "course_lookup",
+        message: "Bitte ein laufendes Angebot auswaehlen.",
+      });
+    }
+
     const result = await createDirectCourseTestRegistration({
-      courseId: String(formData.get("courseId") ?? "").trim(),
-      firstName: String(formData.get("firstName") ?? "").trim(),
-      lastName: String(formData.get("lastName") ?? "").trim(),
-      email: String(formData.get("email") ?? "").trim(),
+      courseId,
+      firstName,
+      lastName,
+      email,
       startDate: parseOptionalString(formData.get("startDate")),
       amountCents: parseOptionalAmountCents(formData.get("amountCents")),
       adminUserId: user.id,
