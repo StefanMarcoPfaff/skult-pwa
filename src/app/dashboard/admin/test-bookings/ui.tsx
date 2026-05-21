@@ -43,6 +43,12 @@ export function TestBookingsNotice({
   providerMailSent,
   noticeMessage,
   ticketQrToken,
+  fullMonthAmountCents,
+  firstPaymentAmountCents,
+  contractStartDate,
+  firstPaymentExplanation,
+  billableDays,
+  daysInMonth,
 }: {
   action: string | undefined;
   bookingId?: string | undefined;
@@ -83,6 +89,12 @@ export function TestBookingsNotice({
   providerMailSent?: string | undefined;
   noticeMessage?: string | undefined;
   ticketQrToken?: string | undefined;
+  fullMonthAmountCents?: string | undefined;
+  firstPaymentAmountCents?: string | undefined;
+  contractStartDate?: string | undefined;
+  firstPaymentExplanation?: string | undefined;
+  billableDays?: string | undefined;
+  daysInMonth?: string | undefined;
 }) {
   if (!action) return null;
 
@@ -177,6 +189,11 @@ export function TestBookingsNotice({
         <div>subscription_charge_id: {subscriptionChargeId ?? "-"}</div>
         <div>payment_transaction_id: {paymentTransactionId ?? "-"}</div>
         <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
+        <div>Monatsbetrag: {fullMonthAmountCents ? new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Number(fullMonthAmountCents) / 100) : "-"}</div>
+        <div>Startdatum: {contractStartDate ?? "-"}</div>
+        <div>Erstzahlung: {firstPaymentAmountCents ? new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Number(firstPaymentAmountCents) / 100) : "-"}</div>
+        <div>Abrechnungstage: {billableDays ?? "-"} / {daysInMonth ?? "-"}</div>
+        <div>Hinweis: {firstPaymentExplanation ?? "Ab dem naechsten Monat wird der volle Monatsbetrag berechnet."}</div>
         <div className="mt-2">
           {noticeMessage ?? "Keine echte Zahlung, keine Auszahlung, keine Mail. Subscription-Audit siehe Payments V2."}
         </div>
@@ -199,6 +216,11 @@ export function TestBookingsNotice({
         <div>course_id: {courseId ?? "-"}</div>
         <div>subscription_contract_id: {subscriptionContractId ?? "-"}</div>
         <div>ticket_id: {ticketId ?? "-"}</div>
+        <div>Monatsbetrag: {fullMonthAmountCents ? new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Number(fullMonthAmountCents) / 100) : "-"}</div>
+        <div>Startdatum: {contractStartDate ?? "-"}</div>
+        <div>Erstzahlung: {firstPaymentAmountCents ? new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Number(firstPaymentAmountCents) / 100) : "-"}</div>
+        <div>Abrechnungstage: {billableDays ?? "-"} / {daysInMonth ?? "-"}</div>
+        <div>Hinweis: {firstPaymentExplanation ?? "Ab dem naechsten Monat wird der volle Monatsbetrag berechnet."}</div>
         <div className="mt-2">
           {noticeMessage ?? "Ticket/QR wurde intern vorbereitet. Keine Mail, keine echte Zahlung, kein externer Provider."}
         </div>

@@ -17,6 +17,16 @@ export type InitialProrationResult = {
   proratedAmountCents: number;
 };
 
+export type ProratedFirstSubscriptionAmount = {
+  full_month_amount_cents: number;
+  prorated_amount_cents: number;
+  period_start: SubscriptionDateString;
+  period_end: SubscriptionDateString;
+  days_in_month: number;
+  billable_days: number;
+  explanation: string;
+};
+
 export function calculateProrationRatio(input: {
   activeStartDate: SubscriptionDateString;
   activeEndDate: SubscriptionDateString;
@@ -70,5 +80,25 @@ export function calculateInitialProration(input: {
       billableDays,
       totalDays: totalDaysInMonth,
     }),
+  };
+}
+
+export function calculateProratedFirstSubscriptionAmount(input: {
+  monthlyAmountCents: number;
+  contractStartDate: SubscriptionDateString;
+}): ProratedFirstSubscriptionAmount {
+  const proration = calculateInitialProration(input);
+  const isFullMonth = proration.billableDays === proration.totalDaysInMonth;
+
+  return {
+    full_month_amount_cents: proration.fullAmountCents,
+    prorated_amount_cents: proration.proratedAmountCents,
+    period_start: proration.periodStart,
+    period_end: proration.periodEnd,
+    days_in_month: proration.totalDaysInMonth,
+    billable_days: proration.billableDays,
+    explanation: isFullMonth
+      ? "Start ist am Monatsersten. Die Erstzahlung entspricht dem vollen Monatsbetrag."
+      : `Erstzahlung anteilig fuer ${proration.billableDays} von ${proration.totalDaysInMonth} Tagen bis Monatsende.`,
   };
 }

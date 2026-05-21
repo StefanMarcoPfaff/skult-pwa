@@ -15,6 +15,8 @@ import { simulateSubscriptionRecurringPayment } from "@/lib/payments/simulation/
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH } from "../ui";
 
+const SUBSCRIPTION_SIMULATION_ACTION_VERSION = "SUBSCRIPTION_SIMULATION_ACTION_VERSION_20260521_PR4";
+
 function redirectWithActionState(actionState: string, params?: Record<string, string | null | undefined>) {
   const search = new URLSearchParams({ action: actionState });
   for (const [key, value] of Object.entries(params ?? {})) {
@@ -22,6 +24,61 @@ function redirectWithActionState(actionState: string, params?: Record<string, st
     search.set(key, value);
   }
   redirect(`${PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH}?${search.toString()}`);
+}
+
+function isNextRedirectError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "digest" in error &&
+    typeof (error as { digest?: unknown }).digest === "string" &&
+    (error as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+  );
+}
+
+function compactParams(input: Record<string, string | null | undefined>): Record<string, string> {
+  return Object.fromEntries(Object.entries(input).filter((entry): entry is [string, string] => Boolean(entry[1])));
+}
+
+function buildSimulationErrorParams(input: {
+  error: unknown;
+  step: string;
+  contractId?: string | null;
+  courseRegistrationIntentId?: string | null;
+}) {
+  const rawErrorName =
+    input.error instanceof Error
+      ? input.error.name
+      : typeof input.error === "object" && input.error !== null && "name" in input.error
+        ? String((input.error as { name?: unknown }).name ?? "")
+        : "UnknownError";
+  const rawErrorMessage =
+    input.error instanceof Error
+      ? input.error.message
+      : typeof input.error === "object" && input.error !== null && "message" in input.error
+        ? String((input.error as { message?: unknown }).message ?? "")
+        : typeof input.error === "string"
+          ? input.error
+          : "Unbekannter Simulationsfehler";
+  const supabaseCode =
+    typeof input.error === "object" && input.error !== null && "code" in input.error
+      ? String((input.error as { code?: unknown }).code ?? "")
+      : null;
+  const supabaseMessage =
+    typeof input.error === "object" && input.error !== null && "message" in input.error
+      ? String((input.error as { message?: unknown }).message ?? "")
+      : null;
+
+  return compactParams({
+    code: input.error instanceof PaymentSimulationError ? input.error.code : "unknown",
+    step: input.step,
+    rawErrorName,
+    rawErrorMessage,
+    supabaseCode,
+    supabaseMessage,
+    actionVersion: SUBSCRIPTION_SIMULATION_ACTION_VERSION,
+    contractId: input.contractId,
+    courseRegistrationIntentId: input.courseRegistrationIntentId,
+  });
 }
 
 function parseOptionalAmountCents(value: FormDataEntryValue | null): number | null {
@@ -121,14 +178,30 @@ export async function simulateSubscriptionInitialPaymentSuccessAction(formData: 
       scenarioNote: parseOptionalString(formData.get("scenarioNote")),
     });
     revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
-    redirectWithActionState(`initial-pay-ok-${result.courseRegistrationIntentId}`);
+    redirectWithActionState(`initial-pay-ok-${result.courseRegistrationIntentId}`, {
+      courseRegistrationIntentId: result.courseRegistrationIntentId,
+      contractId: result.subscriptionContractId,
+      contractStartDate: result.contractStartDate,
+      fullMonthAmountCents: String(result.firstPaymentBreakdown.full_month_amount_cents),
+      firstPaymentAmountCents: String(result.firstPaymentBreakdown.prorated_amount_cents),
+      firstPaymentExplanation: result.firstPaymentBreakdown.explanation,
+      billableDays: String(result.firstPaymentBreakdown.billable_days),
+      daysInMonth: String(result.firstPaymentBreakdown.days_in_month),
+    });
   } catch (error) {
-    revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
-    if (error instanceof PaymentSimulationError) {
-      redirectWithActionState(`initial-pay-error-${error.code}`);
+    if (isNextRedirectError(error)) {
+      throw error;
     }
 
-    redirectWithActionState("initial-pay-error-unknown");
+    revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
+    redirectWithActionState(
+      `initial-pay-error-${error instanceof PaymentSimulationError ? error.code : "unknown"}`,
+      buildSimulationErrorParams({
+        error,
+        step: "initial_payment_simulation",
+        courseRegistrationIntentId,
+      })
+    );
   }
 }
 
@@ -194,12 +267,20 @@ export async function simulateSubscriptionPauseAction(formData: FormData) {
       renewalBlocked: result.nextRenewalBlocked ? "yes" : "no",
     });
   } catch (error) {
-    revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
-    if (error instanceof PaymentSimulationError) {
-      redirectWithActionState(`lifecycle-pause-error-${error.code}`);
+    if (isNextRedirectError(error)) {
+      throw error;
     }
 
-    redirectWithActionState("lifecycle-pause-error-unknown");
+    revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
+    console.error("[subscription-simulation] lifecycle pause failed", { subscriptionContractId, error });
+    redirectWithActionState(
+      `lifecycle-pause-error-${error instanceof PaymentSimulationError ? error.code : "unknown"}`,
+      buildSimulationErrorParams({
+        error,
+        step: "pause_simulation",
+        contractId: subscriptionContractId,
+      })
+    );
   }
 }
 
@@ -224,12 +305,20 @@ export async function simulateSubscriptionCancelAction(formData: FormData) {
       renewalBlocked: result.nextRenewalBlocked ? "yes" : "no",
     });
   } catch (error) {
-    revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
-    if (error instanceof PaymentSimulationError) {
-      redirectWithActionState(`lifecycle-cancel-error-${error.code}`);
+    if (isNextRedirectError(error)) {
+      throw error;
     }
 
-    redirectWithActionState("lifecycle-cancel-error-unknown");
+    revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
+    console.error("[subscription-simulation] lifecycle cancel failed", { subscriptionContractId, error });
+    redirectWithActionState(
+      `lifecycle-cancel-error-${error instanceof PaymentSimulationError ? error.code : "unknown"}`,
+      buildSimulationErrorParams({
+        error,
+        step: "cancel_simulation",
+        contractId: subscriptionContractId,
+      })
+    );
   }
 }
 
@@ -257,12 +346,20 @@ export async function simulateParticipantSubscriptionPauseAction(formData: FormD
       renewalBlocked: result.nextRenewalBlocked ? "yes" : "no",
     });
   } catch (error) {
-    revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
-    if (error instanceof PaymentSimulationError) {
-      redirectWithActionState(`participant-lifecycle-pause-error-${error.code}`);
+    if (isNextRedirectError(error)) {
+      throw error;
     }
 
-    redirectWithActionState("participant-lifecycle-pause-error-unknown");
+    revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
+    console.error("[subscription-simulation] participant pause failed", { courseRegistrationIntentId, error });
+    redirectWithActionState(
+      `participant-lifecycle-pause-error-${error instanceof PaymentSimulationError ? error.code : "unknown"}`,
+      buildSimulationErrorParams({
+        error,
+        step: "participant_pause_simulation",
+        courseRegistrationIntentId,
+      })
+    );
   }
 }
 
@@ -288,12 +385,20 @@ export async function simulateParticipantSubscriptionCancelAction(formData: Form
       renewalBlocked: result.nextRenewalBlocked ? "yes" : "no",
     });
   } catch (error) {
-    revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
-    if (error instanceof PaymentSimulationError) {
-      redirectWithActionState(`participant-lifecycle-cancel-error-${error.code}`);
+    if (isNextRedirectError(error)) {
+      throw error;
     }
 
-    redirectWithActionState("participant-lifecycle-cancel-error-unknown");
+    revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);
+    console.error("[subscription-simulation] participant cancel failed", { courseRegistrationIntentId, error });
+    redirectWithActionState(
+      `participant-lifecycle-cancel-error-${error instanceof PaymentSimulationError ? error.code : "unknown"}`,
+      buildSimulationErrorParams({
+        error,
+        step: "participant_cancel_simulation",
+        courseRegistrationIntentId,
+      })
+    );
   }
 }
 

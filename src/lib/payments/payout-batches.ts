@@ -260,12 +260,18 @@ export async function createSimulatedPaidPayoutForLedgerEntry(input: {
       })
       .eq("id", entry.payout_batch_id);
 
-    await admin
+    const { data: updatedLedger } = await admin
       .from("ledger_entries")
       .update({
         payout_status: "paid",
       })
-      .eq("id", entry.id);
+      .eq("id", entry.id)
+      .select("id")
+      .maybeSingle<{ id: string }>();
+
+    if (!updatedLedger?.id) {
+      throw new Error("Ledger-Auszahlungsstatus konnte nicht auf paid gesetzt werden");
+    }
 
     return {
       batchId: entry.payout_batch_id,
@@ -320,7 +326,7 @@ export async function createSimulatedPaidPayoutForLedgerEntry(input: {
     .select("id")
     .single<{ id: string }>();
 
-  await admin
+  const { data: updatedLedger } = await admin
     .from("ledger_entries")
     .update({
       payout_batch_id: batchId,
@@ -328,7 +334,13 @@ export async function createSimulatedPaidPayoutForLedgerEntry(input: {
     })
     .eq("id", entry.id)
     .eq("payout_status", entry.payout_status)
-    .is("payout_batch_id", null);
+    .is("payout_batch_id", null)
+    .select("id")
+    .maybeSingle<{ id: string }>();
+
+  if (!updatedLedger?.id) {
+    throw new Error("Ledger-Auszahlungsstatus konnte nicht finalisiert werden");
+  }
 
   return {
     batchId,

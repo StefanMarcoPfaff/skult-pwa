@@ -17,11 +17,8 @@ import {
   createPendingInitialPaymentContract,
   activateContractForSuccessfulInitialPayment,
 } from "@/lib/payments/subscriptions/contracts-service";
-import {
-  findSubscriptionContractById,
-  findSubscriptionContractByIntentId,
-} from "@/lib/payments/subscriptions/contracts-repo";
-import { getBerlinTodayDate } from "@/lib/payments/subscriptions/dates";
+import { findSubscriptionContractById, findSubscriptionContractByIntentId } from "@/lib/payments/subscriptions/contracts-repo";
+import { getBerlinTodayDate, normalizeSubscriptionDateString, toBerlinStartOfDayIso } from "@/lib/payments/subscriptions/dates";
 import {
   createSubscriptionEvent,
   listSubscriptionEventsByContractId,
@@ -37,6 +34,7 @@ import {
   updateSubscriptionPeriod,
 } from "@/lib/payments/subscriptions/periods-repo";
 import type {
+  SubscriptionDateString,
   SubscriptionCharge,
   SubscriptionContract,
   SubscriptionEvent,
@@ -48,6 +46,10 @@ import {
   createSimulatedEventId,
   createSimulatedPaymentId,
 } from "@/lib/payments/simulation";
+import {
+  calculateProratedFirstSubscriptionAmount,
+  type ProratedFirstSubscriptionAmount,
+} from "@/lib/payments/subscriptions/proration";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 const INTERNAL_SIMULATION_PROVIDER = "internal_simulation";
@@ -59,6 +61,7 @@ type CourseRegistrationIntentRow = {
   status: string;
   subscription_status: string | null;
   subscription_contract_id: string | null;
+  simulation_metadata: Record<string, unknown> | null;
 };
 
 type CourseRow = {
@@ -92,19 +95,13 @@ type SubscriptionSimulationResult = {
   subscriptionChargeId: string;
   paymentTransactionId: string;
   ledgerEntryId: string;
+  contractStartDate: SubscriptionDateString;
+  firstPaymentBreakdown: ProratedFirstSubscriptionAmount;
   simulationMetadata: ReturnType<typeof buildSimulationMetadata>;
 };
 
 function normalizeCurrency(currency: string | null | undefined): string {
   return (currency ?? "EUR").trim().toUpperCase() || "EUR";
-}
-
-function normalizeAmount(amountCents: number | null | undefined, fallbackAmountCents: number): number {
-  if (typeof amountCents === "number" && Number.isFinite(amountCents)) {
-    return Math.max(0, Math.round(amountCents));
-  }
-
-  return Math.max(0, Math.round(fallbackAmountCents));
 }
 
 function normalizePaidAt(value: string | null | undefined): string {
@@ -118,6 +115,29 @@ function normalizePaidAt(value: string | null | undefined): string {
 
 function resolveContractStartDate(paidAt: string): string {
   return getBerlinTodayDate(new Date(paidAt));
+}
+
+function resolveSimulationContractStartDate(input: {
+  paidAt: string;
+  intentSimulationMetadata: Record<string, unknown> | null;
+}): SubscriptionDateString {
+  const requestedStartDate =
+    typeof input.intentSimulationMetadata?.requested_start_date === "string"
+      ? normalizeSubscriptionDateString(input.intentSimulationMetadata.requested_start_date)
+      : null;
+
+  return requestedStartDate ?? resolveContractStartDate(input.paidAt);
+}
+
+function resolveInitialAmountCents(input: {
+  explicitAmountCents: number | null | undefined;
+  firstPaymentBreakdown: ProratedFirstSubscriptionAmount;
+}): number {
+  if (typeof input.explicitAmountCents === "number" && Number.isFinite(input.explicitAmountCents)) {
+    return Math.max(0, Math.round(input.explicitAmountCents));
+  }
+
+  return input.firstPaymentBreakdown.prorated_amount_cents;
 }
 
 function selectInitialChargePlan(input: {
@@ -160,6 +180,7 @@ async function ensureSubscriptionContract(input: {
   course: CourseRow;
   providerSubscriptionId: string;
   paidAt: string;
+  contractStartDate: SubscriptionDateString;
   simulationMetadata: ReturnType<typeof buildSimulationMetadata>;
 }): Promise<SubscriptionContract> {
   const admin = createSupabaseAdmin();
@@ -198,9 +219,8 @@ async function ensureSubscriptionContract(input: {
       .is("subscription_contract_id", null);
   }
 
-  const contractStartDate = resolveContractStartDate(input.paidAt);
   const initialPeriodPlan = planInitialSubscriptionPeriod({
-    contractStartDate,
+    contractStartDate: input.contractStartDate,
     billingAnchorDay: contract.billingAnchorDay,
   });
   const nextPeriodPlan = planNextSubscriptionPeriod({
@@ -210,13 +230,14 @@ async function ensureSubscriptionContract(input: {
 
   return activateContractForSuccessfulInitialPayment({
     contractId: contract.id,
-    startedAt: input.paidAt,
+    startedAt: toBerlinStartOfDayIso(input.contractStartDate),
     firstPaidAt: input.paidAt,
     nextChargeAt: nextPeriodPlan.plannedChargeAt,
     providerSubscriptionId: contract.providerSubscriptionId ?? input.providerSubscriptionId,
     metadata: {
       simulation: true,
       simulatedInitialPaymentAt: input.paidAt,
+      simulatedContractStartDate: input.contractStartDate,
       scenario: input.simulationMetadata.scenario,
       sourceAdminUi: input.simulationMetadata.source_admin_ui,
       triggeredByAdminUserId: input.simulationMetadata.triggered_by_admin_user_id,
@@ -227,11 +248,11 @@ async function ensureSubscriptionContract(input: {
 async function ensureInitialPeriod(input: {
   contract: SubscriptionContract;
   paidAt: string;
+  contractStartDate: SubscriptionDateString;
   simulationMetadata: ReturnType<typeof buildSimulationMetadata>;
 }): Promise<SubscriptionPeriod> {
-  const contractStartDate = resolveContractStartDate(input.contract.startedAt ?? input.paidAt);
   const periodPlan = planInitialSubscriptionPeriod({
-    contractStartDate,
+    contractStartDate: input.contractStartDate,
     billingAnchorDay: input.contract.billingAnchorDay,
   });
   const existing = await findSubscriptionPeriodByServiceMonth({
@@ -278,14 +299,15 @@ async function ensureInitialCharge(input: {
   currency: string;
   providerPaymentReference: string;
   paidAt: string;
+  contractStartDate: SubscriptionDateString;
+  firstPaymentBreakdown: ProratedFirstSubscriptionAmount;
   simulationMetadata: ReturnType<typeof buildSimulationMetadata>;
 }): Promise<SubscriptionCharge> {
-  const contractStartDate = resolveContractStartDate(input.contract.startedAt ?? input.paidAt);
   const plannedCharge = selectInitialChargePlan({
     actualAmountCents: input.amountCents,
     monthlyAmountCents: input.contract.baseAmountCents,
     currency: input.currency,
-    contractStartDate,
+    contractStartDate: input.contractStartDate,
     period: input.period,
   });
   const existing = (await listSubscriptionChargesByContractId(input.contract.id)).find(
@@ -299,6 +321,7 @@ async function ensureInitialCharge(input: {
   const metadata = {
     ...(existing?.metadata ?? {}),
     ...plannedCharge.metadata,
+    first_payment_breakdown: input.firstPaymentBreakdown,
     simulation: true,
     scenario: input.simulationMetadata.scenario,
     sourceAdminUi: input.simulationMetadata.source_admin_ui,
@@ -532,7 +555,7 @@ export async function simulateSubscriptionInitialPaymentSuccess(input: {
 
   const { data: intent } = await admin
     .from("course_registration_intents")
-    .select("id,course_id,email,status,subscription_status,subscription_contract_id")
+    .select("id,course_id,email,status,subscription_status,subscription_contract_id,simulation_metadata")
     .eq("id", courseRegistrationIntentId)
     .maybeSingle<CourseRegistrationIntentRow>();
 
@@ -561,7 +584,18 @@ export async function simulateSubscriptionInitialPaymentSuccess(input: {
       .maybeSingle<ProviderPayoutProfileRow>(),
   ]);
 
-  const amountCents = normalizeAmount(input.amountCents, course.price_cents ?? 0);
+  const contractStartDate = resolveSimulationContractStartDate({
+    paidAt,
+    intentSimulationMetadata: intent.simulation_metadata,
+  });
+  const firstPaymentBreakdown = calculateProratedFirstSubscriptionAmount({
+    monthlyAmountCents: course.price_cents ?? 0,
+    contractStartDate,
+  });
+  const amountCents = resolveInitialAmountCents({
+    explicitAmountCents: input.amountCents,
+    firstPaymentBreakdown,
+  });
   const currency = normalizeCurrency(input.currency ?? course.currency);
   const providerReferenceId = createSimulatedPaymentId();
   const providerSubscriptionId = createSimulatedEventId();
@@ -571,11 +605,13 @@ export async function simulateSubscriptionInitialPaymentSuccess(input: {
     course,
     providerSubscriptionId,
     paidAt,
+    contractStartDate,
     simulationMetadata,
   });
   const period = await ensureInitialPeriod({
     contract,
     paidAt,
+    contractStartDate,
     simulationMetadata,
   });
   const charge = await ensureInitialCharge({
@@ -585,6 +621,8 @@ export async function simulateSubscriptionInitialPaymentSuccess(input: {
     currency,
     providerPaymentReference: providerReferenceId,
     paidAt,
+    contractStartDate,
+    firstPaymentBreakdown,
     simulationMetadata,
   });
   const paymentTransactionId = await ensurePaymentTransaction({
@@ -658,6 +696,8 @@ export async function simulateSubscriptionInitialPaymentSuccess(input: {
     subscriptionChargeId: charge.id,
     paymentTransactionId,
     ledgerEntryId,
+    contractStartDate,
+    firstPaymentBreakdown,
     simulationMetadata,
   };
 }

@@ -1,4 +1,4 @@
-import { calculateInitialProration } from "@/lib/payments/subscriptions/proration";
+import { calculateInitialProration, calculateProratedFirstSubscriptionAmount } from "@/lib/payments/subscriptions/proration";
 import type {
   CreateSubscriptionChargeInput,
   SubscriptionDateString,
@@ -21,6 +21,10 @@ export function planInitialProrationCharge(input: {
     monthlyAmountCents: input.monthlyAmountCents,
     contractStartDate: input.contractStartDate,
   });
+  const firstPayment = calculateProratedFirstSubscriptionAmount({
+    monthlyAmountCents: input.monthlyAmountCents,
+    contractStartDate: input.contractStartDate,
+  });
 
   return {
     chargeType: "initial_proration",
@@ -35,6 +39,13 @@ export function planInitialProrationCharge(input: {
       billableDays: proration.billableDays,
       prorationRatio: proration.prorationRatio,
       fullAmountCents: proration.fullAmountCents,
+      full_month_amount_cents: firstPayment.full_month_amount_cents,
+      prorated_amount_cents: firstPayment.prorated_amount_cents,
+      period_start: firstPayment.period_start,
+      period_end: firstPayment.period_end,
+      days_in_month: firstPayment.days_in_month,
+      billable_days: firstPayment.billable_days,
+      explanation: firstPayment.explanation,
     },
   };
 }

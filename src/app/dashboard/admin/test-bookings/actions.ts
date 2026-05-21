@@ -526,6 +526,12 @@ export async function simulateDirectCourseInitialPaymentAction(formData: FormDat
         ledgerEntryId: result.ledgerEntryId,
         ticketId: ticketResult.ticketId,
         ticketQrToken: ticketResult.ticketQrToken,
+        fullMonthAmountCents: String(result.firstPaymentBreakdown.full_month_amount_cents),
+        firstPaymentAmountCents: String(result.firstPaymentBreakdown.prorated_amount_cents),
+        contractStartDate: result.contractStartDate,
+        firstPaymentExplanation: result.firstPaymentBreakdown.explanation,
+        billableDays: String(result.firstPaymentBreakdown.billable_days),
+        daysInMonth: String(result.firstPaymentBreakdown.days_in_month),
         message: alreadySimulated
           ? "Bereits simulierte Initialzahlung und vorhandenes Kursticket wurden wiederverwendet. Keine echte Zahlung, keine Auszahlung, keine Mail."
           : "Initialzahlung intern simuliert und Kursticket vorbereitet. Keine echte Zahlung, keine Auszahlung, keine Mail.",
@@ -543,6 +549,12 @@ export async function simulateDirectCourseInitialPaymentAction(formData: FormDat
       subscriptionChargeId: result.subscriptionChargeId,
       paymentTransactionId: result.paymentTransactionId,
       ledgerEntryId: result.ledgerEntryId,
+      fullMonthAmountCents: String(result.firstPaymentBreakdown.full_month_amount_cents),
+      firstPaymentAmountCents: String(result.firstPaymentBreakdown.prorated_amount_cents),
+      contractStartDate: result.contractStartDate,
+      firstPaymentExplanation: result.firstPaymentBreakdown.explanation,
+      billableDays: String(result.firstPaymentBreakdown.billable_days),
+      daysInMonth: String(result.firstPaymentBreakdown.days_in_month),
       message: alreadySimulated
         ? "Bereits simulierte Initialzahlung wurde wiederverwendet. Keine echte Zahlung, keine Auszahlung, keine Mail."
         : "Initialzahlung intern simuliert. Keine echte Zahlung, keine Auszahlung, keine Mail.",

@@ -62,6 +62,12 @@ type SearchParams = {
   ticketQrToken?: string;
   ticketPrepared?: string;
   ticketCreated?: string;
+  fullMonthAmountCents?: string;
+  firstPaymentAmountCents?: string;
+  contractStartDate?: string;
+  firstPaymentExplanation?: string;
+  billableDays?: string;
+  daysInMonth?: string;
 };
 
 type WorkshopOfferOptionRow = {
@@ -271,6 +277,12 @@ export default async function TestBookingsAdminPage({
           ticketCreated={sp.ticketCreated}
           paymentSimulated={sp.paymentSimulated}
           noticeMessage={sp.message}
+          fullMonthAmountCents={sp.fullMonthAmountCents}
+          firstPaymentAmountCents={sp.firstPaymentAmountCents}
+          contractStartDate={sp.contractStartDate}
+          firstPaymentExplanation={sp.firstPaymentExplanation}
+          billableDays={sp.billableDays}
+          daysInMonth={sp.daysInMonth}
         />
 
         <div className="grid gap-6">

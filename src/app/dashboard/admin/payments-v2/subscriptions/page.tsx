@@ -73,6 +73,7 @@ type SubscriptionChargeRow = {
   currency: string;
   status: string;
   charged_at: string | null;
+  metadata: Record<string, unknown>;
   created_at: string;
 };
 
@@ -169,6 +170,7 @@ type SearchParams = {
   action?: string;
   contractId?: string;
   courseRegistrationIntentId?: string;
+  code?: string;
   errorMessage?: string;
   pauseWindowId?: string;
   eventId?: string;
@@ -180,6 +182,18 @@ type SearchParams = {
   ledgerEntryId?: string;
   payoutBatchId?: string;
   selectedContractId?: string;
+  step?: string;
+  rawErrorName?: string;
+  rawErrorMessage?: string;
+  supabaseCode?: string;
+  supabaseMessage?: string;
+  actionVersion?: string;
+  fullMonthAmountCents?: string;
+  firstPaymentAmountCents?: string;
+  contractStartDate?: string;
+  firstPaymentExplanation?: string;
+  billableDays?: string;
+  daysInMonth?: string;
 };
 
 type SimulationContractOption = {
@@ -231,6 +245,7 @@ function ActionNotice({
   action,
   contractId,
   courseRegistrationIntentId,
+  code,
   errorMessage,
   pauseWindowId,
   eventId,
@@ -241,10 +256,23 @@ function ActionNotice({
   paymentTransactionId,
   ledgerEntryId,
   payoutBatchId,
+  step,
+  rawErrorName,
+  rawErrorMessage,
+  supabaseCode,
+  supabaseMessage,
+  actionVersion,
+  fullMonthAmountCents,
+  firstPaymentAmountCents,
+  contractStartDate,
+  firstPaymentExplanation,
+  billableDays,
+  daysInMonth,
 }: {
   action: string | undefined;
   contractId?: string | undefined;
   courseRegistrationIntentId?: string | undefined;
+  code?: string | undefined;
   errorMessage?: string | undefined;
   pauseWindowId?: string | undefined;
   eventId?: string | undefined;
@@ -255,6 +283,18 @@ function ActionNotice({
   paymentTransactionId?: string | undefined;
   ledgerEntryId?: string | undefined;
   payoutBatchId?: string | undefined;
+  step?: string | undefined;
+  rawErrorName?: string | undefined;
+  rawErrorMessage?: string | undefined;
+  supabaseCode?: string | undefined;
+  supabaseMessage?: string | undefined;
+  actionVersion?: string | undefined;
+  fullMonthAmountCents?: string | undefined;
+  firstPaymentAmountCents?: string | undefined;
+  contractStartDate?: string | undefined;
+  firstPaymentExplanation?: string | undefined;
+  billableDays?: string | undefined;
+  daysInMonth?: string | undefined;
 }) {
   if (!action) return null;
 
@@ -265,10 +305,31 @@ function ActionNotice({
   if (action.startsWith("initial-pay-ok-")) {
     message = "Kurs-Erstzahlung intern simuliert. Keine echte Zahlung, keine echte Auszahlung, keine Kund*innenmail.";
     toneClass = "border-green-200 bg-green-50 text-green-800";
+    details = (
+      <div className="mt-2 text-xs">
+        <div>course_registration_intent_id: {courseRegistrationIntentId ?? "-"}</div>
+        <div>contract_id: {contractId ?? "-"}</div>
+        <div>Monatsbetrag: {fullMonthAmountCents ? formatMoney(Number(fullMonthAmountCents), "EUR") : "-"}</div>
+        <div>Startdatum: {contractStartDate ? formatDate(contractStartDate) : "-"}</div>
+        <div>Erstzahlung: {firstPaymentAmountCents ? formatMoney(Number(firstPaymentAmountCents), "EUR") : "-"}</div>
+        <div>Abrechnungstage: {billableDays ?? "-"} / {daysInMonth ?? "-"}</div>
+        <div>Hinweis: {firstPaymentExplanation ?? "-"}</div>
+      </div>
+    );
   } else if (action.startsWith("initial-pay-error-")) {
-    const code = action.slice("initial-pay-error-".length);
-    message = `Fehler bei der Kurs-Erstzahlungs-Simulation: ${code}.`;
+    const actionCode = action.slice("initial-pay-error-".length);
+    message = `Fehler bei der Kurs-Erstzahlungs-Simulation: ${code ?? actionCode}.`;
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+    details = (
+      <div className="mt-2 text-xs">
+        <div>step: {step ?? "-"}</div>
+        <div>raw_error_name: {rawErrorName ?? "-"}</div>
+        <div>raw_error_message: {rawErrorMessage ?? "-"}</div>
+        <div>supabase_code: {supabaseCode ?? "-"}</div>
+        <div>supabase_message: {supabaseMessage ?? "-"}</div>
+        <div>action_version: {actionVersion ?? "-"}</div>
+      </div>
+    );
   } else if (action.startsWith("recurring-pay-ok-")) {
     message = "Monatszahlung intern simuliert. Keine echte Zahlung, keine echte Auszahlung, keine Kund*innenmail.";
     toneClass = "border-green-200 bg-green-50 text-green-800";
@@ -324,9 +385,19 @@ function ActionNotice({
       </div>
     );
   } else if (action.startsWith("lifecycle-pause-error-")) {
-    const code = action.slice("lifecycle-pause-error-".length);
-    message = `Fehler bei der Pause-Simulation: ${code}.`;
+    const actionCode = action.slice("lifecycle-pause-error-".length);
+    message = `Fehler bei der Pause-Simulation: ${code ?? actionCode}.`;
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+    details = (
+      <div className="mt-2 text-xs">
+        <div>step: {step ?? "-"}</div>
+        <div>raw_error_name: {rawErrorName ?? "-"}</div>
+        <div>raw_error_message: {rawErrorMessage ?? "-"}</div>
+        <div>supabase_code: {supabaseCode ?? "-"}</div>
+        <div>supabase_message: {supabaseMessage ?? "-"}</div>
+        <div>action_version: {actionVersion ?? "-"}</div>
+      </div>
+    );
   } else if (action.startsWith("lifecycle-cancel-ok-")) {
     message = "Kündigung intern simuliert. Keine echten Zahlungen, keine echte Auszahlung, keine Kund*innenmail.";
     toneClass = "border-green-200 bg-green-50 text-green-800";
@@ -342,6 +413,16 @@ function ActionNotice({
     const code = action.slice("lifecycle-cancel-error-".length);
     message = `Fehler bei der Kündigungs-Simulation: ${code}.`;
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+    details = (
+      <div className="mt-2 text-xs">
+        <div>step: {step ?? "-"}</div>
+        <div>raw_error_name: {rawErrorName ?? "-"}</div>
+        <div>raw_error_message: {rawErrorMessage ?? "-"}</div>
+        <div>supabase_code: {supabaseCode ?? "-"}</div>
+        <div>supabase_message: {supabaseMessage ?? "-"}</div>
+        <div>action_version: {actionVersion ?? "-"}</div>
+      </div>
+    );
   } else if (action.startsWith("participant-lifecycle-pause-ok-")) {
     message =
       "Teilnehmer*innen-Pause intern simuliert. Keine echten Zahlungen, keine echte Auszahlung, keine Kund*innenmail.";
@@ -360,6 +441,16 @@ function ActionNotice({
     const code = action.slice("participant-lifecycle-pause-error-".length);
     message = `Fehler bei der Teilnehmer*innen-Pause-Simulation: ${code}.`;
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+    details = (
+      <div className="mt-2 text-xs">
+        <div>step: {step ?? "-"}</div>
+        <div>raw_error_name: {rawErrorName ?? "-"}</div>
+        <div>raw_error_message: {rawErrorMessage ?? "-"}</div>
+        <div>supabase_code: {supabaseCode ?? "-"}</div>
+        <div>supabase_message: {supabaseMessage ?? "-"}</div>
+        <div>action_version: {actionVersion ?? "-"}</div>
+      </div>
+    );
   } else if (action.startsWith("participant-lifecycle-cancel-ok-")) {
     message =
       "Teilnehmer*innen-Kuendigung intern simuliert. Keine echten Zahlungen, keine echte Auszahlung, keine Kund*innenmail.";
@@ -377,6 +468,16 @@ function ActionNotice({
     const code = action.slice("participant-lifecycle-cancel-error-".length);
     message = `Fehler bei der Teilnehmer*innen-Kuendigungs-Simulation: ${code}.`;
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+    details = (
+      <div className="mt-2 text-xs">
+        <div>step: {step ?? "-"}</div>
+        <div>raw_error_name: {rawErrorName ?? "-"}</div>
+        <div>raw_error_message: {rawErrorMessage ?? "-"}</div>
+        <div>supabase_code: {supabaseCode ?? "-"}</div>
+        <div>supabase_message: {supabaseMessage ?? "-"}</div>
+        <div>action_version: {actionVersion ?? "-"}</div>
+      </div>
+    );
   } else if (action.startsWith("subscription-payout-ok-")) {
     message = "Simulierte Auszahlung fuer laufendes Angebot abgeschlossen. Keine echte Auszahlung, kein Provider-Call.";
     toneClass = "border-green-200 bg-green-50 text-green-800";
@@ -988,7 +1089,7 @@ export default async function SubscriptionAuditPage({
       admin
         .from("subscription_charges")
         .select(
-          "id,subscription_contract_id,subscription_period_id,payment_transaction_id,provider,provider_charge_id,provider_invoice_id,provider_payment_reference,charge_type,gross_amount_cents,currency,status,charged_at,created_at"
+          "id,subscription_contract_id,subscription_period_id,payment_transaction_id,provider,provider_charge_id,provider_invoice_id,provider_payment_reference,charge_type,gross_amount_cents,currency,status,charged_at,metadata,created_at"
         )
         .order("created_at", { ascending: false })
         .limit(ROW_LIMIT)
@@ -1323,6 +1424,7 @@ export default async function SubscriptionAuditPage({
           action={sp.action}
           contractId={sp.contractId}
           courseRegistrationIntentId={sp.courseRegistrationIntentId}
+          code={sp.code}
           errorMessage={sp.errorMessage}
           pauseWindowId={sp.pauseWindowId}
           eventId={sp.eventId}
@@ -1333,6 +1435,18 @@ export default async function SubscriptionAuditPage({
           paymentTransactionId={sp.paymentTransactionId}
           ledgerEntryId={sp.ledgerEntryId}
           payoutBatchId={sp.payoutBatchId}
+          step={sp.step}
+          rawErrorName={sp.rawErrorName}
+          rawErrorMessage={sp.rawErrorMessage}
+          supabaseCode={sp.supabaseCode}
+          supabaseMessage={sp.supabaseMessage}
+          actionVersion={sp.actionVersion}
+          fullMonthAmountCents={sp.fullMonthAmountCents}
+          firstPaymentAmountCents={sp.firstPaymentAmountCents}
+          contractStartDate={sp.contractStartDate}
+          firstPaymentExplanation={sp.firstPaymentExplanation}
+          billableDays={sp.billableDays}
+          daysInMonth={sp.daysInMonth}
         />
 
         <Section
