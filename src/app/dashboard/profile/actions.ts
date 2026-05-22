@@ -67,8 +67,11 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     const tax_number = optionalText(formData.get("tax_number"));
     const vat_id = optionalText(formData.get("vat_id"));
     const vat_status_raw = optionalText(formData.get("vat_status"));
-    const payout_iban = optionalText(formData.get("payout_iban"))?.replace(/\s+/g, "").toUpperCase() ?? null;
-    const payout_paypal_email = optionalText(formData.get("payout_paypal_email"))?.toLowerCase() ?? null;
+    const payout_iban_input = optionalText(formData.get("payout_iban"));
+    const payout_paypal_email_input = optionalText(formData.get("payout_paypal_email"));
+    const payout_iban = payout_method_raw === "iban" ? payout_iban_input?.replace(/\s+/g, "").toUpperCase() ?? null : null;
+    const payout_paypal_email =
+      payout_method_raw === "paypal" ? payout_paypal_email_input?.toLowerCase() ?? null : null;
 
     if (!isProviderType(provider_type_raw)) {
       logProfileSaveEvent("validation_error", {
@@ -223,7 +226,6 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
 
     return {
       success: "Profil gespeichert.",
-      redirectTo: "/dashboard?profileSaved=1",
     };
   } catch (error: unknown) {
     logProfileSaveEvent("save_error", {

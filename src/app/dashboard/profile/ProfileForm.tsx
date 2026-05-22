@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   PROVIDER_BILLING_VAT_STATUSES,
@@ -41,7 +41,7 @@ type ProfileFormProps = {
 
 export default function ProfileForm({ initialValues }: ProfileFormProps) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const [isSaving, setIsSaving] = useState(false);
   const [state, setState] = useState<SaveProfileState>({});
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState(initialValues.photo_url);
   const [photoObjectUrl, setPhotoObjectUrl] = useState<string | null>(null);
@@ -59,7 +59,7 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
     };
   }, [photoObjectUrl]);
 
-  const submitAction = (formData: FormData) => {
+  const submitAction = async (formData: FormData) => {
     setFileError(null);
     setState({});
     const introVideoUrl = String(formData.get("intro_video_url") || "").trim();
@@ -68,22 +68,23 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
       return;
     }
     setVideoUrlError(null);
+    setIsSaving(true);
 
-    startTransition(async () => {
-      try {
-        const result = await saveProfileAction(formData);
-        setState(result);
+    try {
+      const result = await saveProfileAction(formData);
+      setState(result);
 
-        if (result.redirectTo) {
-          router.push(result.redirectTo);
-          router.refresh();
-        }
-      } catch {
-        setState({
-          error: "Beim Speichern des Profils ist ein Fehler aufgetreten. Bitte versuche es erneut.",
-        });
+      if (result.redirectTo) {
+        router.push(result.redirectTo);
+        router.refresh();
       }
-    });
+    } catch {
+      setState({
+        error: "Beim Speichern des Profils ist ein Fehler aufgetreten. Bitte versuche es erneut.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -426,10 +427,10 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
 
       <button
         type="submit"
-        disabled={pending || Boolean(fileError) || Boolean(videoUrlError)}
+        disabled={isSaving || Boolean(fileError) || Boolean(videoUrlError)}
         className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
       >
-        {pending ? "Speichert..." : "Speichern"}
+        {isSaving ? "Speichert..." : "Speichern"}
       </button>
     </form>
   );
