@@ -314,6 +314,7 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
               name="billing_address_line_1"
               defaultValue={initialValues.billing_address_line_1}
               className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Optional"
             />
           </label>
 
@@ -333,6 +334,7 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
               name="billing_postal_code"
               defaultValue={initialValues.billing_postal_code}
               className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Optional"
             />
           </label>
 
@@ -342,6 +344,7 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
               name="billing_city"
               defaultValue={initialValues.billing_city}
               className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Optional"
             />
           </label>
 
@@ -361,6 +364,7 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
               name="tax_number"
               defaultValue={initialValues.tax_number}
               className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Optional"
             />
           </label>
 
@@ -370,6 +374,7 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
               name="vat_id"
               defaultValue={initialValues.vat_id}
               className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Optional"
             />
           </label>
 
