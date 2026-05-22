@@ -3,6 +3,11 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  PROVIDER_BILLING_VAT_STATUSES,
+  type ProviderBillingPayoutMethod,
+  type ProviderBillingVatStatus,
+} from "@/lib/provider-billing-profile";
+import {
   getProfileImageMaxSizeLabel,
   validateProfileImageFile,
 } from "@/lib/profile-image-upload";
@@ -18,6 +23,19 @@ type ProfileFormProps = {
     intro_video_url: string;
     provider_type: ProviderType;
     organization_name: string;
+    payout_method: ProviderBillingPayoutMethod;
+    billing_name: string;
+    billing_company_name: string;
+    billing_address_line_1: string;
+    billing_address_line_2: string;
+    billing_postal_code: string;
+    billing_city: string;
+    billing_country: string;
+    tax_number: string;
+    vat_id: string;
+    vat_status: ProviderBillingVatStatus | "";
+    payout_iban: string;
+    payout_paypal_email: string;
   };
 };
 
@@ -31,6 +49,7 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
   const [videoUrl, setVideoUrl] = useState(initialValues.intro_video_url);
   const [videoUrlError, setVideoUrlError] = useState<string | null>(null);
   const [providerType, setProviderType] = useState<ProviderType>(initialValues.provider_type);
+  const [payoutMethod, setPayoutMethod] = useState<ProviderBillingPayoutMethod>(initialValues.payout_method);
 
   useEffect(() => {
     return () => {
@@ -214,6 +233,161 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
           </a>
         ) : null}
       </label>
+
+      <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold">Abrechnung &amp; Auszahlungen</h2>
+          <p className="text-sm text-muted-foreground">
+            Diese Angaben helfen uns, spaetere Abrechnungen und Belege fuer dich vorzubereiten.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Wie moechtest du Auszahlungen erhalten? *</span>
+            <select
+              name="payout_method"
+              value={payoutMethod}
+              onChange={(event) => setPayoutMethod(event.target.value as ProviderBillingPayoutMethod)}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            >
+              <option value="iban">Auf mein Bankkonto (IBAN)</option>
+              <option value="paypal">Auf mein PayPal-Konto</option>
+            </select>
+          </label>
+
+          {payoutMethod === "iban" ? (
+            <label className="space-y-1 sm:col-span-2">
+              <span className="text-sm font-medium">IBAN</span>
+              <input
+                name="payout_iban"
+                defaultValue={initialValues.payout_iban}
+                className="w-full rounded-xl border px-3 py-2 text-sm"
+                placeholder="Optional fuer spaetere Auszahlungen"
+              />
+            </label>
+          ) : (
+            <label className="space-y-1 sm:col-span-2">
+              <span className="text-sm font-medium">PayPal-E-Mail</span>
+              <input
+                type="email"
+                name="payout_paypal_email"
+                defaultValue={initialValues.payout_paypal_email}
+                className="w-full rounded-xl border px-3 py-2 text-sm"
+                placeholder="Optional fuer spaetere Auszahlungen"
+              />
+            </label>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <p className="text-sm font-medium">Optionale Angaben fuer spaetere Abrechnungen und Belege</p>
+          <p className="text-xs text-muted-foreground">
+            Diese Angaben dienen der Vorbereitung automatischer Belege und Abrechnungen.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Name auf Abrechnungen</span>
+            <input
+              name="billing_name"
+              defaultValue={initialValues.billing_name}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="z. B. Max Mustermann"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Firma oder Organisation</span>
+            <input
+              name="billing_company_name"
+              defaultValue={initialValues.billing_company_name}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Optional"
+            />
+          </label>
+
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Strasse und Hausnummer</span>
+            <input
+              name="billing_address_line_1"
+              defaultValue={initialValues.billing_address_line_1}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Adresszusatz</span>
+            <input
+              name="billing_address_line_2"
+              defaultValue={initialValues.billing_address_line_2}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Optional"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">PLZ</span>
+            <input
+              name="billing_postal_code"
+              defaultValue={initialValues.billing_postal_code}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Ort</span>
+            <input
+              name="billing_city"
+              defaultValue={initialValues.billing_city}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Land</span>
+            <input
+              name="billing_country"
+              defaultValue={initialValues.billing_country}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="z. B. Deutschland"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Steuernummer</span>
+            <input
+              name="tax_number"
+              defaultValue={initialValues.tax_number}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">USt-IdNr.</span>
+            <input
+              name="vat_id"
+              defaultValue={initialValues.vat_id}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Umsatzsteuerstatus</span>
+            <select
+              name="vat_status"
+              defaultValue={initialValues.vat_status}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            >
+              <option value="">Keine Angabe</option>
+              <option value={PROVIDER_BILLING_VAT_STATUSES[0]}>Kleinunternehmer*in</option>
+              <option value={PROVIDER_BILLING_VAT_STATUSES[1]}>Umsatzsteuerpflichtig</option>
+              <option value={PROVIDER_BILLING_VAT_STATUSES[2]}>Steuerbefreit/Gemeinnuetzig</option>
+            </select>
+          </label>
+        </div>
+      </section>
 
       {fileError ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

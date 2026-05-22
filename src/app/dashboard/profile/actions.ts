@@ -1,6 +1,10 @@
 "use server";
 
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  isProviderBillingPayoutMethod,
+  isProviderBillingVatStatus,
+} from "@/lib/provider-billing-profile";
 import { validateProfileImageFile } from "@/lib/profile-image-upload";
 import { isProviderType } from "@/lib/provider-profiles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -52,6 +56,19 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     const photo_file = formData.get("photo_file");
     const provider_type_raw = optionalText(formData.get("provider_type")) ?? "independent_teacher";
     const organization_name = optionalText(formData.get("organization_name"));
+    const payout_method_raw = optionalText(formData.get("payout_method")) ?? "iban";
+    const billing_name = optionalText(formData.get("billing_name"));
+    const billing_company_name = optionalText(formData.get("billing_company_name"));
+    const billing_address_line_1 = optionalText(formData.get("billing_address_line_1"));
+    const billing_address_line_2 = optionalText(formData.get("billing_address_line_2"));
+    const billing_postal_code = optionalText(formData.get("billing_postal_code"));
+    const billing_city = optionalText(formData.get("billing_city"));
+    const billing_country = optionalText(formData.get("billing_country"));
+    const tax_number = optionalText(formData.get("tax_number"));
+    const vat_id = optionalText(formData.get("vat_id"));
+    const vat_status_raw = optionalText(formData.get("vat_status"));
+    const payout_iban = optionalText(formData.get("payout_iban"))?.replace(/\s+/g, "").toUpperCase() ?? null;
+    const payout_paypal_email = optionalText(formData.get("payout_paypal_email"))?.toLowerCase() ?? null;
 
     if (!isProviderType(provider_type_raw)) {
       logProfileSaveEvent("validation_error", {
@@ -65,6 +82,22 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     if (!last_name) return { error: "Nachname ist erforderlich." };
     if (provider_type_raw === "studio_provider" && !organization_name) {
       return { error: "Ein Organisationsname ist fuer Organisationen erforderlich." };
+    }
+    if (!isProviderBillingPayoutMethod(payout_method_raw)) {
+      logProfileSaveEvent("validation_error", {
+        context: "payout_method",
+        userId: user.id,
+        payoutMethod: payout_method_raw,
+      });
+      return { error: "Bitte waehle aus, wie du Auszahlungen erhalten moechtest." };
+    }
+    if (vat_status_raw && !isProviderBillingVatStatus(vat_status_raw)) {
+      logProfileSaveEvent("validation_error", {
+        context: "vat_status",
+        userId: user.id,
+        vatStatus: vat_status_raw,
+      });
+      return { error: "Bitte waehle einen gueltigen Umsatzsteuerstatus." };
     }
     if (intro_video_url && !/^https?:\/\//i.test(intro_video_url)) {
       return { error: "Bitte gib einen gueltigen Video-Link mit http:// oder https:// an." };
@@ -151,6 +184,19 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
         intro_video_url,
         provider_type: provider_type_raw,
         organization_name: provider_type_raw === "studio_provider" ? organization_name : null,
+        payout_method: payout_method_raw,
+        billing_name,
+        billing_company_name,
+        billing_address_line_1,
+        billing_address_line_2,
+        billing_postal_code,
+        billing_city,
+        billing_country,
+        tax_number,
+        vat_id,
+        vat_status: vat_status_raw,
+        payout_iban,
+        payout_paypal_email,
       },
       { onConflict: "id" }
     );

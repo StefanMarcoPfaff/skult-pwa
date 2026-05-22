@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { ProviderBillingPayoutMethod, ProviderBillingVatStatus } from "@/lib/provider-billing-profile";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import ProfileForm from "./ProfileForm";
 import type { ProviderType } from "@/lib/provider-profiles";
@@ -14,6 +15,19 @@ type ProfileRow = {
   stripe_account_id: string | null;
   provider_type: ProviderType | null;
   organization_name: string | null;
+  payout_method: ProviderBillingPayoutMethod | null;
+  billing_name: string | null;
+  billing_company_name: string | null;
+  billing_address_line_1: string | null;
+  billing_address_line_2: string | null;
+  billing_postal_code: string | null;
+  billing_city: string | null;
+  billing_country: string | null;
+  tax_number: string | null;
+  vat_id: string | null;
+  vat_status: ProviderBillingVatStatus | null;
+  payout_iban: string | null;
+  payout_paypal_email: string | null;
 };
 
 export default async function DashboardProfilePage({
@@ -44,7 +58,9 @@ export default async function DashboardProfilePage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id,first_name,last_name,bio,photo_url,intro_video_url,stripe_account_id,provider_type,organization_name")
+    .select(
+      "id,first_name,last_name,bio,photo_url,intro_video_url,stripe_account_id,provider_type,organization_name,payout_method,billing_name,billing_company_name,billing_address_line_1,billing_address_line_2,billing_postal_code,billing_city,billing_country,tax_number,vat_id,vat_status,payout_iban,payout_paypal_email"
+    )
     .eq("id", user.id)
     .maybeSingle<ProfileRow>();
 
@@ -134,6 +150,19 @@ export default async function DashboardProfilePage({
             intro_video_url: profile?.intro_video_url ?? "",
             provider_type: profile?.provider_type ?? "independent_teacher",
             organization_name: profile?.organization_name ?? "",
+            payout_method: profile?.payout_method ?? "iban",
+            billing_name: profile?.billing_name ?? "",
+            billing_company_name: profile?.billing_company_name ?? "",
+            billing_address_line_1: profile?.billing_address_line_1 ?? "",
+            billing_address_line_2: profile?.billing_address_line_2 ?? "",
+            billing_postal_code: profile?.billing_postal_code ?? "",
+            billing_city: profile?.billing_city ?? "",
+            billing_country: profile?.billing_country ?? "",
+            tax_number: profile?.tax_number ?? "",
+            vat_id: profile?.vat_id ?? "",
+            vat_status: profile?.vat_status ?? "",
+            payout_iban: profile?.payout_iban ?? "",
+            payout_paypal_email: profile?.payout_paypal_email ?? "",
           }}
         />
       </div>
