@@ -100,8 +100,17 @@ export type SimulatedPayoutIssue = {
 
 type DocumentResult = {
   providerPayoutStatementDocumentId: string | null;
+  providerPayoutStatementPdfPath: string | null;
+  providerPayoutStatementPdfGenerated: boolean;
+  providerPayoutStatementPdfWarning: string | null;
   providerPlatformFeeInvoiceDocumentId: string | null;
+  providerPlatformFeeInvoicePdfPath: string | null;
+  providerPlatformFeeInvoicePdfGenerated: boolean;
+  providerPlatformFeeInvoicePdfWarning: string | null;
   platformRevenueStatementDocumentId: string | null;
+  platformRevenueStatementPdfPath: string | null;
+  platformRevenueStatementPdfGenerated: boolean;
+  platformRevenueStatementPdfWarning: string | null;
   issue: SimulatedPayoutIssue | null;
 };
 
@@ -629,15 +638,33 @@ async function ensurePayoutDocuments(ledgerEntryId: string): Promise<DocumentRes
 
     return {
       providerPayoutStatementDocumentId: documents.providerPayoutStatementDocumentId,
+      providerPayoutStatementPdfPath: documents.providerPayoutStatementPdfPath,
+      providerPayoutStatementPdfGenerated: documents.providerPayoutStatementPdfGenerated,
+      providerPayoutStatementPdfWarning: documents.providerPayoutStatementPdfWarning,
       providerPlatformFeeInvoiceDocumentId: documents.providerPlatformFeeInvoiceDocumentId,
+      providerPlatformFeeInvoicePdfPath: documents.providerPlatformFeeInvoicePdfPath,
+      providerPlatformFeeInvoicePdfGenerated: documents.providerPlatformFeeInvoicePdfGenerated,
+      providerPlatformFeeInvoicePdfWarning: documents.providerPlatformFeeInvoicePdfWarning,
       platformRevenueStatementDocumentId: documents.platformRevenueStatementDocumentId,
+      platformRevenueStatementPdfPath: documents.platformRevenueStatementPdfPath,
+      platformRevenueStatementPdfGenerated: documents.platformRevenueStatementPdfGenerated,
+      platformRevenueStatementPdfWarning: documents.platformRevenueStatementPdfWarning,
       issue: null,
     };
   } catch (error) {
     return {
       providerPayoutStatementDocumentId: null,
+      providerPayoutStatementPdfPath: null,
+      providerPayoutStatementPdfGenerated: false,
+      providerPayoutStatementPdfWarning: null,
       providerPlatformFeeInvoiceDocumentId: null,
+      providerPlatformFeeInvoicePdfPath: null,
+      providerPlatformFeeInvoicePdfGenerated: false,
+      providerPlatformFeeInvoicePdfWarning: null,
       platformRevenueStatementDocumentId: null,
+      platformRevenueStatementPdfPath: null,
+      platformRevenueStatementPdfGenerated: false,
+      platformRevenueStatementPdfWarning: null,
       issue: buildPayoutIssue("create_financial_documents", error),
     };
   }
@@ -784,8 +811,17 @@ export async function createSimulatedPaidPayoutForLedgerEntry(input: {
   payoutItemId: string | null;
   ledgerEntryId: string;
   providerPayoutStatementDocumentId: string | null;
+  providerPayoutStatementPdfPath: string | null;
+  providerPayoutStatementPdfGenerated: boolean;
+  providerPayoutStatementPdfWarning: string | null;
   providerPlatformFeeInvoiceDocumentId: string | null;
+  providerPlatformFeeInvoicePdfPath: string | null;
+  providerPlatformFeeInvoicePdfGenerated: boolean;
+  providerPlatformFeeInvoicePdfWarning: string | null;
   platformRevenueStatementDocumentId: string | null;
+  platformRevenueStatementPdfPath: string | null;
+  platformRevenueStatementPdfGenerated: boolean;
+  platformRevenueStatementPdfWarning: string | null;
   payoutProvider: string;
   payoutMethod: string;
   usedFallbackPayoutProfile: boolean;
@@ -842,8 +878,17 @@ export async function createSimulatedPaidPayoutForLedgerEntry(input: {
       payoutItemId: payoutItemResult.payoutItemId,
       ledgerEntryId: entry.id,
       providerPayoutStatementDocumentId: documents.providerPayoutStatementDocumentId,
+      providerPayoutStatementPdfPath: documents.providerPayoutStatementPdfPath,
+      providerPayoutStatementPdfGenerated: documents.providerPayoutStatementPdfGenerated,
+      providerPayoutStatementPdfWarning: documents.providerPayoutStatementPdfWarning,
       providerPlatformFeeInvoiceDocumentId: documents.providerPlatformFeeInvoiceDocumentId,
+      providerPlatformFeeInvoicePdfPath: documents.providerPlatformFeeInvoicePdfPath,
+      providerPlatformFeeInvoicePdfGenerated: documents.providerPlatformFeeInvoicePdfGenerated,
+      providerPlatformFeeInvoicePdfWarning: documents.providerPlatformFeeInvoicePdfWarning,
       platformRevenueStatementDocumentId: documents.platformRevenueStatementDocumentId,
+      platformRevenueStatementPdfPath: documents.platformRevenueStatementPdfPath,
+      platformRevenueStatementPdfGenerated: documents.platformRevenueStatementPdfGenerated,
+      platformRevenueStatementPdfWarning: documents.platformRevenueStatementPdfWarning,
       payoutProvider: target.payoutProvider,
       payoutMethod: target.payoutMethod,
       usedFallbackPayoutProfile: target.usedFallbackPayoutProfile,
@@ -887,8 +932,17 @@ export async function createSimulatedPaidPayoutForLedgerEntry(input: {
     payoutItemId: payoutItemResult.payoutItemId,
     ledgerEntryId: entry.id,
     providerPayoutStatementDocumentId: documents.providerPayoutStatementDocumentId,
+    providerPayoutStatementPdfPath: documents.providerPayoutStatementPdfPath,
+    providerPayoutStatementPdfGenerated: documents.providerPayoutStatementPdfGenerated,
+    providerPayoutStatementPdfWarning: documents.providerPayoutStatementPdfWarning,
     providerPlatformFeeInvoiceDocumentId: documents.providerPlatformFeeInvoiceDocumentId,
+    providerPlatformFeeInvoicePdfPath: documents.providerPlatformFeeInvoicePdfPath,
+    providerPlatformFeeInvoicePdfGenerated: documents.providerPlatformFeeInvoicePdfGenerated,
+    providerPlatformFeeInvoicePdfWarning: documents.providerPlatformFeeInvoicePdfWarning,
     platformRevenueStatementDocumentId: documents.platformRevenueStatementDocumentId,
+    platformRevenueStatementPdfPath: documents.platformRevenueStatementPdfPath,
+    platformRevenueStatementPdfGenerated: documents.platformRevenueStatementPdfGenerated,
+    platformRevenueStatementPdfWarning: documents.platformRevenueStatementPdfWarning,
     payoutProvider: target.payoutProvider,
     payoutMethod: target.payoutMethod,
     usedFallbackPayoutProfile: target.usedFallbackPayoutProfile,

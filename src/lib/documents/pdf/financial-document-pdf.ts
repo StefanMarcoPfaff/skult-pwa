@@ -16,6 +16,7 @@ type GenerateFinancialDocumentPdfResult = {
   documentNumber: string;
   pdfPath: string;
   record: FinancialDocumentRecord;
+  pdfGenerated: boolean;
 };
 
 function getAdminSupabase(client?: SupabaseClient): SupabaseClient {
@@ -86,6 +87,30 @@ export async function generateFinancialDocumentPdf(input: {
 
   const documentNumber = document.document_number ?? buildDocumentNumber(document);
   const pdfPath = document.pdf_path ?? buildDocumentPdfPath(document, documentNumber);
+
+  if (document.pdf_path) {
+    const record =
+      document.document_number && document.pdf_path === pdfPath
+        ? document
+        : ((await setFinancialDocumentPdfAsset(
+            {
+              documentId: document.id,
+              pdfPath,
+              documentNumber,
+            },
+            supabase
+          )) ??
+          document);
+
+    return {
+      documentId: record.id,
+      documentNumber,
+      pdfPath,
+      record,
+      pdfGenerated: false,
+    };
+  }
+
   const metadata = getDocumentMetadata(document);
   const pdfBuffer = renderFinancialDocumentPdfByType({
     document,
@@ -118,5 +143,6 @@ export async function generateFinancialDocumentPdf(input: {
     documentNumber,
     pdfPath,
     record,
+    pdfGenerated: true,
   };
 }

@@ -7,6 +7,7 @@ import {
 } from "@/lib/documents/document-data";
 import {
   createFinancialDocumentRecord,
+  ensureFinancialDocumentPdfAsset,
 } from "@/lib/documents/financial-documents";
 import type { DocumentType, FinancialDocumentRecord } from "@/lib/documents/types";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
@@ -80,12 +81,24 @@ type PayoutItemDocumentRow = {
 type EnsureCustomerReceiptResult = {
   documentId: string;
   record: FinancialDocumentRecord;
+  pdfPath: string | null;
+  pdfGenerated: boolean;
+  pdfWarning: string | null;
 };
 
 type EnsureProviderPayoutDocumentsResult = {
   providerPayoutStatementDocumentId: string;
+  providerPayoutStatementPdfPath: string | null;
+  providerPayoutStatementPdfGenerated: boolean;
+  providerPayoutStatementPdfWarning: string | null;
   providerPlatformFeeInvoiceDocumentId: string;
+  providerPlatformFeeInvoicePdfPath: string | null;
+  providerPlatformFeeInvoicePdfGenerated: boolean;
+  providerPlatformFeeInvoicePdfWarning: string | null;
   platformRevenueStatementDocumentId: string;
+  platformRevenueStatementPdfPath: string | null;
+  platformRevenueStatementPdfGenerated: boolean;
+  platformRevenueStatementPdfWarning: string | null;
 };
 
 type LoadedDocumentContext = {
@@ -119,6 +132,25 @@ function normalizeOptionalText(value: string | null | undefined): string | null 
 function buildFullName(firstName: string | null | undefined, lastName: string | null | undefined): string | null {
   const fullName = [normalizeOptionalText(firstName), normalizeOptionalText(lastName)].filter(Boolean).join(" ").trim();
   return fullName || null;
+}
+
+async function finalizeFinancialDocumentRecord(input: {
+  supabase: SupabaseClient;
+  record: FinancialDocumentRecord;
+}): Promise<{
+  record: FinancialDocumentRecord;
+  pdfPath: string | null;
+  pdfGenerated: boolean;
+  pdfWarning: string | null;
+}> {
+  const pdfResult = await ensureFinancialDocumentPdfAsset(input.record, input.supabase);
+
+  return {
+    record: pdfResult.record,
+    pdfPath: pdfResult.pdfPath,
+    pdfGenerated: pdfResult.pdfGenerated,
+    pdfWarning: pdfResult.warning,
+  };
 }
 
 async function findExistingFinancialDocumentByColumn(input: {
@@ -260,9 +292,17 @@ export async function ensureCustomerReceiptForPayment(input: {
   });
 
   if (existing) {
-    return {
-      documentId: existing.id,
+    const finalized = await finalizeFinancialDocumentRecord({
+      supabase,
       record: existing,
+    });
+
+    return {
+      documentId: finalized.record.id,
+      record: finalized.record,
+      pdfPath: finalized.pdfPath,
+      pdfGenerated: finalized.pdfGenerated,
+      pdfWarning: finalized.pdfWarning,
     };
   }
 
@@ -317,9 +357,17 @@ export async function ensureCustomerReceiptForPayment(input: {
     issued_at: context.paymentTransaction.paid_at ?? new Date().toISOString(),
   });
 
-  return {
-    documentId: record.id,
+  const finalized = await finalizeFinancialDocumentRecord({
+    supabase,
     record,
+  });
+
+  return {
+    documentId: finalized.record.id,
+    record: finalized.record,
+    pdfPath: finalized.pdfPath,
+    pdfGenerated: finalized.pdfGenerated,
+    pdfWarning: finalized.pdfWarning,
   };
 }
 
@@ -558,9 +606,34 @@ export async function ensureProviderPayoutDocumentsForLedgerEntry(input: {
     }),
   ]);
 
+  const [providerPayoutStatementFinalized, providerPlatformFeeInvoiceFinalized, platformRevenueStatementFinalized] =
+    await Promise.all([
+      finalizeFinancialDocumentRecord({
+        supabase,
+        record: providerPayoutStatement,
+      }),
+      finalizeFinancialDocumentRecord({
+        supabase,
+        record: providerPlatformFeeInvoice,
+      }),
+      finalizeFinancialDocumentRecord({
+        supabase,
+        record: platformRevenueStatement,
+      }),
+    ]);
+
   return {
-    providerPayoutStatementDocumentId: providerPayoutStatement.id,
-    providerPlatformFeeInvoiceDocumentId: providerPlatformFeeInvoice.id,
-    platformRevenueStatementDocumentId: platformRevenueStatement.id,
+    providerPayoutStatementDocumentId: providerPayoutStatementFinalized.record.id,
+    providerPayoutStatementPdfPath: providerPayoutStatementFinalized.pdfPath,
+    providerPayoutStatementPdfGenerated: providerPayoutStatementFinalized.pdfGenerated,
+    providerPayoutStatementPdfWarning: providerPayoutStatementFinalized.pdfWarning,
+    providerPlatformFeeInvoiceDocumentId: providerPlatformFeeInvoiceFinalized.record.id,
+    providerPlatformFeeInvoicePdfPath: providerPlatformFeeInvoiceFinalized.pdfPath,
+    providerPlatformFeeInvoicePdfGenerated: providerPlatformFeeInvoiceFinalized.pdfGenerated,
+    providerPlatformFeeInvoicePdfWarning: providerPlatformFeeInvoiceFinalized.pdfWarning,
+    platformRevenueStatementDocumentId: platformRevenueStatementFinalized.record.id,
+    platformRevenueStatementPdfPath: platformRevenueStatementFinalized.pdfPath,
+    platformRevenueStatementPdfGenerated: platformRevenueStatementFinalized.pdfGenerated,
+    platformRevenueStatementPdfWarning: platformRevenueStatementFinalized.pdfWarning,
   };
 }

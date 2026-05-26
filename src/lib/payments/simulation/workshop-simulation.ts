@@ -90,6 +90,9 @@ type WorkshopSimulationResult = {
   paymentTransactionId: string | null;
   refundRecordId?: string | null;
   customerReceiptDocumentId?: string | null;
+  customerReceiptPdfPath?: string | null;
+  customerReceiptPdfGenerated?: boolean;
+  customerReceiptPdfWarning?: string | null;
   simulationMetadata: ReturnType<typeof buildSimulationMetadata>;
 };
 
@@ -428,6 +431,9 @@ export async function simulateWorkshopPaymentSuccess(input: {
     bookingId: booking.id,
     paymentTransactionId,
     customerReceiptDocumentId: customerReceipt.documentId,
+    customerReceiptPdfPath: customerReceipt.pdfPath,
+    customerReceiptPdfGenerated: customerReceipt.pdfGenerated,
+    customerReceiptPdfWarning: customerReceipt.pdfWarning,
     simulationMetadata,
   };
 }

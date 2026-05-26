@@ -97,6 +97,9 @@ type SubscriptionSimulationResult = {
   paymentTransactionId: string;
   ledgerEntryId: string;
   customerReceiptDocumentId: string;
+  customerReceiptPdfPath: string | null;
+  customerReceiptPdfGenerated: boolean;
+  customerReceiptPdfWarning: string | null;
   contractStartDate: SubscriptionDateString;
   firstPaymentBreakdown: ProratedFirstSubscriptionAmount;
   simulationMetadata: ReturnType<typeof buildSimulationMetadata>;
@@ -704,6 +707,9 @@ export async function simulateSubscriptionInitialPaymentSuccess(input: {
     paymentTransactionId,
     ledgerEntryId,
     customerReceiptDocumentId: customerReceipt.documentId,
+    customerReceiptPdfPath: customerReceipt.pdfPath,
+    customerReceiptPdfGenerated: customerReceipt.pdfGenerated,
+    customerReceiptPdfWarning: customerReceipt.pdfWarning,
     contractStartDate,
     firstPaymentBreakdown,
     simulationMetadata,

@@ -68,6 +68,9 @@ type RecurringSimulationResult = {
   paymentTransactionId: string | null;
   ledgerEntryId: string | null;
   customerReceiptDocumentId: string | null;
+  customerReceiptPdfPath: string | null;
+  customerReceiptPdfGenerated: boolean;
+  customerReceiptPdfWarning: string | null;
   skippedReason: "pause" | "contract_ended" | "participant_pause" | "participant_ended" | null;
   simulationMetadata: ReturnType<typeof buildSimulationMetadata>;
 };
@@ -618,6 +621,9 @@ export async function simulateSubscriptionRecurringPayment(input: {
       paymentTransactionId: existingSimulation.paymentTransactionId,
       ledgerEntryId: existingSimulation.ledgerEntryId,
       customerReceiptDocumentId: customerReceipt?.documentId ?? null,
+      customerReceiptPdfPath: customerReceipt?.pdfPath ?? null,
+      customerReceiptPdfGenerated: customerReceipt?.pdfGenerated ?? false,
+      customerReceiptPdfWarning: customerReceipt?.pdfWarning ?? null,
       skippedReason: null,
       simulationMetadata,
     };
@@ -640,6 +646,9 @@ export async function simulateSubscriptionRecurringPayment(input: {
       paymentTransactionId: null,
       ledgerEntryId: null,
       customerReceiptDocumentId: null,
+      customerReceiptPdfPath: null,
+      customerReceiptPdfGenerated: false,
+      customerReceiptPdfWarning: null,
       skippedReason: "contract_ended",
       simulationMetadata,
     };
@@ -678,6 +687,9 @@ export async function simulateSubscriptionRecurringPayment(input: {
       paymentTransactionId: null,
       ledgerEntryId: null,
       customerReceiptDocumentId: null,
+      customerReceiptPdfPath: null,
+      customerReceiptPdfGenerated: false,
+      customerReceiptPdfWarning: null,
       skippedReason: "pause",
       simulationMetadata,
     };
@@ -711,6 +723,9 @@ export async function simulateSubscriptionRecurringPayment(input: {
       paymentTransactionId: null,
       ledgerEntryId: null,
       customerReceiptDocumentId: null,
+      customerReceiptPdfPath: null,
+      customerReceiptPdfGenerated: false,
+      customerReceiptPdfWarning: null,
       skippedReason: "participant_pause",
       simulationMetadata,
     };
@@ -733,6 +748,9 @@ export async function simulateSubscriptionRecurringPayment(input: {
       paymentTransactionId: null,
       ledgerEntryId: null,
       customerReceiptDocumentId: null,
+      customerReceiptPdfPath: null,
+      customerReceiptPdfGenerated: false,
+      customerReceiptPdfWarning: null,
       skippedReason: "participant_ended",
       simulationMetadata,
     };
@@ -835,6 +853,9 @@ export async function simulateSubscriptionRecurringPayment(input: {
     paymentTransactionId,
     ledgerEntryId,
     customerReceiptDocumentId: customerReceipt.documentId,
+    customerReceiptPdfPath: customerReceipt.pdfPath,
+    customerReceiptPdfGenerated: customerReceipt.pdfGenerated,
+    customerReceiptPdfWarning: customerReceipt.pdfWarning,
     skippedReason: null,
     simulationMetadata,
   };

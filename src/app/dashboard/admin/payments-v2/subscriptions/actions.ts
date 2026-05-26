@@ -182,6 +182,9 @@ export async function simulateSubscriptionInitialPaymentSuccessAction(formData: 
       courseRegistrationIntentId: result.courseRegistrationIntentId,
       contractId: result.subscriptionContractId,
       customerReceiptDocumentId: result.customerReceiptDocumentId,
+      customerReceiptPdfPath: result.customerReceiptPdfPath ?? "",
+      customerReceiptPdfGenerated: result.customerReceiptPdfGenerated ? "yes" : "no",
+      customerReceiptPdfWarning: result.customerReceiptPdfWarning ?? "",
       paymentTransactionId: result.paymentTransactionId,
       contractStartDate: result.contractStartDate,
       fullMonthAmountCents: String(result.firstPaymentBreakdown.full_month_amount_cents),
@@ -235,6 +238,9 @@ export async function simulateSubscriptionRecurringPaymentAction(formData: FormD
         paymentTransactionId: result.paymentTransactionId,
         ledgerEntryId: result.ledgerEntryId,
         customerReceiptDocumentId: result.customerReceiptDocumentId,
+        customerReceiptPdfPath: result.customerReceiptPdfPath ?? "",
+        customerReceiptPdfGenerated: result.customerReceiptPdfGenerated ? "yes" : "no",
+        customerReceiptPdfWarning: result.customerReceiptPdfWarning ?? "",
       }
     );
   } catch (error) {
@@ -440,8 +446,17 @@ export async function simulateSubscriptionPayoutAction(formData: FormData) {
       ledgerEntryId: result.ledgerEntryId,
       payoutBatchId: result.batchId,
       providerPayoutStatementDocumentId: result.providerPayoutStatementDocumentId,
+      providerPayoutStatementPdfPath: result.providerPayoutStatementPdfPath,
+      providerPayoutStatementPdfGenerated: result.providerPayoutStatementPdfGenerated ? "yes" : "no",
+      providerPayoutStatementPdfWarning: result.providerPayoutStatementPdfWarning ?? "",
       providerPlatformFeeInvoiceDocumentId: result.providerPlatformFeeInvoiceDocumentId,
+      providerPlatformFeeInvoicePdfPath: result.providerPlatformFeeInvoicePdfPath,
+      providerPlatformFeeInvoicePdfGenerated: result.providerPlatformFeeInvoicePdfGenerated ? "yes" : "no",
+      providerPlatformFeeInvoicePdfWarning: result.providerPlatformFeeInvoicePdfWarning ?? "",
       platformRevenueStatementDocumentId: result.platformRevenueStatementDocumentId,
+      platformRevenueStatementPdfPath: result.platformRevenueStatementPdfPath,
+      platformRevenueStatementPdfGenerated: result.platformRevenueStatementPdfGenerated ? "yes" : "no",
+      platformRevenueStatementPdfWarning: result.platformRevenueStatementPdfWarning ?? "",
     });
   } catch (error) {
     revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);

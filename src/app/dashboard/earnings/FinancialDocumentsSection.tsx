@@ -212,8 +212,8 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
           <h2 className="text-lg font-semibold text-slate-900">Belege & Abrechnungen</h2>
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
             {props.role === "admin"
-              ? "Hier findest du alle erzeugten Dokumente. PDFs und Downloads folgen spaeter."
-              : "Hier findest du deine Auszahlungsabrechnungen und Plattformgebuehren-Belege. PDFs und Downloads folgen spaeter."}
+              ? "Hier findest du alle erzeugten Dokumente. Verfuegbare PDFs koennen direkt heruntergeladen werden."
+              : "Hier findest du deine Auszahlungsabrechnungen und Plattformgebuehren-Belege. Verfuegbare PDFs koennen direkt heruntergeladen werden."}
           </p>
         </div>
         <div className="rounded-2xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600">

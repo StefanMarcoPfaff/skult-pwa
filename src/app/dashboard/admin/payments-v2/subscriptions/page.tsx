@@ -171,6 +171,9 @@ type SearchParams = {
   contractId?: string;
   courseRegistrationIntentId?: string;
   customerReceiptDocumentId?: string;
+  customerReceiptPdfPath?: string;
+  customerReceiptPdfGenerated?: string;
+  customerReceiptPdfWarning?: string;
   code?: string;
   errorMessage?: string;
   pauseWindowId?: string;
@@ -182,9 +185,18 @@ type SearchParams = {
   paymentTransactionId?: string;
   ledgerEntryId?: string;
   platformRevenueStatementDocumentId?: string;
+  platformRevenueStatementPdfPath?: string;
+  platformRevenueStatementPdfGenerated?: string;
+  platformRevenueStatementPdfWarning?: string;
   payoutBatchId?: string;
   providerPlatformFeeInvoiceDocumentId?: string;
+  providerPlatformFeeInvoicePdfPath?: string;
+  providerPlatformFeeInvoicePdfGenerated?: string;
+  providerPlatformFeeInvoicePdfWarning?: string;
   providerPayoutStatementDocumentId?: string;
+  providerPayoutStatementPdfPath?: string;
+  providerPayoutStatementPdfGenerated?: string;
+  providerPayoutStatementPdfWarning?: string;
   selectedContractId?: string;
   step?: string;
   rawErrorName?: string;
@@ -259,11 +271,23 @@ function ActionNotice({
   chargeId,
   paymentTransactionId,
   customerReceiptDocumentId,
+  customerReceiptPdfPath,
+  customerReceiptPdfGenerated,
+  customerReceiptPdfWarning,
   ledgerEntryId,
   platformRevenueStatementDocumentId,
+  platformRevenueStatementPdfPath,
+  platformRevenueStatementPdfGenerated,
+  platformRevenueStatementPdfWarning,
   payoutBatchId,
   providerPlatformFeeInvoiceDocumentId,
+  providerPlatformFeeInvoicePdfPath,
+  providerPlatformFeeInvoicePdfGenerated,
+  providerPlatformFeeInvoicePdfWarning,
   providerPayoutStatementDocumentId,
+  providerPayoutStatementPdfPath,
+  providerPayoutStatementPdfGenerated,
+  providerPayoutStatementPdfWarning,
   step,
   rawErrorName,
   rawErrorMessage,
@@ -290,11 +314,23 @@ function ActionNotice({
   chargeId?: string | undefined;
   paymentTransactionId?: string | undefined;
   customerReceiptDocumentId?: string | undefined;
+  customerReceiptPdfPath?: string | undefined;
+  customerReceiptPdfGenerated?: string | undefined;
+  customerReceiptPdfWarning?: string | undefined;
   ledgerEntryId?: string | undefined;
   platformRevenueStatementDocumentId?: string | undefined;
+  platformRevenueStatementPdfPath?: string | undefined;
+  platformRevenueStatementPdfGenerated?: string | undefined;
+  platformRevenueStatementPdfWarning?: string | undefined;
   payoutBatchId?: string | undefined;
   providerPlatformFeeInvoiceDocumentId?: string | undefined;
+  providerPlatformFeeInvoicePdfPath?: string | undefined;
+  providerPlatformFeeInvoicePdfGenerated?: string | undefined;
+  providerPlatformFeeInvoicePdfWarning?: string | undefined;
   providerPayoutStatementDocumentId?: string | undefined;
+  providerPayoutStatementPdfPath?: string | undefined;
+  providerPayoutStatementPdfGenerated?: string | undefined;
+  providerPayoutStatementPdfWarning?: string | undefined;
   step?: string | undefined;
   rawErrorName?: string | undefined;
   rawErrorMessage?: string | undefined;
@@ -323,6 +359,9 @@ function ActionNotice({
         <div>contract_id: {contractId ?? "-"}</div>
         <div>payment_transaction_id: {paymentTransactionId ?? "-"}</div>
         <div>customer_receipt_document_id: {customerReceiptDocumentId ?? "-"}</div>
+        <div>customer_receipt_pdf_path: {customerReceiptPdfPath ?? "-"}</div>
+        <div>customer_receipt_pdf_generated: {customerReceiptPdfGenerated === "yes" ? "ja" : "nein"}</div>
+        {customerReceiptPdfWarning ? <div>customer_receipt_pdf_warning: {customerReceiptPdfWarning}</div> : null}
         <div>Monatsbetrag: {fullMonthAmountCents ? formatMoney(Number(fullMonthAmountCents), "EUR") : "-"}</div>
         <div>Startdatum: {contractStartDate ? formatDate(contractStartDate) : "-"}</div>
         <div>Erstzahlung: {firstPaymentAmountCents ? formatMoney(Number(firstPaymentAmountCents), "EUR") : "-"}</div>
@@ -355,6 +394,9 @@ function ActionNotice({
         <div>payment_transaction_id: {paymentTransactionId ?? "-"}</div>
         <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
         <div>customer_receipt_document_id: {customerReceiptDocumentId ?? "-"}</div>
+        <div>customer_receipt_pdf_path: {customerReceiptPdfPath ?? "-"}</div>
+        <div>customer_receipt_pdf_generated: {customerReceiptPdfGenerated === "yes" ? "ja" : "nein"}</div>
+        {customerReceiptPdfWarning ? <div>customer_receipt_pdf_warning: {customerReceiptPdfWarning}</div> : null}
       </div>
     );
   } else if (action.startsWith("recurring-pay-skipped-pause-")) {
@@ -503,8 +545,17 @@ function ActionNotice({
         <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
         <div>payout_batch_id: {payoutBatchId ?? "-"}</div>
         <div>provider_payout_statement_document_id: {providerPayoutStatementDocumentId ?? "-"}</div>
+        <div>provider_payout_statement_pdf_path: {providerPayoutStatementPdfPath ?? "-"}</div>
+        <div>provider_payout_statement_pdf_generated: {providerPayoutStatementPdfGenerated === "yes" ? "ja" : "nein"}</div>
+        {providerPayoutStatementPdfWarning ? <div>provider_payout_statement_pdf_warning: {providerPayoutStatementPdfWarning}</div> : null}
         <div>provider_platform_fee_invoice_document_id: {providerPlatformFeeInvoiceDocumentId ?? "-"}</div>
+        <div>provider_platform_fee_invoice_pdf_path: {providerPlatformFeeInvoicePdfPath ?? "-"}</div>
+        <div>provider_platform_fee_invoice_pdf_generated: {providerPlatformFeeInvoicePdfGenerated === "yes" ? "ja" : "nein"}</div>
+        {providerPlatformFeeInvoicePdfWarning ? <div>provider_platform_fee_invoice_pdf_warning: {providerPlatformFeeInvoicePdfWarning}</div> : null}
         <div>platform_revenue_statement_document_id: {platformRevenueStatementDocumentId ?? "-"}</div>
+        <div>platform_revenue_statement_pdf_path: {platformRevenueStatementPdfPath ?? "-"}</div>
+        <div>platform_revenue_statement_pdf_generated: {platformRevenueStatementPdfGenerated === "yes" ? "ja" : "nein"}</div>
+        {platformRevenueStatementPdfWarning ? <div>platform_revenue_statement_pdf_warning: {platformRevenueStatementPdfWarning}</div> : null}
       </div>
     );
   } else if (action.startsWith("subscription-payout-error-")) {
@@ -1444,6 +1495,9 @@ export default async function SubscriptionAuditPage({
           courseRegistrationIntentId={sp.courseRegistrationIntentId}
           code={sp.code}
           customerReceiptDocumentId={sp.customerReceiptDocumentId}
+          customerReceiptPdfPath={sp.customerReceiptPdfPath}
+          customerReceiptPdfGenerated={sp.customerReceiptPdfGenerated}
+          customerReceiptPdfWarning={sp.customerReceiptPdfWarning}
           errorMessage={sp.errorMessage}
           pauseWindowId={sp.pauseWindowId}
           eventId={sp.eventId}
@@ -1454,9 +1508,18 @@ export default async function SubscriptionAuditPage({
           paymentTransactionId={sp.paymentTransactionId}
           ledgerEntryId={sp.ledgerEntryId}
           platformRevenueStatementDocumentId={sp.platformRevenueStatementDocumentId}
+          platformRevenueStatementPdfPath={sp.platformRevenueStatementPdfPath}
+          platformRevenueStatementPdfGenerated={sp.platformRevenueStatementPdfGenerated}
+          platformRevenueStatementPdfWarning={sp.platformRevenueStatementPdfWarning}
           payoutBatchId={sp.payoutBatchId}
           providerPlatformFeeInvoiceDocumentId={sp.providerPlatformFeeInvoiceDocumentId}
+          providerPlatformFeeInvoicePdfPath={sp.providerPlatformFeeInvoicePdfPath}
+          providerPlatformFeeInvoicePdfGenerated={sp.providerPlatformFeeInvoicePdfGenerated}
+          providerPlatformFeeInvoicePdfWarning={sp.providerPlatformFeeInvoicePdfWarning}
           providerPayoutStatementDocumentId={sp.providerPayoutStatementDocumentId}
+          providerPayoutStatementPdfPath={sp.providerPayoutStatementPdfPath}
+          providerPayoutStatementPdfGenerated={sp.providerPayoutStatementPdfGenerated}
+          providerPayoutStatementPdfWarning={sp.providerPayoutStatementPdfWarning}
           step={sp.step}
           rawErrorName={sp.rawErrorName}
           rawErrorMessage={sp.rawErrorMessage}

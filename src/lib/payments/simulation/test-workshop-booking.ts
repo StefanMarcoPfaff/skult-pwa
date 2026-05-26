@@ -149,6 +149,10 @@ export type SimulateWorkshopBookingResult = {
   paymentSimulated: boolean;
   paymentTransactionId: string | null;
   ledgerEntryId: string | null;
+  customerReceiptDocumentId: string | null;
+  customerReceiptPdfPath: string | null;
+  customerReceiptPdfGenerated: boolean;
+  customerReceiptPdfWarning: string | null;
   customerMailSent: boolean;
   providerMailSent: boolean;
   mailError: string | null;
@@ -706,6 +710,10 @@ export async function simulateWorkshopBooking(
   let paymentSimulated = false;
   let paymentTransactionId: string | null = null;
   let ledgerEntryId: string | null = null;
+  let customerReceiptDocumentId: string | null = null;
+  let customerReceiptPdfPath: string | null = null;
+  let customerReceiptPdfGenerated = false;
+  let customerReceiptPdfWarning: string | null = null;
   if (shouldSimulatePayment) {
     logWorkshopSimulationLookup("payment simulation start", {
       bookingId: inserted.id,
@@ -723,6 +731,13 @@ export async function simulateWorkshopBooking(
       paymentSimulated = true;
       paymentTransactionId = paymentResult.paymentTransactionId;
       ledgerEntryId = paymentTransactionId ? await loadPositiveLedgerEntryId(paymentTransactionId) : null;
+      customerReceiptDocumentId = paymentResult.customerReceiptDocumentId ?? null;
+      customerReceiptPdfPath = paymentResult.customerReceiptPdfPath ?? null;
+      customerReceiptPdfGenerated = paymentResult.customerReceiptPdfGenerated ?? false;
+      customerReceiptPdfWarning = paymentResult.customerReceiptPdfWarning ?? null;
+      if (customerReceiptPdfWarning) {
+        warnings.push(customerReceiptPdfWarning);
+      }
       logWorkshopSimulationLookup("payment simulation success", {
         bookingId: inserted.id,
         courseId,
@@ -868,6 +883,10 @@ export async function simulateWorkshopBooking(
     paymentSimulated,
     paymentTransactionId,
     ledgerEntryId,
+    customerReceiptDocumentId,
+    customerReceiptPdfPath,
+    customerReceiptPdfGenerated,
+    customerReceiptPdfWarning,
     customerMailSent,
     providerMailSent,
     mailError: warnings.length > 0 ? warnings.join(" ") : null,

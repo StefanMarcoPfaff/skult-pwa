@@ -251,6 +251,9 @@ type SearchParams = {
   checkedCount?: string;
   businessStatus?: string;
   customerReceiptDocumentId?: string;
+  customerReceiptPdfPath?: string;
+  customerReceiptPdfGenerated?: string;
+  customerReceiptPdfWarning?: string;
   documentRawErrorMessage?: string;
   documentStep?: string;
   documentSupabaseCode?: string;
@@ -262,6 +265,9 @@ type SearchParams = {
   offerFilter?: string;
   paymentTransactionId?: string;
   platformRevenueStatementDocumentId?: string;
+  platformRevenueStatementPdfPath?: string;
+  platformRevenueStatementPdfGenerated?: string;
+  platformRevenueStatementPdfWarning?: string;
   payoutItemRawErrorMessage?: string;
   payoutItemStep?: string;
   payoutItemSupabaseCode?: string;
@@ -270,7 +276,13 @@ type SearchParams = {
   payoutProvider?: string;
   providerFilter?: string;
   providerPlatformFeeInvoiceDocumentId?: string;
+  providerPlatformFeeInvoicePdfPath?: string;
+  providerPlatformFeeInvoicePdfGenerated?: string;
+  providerPlatformFeeInvoicePdfWarning?: string;
   providerPayoutStatementDocumentId?: string;
+  providerPayoutStatementPdfPath?: string;
+  providerPayoutStatementPdfGenerated?: string;
+  providerPayoutStatementPdfWarning?: string;
   rawErrorMessage?: string;
   selectedBookingId?: string;
   simulationWindow?: string;
@@ -555,6 +567,9 @@ function ActionNotice({
   message: detailMessage,
   paymentTransactionId,
   platformRevenueStatementDocumentId,
+  platformRevenueStatementPdfPath,
+  platformRevenueStatementPdfGenerated,
+  platformRevenueStatementPdfWarning,
   payoutItemRawErrorMessage,
   payoutItemStep,
   payoutItemSupabaseCode,
@@ -562,7 +577,16 @@ function ActionNotice({
   payoutMethod,
   payoutProvider,
   providerPlatformFeeInvoiceDocumentId,
+  providerPlatformFeeInvoicePdfPath,
+  providerPlatformFeeInvoicePdfGenerated,
+  providerPlatformFeeInvoicePdfWarning,
   providerPayoutStatementDocumentId,
+  providerPayoutStatementPdfPath,
+  providerPayoutStatementPdfGenerated,
+  providerPayoutStatementPdfWarning,
+  customerReceiptPdfPath,
+  customerReceiptPdfGenerated,
+  customerReceiptPdfWarning,
   rawErrorMessage,
   step,
   supabaseCode,
@@ -652,8 +676,17 @@ function ActionNotice({
         <div>payout_method: {payoutMethod ?? "-"}</div>
         <div>fallback_payout_profile: {usedFallbackPayoutProfile === "yes" ? "ja" : "nein"}</div>
         <div>provider_payout_statement_document_id: {providerPayoutStatementDocumentId ?? "-"}</div>
+        <div>provider_payout_statement_pdf_path: {providerPayoutStatementPdfPath ?? "-"}</div>
+        <div>provider_payout_statement_pdf_generated: {providerPayoutStatementPdfGenerated === "yes" ? "ja" : "nein"}</div>
+        {providerPayoutStatementPdfWarning ? <div>provider_payout_statement_pdf_warning: {providerPayoutStatementPdfWarning}</div> : null}
         <div>provider_platform_fee_invoice_document_id: {providerPlatformFeeInvoiceDocumentId ?? "-"}</div>
+        <div>provider_platform_fee_invoice_pdf_path: {providerPlatformFeeInvoicePdfPath ?? "-"}</div>
+        <div>provider_platform_fee_invoice_pdf_generated: {providerPlatformFeeInvoicePdfGenerated === "yes" ? "ja" : "nein"}</div>
+        {providerPlatformFeeInvoicePdfWarning ? <div>provider_platform_fee_invoice_pdf_warning: {providerPlatformFeeInvoicePdfWarning}</div> : null}
         <div>platform_revenue_statement_document_id: {platformRevenueStatementDocumentId ?? "-"}</div>
+        <div>platform_revenue_statement_pdf_path: {platformRevenueStatementPdfPath ?? "-"}</div>
+        <div>platform_revenue_statement_pdf_generated: {platformRevenueStatementPdfGenerated === "yes" ? "ja" : "nein"}</div>
+        {platformRevenueStatementPdfWarning ? <div>platform_revenue_statement_pdf_warning: {platformRevenueStatementPdfWarning}</div> : null}
         {payoutItemStep || payoutItemRawErrorMessage ? (
           <>
             <div className="pt-2 font-semibold text-amber-900">Payout-Item-Warnung</div>
@@ -719,6 +752,9 @@ function ActionNotice({
       <div className="mt-1 space-y-1 text-xs">
         <div>payment_transaction_id: {paymentTransactionId ?? "-"}</div>
         <div>customer_receipt_document_id: {customerReceiptDocumentId ?? "-"}</div>
+        <div>customer_receipt_pdf_path: {customerReceiptPdfPath ?? "-"}</div>
+        <div>customer_receipt_pdf_generated: {customerReceiptPdfGenerated === "yes" ? "ja" : "nein"}</div>
+        {customerReceiptPdfWarning ? <div>customer_receipt_pdf_warning: {customerReceiptPdfWarning}</div> : null}
       </div>
     );
   } else if (action.startsWith("workshop-fail-ok-")) {
@@ -1364,6 +1400,9 @@ export default async function PaymentsV2AdminPage({
           action={sp.action}
           checkedCount={sp.checkedCount}
           customerReceiptDocumentId={sp.customerReceiptDocumentId}
+          customerReceiptPdfPath={sp.customerReceiptPdfPath}
+          customerReceiptPdfGenerated={sp.customerReceiptPdfGenerated}
+          customerReceiptPdfWarning={sp.customerReceiptPdfWarning}
           documentRawErrorMessage={sp.documentRawErrorMessage}
           documentStep={sp.documentStep}
           documentSupabaseCode={sp.documentSupabaseCode}
@@ -1374,6 +1413,9 @@ export default async function PaymentsV2AdminPage({
           message={sp.message}
           paymentTransactionId={sp.paymentTransactionId}
           platformRevenueStatementDocumentId={sp.platformRevenueStatementDocumentId}
+          platformRevenueStatementPdfPath={sp.platformRevenueStatementPdfPath}
+          platformRevenueStatementPdfGenerated={sp.platformRevenueStatementPdfGenerated}
+          platformRevenueStatementPdfWarning={sp.platformRevenueStatementPdfWarning}
           payoutItemRawErrorMessage={sp.payoutItemRawErrorMessage}
           payoutItemStep={sp.payoutItemStep}
           payoutItemSupabaseCode={sp.payoutItemSupabaseCode}
@@ -1381,7 +1423,13 @@ export default async function PaymentsV2AdminPage({
           payoutMethod={sp.payoutMethod}
           payoutProvider={sp.payoutProvider}
           providerPlatformFeeInvoiceDocumentId={sp.providerPlatformFeeInvoiceDocumentId}
+          providerPlatformFeeInvoicePdfPath={sp.providerPlatformFeeInvoicePdfPath}
+          providerPlatformFeeInvoicePdfGenerated={sp.providerPlatformFeeInvoicePdfGenerated}
+          providerPlatformFeeInvoicePdfWarning={sp.providerPlatformFeeInvoicePdfWarning}
           providerPayoutStatementDocumentId={sp.providerPayoutStatementDocumentId}
+          providerPayoutStatementPdfPath={sp.providerPayoutStatementPdfPath}
+          providerPayoutStatementPdfGenerated={sp.providerPayoutStatementPdfGenerated}
+          providerPayoutStatementPdfWarning={sp.providerPayoutStatementPdfWarning}
           rawErrorMessage={sp.rawErrorMessage}
           step={sp.step}
           supabaseCode={sp.supabaseCode}

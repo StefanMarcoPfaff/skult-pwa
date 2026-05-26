@@ -68,6 +68,10 @@ type SearchParams = {
   firstPaymentExplanation?: string;
   billableDays?: string;
   daysInMonth?: string;
+  customerReceiptDocumentId?: string;
+  customerReceiptPdfPath?: string;
+  customerReceiptPdfGenerated?: string;
+  customerReceiptPdfWarning?: string;
 };
 
 type WorkshopOfferOptionRow = {
@@ -283,6 +287,10 @@ export default async function TestBookingsAdminPage({
           firstPaymentExplanation={sp.firstPaymentExplanation}
           billableDays={sp.billableDays}
           daysInMonth={sp.daysInMonth}
+          customerReceiptDocumentId={sp.customerReceiptDocumentId}
+          customerReceiptPdfPath={sp.customerReceiptPdfPath}
+          customerReceiptPdfGenerated={sp.customerReceiptPdfGenerated}
+          customerReceiptPdfWarning={sp.customerReceiptPdfWarning}
         />
 
         <div className="grid gap-6">

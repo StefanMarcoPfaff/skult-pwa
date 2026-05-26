@@ -59,6 +59,14 @@ type SetPdfAssetInput = {
   documentNumber?: string | null;
 };
 
+export type EnsureFinancialDocumentPdfResult = {
+  record: FinancialDocumentRecord;
+  documentNumber: string | null;
+  pdfPath: string | null;
+  pdfGenerated: boolean;
+  warning: string | null;
+};
+
 function getFinancialDocumentClient(client?: FinancialDocumentClient): FinancialDocumentClient {
   return client ?? createSupabaseAdmin();
 }
@@ -146,7 +154,8 @@ export async function createFinancialDocumentRecord(
     throw error;
   }
 
-  return data;
+  const ensured = await ensureFinancialDocumentPdfAsset(data, supabase);
+  return ensured.record;
 }
 
 export async function getFinancialDocumentsForProvider(
@@ -380,4 +389,47 @@ export async function setFinancialDocumentPdfAsset(
     },
     client
   );
+}
+
+export async function ensureFinancialDocumentPdfAsset(
+  document: FinancialDocumentRecord,
+  client?: FinancialDocumentClient
+): Promise<EnsureFinancialDocumentPdfResult> {
+  const supabase = getFinancialDocumentClient(client);
+
+  try {
+    const { generateFinancialDocumentPdf } = await import("@/lib/documents/pdf");
+    const result = await generateFinancialDocumentPdf({
+      documentId: document.id,
+      supabase,
+    });
+
+    return {
+      record: result.record,
+      documentNumber: result.documentNumber,
+      pdfPath: result.pdfPath,
+      pdfGenerated: result.pdfGenerated,
+      warning: null,
+    };
+  } catch (error) {
+    const warning =
+      error instanceof Error
+        ? `PDF-Erzeugung fuer Financial Document ${document.id} fehlgeschlagen: ${error.message}`
+        : `PDF-Erzeugung fuer Financial Document ${document.id} fehlgeschlagen.`;
+
+    console.error("[financial-documents] auto PDF generation failed", {
+      documentId: document.id,
+      documentType: document.document_type,
+      pdfPath: document.pdf_path,
+      error,
+    });
+
+    return {
+      record: document,
+      documentNumber: document.document_number,
+      pdfPath: document.pdf_path,
+      pdfGenerated: false,
+      warning,
+    };
+  }
 }

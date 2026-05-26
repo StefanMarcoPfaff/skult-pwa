@@ -49,6 +49,10 @@ export function TestBookingsNotice({
   firstPaymentExplanation,
   billableDays,
   daysInMonth,
+  customerReceiptDocumentId,
+  customerReceiptPdfPath,
+  customerReceiptPdfGenerated,
+  customerReceiptPdfWarning,
 }: {
   action: string | undefined;
   bookingId?: string | undefined;
@@ -95,6 +99,10 @@ export function TestBookingsNotice({
   firstPaymentExplanation?: string | undefined;
   billableDays?: string | undefined;
   daysInMonth?: string | undefined;
+  customerReceiptDocumentId?: string | undefined;
+  customerReceiptPdfPath?: string | undefined;
+  customerReceiptPdfGenerated?: string | undefined;
+  customerReceiptPdfWarning?: string | undefined;
 }) {
   if (!action) return null;
 
@@ -120,6 +128,10 @@ export function TestBookingsNotice({
         <div>ticket_id: {ticketId ?? "-"}</div>
         <div>payment_transaction_id: {paymentTransactionId ?? "-"}</div>
         <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
+        <div>customer_receipt_document_id: {customerReceiptDocumentId ?? "-"}</div>
+        <div>customer_receipt_pdf_path: {customerReceiptPdfPath ?? "-"}</div>
+        <div>customer_receipt_pdf_generated: {customerReceiptPdfGenerated === "yes" ? "ja" : "nein"}</div>
+        {customerReceiptPdfWarning ? <div>PDF-Warnung: {customerReceiptPdfWarning}</div> : null}
         {noticeMessage ? <div className="mt-2">Warnung: {noticeMessage}</div> : null}
         <div className="mt-2 flex flex-wrap gap-3">
           <Link className="font-medium underline" href="/dashboard/admin/payments-v2">
@@ -189,6 +201,10 @@ export function TestBookingsNotice({
         <div>subscription_charge_id: {subscriptionChargeId ?? "-"}</div>
         <div>payment_transaction_id: {paymentTransactionId ?? "-"}</div>
         <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
+        <div>customer_receipt_document_id: {customerReceiptDocumentId ?? "-"}</div>
+        <div>customer_receipt_pdf_path: {customerReceiptPdfPath ?? "-"}</div>
+        <div>customer_receipt_pdf_generated: {customerReceiptPdfGenerated === "yes" ? "ja" : "nein"}</div>
+        {customerReceiptPdfWarning ? <div>PDF-Warnung: {customerReceiptPdfWarning}</div> : null}
         <div>Monatsbetrag: {fullMonthAmountCents ? new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Number(fullMonthAmountCents) / 100) : "-"}</div>
         <div>Startdatum: {contractStartDate ?? "-"}</div>
         <div>Erstzahlung: {firstPaymentAmountCents ? new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Number(firstPaymentAmountCents) / 100) : "-"}</div>
@@ -216,6 +232,10 @@ export function TestBookingsNotice({
         <div>course_id: {courseId ?? "-"}</div>
         <div>subscription_contract_id: {subscriptionContractId ?? "-"}</div>
         <div>ticket_id: {ticketId ?? "-"}</div>
+        <div>customer_receipt_document_id: {customerReceiptDocumentId ?? "-"}</div>
+        <div>customer_receipt_pdf_path: {customerReceiptPdfPath ?? "-"}</div>
+        <div>customer_receipt_pdf_generated: {customerReceiptPdfGenerated === "yes" ? "ja" : "nein"}</div>
+        {customerReceiptPdfWarning ? <div>PDF-Warnung: {customerReceiptPdfWarning}</div> : null}
         <div>Monatsbetrag: {fullMonthAmountCents ? new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Number(fullMonthAmountCents) / 100) : "-"}</div>
         <div>Startdatum: {contractStartDate ?? "-"}</div>
         <div>Erstzahlung: {firstPaymentAmountCents ? new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Number(firstPaymentAmountCents) / 100) : "-"}</div>
