@@ -1,5 +1,6 @@
 import "server-only";
 
+import { ensureCustomerReceiptForPayment } from "@/lib/documents/simulation-documents";
 import { calculatePlatformFeeAmount, calculateProviderPayoutAmount } from "@/lib/platform-fees";
 import {
   planMonthlyRecurringCharge,
@@ -66,6 +67,7 @@ type RecurringSimulationResult = {
   subscriptionChargeId: string | null;
   paymentTransactionId: string | null;
   ledgerEntryId: string | null;
+  customerReceiptDocumentId: string | null;
   skippedReason: "pause" | "contract_ended" | "participant_pause" | "participant_ended" | null;
   simulationMetadata: ReturnType<typeof buildSimulationMetadata>;
 };
@@ -600,6 +602,14 @@ export async function simulateSubscriptionRecurringPayment(input: {
   });
 
   if (existingSimulation) {
+    const customerReceipt =
+      existingSimulation.paymentTransactionId
+        ? await ensureCustomerReceiptForPayment({
+            paymentTransactionId: existingSimulation.paymentTransactionId,
+            supabase: createSupabaseAdmin(),
+          })
+        : null;
+
     return {
       subscriptionContractId: contract.id,
       courseRegistrationIntentId: contract.courseRegistrationIntentId,
@@ -607,6 +617,7 @@ export async function simulateSubscriptionRecurringPayment(input: {
       subscriptionChargeId: existingSimulation.charge.id,
       paymentTransactionId: existingSimulation.paymentTransactionId,
       ledgerEntryId: existingSimulation.ledgerEntryId,
+      customerReceiptDocumentId: customerReceipt?.documentId ?? null,
       skippedReason: null,
       simulationMetadata,
     };
@@ -628,6 +639,7 @@ export async function simulateSubscriptionRecurringPayment(input: {
       subscriptionChargeId: null,
       paymentTransactionId: null,
       ledgerEntryId: null,
+      customerReceiptDocumentId: null,
       skippedReason: "contract_ended",
       simulationMetadata,
     };
@@ -665,6 +677,7 @@ export async function simulateSubscriptionRecurringPayment(input: {
       subscriptionChargeId: null,
       paymentTransactionId: null,
       ledgerEntryId: null,
+      customerReceiptDocumentId: null,
       skippedReason: "pause",
       simulationMetadata,
     };
@@ -697,6 +710,7 @@ export async function simulateSubscriptionRecurringPayment(input: {
       subscriptionChargeId: null,
       paymentTransactionId: null,
       ledgerEntryId: null,
+      customerReceiptDocumentId: null,
       skippedReason: "participant_pause",
       simulationMetadata,
     };
@@ -718,6 +732,7 @@ export async function simulateSubscriptionRecurringPayment(input: {
       subscriptionChargeId: null,
       paymentTransactionId: null,
       ledgerEntryId: null,
+      customerReceiptDocumentId: null,
       skippedReason: "participant_ended",
       simulationMetadata,
     };
@@ -807,6 +822,11 @@ export async function simulateSubscriptionRecurringPayment(input: {
     referenceId: paymentTransactionId,
   });
 
+  const customerReceipt = await ensureCustomerReceiptForPayment({
+    paymentTransactionId,
+    supabase: admin,
+  });
+
   return {
     subscriptionContractId: contract.id,
     courseRegistrationIntentId: contract.courseRegistrationIntentId,
@@ -814,6 +834,7 @@ export async function simulateSubscriptionRecurringPayment(input: {
     subscriptionChargeId: charge.id,
     paymentTransactionId,
     ledgerEntryId,
+    customerReceiptDocumentId: customerReceipt.documentId,
     skippedReason: null,
     simulationMetadata,
   };

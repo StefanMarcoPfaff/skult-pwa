@@ -1,4 +1,5 @@
 import "server-only";
+import { ensureProviderPayoutDocumentsForLedgerEntry } from "@/lib/documents/simulation-documents";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 type PayableLedgerEntryRow = {
@@ -206,6 +207,9 @@ export async function createSimulatedPaidPayoutForLedgerEntry(input: {
   batchId: string;
   payoutItemId: string | null;
   ledgerEntryId: string;
+  providerPayoutStatementDocumentId: string;
+  providerPlatformFeeInvoiceDocumentId: string;
+  platformRevenueStatementDocumentId: string;
 }> {
   const ledgerEntryId = input.ledgerEntryId.trim();
   if (!ledgerEntryId) {
@@ -273,10 +277,18 @@ export async function createSimulatedPaidPayoutForLedgerEntry(input: {
       throw new Error("Ledger-Auszahlungsstatus konnte nicht auf paid gesetzt werden");
     }
 
+    const documents = await ensureProviderPayoutDocumentsForLedgerEntry({
+      ledgerEntryId: entry.id,
+      supabase: admin,
+    });
+
     return {
       batchId: entry.payout_batch_id,
       payoutItemId: existingItem?.id ?? null,
       ledgerEntryId: entry.id,
+      providerPayoutStatementDocumentId: documents.providerPayoutStatementDocumentId,
+      providerPlatformFeeInvoiceDocumentId: documents.providerPlatformFeeInvoiceDocumentId,
+      platformRevenueStatementDocumentId: documents.platformRevenueStatementDocumentId,
     };
   }
 
@@ -342,9 +354,17 @@ export async function createSimulatedPaidPayoutForLedgerEntry(input: {
     throw new Error("Ledger-Auszahlungsstatus konnte nicht finalisiert werden");
   }
 
+  const documents = await ensureProviderPayoutDocumentsForLedgerEntry({
+    ledgerEntryId: entry.id,
+    supabase: admin,
+  });
+
   return {
     batchId,
     payoutItemId: item?.id ?? null,
     ledgerEntryId: entry.id,
+    providerPayoutStatementDocumentId: documents.providerPayoutStatementDocumentId,
+    providerPlatformFeeInvoiceDocumentId: documents.providerPlatformFeeInvoiceDocumentId,
+    platformRevenueStatementDocumentId: documents.platformRevenueStatementDocumentId,
   };
 }

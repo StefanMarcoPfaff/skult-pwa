@@ -244,7 +244,14 @@ export async function simulateSelectedWorkshopPayoutAction(formData: FormData) {
       ...contextParams,
       action: "selected-payout-ok",
       ledgerEntryId: result.ledgerEntryId,
-      message: `Simulierte Auszahlung erstellt. payout_batch_id=${result.batchId}`,
+      providerPayoutStatementDocumentId: result.providerPayoutStatementDocumentId,
+      providerPlatformFeeInvoiceDocumentId: result.providerPlatformFeeInvoiceDocumentId,
+      platformRevenueStatementDocumentId: result.platformRevenueStatementDocumentId,
+      message:
+        `Simulierte Auszahlung erstellt. payout_batch_id=${result.batchId}` +
+        ` provider_payout_statement_document_id=${result.providerPayoutStatementDocumentId}` +
+        ` provider_platform_fee_invoice_document_id=${result.providerPlatformFeeInvoiceDocumentId}` +
+        ` platform_revenue_statement_document_id=${result.platformRevenueStatementDocumentId}`,
     });
   } catch (error) {
     if (isNextRedirectError(error)) {
@@ -276,7 +283,15 @@ export async function simulateWorkshopPaymentSuccessAction(formData: FormData) {
       scenarioNote: parseOptionalString(formData.get("scenarioNote")),
     });
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
-    redirectWithActionState(`workshop-pay-ok-${result.bookingId}`);
+    redirectWithParams(compactParams({
+      action: `workshop-pay-ok-${result.bookingId}`,
+      selectedBookingId: result.bookingId,
+      paymentTransactionId: result.paymentTransactionId,
+      customerReceiptDocumentId: result.customerReceiptDocumentId,
+      message: result.customerReceiptDocumentId
+        ? `customer_receipt_document_id=${result.customerReceiptDocumentId}`
+        : "customer_receipt_document_id fehlt",
+    }));
   } catch (error) {
     if (isNextRedirectError(error)) {
       throw error;

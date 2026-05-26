@@ -1,5 +1,6 @@
 import "server-only";
 
+import { ensureCustomerReceiptForPayment } from "@/lib/documents/simulation-documents";
 import { calculatePlatformFeeAmount, calculateProviderPayoutAmount } from "@/lib/platform-fees";
 import {
   planInitialProrationCharge,
@@ -95,6 +96,7 @@ type SubscriptionSimulationResult = {
   subscriptionChargeId: string;
   paymentTransactionId: string;
   ledgerEntryId: string;
+  customerReceiptDocumentId: string;
   contractStartDate: SubscriptionDateString;
   firstPaymentBreakdown: ProratedFirstSubscriptionAmount;
   simulationMetadata: ReturnType<typeof buildSimulationMetadata>;
@@ -689,6 +691,11 @@ export async function simulateSubscriptionInitialPaymentSuccess(input: {
     referenceId: paymentTransactionId,
   });
 
+  const customerReceipt = await ensureCustomerReceiptForPayment({
+    paymentTransactionId,
+    supabase: admin,
+  });
+
   return {
     courseRegistrationIntentId: intent.id,
     subscriptionContractId: contract.id,
@@ -696,6 +703,7 @@ export async function simulateSubscriptionInitialPaymentSuccess(input: {
     subscriptionChargeId: charge.id,
     paymentTransactionId,
     ledgerEntryId,
+    customerReceiptDocumentId: customerReceipt.documentId,
     contractStartDate,
     firstPaymentBreakdown,
     simulationMetadata,

@@ -181,6 +181,8 @@ export async function simulateSubscriptionInitialPaymentSuccessAction(formData: 
     redirectWithActionState(`initial-pay-ok-${result.courseRegistrationIntentId}`, {
       courseRegistrationIntentId: result.courseRegistrationIntentId,
       contractId: result.subscriptionContractId,
+      customerReceiptDocumentId: result.customerReceiptDocumentId,
+      paymentTransactionId: result.paymentTransactionId,
       contractStartDate: result.contractStartDate,
       fullMonthAmountCents: String(result.firstPaymentBreakdown.full_month_amount_cents),
       firstPaymentAmountCents: String(result.firstPaymentBreakdown.prorated_amount_cents),
@@ -232,6 +234,7 @@ export async function simulateSubscriptionRecurringPaymentAction(formData: FormD
         chargeId: result.subscriptionChargeId,
         paymentTransactionId: result.paymentTransactionId,
         ledgerEntryId: result.ledgerEntryId,
+        customerReceiptDocumentId: result.customerReceiptDocumentId,
       }
     );
   } catch (error) {
@@ -436,6 +439,9 @@ export async function simulateSubscriptionPayoutAction(formData: FormData) {
       courseRegistrationIntentId: ledgerContext.courseRegistrationIntentId,
       ledgerEntryId: result.ledgerEntryId,
       payoutBatchId: result.batchId,
+      providerPayoutStatementDocumentId: result.providerPayoutStatementDocumentId,
+      providerPlatformFeeInvoiceDocumentId: result.providerPlatformFeeInvoiceDocumentId,
+      platformRevenueStatementDocumentId: result.platformRevenueStatementDocumentId,
     });
   } catch (error) {
     revalidatePath(PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH);

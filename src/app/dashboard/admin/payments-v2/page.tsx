@@ -250,12 +250,17 @@ type SearchParams = {
   action?: string;
   checkedCount?: string;
   businessStatus?: string;
+  customerReceiptDocumentId?: string;
   errorCode?: string;
   ledgerEntryId?: string;
   markedCount?: string;
   message?: string;
   offerFilter?: string;
+  paymentTransactionId?: string;
+  platformRevenueStatementDocumentId?: string;
   providerFilter?: string;
+  providerPlatformFeeInvoiceDocumentId?: string;
+  providerPayoutStatementDocumentId?: string;
   selectedBookingId?: string;
   simulationWindow?: string;
 };
@@ -511,7 +516,19 @@ function ReferenceCell({
   );
 }
 
-function ActionNotice({ action, checkedCount, errorCode, ledgerEntryId, markedCount, message: detailMessage }: SearchParams) {
+function ActionNotice({
+  action,
+  checkedCount,
+  customerReceiptDocumentId,
+  errorCode,
+  ledgerEntryId,
+  markedCount,
+  message: detailMessage,
+  paymentTransactionId,
+  platformRevenueStatementDocumentId,
+  providerPlatformFeeInvoiceDocumentId,
+  providerPayoutStatementDocumentId,
+}: SearchParams) {
   if (!action) return null;
 
   let message = "Interne Simulation ausgefuehrt.";
@@ -588,7 +605,14 @@ function ActionNotice({ action, checkedCount, errorCode, ledgerEntryId, markedCo
   } else if (action === "selected-payout-ok") {
     message = detailMessage ?? "Simulierte Auszahlung erfolgreich abgeschlossen.";
     toneClass = "border-green-200 bg-green-50 text-green-800";
-    extra = ledgerEntryId ? <div className="mt-1 text-xs">ledger_entry_id: {ledgerEntryId}</div> : null;
+    extra = (
+      <div className="mt-1 space-y-1 text-xs">
+        <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
+        <div>provider_payout_statement_document_id: {providerPayoutStatementDocumentId ?? "-"}</div>
+        <div>provider_platform_fee_invoice_document_id: {providerPlatformFeeInvoiceDocumentId ?? "-"}</div>
+        <div>platform_revenue_statement_document_id: {platformRevenueStatementDocumentId ?? "-"}</div>
+      </div>
+    );
   } else if (action === "selected-payout-error") {
     message = "Simulierte Auszahlung konnte nicht abgeschlossen werden.";
     toneClass = "border-rose-200 bg-rose-50 text-rose-800";
@@ -626,6 +650,12 @@ function ActionNotice({ action, checkedCount, errorCode, ledgerEntryId, markedCo
   } else if (action.startsWith("workshop-pay-ok-")) {
     message = "Workshop-Zahlung intern als erfolgreich simuliert. Keine echte Zahlung, keine Auszahlung, keine Kund*innenmail.";
     toneClass = "border-green-200 bg-green-50 text-green-800";
+    extra = (
+      <div className="mt-1 space-y-1 text-xs">
+        <div>payment_transaction_id: {paymentTransactionId ?? "-"}</div>
+        <div>customer_receipt_document_id: {customerReceiptDocumentId ?? "-"}</div>
+      </div>
+    );
   } else if (action.startsWith("workshop-fail-ok-")) {
     message = "Workshop-Zahlung intern als fehlgeschlagen simuliert. Keine echte Zahlung, keine Auszahlung, keine Kund*innenmail.";
     toneClass = "border-green-200 bg-green-50 text-green-800";
@@ -1266,10 +1296,15 @@ export default async function PaymentsV2AdminPage({
         <ActionNotice
           action={sp.action}
           checkedCount={sp.checkedCount}
+          customerReceiptDocumentId={sp.customerReceiptDocumentId}
           errorCode={sp.errorCode}
           ledgerEntryId={sp.ledgerEntryId}
           markedCount={sp.markedCount}
           message={sp.message}
+          paymentTransactionId={sp.paymentTransactionId}
+          platformRevenueStatementDocumentId={sp.platformRevenueStatementDocumentId}
+          providerPlatformFeeInvoiceDocumentId={sp.providerPlatformFeeInvoiceDocumentId}
+          providerPayoutStatementDocumentId={sp.providerPayoutStatementDocumentId}
         />
 
         <Section

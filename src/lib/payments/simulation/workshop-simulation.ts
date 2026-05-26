@@ -1,5 +1,6 @@
 import "server-only";
 
+import { ensureCustomerReceiptForPayment } from "@/lib/documents/simulation-documents";
 import { calculatePlatformFeeAmount, calculateProviderPayoutAmount } from "@/lib/platform-fees";
 import { calculatePayoutAvailableAt } from "@/lib/payments/payout-eligibility";
 import { calculateWorkshopRefund, type SupportedWorkshopRefundPolicy } from "@/lib/payments/simulation/workshop-refund-policy";
@@ -88,6 +89,7 @@ type WorkshopSimulationResult = {
   bookingId: string;
   paymentTransactionId: string | null;
   refundRecordId?: string | null;
+  customerReceiptDocumentId?: string | null;
   simulationMetadata: ReturnType<typeof buildSimulationMetadata>;
 };
 
@@ -417,9 +419,15 @@ export async function simulateWorkshopPaymentSuccess(input: {
     })
     .eq("id", booking.id);
 
+  const customerReceipt = await ensureCustomerReceiptForPayment({
+    paymentTransactionId,
+    supabase: admin,
+  });
+
   return {
     bookingId: booking.id,
     paymentTransactionId,
+    customerReceiptDocumentId: customerReceipt.documentId,
     simulationMetadata,
   };
 }

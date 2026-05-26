@@ -170,6 +170,7 @@ type SearchParams = {
   action?: string;
   contractId?: string;
   courseRegistrationIntentId?: string;
+  customerReceiptDocumentId?: string;
   code?: string;
   errorMessage?: string;
   pauseWindowId?: string;
@@ -180,7 +181,10 @@ type SearchParams = {
   chargeId?: string;
   paymentTransactionId?: string;
   ledgerEntryId?: string;
+  platformRevenueStatementDocumentId?: string;
   payoutBatchId?: string;
+  providerPlatformFeeInvoiceDocumentId?: string;
+  providerPayoutStatementDocumentId?: string;
   selectedContractId?: string;
   step?: string;
   rawErrorName?: string;
@@ -254,8 +258,12 @@ function ActionNotice({
   periodId,
   chargeId,
   paymentTransactionId,
+  customerReceiptDocumentId,
   ledgerEntryId,
+  platformRevenueStatementDocumentId,
   payoutBatchId,
+  providerPlatformFeeInvoiceDocumentId,
+  providerPayoutStatementDocumentId,
   step,
   rawErrorName,
   rawErrorMessage,
@@ -281,8 +289,12 @@ function ActionNotice({
   periodId?: string | undefined;
   chargeId?: string | undefined;
   paymentTransactionId?: string | undefined;
+  customerReceiptDocumentId?: string | undefined;
   ledgerEntryId?: string | undefined;
+  platformRevenueStatementDocumentId?: string | undefined;
   payoutBatchId?: string | undefined;
+  providerPlatformFeeInvoiceDocumentId?: string | undefined;
+  providerPayoutStatementDocumentId?: string | undefined;
   step?: string | undefined;
   rawErrorName?: string | undefined;
   rawErrorMessage?: string | undefined;
@@ -309,6 +321,8 @@ function ActionNotice({
       <div className="mt-2 text-xs">
         <div>course_registration_intent_id: {courseRegistrationIntentId ?? "-"}</div>
         <div>contract_id: {contractId ?? "-"}</div>
+        <div>payment_transaction_id: {paymentTransactionId ?? "-"}</div>
+        <div>customer_receipt_document_id: {customerReceiptDocumentId ?? "-"}</div>
         <div>Monatsbetrag: {fullMonthAmountCents ? formatMoney(Number(fullMonthAmountCents), "EUR") : "-"}</div>
         <div>Startdatum: {contractStartDate ? formatDate(contractStartDate) : "-"}</div>
         <div>Erstzahlung: {firstPaymentAmountCents ? formatMoney(Number(firstPaymentAmountCents), "EUR") : "-"}</div>
@@ -340,6 +354,7 @@ function ActionNotice({
         <div>charge_id: {chargeId ?? "-"}</div>
         <div>payment_transaction_id: {paymentTransactionId ?? "-"}</div>
         <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
+        <div>customer_receipt_document_id: {customerReceiptDocumentId ?? "-"}</div>
       </div>
     );
   } else if (action.startsWith("recurring-pay-skipped-pause-")) {
@@ -487,6 +502,9 @@ function ActionNotice({
         <div>contract_id: {contractId ?? "-"}</div>
         <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
         <div>payout_batch_id: {payoutBatchId ?? "-"}</div>
+        <div>provider_payout_statement_document_id: {providerPayoutStatementDocumentId ?? "-"}</div>
+        <div>provider_platform_fee_invoice_document_id: {providerPlatformFeeInvoiceDocumentId ?? "-"}</div>
+        <div>platform_revenue_statement_document_id: {platformRevenueStatementDocumentId ?? "-"}</div>
       </div>
     );
   } else if (action.startsWith("subscription-payout-error-")) {
@@ -1425,6 +1443,7 @@ export default async function SubscriptionAuditPage({
           contractId={sp.contractId}
           courseRegistrationIntentId={sp.courseRegistrationIntentId}
           code={sp.code}
+          customerReceiptDocumentId={sp.customerReceiptDocumentId}
           errorMessage={sp.errorMessage}
           pauseWindowId={sp.pauseWindowId}
           eventId={sp.eventId}
@@ -1434,7 +1453,10 @@ export default async function SubscriptionAuditPage({
           chargeId={sp.chargeId}
           paymentTransactionId={sp.paymentTransactionId}
           ledgerEntryId={sp.ledgerEntryId}
+          platformRevenueStatementDocumentId={sp.platformRevenueStatementDocumentId}
           payoutBatchId={sp.payoutBatchId}
+          providerPlatformFeeInvoiceDocumentId={sp.providerPlatformFeeInvoiceDocumentId}
+          providerPayoutStatementDocumentId={sp.providerPayoutStatementDocumentId}
           step={sp.step}
           rawErrorName={sp.rawErrorName}
           rawErrorMessage={sp.rawErrorMessage}
