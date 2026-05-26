@@ -11,6 +11,22 @@ import type {
 
 type FinancialDocumentClient = SupabaseClient;
 
+export const PROVIDER_VISIBLE_FINANCIAL_DOCUMENT_TYPES = [
+  "provider_payout_statement",
+  "provider_platform_fee_invoice",
+  "refund_receipt",
+] as const satisfies readonly DocumentType[];
+
+export const ADMIN_VISIBLE_FINANCIAL_DOCUMENT_TYPES = [
+  "customer_receipt",
+  "provider_payout_statement",
+  "provider_platform_fee_invoice",
+  "platform_revenue_statement",
+  "refund_receipt",
+] as const satisfies readonly DocumentType[];
+
+export type FinancialDocumentViewerRole = "provider" | "admin";
+
 type ProviderDocumentQuery = {
   providerId: string;
   documentType?: DocumentType;
@@ -39,6 +55,21 @@ type MarkSentInput = {
 
 function getFinancialDocumentClient(client?: FinancialDocumentClient): FinancialDocumentClient {
   return client ?? createSupabaseAdmin();
+}
+
+export function getVisibleFinancialDocumentTypes(
+  role: FinancialDocumentViewerRole
+): readonly DocumentType[] {
+  return role === "admin"
+    ? ADMIN_VISIBLE_FINANCIAL_DOCUMENT_TYPES
+    : PROVIDER_VISIBLE_FINANCIAL_DOCUMENT_TYPES;
+}
+
+function applyVisibleDocumentTypeFilter<TStatement extends { in: (column: string, values: readonly string[]) => TStatement }>(
+  statement: TStatement,
+  role: FinancialDocumentViewerRole
+): TStatement {
+  return statement.in("document_type", getVisibleFinancialDocumentTypes(role));
 }
 
 function normalizeCurrency(currency: string | null | undefined): string {
@@ -127,6 +158,42 @@ export async function getFinancialDocumentsForProvider(
   return data ?? [];
 }
 
+export async function getVisibleFinancialDocumentsForProvider(
+  query: ProviderDocumentQuery,
+  client?: FinancialDocumentClient
+): Promise<FinancialDocumentRecord[]> {
+  const supabase = getFinancialDocumentClient(client);
+  let statement = applyVisibleDocumentTypeFilter(
+    supabase
+      .from("financial_documents")
+      .select("*")
+      .eq("provider_id", query.providerId)
+      .order("issued_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false }),
+    "provider"
+  );
+
+  if (query.documentType && getVisibleFinancialDocumentTypes("provider").includes(query.documentType)) {
+    statement = statement.eq("document_type", query.documentType);
+  }
+
+  if (query.status) {
+    statement = statement.eq("status", query.status);
+  }
+
+  if (query.limit && query.limit > 0) {
+    statement = statement.limit(query.limit);
+  }
+
+  const { data, error } = await statement.returns<FinancialDocumentRecord[]>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data ?? [];
+}
+
 export async function getFinancialDocumentsForAdmin(
   query: AdminDocumentQuery = {},
   client?: FinancialDocumentClient
@@ -143,6 +210,45 @@ export async function getFinancialDocumentsForAdmin(
   }
 
   if (query.documentType) {
+    statement = statement.eq("document_type", query.documentType);
+  }
+
+  if (query.status) {
+    statement = statement.eq("status", query.status);
+  }
+
+  if (query.limit && query.limit > 0) {
+    statement = statement.limit(query.limit);
+  }
+
+  const { data, error } = await statement.returns<FinancialDocumentRecord[]>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data ?? [];
+}
+
+export async function getVisibleFinancialDocumentsForAdmin(
+  query: AdminDocumentQuery = {},
+  client?: FinancialDocumentClient
+): Promise<FinancialDocumentRecord[]> {
+  const supabase = getFinancialDocumentClient(client);
+  let statement = applyVisibleDocumentTypeFilter(
+    supabase
+      .from("financial_documents")
+      .select("*")
+      .order("issued_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false }),
+    "admin"
+  );
+
+  if (query.providerId) {
+    statement = statement.eq("provider_id", query.providerId);
+  }
+
+  if (query.documentType && getVisibleFinancialDocumentTypes("admin").includes(query.documentType)) {
     statement = statement.eq("document_type", query.documentType);
   }
 

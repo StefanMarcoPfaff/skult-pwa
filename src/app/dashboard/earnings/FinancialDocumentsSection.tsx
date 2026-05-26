@@ -1,4 +1,5 @@
 import type { FinancialDocumentMetadata, FinancialDocumentRecord } from "@/lib/documents/types";
+import type { FinancialDocumentViewerRole } from "@/lib/documents/financial-documents";
 
 type DocumentFilterState = {
   docType: string;
@@ -14,6 +15,7 @@ type DocumentFilterState = {
 type FinancialDocumentsSectionProps = {
   documents: FinancialDocumentRecord[];
   filters: DocumentFilterState;
+  role: FinancialDocumentViewerRole;
 };
 
 type DocumentStatusTone = "slate" | "green" | "rose";
@@ -202,7 +204,9 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Belege & Abrechnungen</h2>
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
-            Hier findest du deine erzeugten Belege und Abrechnungen. PDFs und Downloads folgen spaeter.
+            {props.role === "admin"
+              ? "Hier findest du alle erzeugten Dokumente. PDFs und Downloads folgen spaeter."
+              : "Hier findest du deine Auszahlungsabrechnungen und Plattformgebuehren-Belege. PDFs und Downloads folgen spaeter."}
           </p>
         </div>
         <div className="rounded-2xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600">
@@ -230,10 +234,10 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
             className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
           >
             <option value="all">Alle Dokumente</option>
-            <option value="customer_receipt">Kund*innen-Beleg</option>
             <option value="provider_payout_statement">Auszahlungsabrechnung</option>
             <option value="provider_platform_fee_invoice">Plattformgebuehren-Beleg</option>
-            <option value="platform_revenue_statement">RESER-Provisionsabrechnung</option>
+            {props.role === "admin" ? <option value="customer_receipt">Kund*innen-Beleg</option> : null}
+            {props.role === "admin" ? <option value="platform_revenue_statement">RESER-Provisionsabrechnung</option> : null}
             <option value="refund_receipt">Rueckerstattungsbeleg</option>
           </select>
         </label>
@@ -287,9 +291,11 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
               metadata?.providerBillingProfile?.providerDisplayName ||
               metadata?.providerBillingProfile?.documentRecipientName ||
               "Anbieter*in";
-            const taxHint = metadata?.taxHint ?? null;
+            const taxHint = props.role === "admin" ? metadata?.taxHint ?? null : null;
             const roleNotice =
-              metadata?.roleNotice ?? "Die Leistung wird durch Anbieter*in erbracht.";
+              props.role === "admin"
+                ? metadata?.roleNotice ?? "Die Leistung wird durch Anbieter*in erbracht."
+                : "Die Leistung wird durch Anbieter*in erbracht.";
 
             return (
               <article key={record.id} className="rounded-3xl border border-slate-200 bg-slate-50/70 p-4">
@@ -348,12 +354,14 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
                         <p className="text-xs uppercase tracking-wide text-slate-500">Zeitraum</p>
                         <p className="mt-1 text-sm font-medium text-slate-900">{periodLabel}</p>
                       </div>
-                      <div className="rounded-2xl bg-slate-50 p-4">
-                        <p className="text-xs uppercase tracking-wide text-slate-500">Kund*innen-Mail</p>
-                        <p className="mt-1 text-sm font-medium text-slate-900">
-                          {metadata?.customer?.email ?? record.customer_email ?? "-"}
-                        </p>
-                      </div>
+                      {props.role === "admin" ? (
+                        <div className="rounded-2xl bg-slate-50 p-4">
+                          <p className="text-xs uppercase tracking-wide text-slate-500">Kund*innen-Mail</p>
+                          <p className="mt-1 text-sm font-medium text-slate-900">
+                            {metadata?.customer?.email ?? record.customer_email ?? "-"}
+                          </p>
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -381,11 +389,13 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
                     </div>
                   </div>
 
-                  <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-xs uppercase tracking-wide text-slate-500">Steuerhinweis</p>
-                      <p className="mt-2 text-sm text-slate-700">{taxHint ?? "-"}</p>
-                    </div>
+                  <div className={`mt-4 grid gap-4 ${props.role === "admin" ? "lg:grid-cols-2" : ""}`}>
+                    {props.role === "admin" ? (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-xs uppercase tracking-wide text-slate-500">Steuerhinweis</p>
+                        <p className="mt-2 text-sm text-slate-700">{taxHint ?? "-"}</p>
+                      </div>
+                    ) : null}
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                       <p className="text-xs uppercase tracking-wide text-slate-500">Rollenhinweis</p>
                       <p className="mt-2 text-sm text-slate-700">{roleNotice}</p>
@@ -413,7 +423,9 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
       )}
 
       <div className="mt-5 text-xs text-slate-500">
-        Die Admin-Sicht fuer alle Dokumente ist service-seitig vorbereitet und wird spaeter auf Basis derselben Document-Services ergaenzt.
+        {props.role === "admin"
+          ? "Admins sehen weiterhin alle Dokumenttypen. Eine groessere Admin-Dokumentenoberflaeche folgt spaeter."
+          : "Anbieter*innen sehen hier nur ihre fachlich relevanten Dokumente."}
       </div>
     </section>
   );

@@ -1,7 +1,12 @@
 ﻿import Link from "next/link";
 import { redirect } from "next/navigation";
 import FinancialDocumentsSection from "./FinancialDocumentsSection";
-import { getFinancialDocumentsForProvider } from "@/lib/documents/financial-documents";
+import {
+  getVisibleFinancialDocumentTypes,
+  getVisibleFinancialDocumentsForAdmin,
+  getVisibleFinancialDocumentsForProvider,
+} from "@/lib/documents/financial-documents";
+import { canAccessPaymentsV2Audit } from "@/app/dashboard/admin/payments-v2/access";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import DashboardFilterPanel from "../_components/DashboardFilterPanel";
@@ -324,12 +329,20 @@ export default async function DashboardEarningsPage({
       : "all";
   const selectedPeriod = sp.period === "this_month" || sp.period === "last_month" ? sp.period : "all";
   const offerQuery = String(sp.offer ?? "").trim().toLowerCase();
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const isAdmin = canAccessPaymentsV2Audit(user.email);
+  const visibleDocumentTypes = getVisibleFinancialDocumentTypes(isAdmin ? "admin" : "provider");
   const selectedDocumentType =
-    sp.docType === "customer_receipt" ||
-    sp.docType === "provider_payout_statement" ||
-    sp.docType === "provider_platform_fee_invoice" ||
-    sp.docType === "platform_revenue_statement" ||
-    sp.docType === "refund_receipt"
+    typeof sp.docType === "string" &&
+    visibleDocumentTypes.includes(sp.docType as (typeof visibleDocumentTypes)[number])
       ? sp.docType
       : "all";
   const selectedDocumentStatus =
@@ -340,15 +353,6 @@ export default async function DashboardEarningsPage({
     sp.docPeriod === "this_month" || sp.docPeriod === "last_month" ? sp.docPeriod : "all";
   const documentOfferQuery = String(sp.docOffer ?? "").trim();
 
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
   const admin = createSupabaseAdmin();
   const { data: payoutProfiles } = await admin
     .from("provider_payout_profiles")
@@ -357,10 +361,14 @@ export default async function DashboardEarningsPage({
     .returns<ProviderPayoutProfileRow[]>();
 
   const payoutProfileIds = (payoutProfiles ?? []).map((row) => row.id);
-  const financialDocuments = await getFinancialDocumentsForProvider({
-    providerId: user.id,
-    limit: 120,
-  });
+  const financialDocuments = isAdmin
+    ? await getVisibleFinancialDocumentsForAdmin({
+        limit: 160,
+      })
+    : await getVisibleFinancialDocumentsForProvider({
+        providerId: user.id,
+        limit: 120,
+      });
 
   const { data: ledgerEntries } =
     payoutProfileIds.length > 0
@@ -735,6 +743,7 @@ export default async function DashboardEarningsPage({
 
       <FinancialDocumentsSection
         documents={financialDocuments}
+        role={isAdmin ? "admin" : "provider"}
         filters={{
           docType: selectedDocumentType,
           docStatus: selectedDocumentStatus,

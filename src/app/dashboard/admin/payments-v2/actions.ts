@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createSimulatedPaidPayoutForLedgerEntry, createSimulatedPayoutBatch } from "@/lib/payments/payout-batches";
+import {
+  createSimulatedPaidPayoutForLedgerEntry,
+  createSimulatedPayoutBatch,
+  type SimulatedPayoutIssue,
+  SimulatedPayoutError,
+} from "@/lib/payments/payout-batches";
 import {
   forceLedgerEntryPayableForTest,
   markEligibleLedgerEntriesAsPayable,
@@ -16,6 +21,7 @@ import {
   simulateWorkshopPaymentSuccess,
   simulateWorkshopRefund,
 } from "@/lib/payments/simulation/workshop-simulation";
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { requirePaymentsV2AdminAccess } from "./access";
 import { PAYMENTS_V2_ADMIN_PATH } from "./ui";
 
@@ -37,7 +43,38 @@ function isNextRedirectError(error: unknown): boolean {
   );
 }
 
-function getErrorDetails(error: unknown): { code: string; message: string } {
+function getIssueParams(prefix: string, issue: SimulatedPayoutIssue | null | undefined): Record<string, string> {
+  if (!issue) {
+    return {};
+  }
+
+  return compactParams({
+    [`${prefix}Step`]: issue.step,
+    [`${prefix}SupabaseCode`]: issue.supabaseCode,
+    [`${prefix}SupabaseMessage`]: issue.supabaseMessage,
+    [`${prefix}RawErrorMessage`]: issue.rawErrorMessage,
+  });
+}
+
+function getErrorDetails(error: unknown): {
+  code: string;
+  message: string;
+  step: string;
+  supabaseCode: string | null;
+  supabaseMessage: string | null;
+  rawErrorMessage: string;
+} {
+  if (error instanceof SimulatedPayoutError) {
+    return {
+      code: error.supabaseCode ?? "simulation_payout_error",
+      message: error.message || "Unbekannter Fehler.",
+      step: error.step,
+      supabaseCode: error.supabaseCode,
+      supabaseMessage: error.supabaseMessage,
+      rawErrorMessage: error.rawErrorMessage,
+    };
+  }
+
   if (error instanceof Error) {
     const code =
       "code" in error && typeof (error as { code?: unknown }).code === "string"
@@ -46,12 +83,29 @@ function getErrorDetails(error: unknown): { code: string; message: string } {
     return {
       code,
       message: error.message || "Unbekannter Fehler.",
+      step:
+        "step" in error && typeof (error as { step?: unknown }).step === "string"
+          ? (error as { step: string }).step
+          : "unknown",
+      supabaseCode:
+        "supabaseCode" in error && typeof (error as { supabaseCode?: unknown }).supabaseCode === "string"
+          ? (error as { supabaseCode: string }).supabaseCode
+          : null,
+      supabaseMessage:
+        "supabaseMessage" in error && typeof (error as { supabaseMessage?: unknown }).supabaseMessage === "string"
+          ? (error as { supabaseMessage: string }).supabaseMessage
+          : null,
+      rawErrorMessage: error.message || "Unbekannter Fehler.",
     };
   }
 
   return {
     code: "unknown",
     message: String(error),
+    step: "unknown",
+    supabaseCode: null,
+    supabaseMessage: null,
+    rawErrorMessage: String(error),
   };
 }
 
@@ -209,7 +263,7 @@ export async function simulateWorkshopCompletionForPayoutAction(formData: FormDa
       action: result.updated ? "selected-workshop-ready-ok" : "selected-workshop-ready-none",
       ledgerEntryId,
       message: result.updated
-        ? "Workshop durchgefuehrt + 24h wurde simuliert. Der Anbieterbetrag ist jetzt auszahlbar."
+        ? "Workshop abgeschlossen + 24h wurde simuliert. Die Auszahlung kann jetzt intern ausgefuehrt werden."
         : "Keine passenden Ledger-Eintraege gefunden.",
     });
   } catch (error) {
@@ -236,6 +290,53 @@ export async function simulateSelectedWorkshopPayoutAction(formData: FormData) {
   const contextParams = readPaymentsV2ContextParams(formData);
 
   try {
+    const admin = createSupabaseAdmin();
+    const { data: currentLedger, error: currentLedgerError } = await admin
+      .from("ledger_entries")
+      .select("id,payout_status,payout_batch_id")
+      .eq("id", ledgerEntryId)
+      .maybeSingle<{ id: string; payout_status: string | null; payout_batch_id: string | null }>();
+
+    if (currentLedgerError) {
+      throw Object.assign(new Error("Ledger-Eintrag konnte vor der Auszahlung nicht geladen werden"), {
+        step: "load_ledger_entry_before_workshop_payout",
+        supabaseCode:
+          "code" in currentLedgerError && typeof currentLedgerError.code === "string" ? currentLedgerError.code : null,
+        supabaseMessage:
+          "message" in currentLedgerError && typeof currentLedgerError.message === "string"
+            ? currentLedgerError.message
+            : null,
+      });
+    }
+
+    if (
+      currentLedger?.id &&
+      currentLedger.payout_batch_id === null &&
+      (currentLedger.payout_status === "pending" || currentLedger.payout_status === "pending_event_completion")
+    ) {
+      const { error: updateReadyError } = await admin
+        .from("ledger_entries")
+        .update({
+          payout_status: "payable",
+          available_at: new Date().toISOString(),
+        })
+        .eq("id", currentLedger.id)
+        .in("payout_status", ["pending", "pending_event_completion"])
+        .is("payout_batch_id", null);
+
+      if (updateReadyError) {
+        throw Object.assign(new Error("Workshop-24h-Simulation konnte nicht auf payable vorbereitet werden"), {
+          step: "prepare_workshop_payout_after_24h",
+          supabaseCode:
+            "code" in updateReadyError && typeof updateReadyError.code === "string" ? updateReadyError.code : null,
+          supabaseMessage:
+            "message" in updateReadyError && typeof updateReadyError.message === "string"
+              ? updateReadyError.message
+              : null,
+        });
+      }
+    }
+
     const result = await createSimulatedPaidPayoutForLedgerEntry({
       ledgerEntryId,
     });
@@ -244,14 +345,21 @@ export async function simulateSelectedWorkshopPayoutAction(formData: FormData) {
       ...contextParams,
       action: "selected-payout-ok",
       ledgerEntryId: result.ledgerEntryId,
-      providerPayoutStatementDocumentId: result.providerPayoutStatementDocumentId,
-      providerPlatformFeeInvoiceDocumentId: result.providerPlatformFeeInvoiceDocumentId,
-      platformRevenueStatementDocumentId: result.platformRevenueStatementDocumentId,
+      providerPayoutStatementDocumentId: result.providerPayoutStatementDocumentId ?? "",
+      providerPlatformFeeInvoiceDocumentId: result.providerPlatformFeeInvoiceDocumentId ?? "",
+      platformRevenueStatementDocumentId: result.platformRevenueStatementDocumentId ?? "",
+      payoutProvider: result.payoutProvider,
+      payoutMethod: result.payoutMethod,
+      usedFallbackPayoutProfile: result.usedFallbackPayoutProfile ? "yes" : "no",
       message:
         `Simulierte Auszahlung erstellt. payout_batch_id=${result.batchId}` +
-        ` provider_payout_statement_document_id=${result.providerPayoutStatementDocumentId}` +
-        ` provider_platform_fee_invoice_document_id=${result.providerPlatformFeeInvoiceDocumentId}` +
-        ` platform_revenue_statement_document_id=${result.platformRevenueStatementDocumentId}`,
+        ` payout_provider=${result.payoutProvider}` +
+        ` payout_method=${result.payoutMethod}` +
+        ` provider_payout_statement_document_id=${result.providerPayoutStatementDocumentId ?? "missing"}` +
+        ` provider_platform_fee_invoice_document_id=${result.providerPlatformFeeInvoiceDocumentId ?? "missing"}` +
+        ` platform_revenue_statement_document_id=${result.platformRevenueStatementDocumentId ?? "missing"}`,
+      ...getIssueParams("payoutItem", result.payoutItemIssue),
+      ...getIssueParams("document", result.documentIssue),
     });
   } catch (error) {
     if (isNextRedirectError(error)) {
@@ -266,6 +374,10 @@ export async function simulateSelectedWorkshopPayoutAction(formData: FormData) {
       ledgerEntryId,
       errorCode: details.code,
       message: details.message,
+      step: details.step,
+      supabaseCode: details.supabaseCode ?? "",
+      supabaseMessage: details.supabaseMessage ?? "",
+      rawErrorMessage: details.rawErrorMessage,
     });
   }
 }

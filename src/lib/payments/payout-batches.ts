@@ -1,10 +1,17 @@
 import "server-only";
+
 import { ensureProviderPayoutDocumentsForLedgerEntry } from "@/lib/documents/simulation-documents";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
+
+const INTERNAL_SIMULATION_PROVIDER = "internal_simulation";
+const INTERNAL_SIMULATION_METHOD = "internal_simulation";
 
 type PayableLedgerEntryRow = {
   id: string;
   provider_payout_profile_id: string | null;
+  source_type: string;
+  source_id: string;
+  subscription_contract_id: string | null;
   net_amount_cents: number;
   currency: string;
   payout_status: string;
@@ -13,8 +20,9 @@ type PayableLedgerEntryRow = {
 
 type ProviderPayoutProfileRow = {
   id: string;
-  provider: string;
-  payout_method: string;
+  teacher_id: string | null;
+  provider: string | null;
+  payout_method: string | null;
 };
 
 type PayoutBatchRow = {
@@ -22,7 +30,7 @@ type PayoutBatchRow = {
 };
 
 type SimulationGroup = {
-  providerPayoutProfileId: string;
+  providerPayoutProfileId: string | null;
   payoutProvider: string;
   payoutMethod: string;
   currency: string;
@@ -32,17 +40,608 @@ type SimulationGroup = {
 type SelectedPayoutLedgerRow = {
   id: string;
   provider_payout_profile_id: string | null;
+  source_type: string;
+  source_id: string;
+  subscription_contract_id: string | null;
   net_amount_cents: number;
   currency: string;
   payout_status: string;
   payout_batch_id: string | null;
 };
 
-type SelectedPayoutProfileRow = {
-  id: string;
-  provider: string;
-  payout_method: string;
+type PayoutLedgerContext = {
+  providerId: string | null;
+  payoutMethod: string;
 };
+
+type PaymentTransactionContextRow = {
+  id: string;
+  booking_id: string | null;
+  course_registration_intent_id: string | null;
+  subscription_contract_id: string | null;
+};
+
+type SubscriptionContractContextRow = {
+  id: string;
+  teacher_id: string;
+  course_id: string;
+  course_registration_intent_id: string | null;
+};
+
+type BookingContextRow = {
+  id: string;
+  course_id: string | null;
+};
+
+type CourseRegistrationIntentContextRow = {
+  id: string;
+  course_id: string | null;
+};
+
+type CourseTeacherRow = {
+  id: string;
+  teacher_id: string | null;
+};
+
+type ProviderBillingProfileFallbackRow = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  organization_name: string | null;
+  payout_method: string | null;
+};
+
+export type SimulatedPayoutIssue = {
+  step: string;
+  supabaseCode: string | null;
+  supabaseMessage: string | null;
+  rawErrorMessage: string;
+};
+
+type DocumentResult = {
+  providerPayoutStatementDocumentId: string | null;
+  providerPlatformFeeInvoiceDocumentId: string | null;
+  platformRevenueStatementDocumentId: string | null;
+  issue: SimulatedPayoutIssue | null;
+};
+
+type PayoutItemResult = {
+  payoutItemId: string | null;
+  issue: SimulatedPayoutIssue | null;
+};
+
+type ResolvedPayoutTarget = {
+  providerPayoutProfileId: string | null;
+  payoutProvider: string;
+  payoutMethod: string;
+  usedFallbackPayoutProfile: boolean;
+};
+
+type SupabaseLikeError = {
+  code?: string | null;
+  message?: string | null;
+};
+
+export class SimulatedPayoutError extends Error {
+  readonly step: string;
+  readonly supabaseCode: string | null;
+  readonly supabaseMessage: string | null;
+  readonly rawErrorMessage: string;
+
+  constructor(step: string, message: string, error?: unknown) {
+    super(message);
+    this.name = "SimulatedPayoutError";
+    this.step = step;
+    this.supabaseCode = getSupabaseCode(error);
+    this.supabaseMessage = getSupabaseMessage(error);
+    this.rawErrorMessage = getRawErrorMessage(error);
+  }
+}
+
+function normalizeCurrency(currency: string | null | undefined): string {
+  return (currency ?? "EUR").trim().toUpperCase() || "EUR";
+}
+
+function normalizePayoutProvider(value: string | null | undefined): string {
+  return String(value ?? "").trim() || INTERNAL_SIMULATION_PROVIDER;
+}
+
+function normalizePayoutMethod(value: string | null | undefined): string {
+  return String(value ?? "").trim() || INTERNAL_SIMULATION_METHOD;
+}
+
+function getSupabaseCode(error: unknown): string | null {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as SupabaseLikeError).code;
+    return code ? String(code) : null;
+  }
+
+  return null;
+}
+
+function getSupabaseMessage(error: unknown): string | null {
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const message = (error as SupabaseLikeError).message;
+    return message ? String(message) : null;
+  }
+
+  return null;
+}
+
+function getRawErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message || "Unbekannter Fehler";
+  }
+
+  if (typeof error === "object" && error !== null && "message" in error) {
+    return String((error as SupabaseLikeError).message ?? "Unbekannter Fehler");
+  }
+
+  return String(error ?? "Unbekannter Fehler");
+}
+
+function buildPayoutIssue(step: string, error: unknown): SimulatedPayoutIssue {
+  return {
+    step,
+    supabaseCode: getSupabaseCode(error),
+    supabaseMessage: getSupabaseMessage(error),
+    rawErrorMessage: getRawErrorMessage(error),
+  };
+}
+
+function toSimulatedPayoutError(step: string, message: string, error?: unknown): SimulatedPayoutError {
+  return new SimulatedPayoutError(step, message, error);
+}
+
+function buildAccountHolderName(profile: ProviderBillingProfileFallbackRow | null): string {
+  if (!profile) {
+    return "Interne Simulation";
+  }
+
+  const organizationName = String(profile.organization_name ?? "").trim();
+  if (organizationName) {
+    return organizationName;
+  }
+
+  const fullName = [profile.first_name?.trim(), profile.last_name?.trim()].filter(Boolean).join(" ").trim();
+  return fullName || "Interne Simulation";
+}
+
+function isPayableStatus(value: string | null | undefined): boolean {
+  return value === "payable" || value === "available";
+}
+
+async function loadLedgerProviderContext(entry: {
+  source_type: string;
+  source_id: string;
+  subscription_contract_id: string | null;
+}): Promise<PayoutLedgerContext> {
+  const admin = createSupabaseAdmin();
+
+  const paymentTransaction =
+    entry.source_type === "payment_transaction"
+      ? (
+          await admin
+            .from("payment_transactions")
+            .select("id,booking_id,course_registration_intent_id,subscription_contract_id")
+            .eq("id", entry.source_id)
+            .maybeSingle<PaymentTransactionContextRow>()
+        ).data ?? null
+      : null;
+
+  const subscriptionContractId = entry.subscription_contract_id ?? paymentTransaction?.subscription_contract_id ?? null;
+  const subscriptionContract =
+    subscriptionContractId
+      ? (
+          await admin
+            .from("subscription_contracts")
+            .select("id,teacher_id,course_id,course_registration_intent_id")
+            .eq("id", subscriptionContractId)
+            .maybeSingle<SubscriptionContractContextRow>()
+        ).data ?? null
+      : null;
+
+  const bookingId = paymentTransaction?.booking_id ?? null;
+  const intentId =
+    paymentTransaction?.course_registration_intent_id ??
+    subscriptionContract?.course_registration_intent_id ??
+    null;
+
+  const [bookingResult, intentResult] = await Promise.all([
+    bookingId
+      ? admin.from("bookings").select("id,course_id").eq("id", bookingId).maybeSingle<BookingContextRow>()
+      : Promise.resolve({ data: null as BookingContextRow | null, error: null }),
+    intentId
+      ? admin
+          .from("course_registration_intents")
+          .select("id,course_id")
+          .eq("id", intentId)
+          .maybeSingle<CourseRegistrationIntentContextRow>()
+      : Promise.resolve({ data: null as CourseRegistrationIntentContextRow | null, error: null }),
+  ]);
+
+  if (bookingResult.error) {
+    throw toSimulatedPayoutError("load_booking_context", "Buchungskontext konnte nicht geladen werden", bookingResult.error);
+  }
+
+  if (intentResult.error) {
+    throw toSimulatedPayoutError("load_intent_context", "Intent-Kontext konnte nicht geladen werden", intentResult.error);
+  }
+
+  const courseId =
+    subscriptionContract?.course_id ??
+    bookingResult.data?.course_id ??
+    intentResult.data?.course_id ??
+    null;
+
+  const course =
+    courseId
+      ? (
+          await admin
+            .from("courses")
+            .select("id,teacher_id")
+            .eq("id", courseId)
+            .maybeSingle<CourseTeacherRow>()
+        ).data ?? null
+      : null;
+
+  const providerId = subscriptionContract?.teacher_id ?? course?.teacher_id ?? null;
+  const billingProfile =
+    providerId
+      ? (
+          await admin
+            .from("profiles")
+            .select("id,first_name,last_name,organization_name,payout_method")
+            .eq("id", providerId)
+            .maybeSingle<ProviderBillingProfileFallbackRow>()
+        ).data ?? null
+      : null;
+
+  return {
+    providerId,
+    payoutMethod: normalizePayoutMethod(billingProfile?.payout_method),
+  };
+}
+
+async function ensureSimulationProviderPayoutProfile(input: {
+  providerId: string;
+  payoutMethod: string;
+}): Promise<ProviderPayoutProfileRow | null> {
+  const admin = createSupabaseAdmin();
+  const { data: existingProfile, error: existingProfileError } = await admin
+    .from("provider_payout_profiles")
+    .select("id,teacher_id,provider,payout_method")
+    .eq("teacher_id", input.providerId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle<ProviderPayoutProfileRow>();
+
+  if (existingProfileError) {
+    throw toSimulatedPayoutError(
+      "load_provider_payout_profile",
+      "Provider-Payout-Profil konnte nicht geladen werden",
+      existingProfileError
+    );
+  }
+
+  if (existingProfile?.id) {
+    return existingProfile;
+  }
+
+  const { data: billingProfile } = await admin
+    .from("profiles")
+    .select("id,first_name,last_name,organization_name,payout_method")
+    .eq("id", input.providerId)
+    .maybeSingle<ProviderBillingProfileFallbackRow>();
+
+  const { data: insertedProfile, error: insertProfileError } = await admin
+    .from("provider_payout_profiles")
+    .insert({
+      teacher_id: input.providerId,
+      payout_method: input.payoutMethod,
+      account_holder_name: buildAccountHolderName(billingProfile ?? null),
+      verification_status: "verified",
+      provider: INTERNAL_SIMULATION_PROVIDER,
+      provider_account_id: null,
+    })
+    .select("id,teacher_id,provider,payout_method")
+    .maybeSingle<ProviderPayoutProfileRow>();
+
+  if (insertedProfile?.id) {
+    return insertedProfile;
+  }
+
+  if (!insertProfileError) {
+    return null;
+  }
+
+  const { data: fallbackProfile, error: fallbackProfileError } = await admin
+    .from("provider_payout_profiles")
+    .select("id,teacher_id,provider,payout_method")
+    .eq("teacher_id", input.providerId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle<ProviderPayoutProfileRow>();
+
+  if (fallbackProfileError) {
+    throw toSimulatedPayoutError(
+      "fallback_provider_payout_profile",
+      "Fallback fuer Provider-Payout-Profil konnte nicht geladen werden",
+      fallbackProfileError
+    );
+  }
+
+  return fallbackProfile ?? null;
+}
+
+async function resolvePayoutTarget(input: {
+  providerPayoutProfileId: string | null;
+  source_type: string;
+  source_id: string;
+  subscription_contract_id: string | null;
+}): Promise<ResolvedPayoutTarget> {
+  const admin = createSupabaseAdmin();
+
+  if (input.providerPayoutProfileId) {
+    const { data: profile, error } = await admin
+      .from("provider_payout_profiles")
+      .select("id,teacher_id,provider,payout_method")
+      .eq("id", input.providerPayoutProfileId)
+      .maybeSingle<ProviderPayoutProfileRow>();
+
+    if (error) {
+      throw toSimulatedPayoutError("load_payout_profile", "Provider-Payout-Profil konnte nicht geladen werden", error);
+    }
+
+    if (profile?.id) {
+      return {
+        providerPayoutProfileId: profile.id,
+        payoutProvider: normalizePayoutProvider(profile.provider),
+        payoutMethod: normalizePayoutMethod(profile.payout_method),
+        usedFallbackPayoutProfile: false,
+      };
+    }
+  }
+
+  const context = await loadLedgerProviderContext(input);
+  const ensuredProfile = context.providerId
+    ? await ensureSimulationProviderPayoutProfile({
+        providerId: context.providerId,
+        payoutMethod: context.payoutMethod,
+      })
+    : null;
+
+  return {
+    providerPayoutProfileId: ensuredProfile?.id ?? null,
+    payoutProvider: normalizePayoutProvider(ensuredProfile?.provider ?? INTERNAL_SIMULATION_PROVIDER),
+    payoutMethod: normalizePayoutMethod(ensuredProfile?.payout_method ?? context.payoutMethod),
+    usedFallbackPayoutProfile: true,
+  };
+}
+
+async function createPayoutBatchRecord(input: {
+  payoutProvider: string;
+  payoutMethod: string;
+  totalAmountCents: number;
+  currency: string;
+  status: "simulated_pending" | "paid";
+}): Promise<string> {
+  const admin = createSupabaseAdmin();
+  const timestamp = input.status === "paid" ? new Date().toISOString() : null;
+  const { data: batch, error } = await admin
+    .from("payout_batches")
+    .insert({
+      payout_provider: input.payoutProvider,
+      payout_method: input.payoutMethod,
+      total_amount_cents: input.totalAmountCents,
+      currency: input.currency,
+      status: input.status,
+      executed_at: timestamp,
+    })
+    .select("id")
+    .maybeSingle<PayoutBatchRow>();
+
+  if (error) {
+    throw toSimulatedPayoutError("create_payout_batch", "Simulations-Auszahlung konnte nicht angelegt werden", error);
+  }
+
+  if (!batch?.id) {
+    throw toSimulatedPayoutError("create_payout_batch", "Simulations-Auszahlung konnte nicht angelegt werden");
+  }
+
+  return batch.id;
+}
+
+async function ensurePayoutItemRecord(input: {
+  batchId: string;
+  ledgerEntryId: string;
+  providerPayoutProfileId: string | null;
+  amountCents: number;
+  currency: string;
+  status: "simulated_pending" | "paid";
+}): Promise<PayoutItemResult> {
+  const admin = createSupabaseAdmin();
+  const { data: existingItem, error: existingItemError } = await admin
+    .from("payout_items")
+    .select("id")
+    .eq("ledger_entry_id", input.ledgerEntryId)
+    .maybeSingle<{ id: string }>();
+
+  if (existingItemError) {
+    return {
+      payoutItemId: null,
+      issue: buildPayoutIssue("load_payout_item", existingItemError),
+    };
+  }
+
+  if (existingItem?.id) {
+    if (input.status === "paid") {
+      const { error: updateError } = await admin
+        .from("payout_items")
+        .update({
+          status: "paid",
+          executed_at: new Date().toISOString(),
+        })
+        .eq("id", existingItem.id);
+
+      if (updateError) {
+        return {
+          payoutItemId: existingItem.id,
+          issue: buildPayoutIssue("update_payout_item_paid", updateError),
+        };
+      }
+    }
+
+    return {
+      payoutItemId: existingItem.id,
+      issue: null,
+    };
+  }
+
+  if (!input.providerPayoutProfileId) {
+    return {
+      payoutItemId: null,
+      issue: buildPayoutIssue(
+        "skip_payout_item_without_profile",
+        new Error("Kein Provider-Payout-Profil vorhanden; payout_item wurde im Testmodus uebersprungen.")
+      ),
+    };
+  }
+
+  const { data: item, error } = await admin
+    .from("payout_items")
+    .insert({
+      payout_batch_id: input.batchId,
+      provider_payout_profile_id: input.providerPayoutProfileId,
+      ledger_entry_id: input.ledgerEntryId,
+      amount_cents: Math.max(0, input.amountCents),
+      currency: input.currency,
+      status: input.status,
+      executed_at: input.status === "paid" ? new Date().toISOString() : null,
+    })
+    .select("id")
+    .maybeSingle<{ id: string }>();
+
+  if (error) {
+    return {
+      payoutItemId: null,
+      issue: buildPayoutIssue("create_payout_item", error),
+    };
+  }
+
+  return {
+    payoutItemId: item?.id ?? null,
+    issue: null,
+  };
+}
+
+async function updateLedgerForBatch(input: {
+  ledgerEntryId: string;
+  batchId: string;
+  previousPayoutStatus?: string | null;
+  markAsPaid: boolean;
+}): Promise<void> {
+  const admin = createSupabaseAdmin();
+  let statement = admin
+    .from("ledger_entries")
+    .update({
+      payout_batch_id: input.batchId,
+      payout_status: input.markAsPaid ? "paid" : "batched",
+    })
+    .eq("id", input.ledgerEntryId);
+
+  if (input.markAsPaid) {
+    if (input.previousPayoutStatus) {
+      statement = statement.eq("payout_status", input.previousPayoutStatus);
+    }
+    statement = statement.is("payout_batch_id", null);
+  } else {
+    statement = statement.eq("payout_status", "payable").is("payout_batch_id", null);
+  }
+
+  const { data: updatedLedger, error } = await statement.select("id").maybeSingle<{ id: string }>();
+
+  if (error) {
+    throw toSimulatedPayoutError(
+      input.markAsPaid ? "finalize_ledger_paid" : "mark_ledger_batched",
+      input.markAsPaid
+        ? "Ledger-Auszahlungsstatus konnte nicht finalisiert werden"
+        : "Ledger-Auszahlungsstatus konnte nicht auf batched gesetzt werden",
+      error
+    );
+  }
+
+  if (!updatedLedger?.id) {
+    throw toSimulatedPayoutError(
+      input.markAsPaid ? "finalize_ledger_paid" : "mark_ledger_batched",
+      input.markAsPaid
+        ? "Ledger-Auszahlungsstatus konnte nicht finalisiert werden"
+        : "Ledger-Auszahlungsstatus konnte nicht auf batched gesetzt werden"
+    );
+  }
+}
+
+async function markExistingBatchAsPaid(input: {
+  batchId: string;
+  ledgerEntryId: string;
+  previousPayoutStatus: string;
+}): Promise<PayoutItemResult> {
+  const admin = createSupabaseAdmin();
+  const payoutItemResult = await ensurePayoutItemRecord({
+    batchId: input.batchId,
+    ledgerEntryId: input.ledgerEntryId,
+    providerPayoutProfileId: null,
+    amountCents: 0,
+    currency: "EUR",
+    status: "paid",
+  });
+
+  const { error: batchError } = await admin
+    .from("payout_batches")
+    .update({
+      status: "paid",
+      executed_at: new Date().toISOString(),
+    })
+    .eq("id", input.batchId);
+
+  if (batchError) {
+    throw toSimulatedPayoutError("mark_batch_paid", "Payout-Batch konnte nicht auf paid gesetzt werden", batchError);
+  }
+
+  await updateLedgerForBatch({
+    ledgerEntryId: input.ledgerEntryId,
+    batchId: input.batchId,
+    previousPayoutStatus: input.previousPayoutStatus,
+    markAsPaid: true,
+  });
+
+  return payoutItemResult;
+}
+
+async function ensurePayoutDocuments(ledgerEntryId: string): Promise<DocumentResult> {
+  const admin = createSupabaseAdmin();
+
+  try {
+    const documents = await ensureProviderPayoutDocumentsForLedgerEntry({
+      ledgerEntryId,
+      supabase: admin,
+    });
+
+    return {
+      providerPayoutStatementDocumentId: documents.providerPayoutStatementDocumentId,
+      providerPlatformFeeInvoiceDocumentId: documents.providerPlatformFeeInvoiceDocumentId,
+      platformRevenueStatementDocumentId: documents.platformRevenueStatementDocumentId,
+      issue: null,
+    };
+  } catch (error) {
+    return {
+      providerPayoutStatementDocumentId: null,
+      providerPlatformFeeInvoiceDocumentId: null,
+      platformRevenueStatementDocumentId: null,
+      issue: buildPayoutIssue("create_financial_documents", error),
+    };
+  }
+}
 
 export async function createSimulatedPayoutBatch(): Promise<{
   consideredCount: number;
@@ -52,75 +651,63 @@ export async function createSimulatedPayoutBatch(): Promise<{
   batchIds: string[];
 }> {
   const admin = createSupabaseAdmin();
-  const { data: payableEntries } = await admin
+  const { data: payableEntries, error } = await admin
     .from("ledger_entries")
-    .select("id,provider_payout_profile_id,net_amount_cents,currency,payout_status,payout_batch_id")
+    .select("id,provider_payout_profile_id,source_type,source_id,subscription_contract_id,net_amount_cents,currency,payout_status,payout_batch_id")
     .eq("entry_type", "payment")
     .eq("payout_status", "payable")
     .is("payout_batch_id", null)
     .returns<PayableLedgerEntryRow[]>();
 
-  const candidateEntries = payableEntries ?? [];
-  const profileIds = Array.from(
-    new Set(
-      candidateEntries
-        .map((entry) => entry.provider_payout_profile_id)
-        .filter((profileId): profileId is string => Boolean(profileId))
-    )
-  );
+  if (error) {
+    throw toSimulatedPayoutError("load_payable_ledger_entries", "Payable Ledger-Eintraege konnten nicht geladen werden", error);
+  }
 
-  if (candidateEntries.length === 0 || profileIds.length === 0) {
+  const candidateEntries = payableEntries ?? [];
+  if (candidateEntries.length === 0) {
     return {
-      consideredCount: candidateEntries.length,
-      skippedCount: candidateEntries.length,
+      consideredCount: 0,
+      skippedCount: 0,
       batchCount: 0,
       itemCount: 0,
       batchIds: [],
     };
   }
 
-  const { data: profiles } = await admin
-    .from("provider_payout_profiles")
-    .select("id,provider,payout_method")
-    .in("id", profileIds)
-    .returns<ProviderPayoutProfileRow[]>();
-
-  const profilesById = new Map((profiles ?? []).map((profile) => [profile.id, profile] as const));
   const groups = new Map<string, SimulationGroup>();
   let skippedCount = 0;
 
   for (const entry of candidateEntries) {
-    if (!entry.provider_payout_profile_id) {
+    try {
+      const target = await resolvePayoutTarget({
+        providerPayoutProfileId: entry.provider_payout_profile_id,
+        source_type: entry.source_type,
+        source_id: entry.source_id,
+        subscription_contract_id: entry.subscription_contract_id,
+      });
+      const groupKey = [
+        target.providerPayoutProfileId ?? `fallback:${entry.id}`,
+        target.payoutProvider,
+        target.payoutMethod,
+        normalizeCurrency(entry.currency),
+      ].join("::");
+
+      const existingGroup = groups.get(groupKey);
+      if (existingGroup) {
+        existingGroup.entries.push(entry);
+        continue;
+      }
+
+      groups.set(groupKey, {
+        providerPayoutProfileId: target.providerPayoutProfileId,
+        payoutProvider: target.payoutProvider,
+        payoutMethod: target.payoutMethod,
+        currency: normalizeCurrency(entry.currency),
+        entries: [entry],
+      });
+    } catch {
       skippedCount += 1;
-      continue;
     }
-
-    const profile = profilesById.get(entry.provider_payout_profile_id);
-    if (!profile) {
-      skippedCount += 1;
-      continue;
-    }
-
-    const groupKey = [
-      profile.id,
-      profile.provider,
-      profile.payout_method,
-      entry.currency.trim().toUpperCase(),
-    ].join("::");
-
-    const existingGroup = groups.get(groupKey);
-    if (existingGroup) {
-      existingGroup.entries.push(entry);
-      continue;
-    }
-
-    groups.set(groupKey, {
-      providerPayoutProfileId: profile.id,
-      payoutProvider: profile.provider,
-      payoutMethod: profile.payout_method,
-      currency: entry.currency.trim().toUpperCase(),
-      entries: [entry],
-    });
   }
 
   const createdBatchIds: string[] = [];
@@ -128,67 +715,56 @@ export async function createSimulatedPayoutBatch(): Promise<{
 
   for (const group of groups.values()) {
     const eligibleEntryIds = group.entries.map((entry) => entry.id);
-    const { data: lockedEntries } = await admin
+    const { data: lockedEntries, error: lockedEntriesError } = await admin
       .from("ledger_entries")
-      .select("id,provider_payout_profile_id,net_amount_cents,currency,payout_status,payout_batch_id")
+      .select("id,provider_payout_profile_id,source_type,source_id,subscription_contract_id,net_amount_cents,currency,payout_status,payout_batch_id")
       .in("id", eligibleEntryIds)
       .eq("payout_status", "payable")
       .is("payout_batch_id", null)
       .returns<PayableLedgerEntryRow[]>();
+
+    if (lockedEntriesError) {
+      throw toSimulatedPayoutError(
+        "lock_payable_ledger_entries",
+        "Payable Ledger-Eintraege konnten nicht gesperrt geladen werden",
+        lockedEntriesError
+      );
+    }
 
     const finalEntries = lockedEntries ?? [];
     if (finalEntries.length === 0) {
       continue;
     }
 
-    const totalAmountCents = finalEntries.reduce((sum, entry) => sum + Math.max(0, entry.net_amount_cents), 0);
-    const { data: batch } = await admin
-      .from("payout_batches")
-      .insert({
-        payout_provider: group.payoutProvider,
-        payout_method: group.payoutMethod,
-        total_amount_cents: totalAmountCents,
-        currency: group.currency,
-        status: "simulated_pending",
-      })
-      .select("id")
-      .single<PayoutBatchRow>();
-
-    const batchId = batch?.id ?? null;
-    if (!batchId) {
-      continue;
-    }
+    const batchId = await createPayoutBatchRecord({
+      payoutProvider: group.payoutProvider,
+      payoutMethod: group.payoutMethod,
+      totalAmountCents: finalEntries.reduce((sum, entry) => sum + Math.max(0, entry.net_amount_cents), 0),
+      currency: group.currency,
+      status: "simulated_pending",
+    });
 
     createdBatchIds.push(batchId);
 
     for (const entry of finalEntries) {
-      const { data: existingItem } = await admin
-        .from("payout_items")
-        .select("id")
-        .eq("ledger_entry_id", entry.id)
-        .maybeSingle<{ id: string }>();
+      const payoutItemResult = await ensurePayoutItemRecord({
+        batchId,
+        ledgerEntryId: entry.id,
+        providerPayoutProfileId: group.providerPayoutProfileId,
+        amountCents: entry.net_amount_cents,
+        currency: group.currency,
+        status: "simulated_pending",
+      });
 
-      if (!existingItem?.id) {
-        await admin.from("payout_items").insert({
-          payout_batch_id: batchId,
-          provider_payout_profile_id: group.providerPayoutProfileId,
-          ledger_entry_id: entry.id,
-          amount_cents: Math.max(0, entry.net_amount_cents),
-          currency: group.currency,
-          status: "simulated_pending",
-        });
+      if (payoutItemResult.payoutItemId) {
         createdItemCount += 1;
       }
 
-      await admin
-        .from("ledger_entries")
-        .update({
-          payout_batch_id: batchId,
-          payout_status: "batched",
-        })
-        .eq("id", entry.id)
-        .eq("payout_status", "payable")
-        .is("payout_batch_id", null);
+      await updateLedgerForBatch({
+        ledgerEntryId: entry.id,
+        batchId,
+        markAsPaid: false,
+      });
     }
   }
 
@@ -207,164 +783,116 @@ export async function createSimulatedPaidPayoutForLedgerEntry(input: {
   batchId: string;
   payoutItemId: string | null;
   ledgerEntryId: string;
-  providerPayoutStatementDocumentId: string;
-  providerPlatformFeeInvoiceDocumentId: string;
-  platformRevenueStatementDocumentId: string;
+  providerPayoutStatementDocumentId: string | null;
+  providerPlatformFeeInvoiceDocumentId: string | null;
+  platformRevenueStatementDocumentId: string | null;
+  payoutProvider: string;
+  payoutMethod: string;
+  usedFallbackPayoutProfile: boolean;
+  payoutItemIssue: SimulatedPayoutIssue | null;
+  documentIssue: SimulatedPayoutIssue | null;
 }> {
   const ledgerEntryId = input.ledgerEntryId.trim();
   if (!ledgerEntryId) {
-    throw new Error("Kein Ledger-Eintrag vorhanden");
+    throw toSimulatedPayoutError("validate_ledger_entry_id", "Kein Ledger-Eintrag vorhanden");
   }
 
   const admin = createSupabaseAdmin();
-  const { data: entry } = await admin
+  const { data: entry, error } = await admin
     .from("ledger_entries")
-    .select("id,provider_payout_profile_id,net_amount_cents,currency,payout_status,payout_batch_id")
+    .select("id,provider_payout_profile_id,source_type,source_id,subscription_contract_id,net_amount_cents,currency,payout_status,payout_batch_id")
     .eq("id", ledgerEntryId)
     .eq("entry_type", "payment")
     .eq("source_type", "payment_transaction")
     .maybeSingle<SelectedPayoutLedgerRow>();
 
-  if (!entry?.id) {
-    throw new Error("Kein Ledger-Eintrag vorhanden");
+  if (error) {
+    throw toSimulatedPayoutError("load_ledger_entry", "Ledger-Eintrag konnte nicht geladen werden", error);
   }
 
-  if (!entry.provider_payout_profile_id) {
-    throw new Error("Kein Provider-Payout-Profil vorhanden");
+  if (!entry?.id) {
+    throw toSimulatedPayoutError("load_ledger_entry", "Kein Ledger-Eintrag vorhanden");
   }
 
   if (entry.payout_status === "cancelled" || entry.payout_status === "held") {
-    throw new Error("Bereits storniert oder gesperrt");
+    throw toSimulatedPayoutError("validate_payout_state", "Bereits storniert oder gesperrt");
   }
 
   if (entry.payout_status === "paid") {
-    throw new Error("Bereits ausgezahlt");
+    throw toSimulatedPayoutError("validate_payout_state", "Bereits ausgezahlt");
   }
 
+  const target = await resolvePayoutTarget({
+    providerPayoutProfileId: entry.provider_payout_profile_id,
+    source_type: entry.source_type,
+    source_id: entry.source_id,
+    subscription_contract_id: entry.subscription_contract_id,
+  });
+
   if (entry.payout_batch_id) {
-    const { data: existingItem } = await admin
-      .from("payout_items")
-      .select("id")
-      .eq("ledger_entry_id", entry.id)
-      .maybeSingle<{ id: string }>();
-
-    await admin
-      .from("payout_items")
-      .update({
-        status: "paid",
-        executed_at: new Date().toISOString(),
-      })
-      .eq("ledger_entry_id", entry.id);
-
-    await admin
-      .from("payout_batches")
-      .update({
-        status: "paid",
-        executed_at: new Date().toISOString(),
-      })
-      .eq("id", entry.payout_batch_id);
-
-    const { data: updatedLedger } = await admin
-      .from("ledger_entries")
-      .update({
-        payout_status: "paid",
-      })
-      .eq("id", entry.id)
-      .select("id")
-      .maybeSingle<{ id: string }>();
-
-    if (!updatedLedger?.id) {
-      throw new Error("Ledger-Auszahlungsstatus konnte nicht auf paid gesetzt werden");
-    }
-
-    const documents = await ensureProviderPayoutDocumentsForLedgerEntry({
+    const payoutItemResult = await markExistingBatchAsPaid({
+      batchId: entry.payout_batch_id,
       ledgerEntryId: entry.id,
-      supabase: admin,
+      previousPayoutStatus: entry.payout_status,
     });
+    const documents = await ensurePayoutDocuments(entry.id);
 
     return {
       batchId: entry.payout_batch_id,
-      payoutItemId: existingItem?.id ?? null,
+      payoutItemId: payoutItemResult.payoutItemId,
       ledgerEntryId: entry.id,
       providerPayoutStatementDocumentId: documents.providerPayoutStatementDocumentId,
       providerPlatformFeeInvoiceDocumentId: documents.providerPlatformFeeInvoiceDocumentId,
       platformRevenueStatementDocumentId: documents.platformRevenueStatementDocumentId,
+      payoutProvider: target.payoutProvider,
+      payoutMethod: target.payoutMethod,
+      usedFallbackPayoutProfile: target.usedFallbackPayoutProfile,
+      payoutItemIssue: payoutItemResult.issue,
+      documentIssue: documents.issue,
     };
   }
 
-  if (entry.payout_status !== "payable" && entry.payout_status !== "available") {
-    throw new Error("Ledger-Eintrag ist noch nicht auszahlbar");
+  if (!isPayableStatus(entry.payout_status)) {
+    throw toSimulatedPayoutError("validate_payout_state", "Ledger-Eintrag ist noch nicht auszahlbar");
   }
 
-  const { data: profile } = await admin
-    .from("provider_payout_profiles")
-    .select("id,provider,payout_method")
-    .eq("id", entry.provider_payout_profile_id)
-    .maybeSingle<SelectedPayoutProfileRow>();
-
-  if (!profile?.id) {
-    throw new Error("Kein Provider-Payout-Profil vorhanden");
-  }
-
-  const { data: batch } = await admin
-    .from("payout_batches")
-    .insert({
-      payout_provider: profile.provider,
-      payout_method: profile.payout_method,
-      total_amount_cents: Math.max(0, entry.net_amount_cents),
-      currency: entry.currency.trim().toUpperCase(),
-      status: "paid",
-      executed_at: new Date().toISOString(),
-    })
-    .select("id")
-    .single<PayoutBatchRow>();
-
-  const batchId = batch?.id ?? null;
-  if (!batchId) {
-    throw new Error("Simulations-Auszahlung konnte nicht angelegt werden");
-  }
-
-  const { data: item } = await admin
-    .from("payout_items")
-    .insert({
-      payout_batch_id: batchId,
-      provider_payout_profile_id: profile.id,
-      ledger_entry_id: entry.id,
-      amount_cents: Math.max(0, entry.net_amount_cents),
-      currency: entry.currency.trim().toUpperCase(),
-      status: "paid",
-      executed_at: new Date().toISOString(),
-    })
-    .select("id")
-    .single<{ id: string }>();
-
-  const { data: updatedLedger } = await admin
-    .from("ledger_entries")
-    .update({
-      payout_batch_id: batchId,
-      payout_status: "paid",
-    })
-    .eq("id", entry.id)
-    .eq("payout_status", entry.payout_status)
-    .is("payout_batch_id", null)
-    .select("id")
-    .maybeSingle<{ id: string }>();
-
-  if (!updatedLedger?.id) {
-    throw new Error("Ledger-Auszahlungsstatus konnte nicht finalisiert werden");
-  }
-
-  const documents = await ensureProviderPayoutDocumentsForLedgerEntry({
-    ledgerEntryId: entry.id,
-    supabase: admin,
+  const batchId = await createPayoutBatchRecord({
+    payoutProvider: target.payoutProvider,
+    payoutMethod: target.payoutMethod,
+    totalAmountCents: Math.max(0, entry.net_amount_cents),
+    currency: normalizeCurrency(entry.currency),
+    status: "paid",
   });
+
+  const payoutItemResult = await ensurePayoutItemRecord({
+    batchId,
+    ledgerEntryId: entry.id,
+    providerPayoutProfileId: target.providerPayoutProfileId,
+    amountCents: entry.net_amount_cents,
+    currency: normalizeCurrency(entry.currency),
+    status: "paid",
+  });
+
+  await updateLedgerForBatch({
+    ledgerEntryId: entry.id,
+    batchId,
+    previousPayoutStatus: entry.payout_status,
+    markAsPaid: true,
+  });
+
+  const documents = await ensurePayoutDocuments(entry.id);
 
   return {
     batchId,
-    payoutItemId: item?.id ?? null,
+    payoutItemId: payoutItemResult.payoutItemId,
     ledgerEntryId: entry.id,
     providerPayoutStatementDocumentId: documents.providerPayoutStatementDocumentId,
     providerPlatformFeeInvoiceDocumentId: documents.providerPlatformFeeInvoiceDocumentId,
     platformRevenueStatementDocumentId: documents.platformRevenueStatementDocumentId,
+    payoutProvider: target.payoutProvider,
+    payoutMethod: target.payoutMethod,
+    usedFallbackPayoutProfile: target.usedFallbackPayoutProfile,
+    payoutItemIssue: payoutItemResult.issue,
+    documentIssue: documents.issue,
   };
 }

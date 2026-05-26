@@ -251,6 +251,10 @@ type SearchParams = {
   checkedCount?: string;
   businessStatus?: string;
   customerReceiptDocumentId?: string;
+  documentRawErrorMessage?: string;
+  documentStep?: string;
+  documentSupabaseCode?: string;
+  documentSupabaseMessage?: string;
   errorCode?: string;
   ledgerEntryId?: string;
   markedCount?: string;
@@ -258,11 +262,22 @@ type SearchParams = {
   offerFilter?: string;
   paymentTransactionId?: string;
   platformRevenueStatementDocumentId?: string;
+  payoutItemRawErrorMessage?: string;
+  payoutItemStep?: string;
+  payoutItemSupabaseCode?: string;
+  payoutItemSupabaseMessage?: string;
+  payoutMethod?: string;
+  payoutProvider?: string;
   providerFilter?: string;
   providerPlatformFeeInvoiceDocumentId?: string;
   providerPayoutStatementDocumentId?: string;
+  rawErrorMessage?: string;
   selectedBookingId?: string;
   simulationWindow?: string;
+  step?: string;
+  supabaseCode?: string;
+  supabaseMessage?: string;
+  usedFallbackPayoutProfile?: string;
 };
 
 const ROW_LIMIT = 20;
@@ -290,6 +305,7 @@ type ProviderPayoutStatusInput = {
   paymentStatus: string | null;
   refundedAmountCents: number;
   grossAmountCents: number;
+  offerKind: string | null;
 };
 
 type ReserIncomeStatusInput = {
@@ -297,6 +313,7 @@ type ReserIncomeStatusInput = {
   paymentStatus: string | null;
   refundedAmountCents: number;
   grossAmountCents: number;
+  offerKind: string | null;
 };
 
 function getSimulationWindowStart(windowKey: "today" | "last7" | "all"): string | null {
@@ -364,6 +381,10 @@ function normalizeBusinessStatus(value: string | undefined): string {
   return allowed.has(value ?? "") ? (value as string) : "all";
 }
 
+function isOneTimeOfferKind(kind: string | null | undefined): boolean {
+  return kind === "workshop" || kind === "exclusive_offer";
+}
+
 function mapCustomerPaymentStatus(input: CustomerPaymentStatusInput): {
   key: string;
   label: string;
@@ -414,6 +435,10 @@ function mapProviderPayoutStatus(input: ProviderPayoutStatusInput): {
   }
 
   if (input.payoutStatus === "payable" || input.payoutStatus === "available") {
+    if (isOneTimeOfferKind(input.offerKind)) {
+      return { key: "vorgemerkt", label: "Vorgemerkt" };
+    }
+
     return { key: "auszahlbar", label: "Auszahlbar" };
   }
 
@@ -520,14 +545,29 @@ function ActionNotice({
   action,
   checkedCount,
   customerReceiptDocumentId,
+  documentRawErrorMessage,
+  documentStep,
+  documentSupabaseCode,
+  documentSupabaseMessage,
   errorCode,
   ledgerEntryId,
   markedCount,
   message: detailMessage,
   paymentTransactionId,
   platformRevenueStatementDocumentId,
+  payoutItemRawErrorMessage,
+  payoutItemStep,
+  payoutItemSupabaseCode,
+  payoutItemSupabaseMessage,
+  payoutMethod,
+  payoutProvider,
   providerPlatformFeeInvoiceDocumentId,
   providerPayoutStatementDocumentId,
+  rawErrorMessage,
+  step,
+  supabaseCode,
+  supabaseMessage,
+  usedFallbackPayoutProfile,
 }: SearchParams) {
   if (!action) return null;
 
@@ -585,7 +625,7 @@ function ActionNotice({
       </div>
     );
   } else if (action === "selected-workshop-ready-ok") {
-    message = detailMessage ?? "Workshop durchgefuehrt + 24h wurde simuliert.";
+    message = detailMessage ?? "Workshop abgeschlossen + 24h wurde simuliert.";
     toneClass = "border-green-200 bg-green-50 text-green-800";
     extra = ledgerEntryId ? <div className="mt-1 text-xs">ledger_entry_id: {ledgerEntryId}</div> : null;
   } else if (action === "selected-workshop-ready-none") {
@@ -608,9 +648,30 @@ function ActionNotice({
     extra = (
       <div className="mt-1 space-y-1 text-xs">
         <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
+        <div>payout_provider: {payoutProvider ?? "-"}</div>
+        <div>payout_method: {payoutMethod ?? "-"}</div>
+        <div>fallback_payout_profile: {usedFallbackPayoutProfile === "yes" ? "ja" : "nein"}</div>
         <div>provider_payout_statement_document_id: {providerPayoutStatementDocumentId ?? "-"}</div>
         <div>provider_platform_fee_invoice_document_id: {providerPlatformFeeInvoiceDocumentId ?? "-"}</div>
         <div>platform_revenue_statement_document_id: {platformRevenueStatementDocumentId ?? "-"}</div>
+        {payoutItemStep || payoutItemRawErrorMessage ? (
+          <>
+            <div className="pt-2 font-semibold text-amber-900">Payout-Item-Warnung</div>
+            <div>step: {payoutItemStep ?? "-"}</div>
+            <div>supabase_code: {payoutItemSupabaseCode ?? "-"}</div>
+            <div>supabase_message: {payoutItemSupabaseMessage ?? "-"}</div>
+            <div>raw_error_message: {payoutItemRawErrorMessage ?? "-"}</div>
+          </>
+        ) : null}
+        {documentStep || documentRawErrorMessage ? (
+          <>
+            <div className="pt-2 font-semibold text-amber-900">Document-Warnung</div>
+            <div>step: {documentStep ?? "-"}</div>
+            <div>supabase_code: {documentSupabaseCode ?? "-"}</div>
+            <div>supabase_message: {documentSupabaseMessage ?? "-"}</div>
+            <div>raw_error_message: {documentRawErrorMessage ?? "-"}</div>
+          </>
+        ) : null}
       </div>
     );
   } else if (action === "selected-payout-error") {
@@ -619,8 +680,12 @@ function ActionNotice({
     extra = (
       <div className="mt-1 space-y-1 text-xs">
         <div>ledger_entry_id: {ledgerEntryId ?? "-"}</div>
+        <div>step: {step ?? "-"}</div>
         <div>code: {errorCode ?? "-"}</div>
+        <div>supabase_code: {supabaseCode ?? "-"}</div>
+        <div>supabase_message: {supabaseMessage ?? "-"}</div>
         <div>detail: {detailMessage ?? "-"}</div>
+        <div>raw_error_message: {rawErrorMessage ?? "-"}</div>
       </div>
     );
   } else if (action === "workshop-cancel-selected-ok" || action === "workshop-refund-selected-ok") {
@@ -1073,6 +1138,7 @@ export default async function PaymentsV2AdminPage({
         paymentStatus: paymentTransaction?.status ?? option.paymentStatus ?? null,
         refundedAmountCents,
         grossAmountCents: option.amountCents ?? 0,
+        offerKind: option.courseKind,
       });
 
       return {
@@ -1103,6 +1169,7 @@ export default async function PaymentsV2AdminPage({
         paymentStatus: paymentTransaction?.status ?? option.paymentStatus ?? null,
         refundedAmountCents,
         grossAmountCents: option.amountCents ?? 0,
+        offerKind: option.courseKind,
       });
 
       return {
@@ -1297,14 +1364,29 @@ export default async function PaymentsV2AdminPage({
           action={sp.action}
           checkedCount={sp.checkedCount}
           customerReceiptDocumentId={sp.customerReceiptDocumentId}
+          documentRawErrorMessage={sp.documentRawErrorMessage}
+          documentStep={sp.documentStep}
+          documentSupabaseCode={sp.documentSupabaseCode}
+          documentSupabaseMessage={sp.documentSupabaseMessage}
           errorCode={sp.errorCode}
           ledgerEntryId={sp.ledgerEntryId}
           markedCount={sp.markedCount}
           message={sp.message}
           paymentTransactionId={sp.paymentTransactionId}
           platformRevenueStatementDocumentId={sp.platformRevenueStatementDocumentId}
+          payoutItemRawErrorMessage={sp.payoutItemRawErrorMessage}
+          payoutItemStep={sp.payoutItemStep}
+          payoutItemSupabaseCode={sp.payoutItemSupabaseCode}
+          payoutItemSupabaseMessage={sp.payoutItemSupabaseMessage}
+          payoutMethod={sp.payoutMethod}
+          payoutProvider={sp.payoutProvider}
           providerPlatformFeeInvoiceDocumentId={sp.providerPlatformFeeInvoiceDocumentId}
           providerPayoutStatementDocumentId={sp.providerPayoutStatementDocumentId}
+          rawErrorMessage={sp.rawErrorMessage}
+          step={sp.step}
+          supabaseCode={sp.supabaseCode}
+          supabaseMessage={sp.supabaseMessage}
+          usedFallbackPayoutProfile={sp.usedFallbackPayoutProfile}
         />
 
         <Section
@@ -1426,16 +1508,16 @@ export default async function PaymentsV2AdminPage({
                     <input type="hidden" name="businessStatus" value={businessStatusFilter} />
                     <div className="space-y-3">
                       <div>
-                        <div className="text-sm font-semibold text-slate-900">Step 2: Workshop durchgefuehrt + 24h simulieren</div>
+                        <div className="text-sm font-semibold text-slate-900">Optional: 24h nach Workshop simulieren</div>
                         <div className="mt-1 text-xs text-slate-700">
-                          Setzt den relevanten Anbieterbetrag fuer diese Buchung auf auszahlbar, ohne echte Auszahlung.
+                          Gibt den relevanten Anbieterbetrag intern frei. In der Businesssicht bleibt der Status fuer einmalige Angebote bis zur Auszahlung vorgemerkt.
                         </div>
                       </div>
                       <button
                         type="submit"
                         className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
                       >
-                        Auszahlungsvoraussetzung simulieren
+                        24h nach Workshop simulieren
                       </button>
                     </div>
                   </form>
@@ -1449,16 +1531,16 @@ export default async function PaymentsV2AdminPage({
                     <input type="hidden" name="businessStatus" value={businessStatusFilter} />
                     <div className="space-y-3">
                       <div>
-                        <div className="text-sm font-semibold text-slate-900">Step 3: Auszahlung simulieren</div>
+                        <div className="text-sm font-semibold text-slate-900">Workshop abgeschlossen - Auszahlung simulieren</div>
                         <div className="mt-1 text-xs text-slate-700">
-                          Erzeugt fuer genau diese Buchung eine simulierte Auszahlung und markiert sie als ausgezahlt.
+                          Simuliert bei Bedarf zuerst die 24h-Freigabe und fuehrt danach fuer genau diese Buchung die interne Auszahlung aus.
                         </div>
                       </div>
                       <button
                         type="submit"
                         className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
                       >
-                        Auszahlung simulieren
+                        24h nach Workshop simulieren & Auszahlung ausfuehren
                       </button>
                     </div>
                   </form>
@@ -1606,7 +1688,6 @@ export default async function PaymentsV2AdminPage({
                   <option value="erstattet">Erstattet</option>
                   <option value="reduziert">Reduziert</option>
                   <option value="vorgemerkt">Vorgemerkt</option>
-                  <option value="auszahlbar">Auszahlbar</option>
                   <option value="in_auszahlung">In Auszahlung</option>
                   <option value="ausgezahlt">Ausgezahlt</option>
                   <option value="storniert">Storniert/Gesperrt</option>
