@@ -57,6 +57,111 @@ export type Database = {
           instructor_name: string | null;
         }>;
       };
+      financial_documents: {
+        Row: {
+          id: string;
+          document_type:
+            | "customer_receipt"
+            | "provider_payout_statement"
+            | "provider_platform_fee_invoice"
+            | "platform_revenue_statement"
+            | "refund_receipt";
+          status: "draft" | "issued" | "voided";
+          document_number: string | null;
+          provider_id: string | null;
+          customer_email: string | null;
+          booking_id: string | null;
+          course_id: string | null;
+          course_registration_intent_id: string | null;
+          subscription_contract_id: string | null;
+          payout_batch_id: string | null;
+          payout_item_id: string | null;
+          payment_transaction_id: string | null;
+          refund_record_id: string | null;
+          ledger_entry_id: string | null;
+          period_start: string | null;
+          period_end: string | null;
+          currency: string;
+          gross_amount_cents: number;
+          platform_fee_cents: number;
+          provider_payout_cents: number;
+          tax_amount_cents: number | null;
+          metadata: Record<string, unknown>;
+          pdf_path: string | null;
+          issued_at: string | null;
+          sent_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          document_type:
+            | "customer_receipt"
+            | "provider_payout_statement"
+            | "provider_platform_fee_invoice"
+            | "platform_revenue_statement"
+            | "refund_receipt";
+          status?: "draft" | "issued" | "voided";
+          document_number?: string | null;
+          provider_id?: string | null;
+          customer_email?: string | null;
+          booking_id?: string | null;
+          course_id?: string | null;
+          course_registration_intent_id?: string | null;
+          subscription_contract_id?: string | null;
+          payout_batch_id?: string | null;
+          payout_item_id?: string | null;
+          payment_transaction_id?: string | null;
+          refund_record_id?: string | null;
+          ledger_entry_id?: string | null;
+          period_start?: string | null;
+          period_end?: string | null;
+          currency?: string;
+          gross_amount_cents?: number;
+          platform_fee_cents?: number;
+          provider_payout_cents?: number;
+          tax_amount_cents?: number | null;
+          metadata?: Record<string, unknown>;
+          pdf_path?: string | null;
+          issued_at?: string | null;
+          sent_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<{
+          document_type:
+            | "customer_receipt"
+            | "provider_payout_statement"
+            | "provider_platform_fee_invoice"
+            | "platform_revenue_statement"
+            | "refund_receipt";
+          status: "draft" | "issued" | "voided";
+          document_number: string | null;
+          provider_id: string | null;
+          customer_email: string | null;
+          booking_id: string | null;
+          course_id: string | null;
+          course_registration_intent_id: string | null;
+          subscription_contract_id: string | null;
+          payout_batch_id: string | null;
+          payout_item_id: string | null;
+          payment_transaction_id: string | null;
+          refund_record_id: string | null;
+          ledger_entry_id: string | null;
+          period_start: string | null;
+          period_end: string | null;
+          currency: string;
+          gross_amount_cents: number;
+          platform_fee_cents: number;
+          provider_payout_cents: number;
+          tax_amount_cents: number | null;
+          metadata: Record<string, unknown>;
+          pdf_path: string | null;
+          issued_at: string | null;
+          sent_at: string | null;
+          updated_at: string;
+        }>;
+      };
       course_sessions: {
         Row: CourseSession;
         Insert: Omit<CourseSession, "id" | "created_at"> & {
