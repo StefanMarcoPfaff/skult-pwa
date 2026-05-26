@@ -53,6 +53,12 @@ type MarkSentInput = {
   sentAt?: string | null;
 };
 
+type SetPdfAssetInput = {
+  documentId: string;
+  pdfPath: string;
+  documentNumber?: string | null;
+};
+
 function getFinancialDocumentClient(client?: FinancialDocumentClient): FinancialDocumentClient {
   return client ?? createSupabaseAdmin();
 }
@@ -98,6 +104,24 @@ async function updateFinancialDocumentRecord(
     .update(patch as never)
     .eq("id", documentId)
     .select("*")
+    .maybeSingle<FinancialDocumentRecord>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data ?? null;
+}
+
+export async function getFinancialDocumentById(
+  documentId: string,
+  client?: FinancialDocumentClient
+): Promise<FinancialDocumentRecord | null> {
+  const supabase = getFinancialDocumentClient(client);
+  const { data, error } = await supabase
+    .from("financial_documents")
+    .select("*")
+    .eq("id", documentId)
     .maybeSingle<FinancialDocumentRecord>();
 
   if (error) {
@@ -194,6 +218,30 @@ export async function getVisibleFinancialDocumentsForProvider(
   return data ?? [];
 }
 
+export async function getVisibleFinancialDocumentForProvider(
+  input: {
+    documentId: string;
+    providerId: string;
+  },
+  client?: FinancialDocumentClient
+): Promise<FinancialDocumentRecord | null> {
+  const supabase = getFinancialDocumentClient(client);
+  const { data, error } = await applyVisibleDocumentTypeFilter(
+    supabase
+      .from("financial_documents")
+      .select("*")
+      .eq("id", input.documentId)
+      .eq("provider_id", input.providerId),
+    "provider"
+  ).maybeSingle<FinancialDocumentRecord>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data ?? null;
+}
+
 export async function getFinancialDocumentsForAdmin(
   query: AdminDocumentQuery = {},
   client?: FinancialDocumentClient
@@ -269,6 +317,28 @@ export async function getVisibleFinancialDocumentsForAdmin(
   return data ?? [];
 }
 
+export async function getVisibleFinancialDocumentForAdmin(
+  input: {
+    documentId: string;
+  },
+  client?: FinancialDocumentClient
+): Promise<FinancialDocumentRecord | null> {
+  const supabase = getFinancialDocumentClient(client);
+  const { data, error } = await applyVisibleDocumentTypeFilter(
+    supabase
+      .from("financial_documents")
+      .select("*")
+      .eq("id", input.documentId),
+    "admin"
+  ).maybeSingle<FinancialDocumentRecord>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data ?? null;
+}
+
 export async function markFinancialDocumentIssued(
   input: MarkIssuedInput,
   client?: FinancialDocumentClient
@@ -293,6 +363,20 @@ export async function markFinancialDocumentSent(
     input.documentId,
     {
       sent_at: input.sentAt ?? new Date().toISOString(),
+    },
+    client
+  );
+}
+
+export async function setFinancialDocumentPdfAsset(
+  input: SetPdfAssetInput,
+  client?: FinancialDocumentClient
+): Promise<FinancialDocumentRecord | null> {
+  return updateFinancialDocumentRecord(
+    input.documentId,
+    {
+      pdf_path: input.pdfPath,
+      document_number: input.documentNumber ?? undefined,
     },
     client
   );

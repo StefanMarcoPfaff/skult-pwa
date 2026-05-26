@@ -23,6 +23,9 @@ type SearchParams = {
   docStatus?: string;
   docPeriod?: string;
   docOffer?: string;
+  pdfAction?: string;
+  pdfDocumentId?: string;
+  pdfMessage?: string;
 };
 
 type ProviderPayoutProfileRow = {
@@ -279,6 +282,19 @@ function buildFilterHref(input: {
   return query ? `/dashboard/earnings?${query}` : "/dashboard/earnings";
 }
 
+function buildCurrentPageHref(searchParams: SearchParams): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    params.set(key, trimmed);
+  }
+
+  const query = params.toString();
+  return query ? `/dashboard/earnings?${query}` : "/dashboard/earnings";
+}
+
 function FilterLink(props: {
   href: string;
   active: boolean;
@@ -352,6 +368,7 @@ export default async function DashboardEarningsPage({
   const selectedDocumentPeriod =
     sp.docPeriod === "this_month" || sp.docPeriod === "last_month" ? sp.docPeriod : "all";
   const documentOfferQuery = String(sp.docOffer ?? "").trim();
+  const currentPageHref = buildCurrentPageHref(sp);
 
   const admin = createSupabaseAdmin();
   const { data: payoutProfiles } = await admin
@@ -744,6 +761,12 @@ export default async function DashboardEarningsPage({
       <FinancialDocumentsSection
         documents={financialDocuments}
         role={isAdmin ? "admin" : "provider"}
+        returnTo={currentPageHref}
+        pdfFeedback={{
+          action: sp.pdfAction ?? null,
+          documentId: sp.pdfDocumentId ?? null,
+          message: sp.pdfMessage ?? null,
+        }}
         filters={{
           docType: selectedDocumentType,
           docStatus: selectedDocumentStatus,
