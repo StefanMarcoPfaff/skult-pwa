@@ -5,6 +5,14 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 const INTERNAL_SIMULATION_PROVIDER = "internal_simulation";
 const INTERNAL_SIMULATION_METHOD = "internal_simulation";
+const PAYOUT_BATCH_ALLOWED_METHODS = [
+  "bank_transfer",
+  "paypal",
+  "stripe",
+  "manual",
+  "other",
+  INTERNAL_SIMULATION_METHOD,
+] as const;
 
 type PayableLedgerEntryRow = {
   id: string;
@@ -32,6 +40,7 @@ type PayoutBatchRow = {
 type SimulationGroup = {
   providerPayoutProfileId: string | null;
   payoutProvider: string;
+  sourcePayoutMethod: string;
   payoutMethod: string;
   currency: string;
   entries: PayableLedgerEntryRow[];
@@ -122,6 +131,7 @@ type PayoutItemResult = {
 type ResolvedPayoutTarget = {
   providerPayoutProfileId: string | null;
   payoutProvider: string;
+  sourcePayoutMethod: string;
   payoutMethod: string;
   usedFallbackPayoutProfile: boolean;
 };
@@ -157,6 +167,25 @@ function normalizePayoutProvider(value: string | null | undefined): string {
 
 function normalizePayoutMethod(value: string | null | undefined): string {
   return String(value ?? "").trim() || INTERNAL_SIMULATION_METHOD;
+}
+
+function normalizePayoutBatchMethod(value: string | null | undefined): (typeof PAYOUT_BATCH_ALLOWED_METHODS)[number] {
+  const normalized = normalizePayoutMethod(value).toLowerCase();
+
+  switch (normalized) {
+    case "iban":
+    case "sepa":
+    case "bank_transfer":
+      return "bank_transfer";
+    case "paypal":
+    case "stripe":
+    case "manual":
+    case "other":
+    case INTERNAL_SIMULATION_METHOD:
+      return normalized;
+    default:
+      return INTERNAL_SIMULATION_METHOD;
+  }
 }
 
 function getSupabaseCode(error: unknown): string | null {
@@ -403,10 +432,12 @@ async function resolvePayoutTarget(input: {
     }
 
     if (profile?.id) {
+      const sourcePayoutMethod = normalizePayoutMethod(profile.payout_method);
       return {
         providerPayoutProfileId: profile.id,
         payoutProvider: normalizePayoutProvider(profile.provider),
-        payoutMethod: normalizePayoutMethod(profile.payout_method),
+        sourcePayoutMethod,
+        payoutMethod: normalizePayoutBatchMethod(sourcePayoutMethod),
         usedFallbackPayoutProfile: false,
       };
     }
@@ -423,13 +454,15 @@ async function resolvePayoutTarget(input: {
   return {
     providerPayoutProfileId: ensuredProfile?.id ?? null,
     payoutProvider: normalizePayoutProvider(ensuredProfile?.provider ?? INTERNAL_SIMULATION_PROVIDER),
-    payoutMethod: normalizePayoutMethod(ensuredProfile?.payout_method ?? context.payoutMethod),
+    sourcePayoutMethod: normalizePayoutMethod(ensuredProfile?.payout_method ?? context.payoutMethod),
+    payoutMethod: normalizePayoutBatchMethod(ensuredProfile?.payout_method ?? context.payoutMethod),
     usedFallbackPayoutProfile: true,
   };
 }
 
 async function createPayoutBatchRecord(input: {
   payoutProvider: string;
+  sourcePayoutMethod: string;
   payoutMethod: string;
   totalAmountCents: number;
   currency: string;
@@ -437,21 +470,46 @@ async function createPayoutBatchRecord(input: {
 }): Promise<string> {
   const admin = createSupabaseAdmin();
   const timestamp = input.status === "paid" ? new Date().toISOString() : null;
+  const payload = {
+    payout_provider: input.payoutProvider,
+    payout_method: input.payoutMethod,
+    total_amount_cents: input.totalAmountCents,
+    currency: input.currency,
+    status: input.status,
+    executed_at: timestamp,
+  };
+
+  console.info(
+    "[simulate-payout] payout_batches insert payload",
+    JSON.stringify({
+      payload,
+      source_payout_method: input.sourcePayoutMethod,
+      allowed_payout_batch_methods: PAYOUT_BATCH_ALLOWED_METHODS,
+    })
+  );
+
   const { data: batch, error } = await admin
     .from("payout_batches")
-    .insert({
-      payout_provider: input.payoutProvider,
-      payout_method: input.payoutMethod,
-      total_amount_cents: input.totalAmountCents,
-      currency: input.currency,
-      status: input.status,
-      executed_at: timestamp,
-    })
+    .insert(payload)
     .select("id")
     .maybeSingle<PayoutBatchRow>();
 
   if (error) {
-    throw toSimulatedPayoutError("create_payout_batch", "Simulations-Auszahlung konnte nicht angelegt werden", error);
+    console.error(
+      "[simulate-payout] payout_batches insert failed",
+      JSON.stringify({
+        payload,
+        source_payout_method: input.sourcePayoutMethod,
+        allowed_payout_batch_methods: PAYOUT_BATCH_ALLOWED_METHODS,
+        supabase_code: getSupabaseCode(error),
+        supabase_message: getSupabaseMessage(error),
+      })
+    );
+    throw toSimulatedPayoutError(
+      "create_payout_batch",
+      `Simulations-Auszahlung konnte nicht angelegt werden. payload=${JSON.stringify(payload)} source_payout_method=${input.sourcePayoutMethod}`,
+      error
+    );
   }
 
   if (!batch?.id) {
@@ -728,6 +786,7 @@ export async function createSimulatedPayoutBatch(): Promise<{
       groups.set(groupKey, {
         providerPayoutProfileId: target.providerPayoutProfileId,
         payoutProvider: target.payoutProvider,
+        sourcePayoutMethod: target.sourcePayoutMethod,
         payoutMethod: target.payoutMethod,
         currency: normalizeCurrency(entry.currency),
         entries: [entry],
@@ -765,6 +824,7 @@ export async function createSimulatedPayoutBatch(): Promise<{
 
     const batchId = await createPayoutBatchRecord({
       payoutProvider: group.payoutProvider,
+      sourcePayoutMethod: group.sourcePayoutMethod,
       payoutMethod: group.payoutMethod,
       totalAmountCents: finalEntries.reduce((sum, entry) => sum + Math.max(0, entry.net_amount_cents), 0),
       currency: group.currency,
@@ -903,6 +963,7 @@ export async function createSimulatedPaidPayoutForLedgerEntry(input: {
 
   const batchId = await createPayoutBatchRecord({
     payoutProvider: target.payoutProvider,
+    sourcePayoutMethod: target.sourcePayoutMethod,
     payoutMethod: target.payoutMethod,
     totalAmountCents: Math.max(0, entry.net_amount_cents),
     currency: normalizeCurrency(entry.currency),
