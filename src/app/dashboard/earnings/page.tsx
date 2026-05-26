@@ -1,5 +1,7 @@
 ﻿import Link from "next/link";
 import { redirect } from "next/navigation";
+import FinancialDocumentsSection from "./FinancialDocumentsSection";
+import { getFinancialDocumentsForProvider } from "@/lib/documents/financial-documents";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import DashboardFilterPanel from "../_components/DashboardFilterPanel";
@@ -12,6 +14,10 @@ type SearchParams = {
   status?: string;
   period?: string;
   offer?: string;
+  docType?: string;
+  docStatus?: string;
+  docPeriod?: string;
+  docOffer?: string;
 };
 
 type ProviderPayoutProfileRow = {
@@ -318,6 +324,21 @@ export default async function DashboardEarningsPage({
       : "all";
   const selectedPeriod = sp.period === "this_month" || sp.period === "last_month" ? sp.period : "all";
   const offerQuery = String(sp.offer ?? "").trim().toLowerCase();
+  const selectedDocumentType =
+    sp.docType === "customer_receipt" ||
+    sp.docType === "provider_payout_statement" ||
+    sp.docType === "provider_platform_fee_invoice" ||
+    sp.docType === "platform_revenue_statement" ||
+    sp.docType === "refund_receipt"
+      ? sp.docType
+      : "all";
+  const selectedDocumentStatus =
+    sp.docStatus === "draft" || sp.docStatus === "issued" || sp.docStatus === "voided"
+      ? sp.docStatus
+      : "all";
+  const selectedDocumentPeriod =
+    sp.docPeriod === "this_month" || sp.docPeriod === "last_month" ? sp.docPeriod : "all";
+  const documentOfferQuery = String(sp.docOffer ?? "").trim();
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -336,6 +357,10 @@ export default async function DashboardEarningsPage({
     .returns<ProviderPayoutProfileRow[]>();
 
   const payoutProfileIds = (payoutProfiles ?? []).map((row) => row.id);
+  const financialDocuments = await getFinancialDocumentsForProvider({
+    providerId: user.id,
+    limit: 120,
+  });
 
   const { data: ledgerEntries } =
     payoutProfileIds.length > 0
@@ -707,6 +732,20 @@ export default async function DashboardEarningsPage({
 
         <EarningsTableClient rows={tableRows} />
       </section>
+
+      <FinancialDocumentsSection
+        documents={financialDocuments}
+        filters={{
+          docType: selectedDocumentType,
+          docStatus: selectedDocumentStatus,
+          docPeriod: selectedDocumentPeriod,
+          docOffer: documentOfferQuery,
+          offerType: selectedOfferType,
+          status: selectedStatus,
+          period: selectedPeriod,
+          offer: offerQuery,
+        }}
+      />
     </main>
   );
 }
