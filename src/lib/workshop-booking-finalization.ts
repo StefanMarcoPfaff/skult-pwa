@@ -1,4 +1,5 @@
 import type Stripe from "stripe";
+import { loadCustomerReceiptAttachmentForMail } from "@/lib/documents/financial-document-mail-attachments";
 import { mirrorStripePaymentToLedger } from "@/lib/payments/ledger";
 import { calculatePayoutAvailableAt } from "@/lib/payments/payout-eligibility";
 import { getProviderDisplayName, getWorkshopStornoPolicyLabel } from "@/lib/provider-profiles";
@@ -255,10 +256,11 @@ async function finalizeWorkshopBookingRecord(input: {
       : [];
   const firstSessionStart = workshopSessions?.[0]?.starts_at ?? null;
   const lastSessionEnd = resolveLastWorkshopSessionEnd(workshopSessions ?? []);
+  let paymentTransactionId: string | null = null;
 
   if (input.paymentProvider === "stripe" && input.paymentStatus === "paid" && input.stripeSession) {
     try {
-      await mirrorStripePaymentToLedger({
+      paymentTransactionId = await mirrorStripePaymentToLedger({
         bookingId: booking.id,
         teacherId: course?.teacher_id ?? null,
         providerType: providerContact.providerType,
@@ -280,6 +282,18 @@ async function finalizeWorkshopBookingRecord(input: {
 
   if (ticket && customerEmail && !booking.workshop_confirmation_email_sent_at) {
     try {
+      const attachments =
+        input.paymentStatus === "paid"
+          ? await loadCustomerReceiptAttachmentForMail({
+              context: "workshop_customer_booking_confirmation",
+              query: {
+                bookingId: booking.id,
+                paymentTransactionId,
+              },
+              supabase: admin,
+            })
+          : [];
+
       const result = await sendWorkshopCustomerBookingConfirmationEmail({
         bookingId: booking.id,
         workshopTitle: course?.title ?? "Angebot",
@@ -304,6 +318,7 @@ async function finalizeWorkshopBookingRecord(input: {
         priceLabel: formatPrice(course?.price_cents ?? null, course?.currency ?? null),
         paymentStatus: input.paymentStatus,
         qrToken: ticket.qr_token,
+        attachments,
       });
 
       if (result?.error) {

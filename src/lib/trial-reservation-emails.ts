@@ -1,4 +1,5 @@
 import { sendResendEmail } from "@/lib/resend";
+import { RESER_BRAND_NAME, RESER_BRAND_TAGLINE } from "@/lib/brand";
 import { getSiteUrl as getCanonicalSiteUrl } from "@/lib/site-url";
 import { shouldShowStudioLabel } from "@/lib/provider-profiles";
 import { buildBookingCalendarUrl } from "@/lib/calendar";
@@ -251,14 +252,14 @@ function renderReserFooterHtml() {
   return `
     <div style="margin: 24px 0 0; text-align: center;">
       <p style="margin: 0;">Herzliche Grüße,</p>
-      <p style="margin: 10px 0 0; font-weight: 600;">RESER</p>
-      <p style="margin: 4px 0 0; color: #4b5563;">Find it. Try it. Book it.</p>
+      <p style="margin: 10px 0 0; font-weight: 600;">${RESER_BRAND_NAME}</p>
+      <p style="margin: 4px 0 0; color: #4b5563;">${RESER_BRAND_TAGLINE}</p>
     </div>
   `;
 }
 
 function renderReserFooterText() {
-  return ["Herzliche Grüße,", "RESER", "Find it. Try it. Book it."].join("\n");
+  return ["Herzliche Grüße,", RESER_BRAND_NAME, RESER_BRAND_TAGLINE].join("\n");
 }
 
 function maskEmail(email: string): string {

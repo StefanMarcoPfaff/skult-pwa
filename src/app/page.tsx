@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { RESER_BRAND_TAGLINE } from "@/lib/brand";
 
 export default function Home() {
   return (
@@ -17,9 +18,7 @@ export default function Home() {
         </div>
 
         <div className="max-w-3xl space-y-4">
-          <h1 className="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
-            FIND. TRY. RESERVE.
-          </h1>
+          <h1 className="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">{RESER_BRAND_TAGLINE}</h1>
 
           <div className="mx-auto max-w-2xl space-y-4 text-base leading-7 text-slate-600 sm:text-lg">
             <p>

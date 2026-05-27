@@ -1,0 +1,3 @@
+export const RESER_BRAND_NAME = "RESER";
+export const RESER_BRAND_TAGLINE = "RESERVE YOUR EXPERIENCE";
+

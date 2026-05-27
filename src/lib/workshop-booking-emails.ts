@@ -1,4 +1,6 @@
 import { sendResendEmail } from "@/lib/resend";
+import type { Attachment } from "resend";
+import { RESER_BRAND_NAME, RESER_BRAND_TAGLINE } from "@/lib/brand";
 import { shouldShowStudioLabel } from "@/lib/provider-profiles";
 import { buildBookingCalendarUrl } from "@/lib/calendar";
 import { buildTicketQrCodeDataUrl, buildTicketViewUrl, buildTicketWalletUrl } from "@/lib/ticket-qr";
@@ -24,6 +26,7 @@ export type WorkshopBookingEmailData = {
   priceLabel: string | null;
   paymentStatus?: "paid" | "free" | null;
   qrToken: string;
+  attachments?: Attachment[];
 };
 
 type EmailAction = {
@@ -138,14 +141,14 @@ function renderReserFooterHtml() {
   return `
     <div style="margin: 24px 0 0; text-align: center;">
       <p style="margin: 0;">Herzliche Grüße,</p>
-      <p style="margin: 10px 0 0; font-weight: 600;">RESER</p>
-      <p style="margin: 4px 0 0; color: #4b5563;">Find it. Try it. Book it.</p>
+      <p style="margin: 10px 0 0; font-weight: 600;">${RESER_BRAND_NAME}</p>
+      <p style="margin: 4px 0 0; color: #4b5563;">${RESER_BRAND_TAGLINE}</p>
     </div>
   `;
 }
 
 function renderReserFooterText() {
-  return ["Herzliche Grüße,", "RESER", "Find it. Try it. Book it."].join("\n");
+  return ["Herzliche Grüße,", RESER_BRAND_NAME, RESER_BRAND_TAGLINE].join("\n");
 }
 
 function buildFooterBranding(data: WorkshopBookingEmailData): FooterBranding {
@@ -368,6 +371,7 @@ export async function sendWorkshopCustomerBookingConfirmationEmail(data: Worksho
     subject: email.subject,
     html: email.html,
     text: email.text,
+    attachments: data.attachments,
   });
 }
 

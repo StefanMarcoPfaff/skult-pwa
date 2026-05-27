@@ -1,6 +1,7 @@
 import "server-only";
 
 import { ensureProviderPayoutDocumentsForLedgerEntry } from "@/lib/documents/simulation-documents";
+import { sendProviderPayoutReceivedEmail } from "@/lib/provider-payout-emails";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 const INTERNAL_SIMULATION_PROVIDER = "internal_simulation";
@@ -728,6 +729,101 @@ async function ensurePayoutDocuments(ledgerEntryId: string): Promise<DocumentRes
   }
 }
 
+async function resolveProviderPayoutEmail(input: {
+  providerPayoutProfileId: string | null;
+  source_type: string;
+  source_id: string;
+  subscription_contract_id: string | null;
+}): Promise<string | null> {
+  const admin = createSupabaseAdmin();
+  let providerId: string | null = null;
+
+  if (input.providerPayoutProfileId) {
+    const { data: profile, error } = await admin
+      .from("provider_payout_profiles")
+      .select("teacher_id")
+      .eq("id", input.providerPayoutProfileId)
+      .maybeSingle<{ teacher_id: string | null }>();
+
+    if (error) {
+      console.warn("[provider-payout-email] provider payout profile lookup failed", {
+        providerPayoutProfileId: input.providerPayoutProfileId,
+        error,
+      });
+    }
+
+    providerId = profile?.teacher_id ?? null;
+  }
+
+  if (!providerId) {
+    const context = await loadLedgerProviderContext(input);
+    providerId = context.providerId;
+  }
+
+  if (!providerId) {
+    console.warn("[provider-payout-email] missing provider id", {
+      providerPayoutProfileId: input.providerPayoutProfileId,
+      sourceType: input.source_type,
+      sourceId: input.source_id,
+    });
+    return null;
+  }
+
+  const authResult = await admin.auth.admin.getUserById(providerId);
+  const email = authResult.data.user?.email?.trim() ?? null;
+
+  if (!email) {
+    console.warn("[provider-payout-email] missing provider email", {
+      providerId,
+      providerPayoutProfileId: input.providerPayoutProfileId,
+    });
+  }
+
+  return email;
+}
+
+async function sendProviderPayoutEmailAfterSuccess(input: {
+  ledgerEntry: SelectedPayoutLedgerRow;
+  batchId: string;
+  payoutItemId: string | null;
+  providerPayoutProfileId: string | null;
+}) {
+  try {
+    const providerEmail = await resolveProviderPayoutEmail({
+      providerPayoutProfileId: input.providerPayoutProfileId,
+      source_type: input.ledgerEntry.source_type,
+      source_id: input.ledgerEntry.source_id,
+      subscription_contract_id: input.ledgerEntry.subscription_contract_id,
+    });
+
+    if (!providerEmail) return;
+
+    const result = await sendProviderPayoutReceivedEmail({
+      to: providerEmail,
+      payoutAmountCents: Math.max(0, input.ledgerEntry.net_amount_cents),
+      currency: normalizeCurrency(input.ledgerEntry.currency),
+      payoutBatchId: input.batchId,
+      payoutItemId: input.payoutItemId,
+      ledgerEntryId: input.ledgerEntry.id,
+    });
+
+    if (result?.error) {
+      console.warn("[provider-payout-email] send failed", {
+        ledgerEntryId: input.ledgerEntry.id,
+        batchId: input.batchId,
+        recipient: providerEmail,
+        error: result.error,
+      });
+    }
+  } catch (error) {
+    console.warn("[provider-payout-email] send failed", {
+      ledgerEntryId: input.ledgerEntry.id,
+      batchId: input.batchId,
+      error,
+    });
+  }
+}
+
 export async function createSimulatedPayoutBatch(): Promise<{
   consideredCount: number;
   skippedCount: number;
@@ -932,6 +1028,12 @@ export async function createSimulatedPaidPayoutForLedgerEntry(input: {
       previousPayoutStatus: entry.payout_status,
     });
     const documents = await ensurePayoutDocuments(entry.id);
+    await sendProviderPayoutEmailAfterSuccess({
+      ledgerEntry: entry,
+      batchId: entry.payout_batch_id,
+      payoutItemId: payoutItemResult.payoutItemId,
+      providerPayoutProfileId: entry.provider_payout_profile_id ?? target.providerPayoutProfileId,
+    });
 
     return {
       batchId: entry.payout_batch_id,
@@ -987,6 +1089,12 @@ export async function createSimulatedPaidPayoutForLedgerEntry(input: {
   });
 
   const documents = await ensurePayoutDocuments(entry.id);
+  await sendProviderPayoutEmailAfterSuccess({
+    ledgerEntry: entry,
+    batchId,
+    payoutItemId: payoutItemResult.payoutItemId,
+    providerPayoutProfileId: target.providerPayoutProfileId ?? entry.provider_payout_profile_id,
+  });
 
   return {
     batchId,

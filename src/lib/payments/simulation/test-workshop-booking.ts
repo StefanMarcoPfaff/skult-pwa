@@ -5,6 +5,7 @@ import { getProviderDisplayName, getWorkshopStornoPolicyLabel } from "@/lib/prov
 import {
   simulateWorkshopPaymentSuccess,
 } from "@/lib/payments/simulation/workshop-simulation";
+import { loadCustomerReceiptAttachmentForMail } from "@/lib/documents/financial-document-mail-attachments";
 import { sendResendEmail } from "@/lib/resend";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { issueWorkshopTicketForBooking } from "@/lib/tickets";
@@ -446,6 +447,7 @@ async function loadPositiveLedgerEntryId(paymentTransactionId: string): Promise<
 async function sendWorkshopSimulationCustomerMail(input: {
   emailData: WorkshopBookingEmailData;
   actualRecipientEmail: string;
+  paymentTransactionId?: string | null;
 }) {
   const email = await prepareWorkshopCustomerBookingConfirmation({
     ...input.emailData,
@@ -455,12 +457,20 @@ async function sendWorkshopSimulationCustomerMail(input: {
   const htmlNotice =
     '<div style="margin: 0 0 18px; padding: 12px 14px; border: 1px solid #f59e0b; border-radius: 12px; background: #fffbeb; color: #92400e; font-weight: 700;">TESTMAIL: Diese Nachricht stammt aus einer internen RESER-Simulation.</div>';
   const textNotice = "TESTMAIL: Diese Nachricht stammt aus einer internen RESER-Simulation.\n\n";
+  const attachments = await loadCustomerReceiptAttachmentForMail({
+    context: "workshop_customer_test_booking_confirmation",
+    query: {
+      bookingId: input.emailData.bookingId,
+      paymentTransactionId: input.paymentTransactionId,
+    },
+  });
 
   const result = await sendResendEmail({
     to: input.actualRecipientEmail,
     subject: `[TEST] ${email.subject}`,
     html: `${htmlNotice}${email.html}`,
     text: `${textNotice}${email.text}`,
+    attachments,
   });
 
   if (result?.error) {
@@ -781,6 +791,7 @@ export async function simulateWorkshopBooking(
       await sendWorkshopSimulationCustomerMail({
         emailData,
         actualRecipientEmail: actualCustomerMailRecipient,
+        paymentTransactionId,
       });
 
       const { error: updateError } = await admin
