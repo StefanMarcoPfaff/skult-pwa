@@ -52,7 +52,7 @@ type MirrorStripePaymentInput = {
   providerType?: ProviderType | null;
   providerAccountId?: string | null;
   accountHolderName?: string | null;
-  payoutStatus?: "pending" | "pending_event_completion";
+  payoutStatus?: "pending" | "reserved" | "pending_event_completion";
   availableAt?: string | null;
   session: Stripe.Checkout.Session;
   paidAt?: string | null;
@@ -103,10 +103,15 @@ type StripeRecurringMirrorContext = {
   accountHolderName: string | null;
   fallbackAmountCents: number | null;
   fallbackCurrency: string | null;
+  paymentModel: string | null;
 };
 
 function normalizeCurrency(currency: string | null | undefined): string {
   return (currency ?? "EUR").trim().toUpperCase() || "EUR";
+}
+
+function isPlatformChargeMetadata(metadata: Stripe.Metadata | null | undefined): boolean {
+  return metadata?.payment_model === "platform_charge";
 }
 
 function normalizePaymentMethod(session: Stripe.Checkout.Session): string | null {
@@ -290,10 +295,10 @@ async function resolveStripeRecurringMirrorContext(
   const admin = createSupabaseAdmin();
   const { data: transactions } = await admin
     .from("payment_transactions")
-    .select("course_registration_intent_id")
+    .select("id,course_registration_intent_id")
     .eq("provider", "stripe")
     .eq("provider_subscription_id", providerSubscriptionId)
-    .returns<Array<{ course_registration_intent_id: string | null }>>();
+    .returns<Array<{ id: string; course_registration_intent_id: string | null }>>();
 
   const intentIds = Array.from(
     new Set(
@@ -305,6 +310,25 @@ async function resolveStripeRecurringMirrorContext(
 
   if (intentIds.length !== 1) {
     return null;
+  }
+
+  const paymentTransactionIds = (transactions ?? []).map((transaction) => transaction.id);
+  let paymentModel: string | null = null;
+  if (paymentTransactionIds.length > 0) {
+    const { data: existingLedgerEntry } = await admin
+      .from("ledger_entries")
+      .select("provider_payout_profile_id,payout_status")
+      .in("payment_transaction_id", paymentTransactionIds)
+      .limit(1)
+      .maybeSingle<{ provider_payout_profile_id: string | null; payout_status: string | null }>();
+
+    if (
+      existingLedgerEntry &&
+      !existingLedgerEntry.provider_payout_profile_id &&
+      existingLedgerEntry.payout_status === "reserved"
+    ) {
+      paymentModel = "platform_charge";
+    }
   }
 
   const courseRegistrationIntentId = intentIds[0];
@@ -334,6 +358,7 @@ async function resolveStripeRecurringMirrorContext(
     accountHolderName: buildAccountHolderName(profile, null),
     fallbackAmountCents: course?.price_cents ?? null,
     fallbackCurrency: course?.currency ?? null,
+    paymentModel,
   };
 }
 
@@ -345,15 +370,19 @@ async function ensureStripePaymentLedgerMirror(input: {
   accountHolderName?: string | null;
   amountCents: number;
   currency: string;
-  payoutStatus?: "pending" | "pending_event_completion";
+  payoutStatus?: "pending" | "reserved" | "pending_event_completion";
   availableAt?: string | null;
+  paymentModel?: string | null;
 }): Promise<void> {
-  const providerPayoutProfileId = await ensureProviderPayoutProfile({
-    teacherId: input.teacherId,
-    providerAccountId: input.providerAccountId,
-    providerType: input.providerType,
-    accountHolderName: input.accountHolderName,
-  });
+  const providerPayoutProfileId =
+    input.paymentModel === "platform_charge"
+      ? null
+      : await ensureProviderPayoutProfile({
+          teacherId: input.teacherId,
+          providerAccountId: input.providerAccountId,
+          providerType: input.providerType,
+          accountHolderName: input.accountHolderName,
+        });
   const platformFeeCents = calculatePlatformFeeAmount(input.amountCents, input.providerType);
   const netAmountCents = calculateProviderPayoutAmount(input.amountCents, input.providerType);
 
@@ -476,7 +505,7 @@ async function ensureLedgerEntry(input: {
   providerFeeCents: number;
   netAmountCents: number;
   currency: string;
-  payoutStatus: "pending" | "pending_event_completion" | "payable" | "batched" | "cancelled";
+  payoutStatus: "pending" | "reserved" | "pending_event_completion" | "payable" | "batched" | "cancelled";
   availableAt?: string | null;
 }): Promise<void> {
   const admin = createSupabaseAdmin();
@@ -542,6 +571,7 @@ export async function mirrorStripePaymentToLedger(input: MirrorStripePaymentInpu
     providerCheckoutId,
     providerSubscriptionId,
   });
+  const paymentModel = isPlatformChargeMetadata(input.session.metadata) ? "platform_charge" : "connect_destination_charge";
 
   const payload = {
     booking_id: input.bookingId ?? null,
@@ -591,12 +621,13 @@ export async function mirrorStripePaymentToLedger(input: MirrorStripePaymentInpu
     paymentTransactionId,
     teacherId: input.teacherId,
     providerType: input.providerType,
-    providerAccountId: input.providerAccountId,
+    providerAccountId: paymentModel === "platform_charge" ? null : input.providerAccountId,
     accountHolderName: input.accountHolderName,
     amountCents,
     currency,
-    payoutStatus: input.payoutStatus ?? "pending",
+    payoutStatus: input.payoutStatus ?? (paymentModel === "platform_charge" ? "reserved" : "pending"),
     availableAt: input.availableAt ?? null,
+    paymentModel,
   });
 
   return paymentTransactionId;
@@ -758,16 +789,18 @@ export async function mirrorStripeInvoiceEventToLedger(input: {
   }
 
   if (input.status === "paid") {
+    const paymentModel = mirrorContext.paymentModel === "platform_charge" ? "platform_charge" : "connect_destination_charge";
     await ensureStripePaymentLedgerMirror({
       paymentTransactionId,
       teacherId: mirrorContext.teacherId,
       providerType: mirrorContext.providerType,
-      providerAccountId: mirrorContext.providerAccountId,
+      providerAccountId: paymentModel === "platform_charge" ? null : mirrorContext.providerAccountId,
       accountHolderName: mirrorContext.accountHolderName,
       amountCents,
       currency,
-      payoutStatus: "pending",
+      payoutStatus: paymentModel === "platform_charge" ? "reserved" : "pending",
       availableAt: null,
+      paymentModel,
     });
   }
 

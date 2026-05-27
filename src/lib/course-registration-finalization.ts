@@ -305,6 +305,7 @@ export async function finalizeCourseRegistrationCheckoutSession(input: {
   const providerName = providerContact.providerName;
   const subscriptionId =
     typeof session.subscription === "string" ? session.subscription : session.subscription?.id ?? null;
+  const isPlatformCharge = session.metadata?.payment_model === "platform_charge";
 
   let paymentTransactionId: string | null = null;
 
@@ -313,13 +314,13 @@ export async function finalizeCourseRegistrationCheckoutSession(input: {
       courseRegistrationIntentId: finalizedIntent.id,
       teacherId: course?.teacher_id ?? null,
       providerType: providerContact.providerType,
-      providerAccountId: providerContact.providerAccountId,
+      providerAccountId: isPlatformCharge ? null : providerContact.providerAccountId,
       accountHolderName: providerContact.providerName ?? providerContact.providerContactName,
       session,
       paidAt: finalizedIntent.completed_at ?? completedAt,
       fallbackAmountCents: course?.price_cents ?? null,
       fallbackCurrency: course?.currency ?? null,
-      payoutStatus: "pending",
+      payoutStatus: isPlatformCharge ? "reserved" : "pending",
     });
   } catch (error) {
     logRegistrationSuccessError("mirror-payment-v2", error);

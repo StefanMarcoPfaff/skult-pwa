@@ -246,16 +246,22 @@ export class StripePaymentProvider implements PaymentProvider {
       })),
       success_url: input.successUrl,
       cancel_url: input.cancelUrl,
-      payment_intent_data: input.providerContext?.connectedAccountId
-        ? {
-            ...buildDestinationPaymentIntentData(
-              input.lineItems.reduce((sum, item) => sum + item.priceData.unitAmount * item.quantity, 0),
-              input.providerContext.connectedAccountId,
-              input.providerContext.providerType
-            ),
-            on_behalf_of: input.providerContext.onBehalfOfAccountId ?? input.providerContext.connectedAccountId,
-          }
-        : undefined,
+      payment_intent_data:
+        input.providerContext?.connectedAccountId || input.metadata
+          ? {
+              ...(input.providerContext?.connectedAccountId
+                ? {
+                    ...buildDestinationPaymentIntentData(
+                      input.lineItems.reduce((sum, item) => sum + item.priceData.unitAmount * item.quantity, 0),
+                      input.providerContext.connectedAccountId,
+                      input.providerContext.providerType
+                    ),
+                    on_behalf_of: input.providerContext.onBehalfOfAccountId ?? input.providerContext.connectedAccountId,
+                  }
+                : {}),
+              metadata: input.metadata,
+            }
+          : undefined,
       metadata: input.metadata,
       client_reference_id: input.clientReferenceId,
     });

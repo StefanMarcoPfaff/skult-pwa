@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { buildOfferAvailability, loadOccupiedWorkshopSeats } from "@/lib/public-offer-availability";
+import { isPaymentsV2StripePlatformChargesEnabled } from "@/lib/payments/config";
 import { paymentService } from "@/lib/payments/payment-service";
 import { isDirectlyAccessibleOffer } from "@/lib/public-offer-visibility";
 import { getStripe } from "@/lib/stripe";
@@ -171,6 +172,7 @@ export async function POST(req: Request) {
     }
 
     const siteUrl = getSiteUrl(req.url);
+    const usePlatformCharge = isPaymentsV2StripePlatformChargesEnabled();
 
     if (isFreeOffer) {
       const finalized = await finalizeFreeWorkshopBooking(booking.id);
@@ -210,45 +212,54 @@ export async function POST(req: Request) {
       .eq("id", ownerCourse.teacher_id)
       .maybeSingle<{ stripe_account_id: string | null; provider_type: ProviderType | null }>();
 
-    if (teacherProfileError || !teacherProfile?.stripe_account_id) {
+    if (teacherProfileError || !teacherProfile) {
       return NextResponse.json(
         { error: "Die Anbietenden haben noch keine Zahlungsdaten hinterlegt." },
         { status: 400 }
       );
     }
 
-    const stripe = getStripe();
-    let connectedAccount: Stripe.Account;
-    try {
-      connectedAccount = await stripe.accounts.retrieve(teacherProfile.stripe_account_id);
-    } catch (error: unknown) {
-      console.error("[stripe-checkout-connect]", {
-        context: "account.retrieve.failed",
-        stripeAccountId: teacherProfile.stripe_account_id,
-        message: error instanceof Error ? error.message : String(error),
-      });
+    if (!usePlatformCharge && !teacherProfile.stripe_account_id) {
       return NextResponse.json(
-        {
-          error:
-            "Die hinterlegten Stripe-Zahlungsdaten der Anbietenden sind nicht mehr gültig. Bitte Stripe-Onboarding erneut starten.",
-        },
+        { error: "Die Anbietenden haben noch keine Zahlungsdaten hinterlegt." },
         { status: 400 }
       );
     }
 
-    logCheckoutConnectState("account.retrieve", {
-      stripeAccountId: teacherProfile.stripe_account_id,
-      account: summarizeStripeAccount(connectedAccount),
-    });
+    if (!usePlatformCharge) {
+      const stripe = getStripe();
+      let connectedAccount: Stripe.Account;
+      try {
+        connectedAccount = await stripe.accounts.retrieve(teacherProfile.stripe_account_id!);
+      } catch (error: unknown) {
+        console.error("[stripe-checkout-connect]", {
+          context: "account.retrieve.failed",
+          stripeAccountId: teacherProfile.stripe_account_id,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        return NextResponse.json(
+          {
+            error:
+              "Die hinterlegten Stripe-Zahlungsdaten der Anbietenden sind nicht mehr gültig. Bitte Stripe-Onboarding erneut starten.",
+          },
+          { status: 400 }
+        );
+      }
 
-    if (!isStripeDestinationChargeReady(connectedAccount)) {
-      return NextResponse.json(
-        {
-          error:
-            "Das verbundene Stripe-Konto der Anbietenden ist noch nicht für Destination Charges mit card_payments und transfers freigeschaltet.",
-        },
-        { status: 400 }
-      );
+      logCheckoutConnectState("account.retrieve", {
+        stripeAccountId: teacherProfile.stripe_account_id,
+        account: summarizeStripeAccount(connectedAccount),
+      });
+
+      if (!isStripeDestinationChargeReady(connectedAccount)) {
+        return NextResponse.json(
+          {
+            error:
+              "Das verbundene Stripe-Konto der Anbietenden ist noch nicht für Destination Charges mit card_payments und transfers freigeschaltet.",
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const workshopCurrency = normalizeWorkshopCurrency(course.currency);
@@ -270,16 +281,23 @@ export async function POST(req: Request) {
       ],
       successUrl: `${siteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}&courseId=${course.id}`,
       cancelUrl: `${siteUrl}/checkout/cancel?courseId=${course.id}`,
-      providerContext: {
-        connectedAccountId: teacherProfile.stripe_account_id,
-        onBehalfOfAccountId: teacherProfile.stripe_account_id,
-        providerType: teacherProfile.provider_type,
-      },
+      providerContext: usePlatformCharge
+        ? undefined
+        : {
+            connectedAccountId: teacherProfile.stripe_account_id,
+            onBehalfOfAccountId: teacherProfile.stripe_account_id,
+            providerType: teacherProfile.provider_type,
+          },
       metadata: {
+        payment_model: usePlatformCharge ? "platform_charge" : "connect_destination_charge",
+        ledger_mode: usePlatformCharge ? "reser_managed_split" : "stripe_connect_destination_split",
+        provider_id: ownerCourse.teacher_id,
+        booking_id: booking.id,
         bookingId: booking.id,
         courseId: course.id,
+        course_id: course.id,
         attendeeKey: booking.attendee_key,
-        teacherStripeAccountId: teacherProfile.stripe_account_id,
+        ...(teacherProfile.stripe_account_id ? { teacherStripeAccountId: teacherProfile.stripe_account_id } : {}),
         customerFirstName,
         customerLastName,
         customerEmail,

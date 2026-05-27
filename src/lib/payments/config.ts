@@ -15,3 +15,7 @@ export function isPaymentsV2SubscriptionsDualWriteEnabled(): boolean {
 export function isPaymentsV2SimulationEnabled(): boolean {
   return parseBooleanEnvFlag(process.env.PAYMENTS_V2_SIMULATION_ENABLED);
 }
+
+export function isPaymentsV2StripePlatformChargesEnabled(): boolean {
+  return parseBooleanEnvFlag(process.env.PAYMENTS_V2_STRIPE_PLATFORM_CHARGES_ENABLED);
+}

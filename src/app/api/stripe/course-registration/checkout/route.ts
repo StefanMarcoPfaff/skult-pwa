@@ -8,7 +8,10 @@ import {
   getCourseSubscriptionCheckoutCurrencyError,
   isCourseSubscriptionCheckoutCurrencySupported,
 } from "@/lib/course-subscription-checkout";
-import { isPaymentsV2SubscriptionsDualWriteEnabled } from "@/lib/payments/config";
+import {
+  isPaymentsV2StripePlatformChargesEnabled,
+  isPaymentsV2SubscriptionsDualWriteEnabled,
+} from "@/lib/payments/config";
 import { paymentService } from "@/lib/payments/payment-service";
 import {
   findSubscriptionContractById,
@@ -134,6 +137,7 @@ export async function GET(req: Request) {
   }
 
   const admin = createSupabaseAdmin();
+  const usePlatformCharge = isPaymentsV2StripePlatformChargesEnabled();
 
   const { data: intent } = await admin
     .from("course_registration_intents")
@@ -191,24 +195,26 @@ export async function GET(req: Request) {
     .eq("id", course.teacher_id)
     .maybeSingle<{ stripe_account_id: string | null; provider_type: ProviderType | null }>();
 
-  if (!profile?.stripe_account_id) {
+  if (!profile || (!usePlatformCharge && !profile.stripe_account_id)) {
     return NextResponse.redirect(new URL(`/trial/register/${token}?error=provider_payment_missing`, url));
   }
 
-  const stripe = getStripe();
-  let account: Stripe.Account;
-  try {
-    account = await stripe.accounts.retrieve(profile.stripe_account_id);
-  } catch (error: unknown) {
-    console.error("[stripe-course-registration-connect]", {
-      context: "account.retrieve.failed",
-      stripeAccountId: profile.stripe_account_id,
-      message: error instanceof Error ? error.message : String(error),
-    });
-    return NextResponse.redirect(new URL(`/trial/register/${token}?error=provider_payment_missing`, url));
-  }
-  if (!isStripeDestinationChargeReady(account)) {
-    return NextResponse.redirect(new URL(`/trial/register/${token}?error=provider_payment_incomplete`, url));
+  if (!usePlatformCharge) {
+    const stripe = getStripe();
+    let account: Stripe.Account;
+    try {
+      account = await stripe.accounts.retrieve(profile.stripe_account_id!);
+    } catch (error: unknown) {
+      console.error("[stripe-course-registration-connect]", {
+        context: "account.retrieve.failed",
+        stripeAccountId: profile.stripe_account_id,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return NextResponse.redirect(new URL(`/trial/register/${token}?error=provider_payment_missing`, url));
+    }
+    if (!isStripeDestinationChargeReady(account)) {
+      return NextResponse.redirect(new URL(`/trial/register/${token}?error=provider_payment_incomplete`, url));
+    }
   }
 
   const siteUrl = getSiteUrl(req.url);
@@ -242,17 +248,24 @@ export async function GET(req: Request) {
       ],
       successUrl: `${siteUrl}/trial/register/${token}/success?session_id={CHECKOUT_SESSION_ID}&intentId=${intent.id}`,
       cancelUrl: `${siteUrl}/trial/register/${token}/cancel?intentId=${intent.id}`,
-      providerContext: {
-        connectedAccountId: profile.stripe_account_id,
-        providerType: profile.provider_type,
-      },
+      providerContext: usePlatformCharge
+        ? undefined
+        : {
+            connectedAccountId: profile.stripe_account_id,
+            providerType: profile.provider_type,
+          },
       billingCycleAnchorUnix: billingCycleAnchor,
       metadata: {
+        payment_model: usePlatformCharge ? "platform_charge" : "connect_destination_charge",
+        ledger_mode: usePlatformCharge ? "reser_managed_split" : "stripe_connect_destination_split",
+        provider_id: course.teacher_id,
+        course_id: intent.course_id,
+        course_registration_intent_id: intent.id,
         registrationIntentId: intent.id,
         trialReservationId: intent.trial_reservation_id,
         courseId: intent.course_id,
         registrationToken: token,
-        teacherStripeAccountId: profile.stripe_account_id,
+        ...(profile.stripe_account_id ? { teacherStripeAccountId: profile.stripe_account_id } : {}),
         checkoutFlow: "course_registration",
         ...(subscriptionContractId ? { subscriptionContractId } : {}),
       },
