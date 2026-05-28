@@ -5,6 +5,7 @@ import type {
 } from "@/lib/documents/types";
 import { RESER_COMPANY } from "@/lib/documents/pdf/constants";
 import { createSimplePdfBuffer } from "@/lib/documents/pdf/pdf-primitives";
+import { DEFAULT_PLATFORM_FEE_PERCENT } from "@/lib/platform-fees";
 
 type PdfLine = Parameters<typeof createSimplePdfBuffer>[0][number];
 
@@ -35,6 +36,19 @@ function formatDate(value: string | null | undefined): string {
 function normalizeText(value: string | null | undefined, fallback = "-"): string {
   const trimmed = String(value ?? "").trim();
   return trimmed || fallback;
+}
+
+function formatPercent(value: number | null | undefined): string {
+  const normalized = typeof value === "number" && Number.isFinite(value) ? value : DEFAULT_PLATFORM_FEE_PERCENT;
+  return new Intl.NumberFormat("de-DE", {
+    style: "percent",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(normalized);
+}
+
+function platformFeeLabel(metadata: FinancialDocumentMetadata | null): string {
+  return `Plattformgebuehr (${formatPercent(metadata?.amounts.platformFeePercent)})`;
 }
 
 function buildPeriodLabel(document: FinancialDocumentRecord, metadata: FinancialDocumentMetadata | null): string {
@@ -187,7 +201,7 @@ function buildProviderPayoutStatementLines(input: RenderPdfInput): PdfLine[] {
       ["Angebot", normalizeText(metadata?.offer?.title)],
       ["Zeitraum", buildPeriodLabel(document, metadata)],
       ["Brutto-Kundenzahlungen", formatMoney(document.gross_amount_cents, document.currency)],
-      ["Plattformgebuehr", formatMoney(document.platform_fee_cents, document.currency)],
+      [platformFeeLabel(metadata), formatMoney(document.platform_fee_cents, document.currency)],
       ["Auszahlung", formatMoney(document.provider_payout_cents, document.currency)],
       ["Dokumentnummer", normalizeText(document.document_number, "Noch nicht vergeben")],
     ]),
@@ -218,7 +232,7 @@ function buildProviderPlatformFeeInvoiceLines(input: RenderPdfInput): PdfLine[] 
       ["Angebot", normalizeText(metadata?.offer?.title)],
       ["Zeitraum", buildPeriodLabel(document, metadata)],
       ["Brutto-Kundenzahlungen", formatMoney(document.gross_amount_cents, document.currency)],
-      ["Plattformgebuehr", formatMoney(document.platform_fee_cents, document.currency)],
+      [platformFeeLabel(metadata), formatMoney(document.platform_fee_cents, document.currency)],
       ["Hinweis", "Beleg ueber RESER-Plattformgebuehr"],
       ["Dokumentnummer", normalizeText(document.document_number, "Noch nicht vergeben")],
     ]),
@@ -245,7 +259,10 @@ function buildPlatformRevenueStatementLines(input: RenderPdfInput): PdfLine[] {
       ["Angebot", normalizeText(metadata?.offer?.title)],
       ["Zeitraum", buildPeriodLabel(document, metadata)],
       ["Bruttoumsatz", formatMoney(document.gross_amount_cents, document.currency)],
-      ["Plattform-Revenue", formatMoney(document.platform_fee_cents, document.currency)],
+      [
+        `Plattform-Revenue brutto (${formatPercent(metadata?.amounts.platformFeePercent)})`,
+        formatMoney(document.platform_fee_cents, document.currency),
+      ],
       ["Dokumentnummer", normalizeText(document.document_number, "Noch nicht vergeben")],
     ]),
     ...buildFooterLines(metadata),

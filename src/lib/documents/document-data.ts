@@ -6,6 +6,7 @@ import type {
   FinancialDocumentMetadata,
   FinancialDocumentProviderSnapshot,
 } from "@/lib/documents/types";
+import { DEFAULT_PROVIDER_SHARE_PERCENT, getPlatformFeePercentForProvider } from "@/lib/platform-fees";
 
 const RESER_ROLE_NOTICE =
   "Die Leistung wird durch den/die Anbieter*in erbracht. RESER stellt die Plattform zur Buchung und Zahlungsabwicklung bereit.";
@@ -157,6 +158,8 @@ async function buildFinancialDocumentData(
       grossAmountCents: input.grossAmountCents,
       platformFeeCents: input.platformFeeCents ?? 0,
       providerPayoutCents: input.providerPayoutCents ?? 0,
+      platformFeePercent: getPlatformFeePercentForProvider(providerSnapshot?.providerType),
+      providerSharePercent: DEFAULT_PROVIDER_SHARE_PERCENT,
       taxAmountCents: input.taxAmountCents ?? null,
     },
     notes,

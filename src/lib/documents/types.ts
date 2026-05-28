@@ -67,6 +67,8 @@ export type FinancialDocumentAmountsSnapshot = {
   grossAmountCents: number;
   platformFeeCents: number;
   providerPayoutCents: number;
+  platformFeePercent: number;
+  providerSharePercent: number;
   taxAmountCents: number | null;
 };
 

@@ -1,6 +1,7 @@
 import type { FinancialDocumentMetadata, FinancialDocumentRecord } from "@/lib/documents/types";
 import type { FinancialDocumentViewerRole } from "@/lib/documents/financial-documents";
 import { formatBerlinDate, formatBerlinDateTime } from "@/lib/formatting/berlin-time";
+import { DEFAULT_PLATFORM_FEE_PERCENT } from "@/lib/platform-fees";
 import { generateFinancialDocumentPdfAction } from "./actions";
 
 type DocumentFilterState = {
@@ -61,6 +62,15 @@ function formatDate(value: string | null): string {
 
 function formatDateTime(value: string | null): string {
   return formatBerlinDateTime(value);
+}
+
+function formatPercent(value: number | null | undefined): string {
+  const normalized = typeof value === "number" && Number.isFinite(value) ? value : DEFAULT_PLATFORM_FEE_PERCENT;
+  return new Intl.NumberFormat("de-DE", {
+    style: "percent",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(normalized);
 }
 
 function statusToneClass(tone: DocumentStatusTone): string {
@@ -389,7 +399,7 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-4">
-                          <span>Plattformgebuehr</span>
+                          <span>Plattformgebuehr ({formatPercent(metadata?.amounts.platformFeePercent)})</span>
                           <span className="font-medium text-slate-900">
                             {formatMoney(record.platform_fee_cents, record.currency)}
                           </span>
