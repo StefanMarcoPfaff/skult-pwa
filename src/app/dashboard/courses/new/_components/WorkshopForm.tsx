@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
-import { getPlatformFeePercent } from "@/lib/platform-fees";
+import { DEFAULT_PLATFORM_FEE_PERCENT } from "@/lib/platform-fees";
 import type { ProviderType, WorkshopStornoPolicy } from "@/lib/provider-profiles";
 import { getWorkshopCheckoutCurrency } from "@/lib/workshop-checkout";
 import { createWorkshopAction } from "../actions";
@@ -71,6 +71,7 @@ export default function WorkshopForm({
   submitLabel = "Einmaliges Angebot erstellen",
   providerType,
   providerDisplayName,
+  platformFeePercent = DEFAULT_PLATFORM_FEE_PERCENT,
   offerKind = "workshop",
 }: {
   initialValues?: WorkshopFormValues;
@@ -78,6 +79,7 @@ export default function WorkshopForm({
   submitLabel?: string;
   providerType: ProviderType;
   providerDisplayName: string;
+  platformFeePercent?: number;
   offerKind?: SinglePaymentOfferKind;
 }) {
   const router = useRouter();
@@ -130,10 +132,11 @@ export default function WorkshopForm({
     return String(Math.round(parsed * 100));
   }, [priceEur]);
 
-  const platformFeePercent = getPlatformFeePercent(providerType);
+  const platformFeePercentLabel = platformFeePercent * 100;
   const priceBreakdown = calculateCoursePriceBreakdown(
     priceCentsOrEmpty ? Number(priceCentsOrEmpty) : 0,
-    providerType
+    providerType,
+    platformFeePercent
   );
 
   const submitAction = (formData: FormData) => {
@@ -487,7 +490,7 @@ export default function WorkshopForm({
             <span>{formatCurrency(priceBreakdown.grossCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
-            <span>Plattformgebuehr ({platformFeePercent} %)</span>
+            <span>Plattformgebuehr ({platformFeePercentLabel} %)</span>
             <span>{formatCurrency(priceBreakdown.platformFeeCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4 font-medium text-foreground">
@@ -497,7 +500,7 @@ export default function WorkshopForm({
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
           Die Auszahlung an Dich berechnet sich aus dem eingegebenen Preis abzueglich der
-          Plattformgebuehr von {platformFeePercent} %.
+          Plattformgebuehr von {platformFeePercentLabel} %.
         </p>
       </div>
 

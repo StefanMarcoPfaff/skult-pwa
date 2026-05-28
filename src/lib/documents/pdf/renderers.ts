@@ -48,7 +48,8 @@ function formatPercent(value: number | null | undefined): string {
 }
 
 function platformFeeLabel(metadata: FinancialDocumentMetadata | null): string {
-  return `Plattformgebuehr (${formatPercent(metadata?.amounts.platformFeePercent)})`;
+  const overrideLabel = metadata?.platformFeeOverrideApplied === true ? " individuell" : "";
+  return `Plattformgebuehr (${formatPercent(metadata?.amounts.platformFeePercent)}${overrideLabel})`;
 }
 
 function buildPeriodLabel(document: FinancialDocumentRecord, metadata: FinancialDocumentMetadata | null): string {
@@ -260,7 +261,7 @@ function buildPlatformRevenueStatementLines(input: RenderPdfInput): PdfLine[] {
       ["Zeitraum", buildPeriodLabel(document, metadata)],
       ["Bruttoumsatz", formatMoney(document.gross_amount_cents, document.currency)],
       [
-        `Plattform-Revenue brutto (${formatPercent(metadata?.amounts.platformFeePercent)})`,
+        `Plattform-Revenue brutto (${formatPercent(metadata?.amounts.platformFeePercent)}${metadata?.platformFeeOverrideApplied === true ? " individuell" : ""})`,
         formatMoney(document.platform_fee_cents, document.currency),
       ],
       ["Dokumentnummer", normalizeText(document.document_number, "Noch nicht vergeben")],

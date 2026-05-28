@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { updateProviderPlatformFeeOverride } from "@/lib/platform-fees";
 import {
   createSimulatedPaidPayoutForLedgerEntry,
   createSimulatedPayoutBatch,
@@ -222,6 +223,16 @@ function parseOptionalString(value: FormDataEntryValue | null): string | null {
   return normalized || null;
 }
 
+function parseOptionalPercentFraction(value: FormDataEntryValue | null): number | null {
+  const normalized = String(value ?? "").trim().replace(",", ".");
+  if (!normalized) return null;
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) return null;
+
+  return parsed / 100;
+}
+
 function compactParams(input: Record<string, string | null | undefined>): Record<string, string> {
   return Object.fromEntries(
     Object.entries(input).filter((entry): entry is [string, string] => Boolean(entry[1]))
@@ -245,6 +256,58 @@ function redirectWithSimulationError(prefix: string, error: unknown) {
   }
 
   redirectWithActionState(`${prefix}-error-unknown`);
+}
+
+export async function updateProviderPlatformFeeOverrideAction(formData: FormData) {
+  await requirePaymentsV2AdminAccess();
+
+  const providerId = String(formData.get("providerId") ?? "").trim();
+  const resetToDefault = String(formData.get("resetToDefault") ?? "") === "true";
+  const note = parseOptionalString(formData.get("note"));
+  const platformFeePercent = resetToDefault ? null : parseOptionalPercentFraction(formData.get("platformFeePercent"));
+
+  if (!providerId) {
+    redirectWithParams({
+      action: "provider-fee-error",
+      errorCode: "provider_missing",
+      message: "Anbieter*in fehlt.",
+    });
+  }
+
+  if (!resetToDefault && platformFeePercent === null) {
+    redirectWithParams({
+      action: "provider-fee-error",
+      errorCode: "invalid_percent",
+      message: "Bitte eine gueltige Plattformgebuehr in Prozent angeben.",
+    });
+  }
+
+  try {
+    const result = await updateProviderPlatformFeeOverride({
+      providerId,
+      platformFeePercent,
+      note,
+    });
+    revalidatePath(PAYMENTS_V2_ADMIN_PATH);
+    redirectWithParams({
+      action: resetToDefault ? "provider-fee-reset-ok" : "provider-fee-ok",
+      message: resetToDefault
+        ? "Individuelle Plattformgebuehr wurde entfernt. Standard 7% gilt wieder."
+        : `Individuelle Plattformgebuehr wurde auf ${String(result.platformFeePercent * 100)}% gesetzt.`,
+    });
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    const details = getErrorDetails(error);
+    revalidatePath(PAYMENTS_V2_ADMIN_PATH);
+    redirectWithParams({
+      action: "provider-fee-error",
+      errorCode: details.code,
+      message: details.message,
+    });
+  }
 }
 
 export async function simulateWorkshopCompletionForPayoutAction(formData: FormData) {

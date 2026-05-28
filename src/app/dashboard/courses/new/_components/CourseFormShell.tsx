@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { getPlatformFeeConfigForProvider } from "@/lib/platform-fees";
 import { getProviderDisplayName, type ProviderType } from "@/lib/provider-profiles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import CourseForm from "./CourseForm";
@@ -33,6 +34,7 @@ export default async function CourseFormShell() {
     last_name: profile?.last_name,
     organization_name: profile?.organization_name,
   });
+  const platformFeeConfig = await getPlatformFeeConfigForProvider(supabase, user.id);
 
   return (
     <div className="space-y-4 rounded-2xl border p-6">
@@ -49,7 +51,11 @@ export default async function CourseFormShell() {
         </Link>
       </div>
 
-      <CourseForm providerType={providerType} providerDisplayName={providerDisplayName} />
+      <CourseForm
+        providerType={providerType}
+        providerDisplayName={providerDisplayName}
+        platformFeePercent={platformFeeConfig.platformFeePercent}
+      />
     </div>
   );
 }

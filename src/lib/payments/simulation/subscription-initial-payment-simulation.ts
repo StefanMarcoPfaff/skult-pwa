@@ -1,7 +1,11 @@
 import "server-only";
 
 import { ensureCustomerReceiptForPayment } from "@/lib/documents/simulation-documents";
-import { calculatePlatformFeeAmount, calculateProviderPayoutAmount } from "@/lib/platform-fees";
+import {
+  calculatePlatformFeeCents,
+  calculateProviderPayoutCents,
+  getPlatformFeeConfigForProvider,
+} from "@/lib/platform-fees";
 import {
   planInitialProrationCharge,
   planMonthlyRecurringCharge,
@@ -70,10 +74,6 @@ type CourseRow = {
   teacher_id: string | null;
   price_cents: number | null;
   currency: string | null;
-};
-
-type ProfileRow = {
-  provider_type: "independent_teacher" | "studio_provider" | null;
 };
 
 type ProviderPayoutProfileRow = {
@@ -436,7 +436,7 @@ async function ensureLedgerEntry(input: {
   period: SubscriptionPeriod;
   amountCents: number;
   currency: string;
-  providerType: "independent_teacher" | "studio_provider" | null;
+  platformFeePercent: number;
   paidAt: string;
 }): Promise<string> {
   const admin = createSupabaseAdmin();
@@ -452,8 +452,8 @@ async function ensureLedgerEntry(input: {
     return existing.id;
   }
 
-  const platformFeeCents = calculatePlatformFeeAmount(input.amountCents, input.providerType);
-  const netAmountCents = calculateProviderPayoutAmount(input.amountCents, input.providerType);
+  const platformFeeCents = calculatePlatformFeeCents(input.amountCents, input.platformFeePercent);
+  const netAmountCents = calculateProviderPayoutCents(input.amountCents, input.platformFeePercent);
   const { data: inserted } = await admin
     .from("ledger_entries")
     .insert({
@@ -578,16 +578,14 @@ export async function simulateSubscriptionInitialPaymentSuccess(input: {
     throw new Error("Course not found or missing teacher");
   }
 
-  const [{ data: profile }, { data: providerPayoutProfile }] = await Promise.all([
-    admin.from("profiles").select("provider_type").eq("id", course.teacher_id).maybeSingle<ProfileRow>(),
-    admin
+  const { data: providerPayoutProfile } = await admin
       .from("provider_payout_profiles")
       .select("id")
       .eq("teacher_id", course.teacher_id)
       .order("created_at", { ascending: true })
       .limit(1)
-      .maybeSingle<ProviderPayoutProfileRow>(),
-  ]);
+      .maybeSingle<ProviderPayoutProfileRow>();
+  const platformFeeConfig = await getPlatformFeeConfigForProvider(admin, course.teacher_id);
 
   const contractStartDate = resolveSimulationContractStartDate({
     paidAt,
@@ -648,7 +646,7 @@ export async function simulateSubscriptionInitialPaymentSuccess(input: {
     period,
     amountCents,
     currency,
-    providerType: profile?.provider_type ?? null,
+    platformFeePercent: platformFeeConfig.platformFeePercent,
     paidAt,
   });
 

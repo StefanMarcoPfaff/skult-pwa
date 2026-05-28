@@ -1,5 +1,9 @@
 import type Stripe from "stripe";
-import { calculatePlatformFeeAmount, calculateProviderPayoutAmount } from "@/lib/platform-fees";
+import {
+  calculatePlatformFeeCents,
+  calculateProviderPayoutCents,
+  getPlatformFeeConfigForProvider,
+} from "@/lib/platform-fees";
 import { calculatePayoutAvailableAt } from "@/lib/payments/payout-eligibility";
 import type { ProviderType } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
@@ -383,8 +387,9 @@ async function ensureStripePaymentLedgerMirror(input: {
           providerType: input.providerType,
           accountHolderName: input.accountHolderName,
         });
-  const platformFeeCents = calculatePlatformFeeAmount(input.amountCents, input.providerType);
-  const netAmountCents = calculateProviderPayoutAmount(input.amountCents, input.providerType);
+  const platformFeeConfig = await getPlatformFeeConfigForProvider(createSupabaseAdmin(), input.teacherId);
+  const platformFeeCents = calculatePlatformFeeCents(input.amountCents, platformFeeConfig.platformFeePercent);
+  const netAmountCents = calculateProviderPayoutCents(input.amountCents, platformFeeConfig.platformFeePercent);
 
   await ensureLedgerEntry({
     paymentTransactionId: input.paymentTransactionId,

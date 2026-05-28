@@ -1,7 +1,12 @@
 import "server-only";
 
 import { ensureCustomerReceiptForPayment } from "@/lib/documents/simulation-documents";
-import { calculatePlatformFeeAmount, calculateProviderPayoutAmount } from "@/lib/platform-fees";
+import {
+  calculatePlatformFeeCents,
+  calculateProviderPayoutCents,
+  DEFAULT_PLATFORM_FEE_PERCENT,
+  getPlatformFeeConfigForProvider,
+} from "@/lib/platform-fees";
 import { calculatePayoutAvailableAt } from "@/lib/payments/payout-eligibility";
 import { calculateWorkshopRefund, type SupportedWorkshopRefundPolicy } from "@/lib/payments/simulation/workshop-refund-policy";
 import {
@@ -138,6 +143,7 @@ async function loadBookingContext(bookingId: string): Promise<{
   workshopStartsAt: string | null;
   providerType: "independent_teacher" | "studio_provider" | null;
   providerPayoutProfileId: string | null;
+  platformFeePercent: number;
   availableAt: string | null;
 }> {
   const admin = createSupabaseAdmin();
@@ -158,6 +164,7 @@ async function loadBookingContext(bookingId: string): Promise<{
   let course: WorkshopCourseRow | null = null;
   let providerType: "independent_teacher" | "studio_provider" | null = null;
   let providerPayoutProfileId: string | null = null;
+  let platformFeePercent = DEFAULT_PLATFORM_FEE_PERCENT;
   let availableAt: string | null = null;
   let workshopStartsAt: string | null = null;
   let lastSessionEndsAt: string | null = null;
@@ -218,6 +225,8 @@ async function loadBookingContext(bookingId: string): Promise<{
         .maybeSingle<ProfileFeeRow>();
 
       providerType = profile?.provider_type ?? null;
+      const platformFeeConfig = await getPlatformFeeConfigForProvider(admin, course.teacher_id);
+      platformFeePercent = platformFeeConfig.platformFeePercent;
     }
   }
 
@@ -228,6 +237,7 @@ async function loadBookingContext(bookingId: string): Promise<{
     workshopStartsAt,
     providerType,
     providerPayoutProfileId,
+    platformFeePercent,
     availableAt,
   };
 }
@@ -358,14 +368,14 @@ export async function simulateWorkshopPaymentSuccess(input: {
   });
   assertSimulationNotDuplicate(Boolean(existingPaid));
 
-  const { booking, course, providerType, providerPayoutProfileId, availableAt } = await loadBookingContext(bookingId);
+  const { booking, course, providerPayoutProfileId, platformFeePercent, availableAt } = await loadBookingContext(bookingId);
   const amountCents = normalizeOptionalAmount(input.amountCents, course?.price_cents ?? 0);
   const currency = normalizeCurrency(input.currency ?? course?.currency);
   const providerPaymentId = createSimulatedPaymentId();
   const paidAt = new Date().toISOString();
   const payoutStatus = availableAt ? "pending_event_completion" : "payable";
-  const platformFeeCents = calculatePlatformFeeAmount(amountCents, providerType);
-  const netAmountCents = calculateProviderPayoutAmount(amountCents, providerType);
+  const platformFeeCents = calculatePlatformFeeCents(amountCents, platformFeePercent);
+  const netAmountCents = calculateProviderPayoutCents(amountCents, platformFeePercent);
 
   const admin = createSupabaseAdmin();
   const { data: insertedPayment } = await admin
@@ -671,7 +681,7 @@ export async function simulateWorkshopCustomerCancellation(input: {
     throw createSimulationStepError("already_refunded", "Bereits erstattet.");
   }
 
-  const { booking, course, providerType, workshopStartsAt } = await loadBookingContext(paymentTransaction.booking_id);
+  const { booking, course, platformFeePercent, workshopStartsAt } = await loadBookingContext(paymentTransaction.booking_id);
   if (booking.status === "cancelled" && Math.max(0, booking.refund_amount_cents ?? 0) <= 0) {
     throw createSimulationStepError("already_cancelled", "Bereits storniert.");
   }
@@ -709,8 +719,8 @@ export async function simulateWorkshopCustomerCancellation(input: {
   }
 
   const retainedGrossAmountCents = refundCalculation.retained_amount_cents;
-  const retainedPlatformFeeCents = calculatePlatformFeeAmount(retainedGrossAmountCents, providerType);
-  const retainedNetAmountCents = calculateProviderPayoutAmount(retainedGrossAmountCents, providerType);
+  const retainedPlatformFeeCents = calculatePlatformFeeCents(retainedGrossAmountCents, platformFeePercent);
+  const retainedNetAmountCents = calculateProviderPayoutCents(retainedGrossAmountCents, platformFeePercent);
   const refundedAt = new Date().toISOString();
   const admin = createSupabaseAdmin();
 

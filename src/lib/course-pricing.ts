@@ -1,5 +1,9 @@
 import type { ProviderType } from "@/lib/provider-profiles";
-import { calculatePlatformFeeCents, calculateProviderPayoutCents } from "@/lib/platform-fees";
+import {
+  calculatePlatformFeeCents,
+  calculateProviderPayoutCents,
+  DEFAULT_PLATFORM_FEE_PERCENT,
+} from "@/lib/platform-fees";
 
 export type CoursePriceBreakdown = {
   grossCents: number;
@@ -9,12 +13,13 @@ export type CoursePriceBreakdown = {
 
 export function calculateCoursePriceBreakdown(
   amountCents: number,
-  providerType: ProviderType | null | undefined
+  providerType: ProviderType | null | undefined,
+  platformFeePercent = DEFAULT_PLATFORM_FEE_PERCENT
 ): CoursePriceBreakdown {
   void providerType;
   const grossCents = Number.isFinite(amountCents) && amountCents > 0 ? Math.round(amountCents) : 0;
-  const platformFeeCents = calculatePlatformFeeCents(grossCents);
-  const payoutCents = calculateProviderPayoutCents(grossCents);
+  const platformFeeCents = calculatePlatformFeeCents(grossCents, platformFeePercent);
+  const payoutCents = calculateProviderPayoutCents(grossCents, platformFeePercent);
 
   return {
     grossCents,

@@ -2,7 +2,11 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { getBerlinStartOfTodayUtcIso } from "@/lib/formatting/berlin-time";
-import { calculatePlatformFeeAmount, calculateProviderPayoutAmount } from "@/lib/platform-fees";
+import {
+  calculatePlatformFeeCents,
+  calculateProviderPayoutCents,
+  DEFAULT_PLATFORM_FEE_PERCENT,
+} from "@/lib/platform-fees";
 import { canRunPaymentsV2Simulation } from "@/lib/payments/simulation";
 import { calculateWorkshopRefund } from "@/lib/payments/simulation/workshop-refund-policy";
 import DashboardBackLink from "@/app/dashboard/_components/DashboardBackLink";
@@ -17,6 +21,7 @@ import {
   simulateWorkshopPaymentFailedAction,
   simulateWorkshopPaymentSuccessAction,
   simulateWorkshopRefundAction,
+  updateProviderPlatformFeeOverrideAction,
 } from "./actions";
 import { requirePaymentsV2AdminAccess } from "./access";
 import {
@@ -151,11 +156,36 @@ type SimulationProfileRow = {
 type SimulationProviderPayoutProfileRow = {
   id: string;
   teacher_id: string | null;
+  platform_fee_percent_override: number | string | null;
 };
 
 type SimulationCourseSessionRow = {
   course_id: string;
   starts_at: string | null;
+};
+
+type ProviderFeeProfileRow = {
+  id: string;
+  teacher_id: string | null;
+  provider: string;
+  account_holder_name: string | null;
+  platform_fee_percent_override: number | string | null;
+  platform_fee_override_note: string | null;
+  platform_fee_override_updated_at: string | null;
+  updated_at: string;
+};
+
+type ProviderFeeProfileDisplayRow = {
+  providerId: string;
+  payoutProfileId: string;
+  providerName: string;
+  organizationName: string | null;
+  email: string;
+  platformFeePercent: number;
+  providerSharePercent: number;
+  isOverride: boolean;
+  note: string | null;
+  updatedAt: string | null;
 };
 
 type SimulationBookingOption = {
@@ -180,6 +210,8 @@ type SimulationBookingOption = {
   availableAt: string | null;
   payoutStatus: string | null;
   providerPayoutProfileId: string | null;
+  platformFeePercent: number | null;
+  platformFeeIsOverride: boolean;
   payoutBatchId: string | null;
   createdAt: string;
   sourceLabel: "Simulation" | "Stripe Test";
@@ -384,6 +416,46 @@ function isStripeTestPayment(row: PaymentTransactionRow | undefined, booking: Si
     row.provider_payment_id?.startsWith("pi_test") === true ||
     booking.payment_session_id?.startsWith("cs_test") === true
   );
+}
+
+function formatPlatformFeePercentLabel(option: {
+  platformFeePercent: number | null;
+  platformFeeIsOverride: boolean;
+}): string {
+  if (typeof option.platformFeePercent !== "number" || !Number.isFinite(option.platformFeePercent)) {
+    return "Plattformgebuehr";
+  }
+
+  const percent = new Intl.NumberFormat("de-DE", {
+    style: "percent",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(option.platformFeePercent);
+
+  return `Plattformgebuehr: ${percent}${option.platformFeeIsOverride ? " (individuell)" : ""}`;
+}
+
+function normalizePlatformFeePercent(value: number | string | null | undefined): number | null {
+  if (value === null || typeof value === "undefined") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 0.3) return null;
+  return parsed;
+}
+
+function formatPercentValue(value: number): string {
+  return new Intl.NumberFormat("de-DE", {
+    style: "percent",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatPercentInputValue(value: number): string {
+  return new Intl.NumberFormat("de-DE", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+    useGrouping: false,
+  }).format(value * 100);
 }
 
 function normalizeBusinessStatus(value: string | undefined): string {
@@ -662,6 +734,18 @@ function ActionNotice({
         <div>detail: {detailMessage ?? "-"}</div>
       </div>
     );
+  } else if (action === "provider-fee-ok" || action === "provider-fee-reset-ok") {
+    message = detailMessage ?? "Plattformgebuehr wurde aktualisiert.";
+    toneClass = "border-green-200 bg-green-50 text-green-800";
+  } else if (action === "provider-fee-error") {
+    message = "Plattformgebuehr konnte nicht aktualisiert werden.";
+    toneClass = "border-rose-200 bg-rose-50 text-rose-800";
+    extra = (
+      <div className="mt-1 space-y-1 text-xs">
+        <div>code: {errorCode ?? "-"}</div>
+        <div>detail: {detailMessage ?? "-"}</div>
+      </div>
+    );
   } else if (action === "selected-workshop-ready-ok") {
     message = detailMessage ?? "Workshop abgeschlossen + 24h wurde simuliert.";
     toneClass = "border-green-200 bg-green-50 text-green-800";
@@ -900,6 +984,79 @@ export default async function PaymentsV2AdminPage({
   const canUseSimulation = canRunPaymentsV2Simulation(user.email);
 
   const admin = createSupabaseAdmin();
+  const { data: providerFeeProfilesRaw } = await admin
+    .from("provider_payout_profiles")
+    .select(
+      "id,teacher_id,provider,account_holder_name,platform_fee_percent_override,platform_fee_override_note,platform_fee_override_updated_at,updated_at"
+    )
+    .not("teacher_id", "is", null)
+    .returns<ProviderFeeProfileRow[]>();
+  const providerFeeProfiles = providerFeeProfilesRaw ?? [];
+  const providerFeeTeacherIds = Array.from(
+    new Set(providerFeeProfiles.map((row) => row.teacher_id).filter((value): value is string => Boolean(value)))
+  );
+  const [{ data: providerFeeProfileRows }, authUsersResult] = await Promise.all([
+    providerFeeTeacherIds.length > 0
+      ? admin
+          .from("profiles")
+          .select("id,first_name,last_name,organization_name,provider_type")
+          .in("id", providerFeeTeacherIds)
+          .returns<SimulationProfileRow[]>()
+      : Promise.resolve({ data: [] as SimulationProfileRow[] }),
+    admin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+  ]);
+  const providerFeeProfilesByTeacherId = new Map(
+    (providerFeeProfileRows ?? []).map((profile) => [profile.id, profile] as const)
+  );
+  const authEmailByUserId = new Map(
+    (authUsersResult.data.users ?? []).map((authUser) => [authUser.id, authUser.email ?? "-"] as const)
+  );
+  const selectedProviderFeeProfileByTeacherId = new Map<string, ProviderFeeProfileRow>();
+  for (const payoutProfile of [...providerFeeProfiles].sort((left, right) => {
+    const leftOverride = normalizePlatformFeePercent(left.platform_fee_percent_override) !== null ? 1 : 0;
+    const rightOverride = normalizePlatformFeePercent(right.platform_fee_percent_override) !== null ? 1 : 0;
+    if (leftOverride !== rightOverride) return rightOverride - leftOverride;
+
+    return String(right.platform_fee_override_updated_at ?? right.updated_at).localeCompare(
+      String(left.platform_fee_override_updated_at ?? left.updated_at)
+    );
+  })) {
+    if (payoutProfile.teacher_id && !selectedProviderFeeProfileByTeacherId.has(payoutProfile.teacher_id)) {
+      selectedProviderFeeProfileByTeacherId.set(payoutProfile.teacher_id, payoutProfile);
+    }
+  }
+  const providerFeeRows: ProviderFeeProfileDisplayRow[] = Array.from(
+    selectedProviderFeeProfileByTeacherId.values()
+  )
+    .map((payoutProfile) => {
+      const providerId = payoutProfile.teacher_id as string;
+      const profile = providerFeeProfilesByTeacherId.get(providerId);
+      const overridePercent = normalizePlatformFeePercent(payoutProfile.platform_fee_percent_override);
+      const platformFeePercent = overridePercent ?? DEFAULT_PLATFORM_FEE_PERCENT;
+
+      return {
+        providerId,
+        payoutProfileId: payoutProfile.id,
+        providerName: getDisplayName({
+          firstName: profile?.first_name,
+          lastName: profile?.last_name,
+          organizationName: null,
+          fallback: payoutProfile.account_holder_name?.trim() || "Anbieter*in",
+        }),
+        organizationName: profile?.organization_name?.trim() || null,
+        email: authEmailByUserId.get(providerId) ?? "-",
+        platformFeePercent,
+        providerSharePercent: Math.max(0, 1 - platformFeePercent),
+        isOverride: overridePercent !== null,
+        note: payoutProfile.platform_fee_override_note,
+        updatedAt: payoutProfile.platform_fee_override_updated_at,
+      };
+    })
+    .sort((left, right) => {
+      if (left.isOverride !== right.isOverride) return left.isOverride ? -1 : 1;
+      return left.providerName.localeCompare(right.providerName, "de");
+    });
+
   let simulationBookingsQuery = admin
     .from("bookings")
     .select("id,course_id,customer_first_name,customer_last_name,customer_email,status,payment_status,payment_session_id,is_simulation,refund_amount_cents,created_at")
@@ -949,7 +1106,7 @@ export default async function PaymentsV2AdminPage({
     simulationTeacherIds.length > 0
       ? admin
           .from("provider_payout_profiles")
-          .select("id,teacher_id")
+          .select("id,teacher_id,platform_fee_percent_override")
           .in("teacher_id", simulationTeacherIds)
           .returns<SimulationProviderPayoutProfileRow[]>()
       : Promise.resolve({ data: [] as SimulationProviderPayoutProfileRow[] }),
@@ -1029,6 +1186,10 @@ export default async function PaymentsV2AdminPage({
     const ledgerEntry = paymentTransaction?.id
       ? latestSimulationLedgerByPaymentTransactionId.get(paymentTransaction.id)
       : undefined;
+    const platformFeePercent =
+      ledgerEntry && ledgerEntry.gross_amount_cents > 0
+        ? ledgerEntry.platform_fee_cents / ledgerEntry.gross_amount_cents
+        : null;
 
     return [{
       bookingId: booking.id,
@@ -1061,6 +1222,8 @@ export default async function PaymentsV2AdminPage({
       availableAt: ledgerEntry?.available_at ?? null,
       payoutStatus: ledgerEntry?.payout_status ?? null,
       providerPayoutProfileId: ledgerEntry?.provider_payout_profile_id ?? payoutProfile?.id ?? null,
+      platformFeePercent,
+      platformFeeIsOverride: payoutProfile?.platform_fee_percent_override !== null && typeof payoutProfile !== "undefined",
       payoutBatchId: ledgerEntry?.payout_batch_id ?? null,
       createdAt: booking.created_at,
       sourceLabel: isStripeTest ? "Stripe Test" : "Simulation",
@@ -1092,13 +1255,13 @@ export default async function PaymentsV2AdminPage({
       });
       selectedCustomerCancellationPreview = {
         ...calculated,
-        providerShareCents: calculateProviderPayoutAmount(
+        providerShareCents: calculateProviderPayoutCents(
           calculated.retained_amount_cents,
-          selectedSimulationOption.providerType
+          selectedSimulationOption.platformFeePercent ?? undefined
         ),
-        reserFeeCents: calculatePlatformFeeAmount(
+        reserFeeCents: calculatePlatformFeeCents(
           calculated.retained_amount_cents,
-          selectedSimulationOption.providerType
+          selectedSimulationOption.platformFeePercent ?? undefined
         ),
       };
     } catch (error) {
@@ -1457,6 +1620,121 @@ export default async function PaymentsV2AdminPage({
         />
 
         <Section
+          title="Anbieter*innen & Plattformgebuehren"
+          description="Kleine Admin-Verwaltung fuer individuelle RESER-Plattformgebuehren. Standard bleibt 7%; normale Anbieter*innen koennen diese Werte nicht selbst aendern."
+        >
+          <div className="space-y-4">
+            {providerFeeRows.length === 0 ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                Keine Anbieter*innen mit Auszahlungprofil gefunden.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Anbieter*in</th>
+                      <th className="px-3 py-2">E-Mail</th>
+                      <th className="px-3 py-2">Plattformgebuehr</th>
+                      <th className="px-3 py-2">Typ</th>
+                      <th className="px-3 py-2">Auszahlung</th>
+                      <th className="px-3 py-2">Bearbeiten</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {providerFeeRows.map((row) => (
+                      <tr key={row.providerId} className="border-b border-slate-100 align-top">
+                        <td className="px-3 py-3">
+                          <div className="font-medium text-slate-900">{row.providerName}</div>
+                          <div className="text-xs text-slate-600">{row.organizationName ?? "-"}</div>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-600">{row.email}</td>
+                        <td className="px-3 py-3 font-medium text-slate-900">
+                          {formatPercentValue(row.platformFeePercent)}
+                          <div className="mt-1 text-xs text-slate-500">
+                            {row.isOverride ? "Individuell gesetzt" : "Standard (7%)"}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${
+                              row.isOverride ? "bg-sky-100 text-sky-800" : "bg-slate-100 text-slate-700"
+                            }`}
+                          >
+                            {row.isOverride ? "Individuell" : "Standard"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 font-medium text-slate-900">
+                          {formatPercentValue(row.providerSharePercent)}
+                        </td>
+                        <td className="px-3 py-3">
+                          <details className="group rounded-xl border border-slate-200 bg-white p-3">
+                            <summary className="cursor-pointer text-sm font-medium text-sky-700">
+                              Gebuehr bearbeiten
+                            </summary>
+                            <div className="mt-3 grid gap-3">
+                              <form action={updateProviderPlatformFeeOverrideAction} className="grid gap-3">
+                                <input type="hidden" name="providerId" value={row.providerId} />
+                                <label className="block">
+                                  <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">
+                                    Plattformgebuehr (%)
+                                  </span>
+                                  <input
+                                    name="platformFeePercent"
+                                    type="number"
+                                    min="0"
+                                    max="30"
+                                    step="0.01"
+                                    defaultValue={formatPercentInputValue(row.platformFeePercent)}
+                                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                                  />
+                                </label>
+                                <label className="block">
+                                  <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">
+                                    Interne Notiz
+                                  </span>
+                                  <textarea
+                                    name="note"
+                                    rows={2}
+                                    defaultValue={row.note ?? ""}
+                                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                                  />
+                                </label>
+                                <button
+                                  type="submit"
+                                  className="inline-flex w-fit rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+                                >
+                                  Speichern
+                                </button>
+                              </form>
+                              <form action={updateProviderPlatformFeeOverrideAction}>
+                                <input type="hidden" name="providerId" value={row.providerId} />
+                                <input type="hidden" name="resetToDefault" value="true" />
+                                <button
+                                  type="submit"
+                                  className="inline-flex rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                >
+                                  Zuruecksetzen auf Standard 7%
+                                </button>
+                              </form>
+                              {row.updatedAt ? (
+                                <div className="text-xs text-slate-500">
+                                  Zuletzt geaendert: {formatDateTime(row.updatedAt)}
+                                </div>
+                              ) : null}
+                            </div>
+                          </details>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </Section>
+
+        <Section
           title="Test-/Simulationsbuchung auswaehlen"
           description="Interne Workshop-Simulationen und Stripe-Testbuchungen serverseitig laden, auswaehlen und den Payment-/Ledger-Kontext ohne UUID-Suche einsehen."
         >
@@ -1552,6 +1830,7 @@ export default async function PaymentsV2AdminPage({
                             selectedSimulationOption.currency ?? "EUR"
                           )}
                     </div>
+                    <div>{formatPlatformFeePercentLabel(selectedSimulationOption)}</div>
                     <div>
                       Anbieteranteil:{" "}
                       {selectedSimulationOption.netAmountCents === null

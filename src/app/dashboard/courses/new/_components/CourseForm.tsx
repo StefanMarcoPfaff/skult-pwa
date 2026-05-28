@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { buildTrialSlot } from "@/app/courses/[id]/trial-slots";
 import { generateRecurringCourseSessions } from "@/lib/course-sessions";
 import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
-import { getPlatformFeePercent } from "@/lib/platform-fees";
+import { DEFAULT_PLATFORM_FEE_PERCENT } from "@/lib/platform-fees";
 import type { ProviderType } from "@/lib/provider-profiles";
 import { createCourseAction } from "../actions";
 
@@ -96,12 +96,14 @@ export default function CourseForm({
   submitLabel = "Laufendes Angebot erstellen",
   providerType,
   providerDisplayName,
+  platformFeePercent = DEFAULT_PLATFORM_FEE_PERCENT,
 }: {
   initialValues?: CourseFormValues;
   submitActionOverride?: (formData: FormData) => Promise<{ error?: string } | void>;
   submitLabel?: string;
   providerType: ProviderType;
   providerDisplayName: string;
+  platformFeePercent?: number;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -117,8 +119,8 @@ export default function CourseForm({
     initialValues?.trial_slot_starts ?? []
   );
 
-  const platformFeePercent = getPlatformFeePercent(providerType);
-  const priceBreakdown = calculateCoursePriceBreakdown(parsePriceToCents(priceEur), providerType);
+  const platformFeePercentLabel = platformFeePercent * 100;
+  const priceBreakdown = calculateCoursePriceBreakdown(parsePriceToCents(priceEur), providerType, platformFeePercent);
   const availableManualTrialSlots = useMemo(() => {
     const startsAt = combineCourseStartsAtISO(startDate, startTime);
     const weekdayValue = Number(weekday);
@@ -535,7 +537,7 @@ export default function CourseForm({
             <span>{formatCurrency(priceBreakdown.grossCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
-            <span>Plattformgebühr ({platformFeePercent} %)</span>
+            <span>Plattformgebühr ({platformFeePercentLabel} %)</span>
             <span>{formatCurrency(priceBreakdown.platformFeeCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4 font-medium text-foreground">
@@ -545,7 +547,7 @@ export default function CourseForm({
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
           Die voraussichtliche Auszahlung pro Monat berechnet sich aus dem Monatsbeitrag abzüglich
-          der Plattformgebühr von {platformFeePercent} %.
+          der Plattformgebühr von {platformFeePercentLabel} %.
         </p>
       </div>
 

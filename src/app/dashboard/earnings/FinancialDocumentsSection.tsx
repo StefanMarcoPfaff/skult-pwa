@@ -73,6 +73,11 @@ function formatPercent(value: number | null | undefined): string {
   }).format(normalized);
 }
 
+function platformFeeLabel(metadata: FinancialDocumentMetadata | null): string {
+  const overrideLabel = metadata?.platformFeeOverrideApplied === true ? " individuell" : "";
+  return `Plattformgebuehr (${formatPercent(metadata?.amounts.platformFeePercent)}${overrideLabel})`;
+}
+
 function statusToneClass(tone: DocumentStatusTone): string {
   switch (tone) {
     case "green":
@@ -399,7 +404,7 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-4">
-                          <span>Plattformgebuehr ({formatPercent(metadata?.amounts.platformFeePercent)})</span>
+                          <span>{platformFeeLabel(metadata)}</span>
                           <span className="font-medium text-slate-900">
                             {formatMoney(record.platform_fee_cents, record.currency)}
                           </span>
