@@ -1,4 +1,5 @@
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { formatBerlinDate } from "@/lib/formatting/berlin-time";
 import { finalizeWorkshopBookingBySession } from "@/lib/workshop-booking-finalization";
 import SuccessClient, { type WorkshopSuccessData } from "./SuccessClient";
 
@@ -10,12 +11,9 @@ function formatSessionLine(startsAt: string | null, endsAt: string | null): stri
   if (!startsAt) return "Termin folgt";
 
   const start = new Date(startsAt);
-  const date = start.toLocaleDateString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  const date = formatBerlinDate(startsAt);
   const startTime = start.toLocaleTimeString("de-DE", {
+    timeZone: "Europe/Berlin",
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -24,6 +22,7 @@ function formatSessionLine(startsAt: string | null, endsAt: string | null): stri
 
   const end = new Date(endsAt);
   const endTime = end.toLocaleTimeString("de-DE", {
+    timeZone: "Europe/Berlin",
     hour: "2-digit",
     minute: "2-digit",
   });

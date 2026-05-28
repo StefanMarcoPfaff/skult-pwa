@@ -1,5 +1,6 @@
 import type { FinancialDocumentMetadata, FinancialDocumentRecord } from "@/lib/documents/types";
 import type { FinancialDocumentViewerRole } from "@/lib/documents/financial-documents";
+import { formatBerlinDate, formatBerlinDateTime } from "@/lib/formatting/berlin-time";
 import { generateFinancialDocumentPdfAction } from "./actions";
 
 type DocumentFilterState = {
@@ -55,22 +56,11 @@ function formatMoney(amountCents: number, currency: string | null | undefined): 
 }
 
 function formatDate(value: string | null): string {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("de-DE", {
-    dateStyle: "medium",
-  });
+  return formatBerlinDate(value);
 }
 
 function formatDateTime(value: string | null): string {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("de-DE", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  return formatBerlinDateTime(value);
 }
 
 function statusToneClass(tone: DocumentStatusTone): string {

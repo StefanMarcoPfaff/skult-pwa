@@ -1,26 +1,16 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { formatBerlinDate, formatBerlinDateTime } from "@/lib/formatting/berlin-time";
 
 export const PAYMENTS_V2_ADMIN_PATH = "/dashboard/admin/payments-v2";
 export const PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH = "/dashboard/admin/payments-v2/subscriptions";
 
 export function formatDateTime(value: string | null): string {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("de-DE", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  return formatBerlinDateTime(value);
 }
 
 export function formatDate(value: string | null): string {
-  if (!value) return "-";
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("de-DE", {
-    dateStyle: "medium",
-  });
+  return formatBerlinDate(value);
 }
 
 export function formatMoney(amountCents: number, currency: string | null | undefined): string {

@@ -64,7 +64,7 @@ export default function SuccessClient({ bookingData }: Props) {
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       <section className="rounded-2xl border p-6">
-        <h1 className="text-4xl font-extrabold">Deine Buchung war erfolgreich! 🎉</h1>
+        <h1 className="text-4xl font-extrabold">Deine Reservation war erfolgreich!</h1>
 
         {bookingData?.error ? (
           <p className="mt-3 text-base text-muted-foreground">
@@ -72,13 +72,18 @@ export default function SuccessClient({ bookingData }: Props) {
             über den Link in deiner Bestätigung oder prüfe deine E-Mails.
           </p>
         ) : paid ? (
-          <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-            <p>
-              {isFreeBooking
-                ? "Deine Buchung ist bestätigt und dein Ticket ist bereit."
-                : "Deine Zahlung wurde bestätigt und dein Ticket ist bereit."}
-            </p>
-            <p>Alle weiteren Informationen zu deinem Angebot erhältst du per E-Mail.</p>
+          <div className="mt-3 space-y-3 text-sm text-muted-foreground">
+            <p>Dein Platz wurde erfolgreich reserviert.</p>
+            {isFreeBooking ? (
+              <p>Deine Reservation ist bestätigt und dein Ticket ist bereit.</p>
+            ) : (
+              <p>
+                Deine Zahlung wurde bestätigt und bleibt bis zum Abschluss des Angebots sicher vorgemerkt. Sollte das
+                Angebot durch den/die Anbieter*in abgesagt werden, erhältst du automatisch eine Rückerstattung. Bei
+                einer Stornierung durch dich gelten die jeweiligen Stornierungsbedingungen.
+              </p>
+            )}
+            <p>Alle weiteren Informationen zu deinem Erlebnis erhältst du per E-Mail.</p>
           </div>
         ) : (
           <p className="mt-3 text-base text-muted-foreground">

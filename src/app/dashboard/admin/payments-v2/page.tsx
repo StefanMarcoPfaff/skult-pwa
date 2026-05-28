@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { getBerlinStartOfTodayUtcIso } from "@/lib/formatting/berlin-time";
 import { calculatePlatformFeeAmount, calculateProviderPayoutAmount } from "@/lib/platform-fees";
 import { canRunPaymentsV2Simulation } from "@/lib/payments/simulation";
 import { calculateWorkshopRefund } from "@/lib/payments/simulation/workshop-refund-policy";
@@ -124,6 +125,8 @@ type SimulationBookingRow = {
   customer_email: string | null;
   status: string | null;
   payment_status: string | null;
+  payment_session_id: string | null;
+  is_simulation: boolean | null;
   refund_amount_cents: number | null;
   created_at: string;
 };
@@ -179,6 +182,7 @@ type SimulationBookingOption = {
   providerPayoutProfileId: string | null;
   payoutBatchId: string | null;
   createdAt: string;
+  sourceLabel: "Simulation" | "Stripe Test";
 };
 
 type BusinessCustomerPaymentRow = {
@@ -333,9 +337,7 @@ function getSimulationWindowStart(windowKey: "today" | "last7" | "all"): string 
 
   const now = new Date();
   if (windowKey === "today") {
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
-    return start.toISOString();
+    return getBerlinStartOfTodayUtcIso(now);
   }
 
   const start = new Date(now);
@@ -361,15 +363,27 @@ function formatSimulationOptionLabel(option: SimulationBookingOption): string {
     typeof option.amountCents === "number" ? formatMoney(option.amountCents, option.currency ?? "EUR") : "Betrag offen";
 
   return [
-    option.courseTitle,
-    `Anbieter*in: ${option.providerName}`,
+    `Angebot: ${option.courseTitle}`,
     `Kund*in: ${option.customerName}`,
     `Betrag: ${amountLabel}`,
+    `Datum/Uhrzeit Berlin: ${formatDateTime(option.createdAt)}`,
+    `Quelle: ${option.sourceLabel}`,
     `Status: ${option.bookingStatus ?? "-"}`,
     `booking_id: ${shortenId(option.bookingId)}`,
     `payment_transaction_id: ${shortenId(option.paymentTransactionId)}`,
     `ledger_entry_id: ${shortenId(option.ledgerEntryId)}`,
   ].join(" | ");
+}
+
+function isStripeTestPayment(row: PaymentTransactionRow | undefined, booking: SimulationBookingRow): boolean {
+  if (!row) return false;
+  if (row.provider !== "stripe") return false;
+
+  return (
+    row.provider_checkout_id?.startsWith("cs_test") === true ||
+    row.provider_payment_id?.startsWith("pi_test") === true ||
+    booking.payment_session_id?.startsWith("cs_test") === true
+  );
 }
 
 function normalizeBusinessStatus(value: string | undefined): string {
@@ -888,8 +902,7 @@ export default async function PaymentsV2AdminPage({
   const admin = createSupabaseAdmin();
   let simulationBookingsQuery = admin
     .from("bookings")
-    .select("id,course_id,customer_first_name,customer_last_name,customer_email,status,payment_status,refund_amount_cents,created_at")
-    .eq("is_simulation", true)
+    .select("id,course_id,customer_first_name,customer_last_name,customer_email,status,payment_status,payment_session_id,is_simulation,refund_amount_cents,created_at")
     .order("created_at", { ascending: false })
     .limit(SIMULATION_BOOKING_LIMIT);
 
@@ -947,7 +960,6 @@ export default async function PaymentsV2AdminPage({
             "id,booking_id,course_registration_intent_id,provider,provider_payment_id,provider_checkout_id,provider_customer_id,provider_subscription_id,amount_cents,currency,payment_method,status,paid_at,refunded_at,failed_at,created_at"
           )
           .in("booking_id", eligibleSimulationBookings.map((row) => row.id))
-          .eq("provider", INTERNAL_SIMULATION_PROVIDER)
           .order("created_at", { ascending: false })
           .returns<PaymentTransactionRow[]>()
       : Promise.resolve({ data: [] as PaymentTransactionRow[] }),
@@ -1003,16 +1015,22 @@ export default async function PaymentsV2AdminPage({
       latestSimulationLedgerByPaymentTransactionId.set(row.source_id, row);
     }
   }
-  const simulationOptions: SimulationBookingOption[] = eligibleSimulationBookings.map((booking) => {
+  const simulationOptions: SimulationBookingOption[] = eligibleSimulationBookings.flatMap((booking) => {
     const course = booking.course_id ? simulationCoursesById.get(booking.course_id) : undefined;
     const profile = course?.teacher_id ? simulationProfilesById.get(course.teacher_id) : undefined;
     const payoutProfile = course?.teacher_id ? simulationPayoutProfilesByTeacherId.get(course.teacher_id) : undefined;
     const paymentTransaction = latestSimulationPaymentByBookingId.get(booking.id);
+    const isInternalSimulation =
+      booking.is_simulation === true && (!paymentTransaction || paymentTransaction.provider === INTERNAL_SIMULATION_PROVIDER);
+    const isStripeTest = isStripeTestPayment(paymentTransaction, booking);
+    if (!isInternalSimulation && !isStripeTest) {
+      return [];
+    }
     const ledgerEntry = paymentTransaction?.id
       ? latestSimulationLedgerByPaymentTransactionId.get(paymentTransaction.id)
       : undefined;
 
-    return {
+    return [{
       bookingId: booking.id,
       paymentTransactionId: paymentTransaction?.id ?? null,
       ledgerEntryId: ledgerEntry?.id ?? null,
@@ -1045,7 +1063,8 @@ export default async function PaymentsV2AdminPage({
       providerPayoutProfileId: ledgerEntry?.provider_payout_profile_id ?? payoutProfile?.id ?? null,
       payoutBatchId: ledgerEntry?.payout_batch_id ?? null,
       createdAt: booking.created_at,
-    };
+      sourceLabel: isStripeTest ? "Stripe Test" : "Simulation",
+    }];
   });
   const selectedSimulationOption =
     simulationOptions.find((option) => option.bookingId === selectedBookingId) ?? null;
@@ -1438,8 +1457,8 @@ export default async function PaymentsV2AdminPage({
         />
 
         <Section
-          title="Simulationsbuchung auswaehlen"
-          description="Bestehende Workshop-Simulationsbuchungen serverseitig laden, auswaehlen und den Payment-/Ledger-Kontext ohne UUID-Suche einsehen."
+          title="Test-/Simulationsbuchung auswaehlen"
+          description="Interne Workshop-Simulationen und Stripe-Testbuchungen serverseitig laden, auswaehlen und den Payment-/Ledger-Kontext ohne UUID-Suche einsehen."
         >
           <div className="space-y-4">
             <form action={PAYMENTS_V2_ADMIN_PATH} className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)_auto]">
@@ -1452,19 +1471,19 @@ export default async function PaymentsV2AdminPage({
                 >
                   <option value="today">Heute</option>
                   <option value="last7">Letzte 7 Tage</option>
-                  <option value="all">Alle Simulationen</option>
+                  <option value="all">Alle Test-/Simulationsbuchungen</option>
                 </select>
               </label>
               <label className="block">
                 <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-600">
-                  Simulationsbuchung
+                  Test-/Simulationsbuchung
                 </span>
                 <select
                   name="selectedBookingId"
                   defaultValue={selectedSimulationOption?.bookingId ?? ""}
                   className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                 >
-                  <option value="">Bitte Simulationsbuchung auswaehlen</option>
+                  <option value="">Bitte Test-/Simulationsbuchung auswaehlen</option>
                   {simulationOptions.map((option) => (
                     <option key={option.bookingId} value={option.bookingId}>
                       {formatSimulationOptionLabel(option)}
@@ -1484,13 +1503,13 @@ export default async function PaymentsV2AdminPage({
 
             {simulationOptions.length === 0 ? (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                Keine Simulationsbuchungen im gewaehlten Zeitraum gefunden.
+                Keine Test-/Simulationsbuchungen im gewaehlten Zeitraum gefunden.
               </div>
             ) : null}
 
             {invalidSelectedBooking ? (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                Die ausgewaehlte Simulationsbuchung ist im aktuellen Zeitraum nicht verfuegbar oder ungueltig.
+                Die ausgewaehlte Test-/Simulationsbuchung ist im aktuellen Zeitraum nicht verfuegbar oder ungueltig.
               </div>
             ) : null}
 
@@ -1503,6 +1522,7 @@ export default async function PaymentsV2AdminPage({
                     <div>payment_transaction_id: {selectedSimulationOption.paymentTransactionId ?? "-"}</div>
                     <div>ledger_entry_id: {selectedSimulationOption.ledgerEntryId ?? "-"}</div>
                     <div>payout_batch_id: {selectedSimulationOption.payoutBatchId ?? "-"}</div>
+                    <div>Quelle: {selectedSimulationOption.sourceLabel}</div>
                   </div>
                   <div className="space-y-1 text-sm text-slate-700">
                     <div className="font-semibold text-slate-900">Kontext</div>
@@ -1673,7 +1693,7 @@ export default async function PaymentsV2AdminPage({
         >
           <div className="space-y-6">
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-              Aktuell nur Simulationsbuchungen fuer einmalige Angebote mit <code>bookings.is_simulation = true</code>.
+              Aktuell interne Simulationen und Stripe-Testbuchungen fuer einmalige Angebote. Live-Stripe-Buchungen werden hier nicht als Simulation gelistet.
             </div>
 
             <form action={PAYMENTS_V2_ADMIN_PATH} className="grid gap-3 md:grid-cols-4 xl:grid-cols-5">
@@ -1687,7 +1707,7 @@ export default async function PaymentsV2AdminPage({
                 >
                   <option value="today">Heute</option>
                   <option value="last7">Letzte 7 Tage</option>
-                  <option value="all">Alle Simulationen</option>
+                  <option value="all">Alle Test-/Simulationsbuchungen</option>
                 </select>
               </label>
               <label className="block">
