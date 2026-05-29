@@ -7,6 +7,7 @@ import { DEFAULT_PLATFORM_FEE_PERCENT } from "@/lib/platform-fees";
 import type { ProviderType, WorkshopStornoPolicy } from "@/lib/provider-profiles";
 import { getWorkshopCheckoutCurrency } from "@/lib/workshop-checkout";
 import { createWorkshopAction } from "../actions";
+import OfferImageField from "./OfferImageField";
 
 type SessionInput = {
   id: string;
@@ -34,6 +35,7 @@ export type WorkshopFormValues = {
   sessions?: Array<{ starts_at: string; ends_at: string }>;
   visibility?: "public" | "private_link";
   internal_note?: string;
+  offer_image_url?: string;
 };
 
 type SinglePaymentOfferKind = "workshop" | "exclusive_offer";
@@ -87,6 +89,7 @@ export default function WorkshopForm({
   const workshopCurrency = getWorkshopCheckoutCurrency();
   const isLegacyExclusiveOffer = offerKind === "exclusive_offer";
   const [error, setError] = useState<string | null>(null);
+  const [offerImageError, setOfferImageError] = useState<string | null>(null);
   const [priceEur, setPriceEur] = useState(initialValues?.price_eur ?? "");
   const [currency] = useState(workshopCurrency);
   const [sessions, setSessions] = useState<SessionInput[]>(() =>
@@ -143,6 +146,11 @@ export default function WorkshopForm({
     const title = String(formData.get("title") ?? "").trim();
     const stornoPolicy = String(formData.get("workshop_storno_policy") ?? "").trim();
     const instructorName = String(formData.get("instructor_name") ?? "").trim();
+
+    if (offerImageError) {
+      setError(offerImageError);
+      return;
+    }
 
     if (!title) {
       setError("Bitte gib einen Titel ein.");
@@ -275,6 +283,8 @@ export default function WorkshopForm({
           placeholder="Kurzbeschreibung fuer die Angebotsseite."
         />
       </label>
+
+      <OfferImageField initialUrl={initialValues?.offer_image_url ?? ""} onValidationError={setOfferImageError} />
 
       <label className="block space-y-1">
         <span className="text-sm font-medium">Interne Notiz</span>
@@ -509,6 +519,12 @@ export default function WorkshopForm({
         Einmalangebote werden direkt bestätigt.
       </p>
 
+      {offerImageError ? (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {offerImageError}
+        </p>
+      ) : null}
+
       {error ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
@@ -517,7 +533,7 @@ export default function WorkshopForm({
 
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || Boolean(offerImageError)}
         className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
       >
         {pending ? "Speichert..." : submitLabel}

@@ -29,8 +29,8 @@ export default function ReserveButton(props: Props) {
     try {
       await props.reserveAction(props.courseId, props.sessionId);
       setMsg("Reserviert ✅");
-    } catch (e: any) {
-      setMsg(e?.message ?? "Fehler");
+    } catch (error: unknown) {
+      setMsg(error instanceof Error ? error.message : "Fehler");
     } finally {
       setLoading(false);
     }
@@ -43,8 +43,8 @@ export default function ReserveButton(props: Props) {
     try {
       await props.cancelAction(props.courseId, props.sessionId);
       setMsg("Storniert ✅");
-    } catch (e: any) {
-      setMsg(e?.message ?? "Fehler");
+    } catch (error: unknown) {
+      setMsg(error instanceof Error ? error.message : "Fehler");
     } finally {
       setLoading(false);
     }
@@ -57,8 +57,8 @@ export default function ReserveButton(props: Props) {
     try {
       await props.buyAction(props.courseId);
       setMsg("Kauf gestartet (pending) ✅");
-    } catch (e: any) {
-      setMsg(e?.message ?? "Fehler");
+    } catch (error: unknown) {
+      setMsg(error instanceof Error ? error.message : "Fehler");
     } finally {
       setLoading(false);
     }
@@ -105,7 +105,7 @@ export default function ReserveButton(props: Props) {
           props.disabled ? "bg-gray-200 text-gray-500" : "bg-black text-white"
         }`}
       >
-        {loading ? "..." : "Jetzt kostenpflichtig buchen"}
+        {loading ? "..." : "Jetzt reservieren"}
       </button>
 
       {msg && <div className="text-xs text-gray-600">{msg}</div>}

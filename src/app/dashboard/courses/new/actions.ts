@@ -7,6 +7,8 @@ import {
   type ProviderType,
 } from "@/lib/provider-profiles";
 import { generateRecurringCourseSessions } from "@/lib/course-sessions";
+import { getOfferImageUrl, validateOfferImageFile } from "@/lib/offer-image-upload";
+import { uploadOfferImage } from "@/lib/offer-image-storage";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   getWorkshopCheckoutCurrency,
@@ -64,6 +66,35 @@ function parseOptionalString(value: FormDataEntryValue | null): string | null {
   if (value === null) return null;
   const s = String(value).trim();
   return s ? s : null;
+}
+
+function getOfferImageInput(formData: FormData): {
+  existingOfferImageUrl: string | null;
+  offerImageFile: File | null;
+} {
+  const existingOfferImageUrl = getOfferImageUrl(parseOptionalString(formData.get("existing_offer_image_url")));
+  const file = formData.get("offer_image_file");
+  return {
+    existingOfferImageUrl,
+    offerImageFile: file instanceof File && file.size > 0 ? file : null,
+  };
+}
+
+async function resolveOfferImageUrl(formData: FormData, offerId: string): Promise<{ url: string | null } | { error: string }> {
+  const { existingOfferImageUrl, offerImageFile } = getOfferImageInput(formData);
+  if (!offerImageFile) return { url: existingOfferImageUrl };
+
+  const validation = validateOfferImageFile({
+    size: offerImageFile.size,
+    type: offerImageFile.type,
+    name: offerImageFile.name,
+  });
+  if (!validation.ok) return { error: validation.error };
+
+  const uploadResult = await uploadOfferImage({ offerId, file: offerImageFile });
+  if ("error" in uploadResult) return uploadResult;
+
+  return { url: uploadResult.url };
 }
 
 function parseIsoDateTimeList(values: FormDataEntryValue[]): string[] {
@@ -287,6 +318,15 @@ async function createOrUpdateWorkshop(
   const offerKind = parseSinglePaymentOfferKind(formData.get("offer_kind"));
   const visibility = parseOfferVisibility(formData.get("visibility"));
   const internal_note = parseOptionalString(formData.get("internal_note"));
+  const { offerImageFile } = getOfferImageInput(formData);
+  if (offerImageFile) {
+    const validation = validateOfferImageFile({
+      size: offerImageFile.size,
+      type: offerImageFile.type,
+      name: offerImageFile.name,
+    });
+    if (!validation.ok) return { error: validation.error };
+  }
   const sessions = parseSessionsJson(formData);
   if (!sessions) return { error: "Bitte fuege mindestens einen gueltigen Termin hinzu (Ende nach Start)." };
   if (!isWorkshopStornoPolicy(workshop_storno_policy)) {
@@ -370,6 +410,20 @@ async function createOrUpdateWorkshop(
         return { error: formatUserSupabaseError(sessionInsertError) };
       }
 
+      const offerImageResult = await resolveOfferImageUrl(formData, inserted.id);
+      if ("error" in offerImageResult) return { error: offerImageResult.error };
+      if (offerImageResult.url) {
+        const { error: imageUpdateError } = await supabase
+          .from("courses")
+          .update({ offer_image_url: offerImageResult.url })
+          .eq("id", inserted.id)
+          .eq("teacher_id", user.id);
+        if (imageUpdateError) {
+          logSupabaseError("update.courses(exclusive-offer-image)", imageUpdateError);
+          return { error: formatUserSupabaseError(imageUpdateError) };
+        }
+      }
+
       return { redirectTo: `/dashboard/courses/${inserted.id}` };
     }
 
@@ -398,6 +452,9 @@ async function createOrUpdateWorkshop(
       const newId = extractCourseIdFromRpcResult(data);
       if (!newId) return { error: "Workshop wurde erstellt, aber keine ID zurueckgegeben." };
 
+      const offerImageResult = await resolveOfferImageUrl(formData, newId);
+      if ("error" in offerImageResult) return { error: offerImageResult.error };
+
       const { error: statusUpdateError } = await supabase
         .from("courses")
         .update({
@@ -405,6 +462,7 @@ async function createOrUpdateWorkshop(
           is_published: false,
           visibility,
           internal_note,
+          offer_image_url: offerImageResult.url,
         })
         .eq("id", newId)
         .eq("teacher_id", user.id)
@@ -438,6 +496,8 @@ async function createOrUpdateWorkshop(
   if (!ownership.ok) return { error: ownership.error ?? "Angebot nicht gefunden." };
 
   const firstSessionStart = sessions[0]?.starts_at ?? null;
+  const offerImageResult = await resolveOfferImageUrl(formData, options.courseId);
+  if ("error" in offerImageResult) return { error: offerImageResult.error };
 
   try {
     const lastSessionEnd = sessions[sessions.length - 1]?.ends_at ?? null;
@@ -459,6 +519,7 @@ async function createOrUpdateWorkshop(
           ends_at: offerKind === "exclusive_offer" ? lastSessionEnd : null,
           visibility,
           internal_note,
+          offer_image_url: offerImageResult.url,
         })
         .eq("id", options.courseId)
         .eq("teacher_id", user.id)
@@ -535,6 +596,15 @@ async function createOrUpdateCourse(
   const trial_mode = String(formData.get("trial_mode") || "all_sessions").trim().toLowerCase();
   const visibility = parseOfferVisibility(formData.get("visibility"));
   const internal_note = parseOptionalString(formData.get("internal_note"));
+  const { offerImageFile } = getOfferImageInput(formData);
+  if (offerImageFile) {
+    const validation = validateOfferImageFile({
+      size: offerImageFile.size,
+      type: offerImageFile.type,
+      name: offerImageFile.name,
+    });
+    if (!validation.ok) return { error: validation.error };
+  }
   const selectedTrialSlotStarts = parseIsoDateTimeList(formData.getAll("trial_slot_starts_at"));
   const cancellation_model = "monthly";
 
@@ -665,11 +735,27 @@ async function createOrUpdateCourse(
       }
     }
 
+    const offerImageResult = await resolveOfferImageUrl(formData, inserted.id);
+    if ("error" in offerImageResult) return { error: offerImageResult.error };
+    if (offerImageResult.url) {
+      const { error: imageUpdateError } = await supabase
+        .from("courses")
+        .update({ offer_image_url: offerImageResult.url })
+        .eq("id", inserted.id)
+        .eq("teacher_id", user.id);
+      if (imageUpdateError) {
+        logSupabaseError("update.courses(course-image)", imageUpdateError);
+        return { error: formatUserSupabaseError(imageUpdateError) };
+      }
+    }
+
     redirect(`/dashboard/courses/${inserted.id}`);
   }
 
   const ownership = await assertTeacherOwnsCourse(supabase, user.id, options.courseId);
   if (!ownership.ok) return { error: ownership.error ?? "Angebot nicht gefunden." };
+  const offerImageResult = await resolveOfferImageUrl(formData, options.courseId);
+  if ("error" in offerImageResult) return { error: offerImageResult.error };
 
   const { error } = await supabase
     .from("courses")
@@ -691,6 +777,7 @@ async function createOrUpdateCourse(
       currency,
       visibility,
       internal_note,
+      offer_image_url: offerImageResult.url,
     })
     .eq("id", options.courseId)
     .eq("teacher_id", user.id)

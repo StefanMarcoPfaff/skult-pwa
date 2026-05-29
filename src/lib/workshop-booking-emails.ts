@@ -245,13 +245,13 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
 
   return {
     to: data.customerEmail,
-    subject: `${isFreeBooking ? "Deine Buchung ist bestätigt" : "Deine Buchung war erfolgreich"} 🎉 ${data.workshopTitle}`,
+    subject: `${isFreeBooking ? "Dein Platz wurde reserviert" : "Deine Buchung war erfolgreich"} 🎉 ${data.workshopTitle}`,
     html:
       createHtmlEmail({
-        title: isFreeBooking ? "Deine Buchung ist bestätigt 🎉" : "Deine Buchung war erfolgreich 🎉",
+        title: isFreeBooking ? "Dein Platz wurde erfolgreich reserviert 🎉" : "Deine Buchung war erfolgreich 🎉",
         greeting: data.customerName,
         intro: isFreeBooking
-          ? `Deine Buchung für <b>${data.workshopTitle}</b> ist bestätigt.`
+          ? `Dein Platz für <b>${data.workshopTitle}</b> wurde erfolgreich reserviert.`
           : `Deine Buchung für <b>${data.workshopTitle}</b> ist erfolgreich abgeschlossen. Deine Zahlung wurde bestätigt.`,
         infoItems: [
           { label: "Angebot", value: data.workshopTitle },
@@ -286,10 +286,10 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
         footer: buildFooterBranding(data),
       }),
     text: createTextEmail({
-      title: isFreeBooking ? "Deine Buchung ist bestätigt 🎉" : "Deine Buchung war erfolgreich 🎉",
+      title: isFreeBooking ? "Dein Platz wurde erfolgreich reserviert 🎉" : "Deine Buchung war erfolgreich 🎉",
       greeting: data.customerName,
       intro: isFreeBooking
-        ? `Deine Buchung für ${data.workshopTitle} ist bestätigt.`
+        ? `Dein Platz für ${data.workshopTitle} wurde erfolgreich reserviert.`
         : `Deine Buchung für ${data.workshopTitle} ist erfolgreich abgeschlossen. Deine Zahlung wurde bestätigt.`,
       infoItems: [
         { label: "Angebot", value: data.workshopTitle },
@@ -328,7 +328,7 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
         <h2>Neue Buchung</h2>
-        <p><b>${data.customerName}</b> hat das Angebot <b>${data.workshopTitle}</b> ${isFreeBooking ? "kostenlos gebucht" : "gebucht und bezahlt"}.</p>
+        <p><b>${data.customerName}</b> hat für <b>${data.workshopTitle}</b> ${isFreeBooking ? "kostenlos einen Platz reserviert" : "gebucht und bezahlt"}.</p>
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
         ${data.customerPhone ? `<p><b>Telefon:</b> ${data.customerPhone}</p>` : ""}
         ${data.providerName ? `<p><b>Anbieter:</b> ${data.providerName}</p>` : ""}
@@ -346,7 +346,7 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
     `,
     text: [
       `Neue Buchung: ${data.workshopTitle}`,
-      `${data.customerName} hat das Angebot ${isFreeBooking ? "kostenlos gebucht" : "gebucht und bezahlt"}.`,
+      `${data.customerName} hat für ${data.workshopTitle} ${isFreeBooking ? "kostenlos einen Platz reserviert" : "gebucht und bezahlt"}.`,
       `E-Mail: ${data.customerEmail}`,
       data.customerPhone ? `Telefon: ${data.customerPhone}` : null,
       data.providerName ? `Anbieter: ${data.providerName}` : null,

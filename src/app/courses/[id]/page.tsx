@@ -315,7 +315,7 @@ export default async function CourseDetailPage({
 
           <div className="space-y-2 rounded-2xl border p-4">
             <h3 className="text-base font-semibold">
-              {availability.isSoldOut || !workshopCanBook ? "Anfragen" : "Jetzt buchen"}
+              {availability.isSoldOut || !workshopCanBook ? "Anfragen" : "Jetzt reservieren"}
             </h3>
             {capacity !== null ? (
               <p className={`text-sm font-medium ${availability.badgeClassName}`}>{availability.badgeText}</p>

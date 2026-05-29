@@ -7,6 +7,7 @@ import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
 import { DEFAULT_PLATFORM_FEE_PERCENT } from "@/lib/platform-fees";
 import type { ProviderType } from "@/lib/provider-profiles";
 import { createCourseAction } from "../actions";
+import OfferImageField from "./OfferImageField";
 
 const weekdayOptions = [
   { value: "1", label: "Montag" },
@@ -36,6 +37,7 @@ export type CourseFormValues = {
   instructor_name?: string;
   trial_slot_starts?: string[];
   visibility?: "public" | "private_link";
+  offer_image_url?: string;
 };
 
 function getWeekdayForDate(value: string): number | null {
@@ -107,6 +109,7 @@ export default function CourseForm({
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [offerImageError, setOfferImageError] = useState<string | null>(null);
   const [priceEur, setPriceEur] = useState(initialValues?.price_eur ?? "");
   const [currency, setCurrency] = useState(initialValues?.currency ?? "EUR");
   const [weekday, setWeekday] = useState(initialValues?.weekday ?? "1");
@@ -164,6 +167,11 @@ export default function CourseForm({
     const recurrence = String(formData.get("recurrence_type") ?? "").trim();
     const trialModeValue = String(formData.get("trial_mode") ?? "all_sessions").trim();
     const instructorName = String(formData.get("instructor_name") ?? "").trim();
+
+    if (offerImageError) {
+      setError(offerImageError);
+      return;
+    }
 
     if (!title) {
       setError("Bitte gib einen Titel ein.");
@@ -280,6 +288,8 @@ export default function CourseForm({
           placeholder="Kurzbeschreibung für das laufende Angebot."
         />
       </label>
+
+      <OfferImageField initialUrl={initialValues?.offer_image_url ?? ""} onValidationError={setOfferImageError} />
 
       <label className="block space-y-1">
         <span className="text-sm font-medium">Interne Notiz</span>
@@ -551,6 +561,12 @@ export default function CourseForm({
         </p>
       </div>
 
+      {offerImageError ? (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {offerImageError}
+        </p>
+      ) : null}
+
       {error ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
@@ -559,7 +575,7 @@ export default function CourseForm({
 
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || Boolean(offerImageError)}
         className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
       >
         {pending ? "Speichert..." : submitLabel}

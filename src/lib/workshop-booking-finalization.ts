@@ -228,6 +228,13 @@ async function finalizeWorkshopBookingRecord(input: {
       : null;
 
   const ticket = ticketResult?.ticket ?? null;
+  if (ticket) {
+    logWorkshopFinalization("ticket created", {
+      bookingId: booking.id,
+      ticketId: ticket.id,
+      paymentStatus: input.paymentStatus,
+    });
+  }
 
   const [{ data: course }, { data: workshopSessions }] = await Promise.all([
     booking.course_id
@@ -330,6 +337,12 @@ async function finalizeWorkshopBookingRecord(input: {
         .update({ workshop_confirmation_email_sent_at: new Date().toISOString() })
         .eq("id", booking.id)
         .is("workshop_confirmation_email_sent_at", null);
+
+      logWorkshopFinalization("customer mail sent", {
+        bookingId: booking.id,
+        recipient: customerEmail,
+        paymentStatus: input.paymentStatus,
+      });
     } catch (error) {
       logWorkshopFinalization("customer confirmation email failed", {
         bookingId: booking.id,
@@ -386,6 +399,12 @@ async function finalizeWorkshopBookingRecord(input: {
         if (result?.error) {
           throw result.error;
         }
+
+        logWorkshopFinalization("provider mail sent", {
+          bookingId: booking.id,
+          recipient: providerEmail,
+          paymentStatus: input.paymentStatus,
+        });
       } catch (error) {
         await admin
           .from("bookings")

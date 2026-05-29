@@ -171,6 +171,15 @@ export async function POST(req: Request) {
       );
     }
 
+    if (isFreeOffer) {
+      logCheckoutConnectState("free booking created", {
+        bookingId: booking.id,
+        courseId: course.id,
+        paymentProvider: "free",
+        stripeCheckoutSkipped: true,
+      });
+    }
+
     const siteUrl = getSiteUrl(req.url);
     const usePlatformCharge = isPaymentsV2StripePlatformChargesEnabled();
 
@@ -179,6 +188,14 @@ export async function POST(req: Request) {
       if (!finalized) {
         return NextResponse.json({ error: "Kostenlose Buchung konnte nicht bestätigt werden." }, { status: 500 });
       }
+
+      logCheckoutConnectState("free booking finalized", {
+        bookingId: booking.id,
+        courseId: course.id,
+        ticketCreated: Boolean(finalized.ticket),
+        customerEmail: finalized.customerEmail,
+        paymentStatus: finalized.paymentStatus,
+      });
 
       return NextResponse.json({
         url: `${siteUrl}/checkout/success?booking_id=${booking.id}`,

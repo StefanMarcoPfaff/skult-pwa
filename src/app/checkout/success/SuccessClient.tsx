@@ -75,7 +75,7 @@ export default function SuccessClient({ bookingData }: Props) {
           <div className="mt-3 space-y-3 text-sm text-muted-foreground">
             <p>Dein Platz wurde erfolgreich reserviert.</p>
             {isFreeBooking ? (
-              <p>Deine Reservation ist bestätigt und dein Ticket ist bereit.</p>
+              <p>Alle weiteren Informationen erhältst du per E-Mail.</p>
             ) : (
               <p>
                 Deine Zahlung wurde bestätigt und bleibt bis zum Abschluss des Angebots sicher vorgemerkt. Sollte das

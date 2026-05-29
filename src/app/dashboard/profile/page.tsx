@@ -14,6 +14,7 @@ type ProfileRow = {
   last_name: string | null;
   bio: string | null;
   photo_url: string | null;
+  company_logo_url: string | null;
   intro_video_url: string | null;
   provider_type: ProviderType | null;
   organization_name: string | null;
@@ -53,7 +54,7 @@ export default async function DashboardProfilePage({
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "id,first_name,last_name,bio,photo_url,intro_video_url,provider_type,organization_name,payout_method,billing_name,billing_company_name,billing_address_line_1,billing_address_line_2,billing_postal_code,billing_city,billing_country,tax_number,vat_id,vat_status,payout_iban,payout_paypal_email"
+      "id,first_name,last_name,bio,photo_url,company_logo_url,intro_video_url,provider_type,organization_name,payout_method,billing_name,billing_company_name,billing_address_line_1,billing_address_line_2,billing_postal_code,billing_city,billing_country,tax_number,vat_id,vat_status,payout_iban,payout_paypal_email"
     )
     .eq("id", user.id)
     .maybeSingle<ProfileRow>();
@@ -84,6 +85,7 @@ export default async function DashboardProfilePage({
             last_name: profile?.last_name ?? "",
             bio: profile?.bio ?? "",
             photo_url: profile?.photo_url ?? "",
+            company_logo_url: profile?.company_logo_url ?? "",
             intro_video_url: profile?.intro_video_url ?? "",
             provider_type: profile?.provider_type ?? "independent_teacher",
             organization_name: profile?.organization_name ?? "",

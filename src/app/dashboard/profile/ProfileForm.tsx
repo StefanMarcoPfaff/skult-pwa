@@ -20,6 +20,7 @@ type ProfileFormProps = {
     last_name: string;
     bio: string;
     photo_url: string;
+    company_logo_url: string;
     intro_video_url: string;
     provider_type: ProviderType;
     organization_name: string;
@@ -45,6 +46,8 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
   const [state, setState] = useState<SaveProfileState>({});
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState(initialValues.photo_url);
   const [photoObjectUrl, setPhotoObjectUrl] = useState<string | null>(null);
+  const [companyLogoPreviewUrl, setCompanyLogoPreviewUrl] = useState(initialValues.company_logo_url);
+  const [companyLogoObjectUrl, setCompanyLogoObjectUrl] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState(initialValues.intro_video_url);
   const [videoUrlError, setVideoUrlError] = useState<string | null>(null);
@@ -56,8 +59,11 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
       if (photoObjectUrl) {
         URL.revokeObjectURL(photoObjectUrl);
       }
+      if (companyLogoObjectUrl) {
+        URL.revokeObjectURL(companyLogoObjectUrl);
+      }
     };
-  }, [photoObjectUrl]);
+  }, [companyLogoObjectUrl, photoObjectUrl]);
 
   const submitAction = async (formData: FormData) => {
     setFileError(null);
@@ -208,6 +214,75 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
           ) : null}
         </label>
       </div>
+
+      {providerType === "studio_provider" ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Firmenlogo (optional)</span>
+            <input
+              type="file"
+              name="company_logo_file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) => {
+                const nextFile = event.target.files?.[0];
+                if (!nextFile) {
+                  setFileError(null);
+                  if (companyLogoObjectUrl) {
+                    URL.revokeObjectURL(companyLogoObjectUrl);
+                    setCompanyLogoObjectUrl(null);
+                  }
+                  setCompanyLogoPreviewUrl(initialValues.company_logo_url);
+                  return;
+                }
+
+                const validation = validateProfileImageFile({
+                  size: nextFile.size,
+                  type: nextFile.type,
+                  name: nextFile.name,
+                });
+
+                if (!validation.ok) {
+                  setFileError(validation.error);
+                  event.target.value = "";
+                  if (companyLogoObjectUrl) {
+                    URL.revokeObjectURL(companyLogoObjectUrl);
+                    setCompanyLogoObjectUrl(null);
+                  }
+                  setCompanyLogoPreviewUrl(initialValues.company_logo_url);
+                  return;
+                }
+
+                setFileError(null);
+                if (companyLogoObjectUrl) {
+                  URL.revokeObjectURL(companyLogoObjectUrl);
+                }
+                const objectUrl = URL.createObjectURL(nextFile);
+                setCompanyLogoObjectUrl(objectUrl);
+                setCompanyLogoPreviewUrl(objectUrl);
+              }}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+            <span className="block text-xs text-muted-foreground">
+              Für Studios, Vereine oder Organisationen. Wird später auf E-Mails, Belegen und öffentlichen Profilen
+              verwendet.
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              JPG, PNG oder WebP, maximal {getProfileImageMaxSizeLabel()}
+            </span>
+            <input type="hidden" name="existing_company_logo_url" value={initialValues.company_logo_url} />
+            {companyLogoPreviewUrl.trim() ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={companyLogoPreviewUrl}
+                alt="Firmenlogo Vorschau"
+                className="mt-2 h-24 w-24 rounded-lg border bg-white object-contain p-2"
+              />
+            ) : null}
+          </label>
+        </div>
+      ) : (
+        <input type="hidden" name="existing_company_logo_url" value={initialValues.company_logo_url} />
+      )}
 
       <label className="block space-y-1">
         <span className="text-sm font-medium">Vorstellungsvideo</span>

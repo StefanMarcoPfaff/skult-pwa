@@ -53,7 +53,9 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     const bio = optionalText(formData.get("bio"));
     const intro_video_url = optionalText(formData.get("intro_video_url"));
     const existing_photo_url = optionalText(formData.get("existing_photo_url"));
+    const existing_company_logo_url = optionalText(formData.get("existing_company_logo_url"));
     const photo_file = formData.get("photo_file");
+    const company_logo_file = formData.get("company_logo_file");
     const provider_type_raw = optionalText(formData.get("provider_type")) ?? "independent_teacher";
     const organization_name = optionalText(formData.get("organization_name"));
     const payout_method_raw = optionalText(formData.get("payout_method")) ?? "iban";
@@ -107,6 +109,7 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     }
 
     let photo_url = existing_photo_url;
+    let company_logo_url = existing_company_logo_url;
     let warning: string | undefined;
 
     if (photo_file instanceof File && photo_file.size > 0) {
@@ -177,6 +180,73 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       }
     }
 
+    if (provider_type_raw === "studio_provider" && company_logo_file instanceof File && company_logo_file.size > 0) {
+      const validation = validateProfileImageFile({
+        size: company_logo_file.size,
+        type: company_logo_file.type,
+        name: company_logo_file.name,
+      });
+
+      if (!validation.ok) {
+        logProfileSaveEvent("validation_error", {
+          context: "company_logo_file",
+          userId: user.id,
+          reason: validation.reason,
+          fileSize: company_logo_file.size,
+          mimeType: company_logo_file.type || null,
+        });
+        return { error: validation.error };
+      }
+
+      const objectPath = `${user.id}/company-logo-${Date.now()}.${validation.normalizedExtension}`;
+
+      try {
+        const storageAdmin = createSupabaseAdmin();
+        const { error: uploadError } = await storageAdmin.storage
+          .from(PROFILE_IMAGES_BUCKET)
+          .upload(objectPath, company_logo_file, {
+            contentType: company_logo_file.type,
+            upsert: true,
+          });
+
+        if (uploadError) {
+          logProfileSaveEvent("upload_error", {
+            context: "storage.upload.company_logo",
+            userId: user.id,
+            bucket: PROFILE_IMAGES_BUCKET,
+            objectPath,
+            message: uploadError.message,
+          });
+          warning = "Das Profil konnte gespeichert werden, aber das Firmenlogo konnte nicht hochgeladen werden.";
+        } else {
+          const { data: publicUrlData } = storageAdmin.storage
+            .from(PROFILE_IMAGES_BUCKET)
+            .getPublicUrl(objectPath);
+
+          const publicUrl = optionalText(publicUrlData?.publicUrl ?? null);
+          if (!publicUrl) {
+            logProfileSaveEvent("url_error", {
+              context: "storage.public_url.company_logo",
+              userId: user.id,
+              bucket: PROFILE_IMAGES_BUCKET,
+              objectPath,
+            });
+            warning = "Das Profil konnte gespeichert werden, aber das Firmenlogo konnte nicht hochgeladen werden.";
+          } else {
+            company_logo_url = publicUrl;
+          }
+        }
+      } catch (error: unknown) {
+        logProfileSaveEvent("upload_error", {
+          context: "storage.upload.company_logo.exception",
+          userId: user.id,
+          bucket: PROFILE_IMAGES_BUCKET,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        warning = "Beim Hochladen des Firmenlogos ist ein Fehler aufgetreten. Bitte versuche es erneut.";
+      }
+    }
+
     const { error } = await supabase.from("profiles").upsert(
       {
         id: user.id,
@@ -184,6 +254,7 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
         last_name,
         bio,
         photo_url,
+        company_logo_url: provider_type_raw === "studio_provider" ? company_logo_url : existing_company_logo_url,
         intro_video_url,
         provider_type: provider_type_raw,
         organization_name: provider_type_raw === "studio_provider" ? organization_name : null,

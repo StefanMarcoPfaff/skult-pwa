@@ -4,6 +4,7 @@ import { formatBerlinDate, formatBerlinDateTime } from "@/lib/formatting/berlin-
 
 export const PAYMENTS_V2_ADMIN_PATH = "/dashboard/admin/payments-v2";
 export const PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH = "/dashboard/admin/payments-v2/subscriptions";
+export const ADMIN_PROVIDERS_PATH = "/dashboard/admin/providers";
 
 export function formatDateTime(value: string | null): string {
   return formatBerlinDateTime(value);
@@ -119,6 +120,7 @@ export function AuditNav({ currentPath }: { currentPath: string }) {
   const links = [
     { href: PAYMENTS_V2_ADMIN_PATH, label: "Payments V2 Audit" },
     { href: PAYMENTS_V2_SUBSCRIPTIONS_AUDIT_PATH, label: "Subscription Audit" },
+    { href: ADMIN_PROVIDERS_PATH, label: "Anbieter*innen" },
   ];
 
   return (

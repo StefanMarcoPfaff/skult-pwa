@@ -234,7 +234,7 @@ export function PayButton({
           disabled || loading || !isComplete ? "bg-gray-200 text-gray-500" : "bg-black text-white"
         }`}
       >
-        {loading ? "Weiterleitung..." : isFreeOffer ? "Kostenlos buchen" : "Jetzt kostenpflichtig buchen"}
+        {loading ? "Reservierung..." : "Jetzt reservieren"}
       </button>
 
       {err ? <p className="text-sm text-red-600">{err}</p> : null}
