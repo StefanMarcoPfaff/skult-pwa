@@ -7,7 +7,8 @@ export type TeacherMagicEntry = {
   ticketId: string;
   firstName: string;
   lastName: string;
-  attendanceCheckedInAt: string | null;
+  attendanceStatus: "present" | "excused" | "absent" | "open" | "unexcused";
+  markedAt: string | null;
 };
 
 function formatDateTime(value: string | null): string {
@@ -26,13 +27,14 @@ export function TeacherMagicCheckInClient(props: {
   eventDate?: string | null;
   room?: string | null;
   instructorName?: string | null;
+  checkInEnabled: boolean;
   entries: TeacherMagicEntry[];
 }) {
   const [pending, startTransition] = useTransition();
   const [entries, setEntries] = useState(props.entries);
   const [message, setMessage] = useState<string | null>(null);
 
-  function markPresent(ticketId: string) {
+  function markAttendance(ticketId: string, attendanceStatus: "present" | "excused") {
     setMessage(null);
     startTransition(async () => {
       const response = await fetch("/api/attendance/teacher-magic-link", {
@@ -43,12 +45,18 @@ export function TeacherMagicCheckInClient(props: {
           sessionId: props.sessionId ?? null,
           eventDate: props.eventDate ?? null,
           ticketId,
+          attendanceStatus,
           room: props.room ?? null,
           instructorName: props.instructorName ?? null,
         }),
       });
 
-      const data = (await response.json()) as { ok?: boolean; error?: string; checkedInAt?: string | null };
+      const data = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        checkedInAt?: string | null;
+        attendanceStatus?: "present" | "excused" | "absent";
+      };
       if (!response.ok || !data.ok) {
         setMessage(data.error ?? "Check-in konnte nicht gespeichert werden.");
         return;
@@ -57,7 +65,11 @@ export function TeacherMagicCheckInClient(props: {
       setEntries((current) =>
         current.map((entry) =>
           entry.ticketId === ticketId
-            ? { ...entry, attendanceCheckedInAt: data.checkedInAt ?? new Date().toISOString() }
+            ? {
+                ...entry,
+                attendanceStatus: data.attendanceStatus ?? attendanceStatus,
+                markedAt: data.checkedInAt ?? new Date().toISOString(),
+              }
             : entry
         )
       );
@@ -82,22 +94,40 @@ export function TeacherMagicCheckInClient(props: {
             <span>Status</span>
           </div>
           {entries.map((entry) => {
-            const isPresent = Boolean(entry.attendanceCheckedInAt);
+            const isPresent = entry.attendanceStatus === "present";
+            const isExcused = entry.attendanceStatus === "excused";
+            const statusLabel =
+              entry.attendanceStatus === "present"
+                ? "Anwesend"
+                : entry.attendanceStatus === "excused"
+                  ? "Entschuldigt"
+                  : entry.attendanceStatus === "unexcused"
+                    ? "Unentschuldigt"
+                    : "Offen";
             return (
               <div key={entry.id} className="grid grid-cols-[1fr_1fr_auto] items-center gap-3 border-b px-4 py-3 text-sm last:border-b-0">
                 <span className="min-w-0 truncate">{entry.firstName}</span>
                 <span className="min-w-0 truncate">{entry.lastName}</span>
                 <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
-                  <span className={isPresent ? "text-green-700" : "text-muted-foreground"}>
-                    {isPresent ? formatDateTime(entry.attendanceCheckedInAt) : "Offen"}
+                  <span className={isPresent ? "text-green-700" : isExcused ? "text-red-700" : "text-muted-foreground"}>
+                    {statusLabel}
+                    {entry.markedAt ? ` · ${formatDateTime(entry.markedAt)}` : ""}
                   </span>
                   <button
                     type="button"
-                    disabled={pending || isPresent}
-                    onClick={() => markPresent(entry.ticketId)}
+                    disabled={pending || !props.checkInEnabled || isPresent}
+                    onClick={() => markAttendance(entry.ticketId, "present")}
                     className="rounded-xl border border-green-300 bg-green-50 px-3 py-2 text-xs font-semibold text-green-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isPresent ? "Anwesend" : "Anwesend markieren"}
+                    Anwesend
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending || !props.checkInEnabled || isExcused}
+                    onClick={() => markAttendance(entry.ticketId, "excused")}
+                    className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Entschuldigt
                   </button>
                 </div>
               </div>

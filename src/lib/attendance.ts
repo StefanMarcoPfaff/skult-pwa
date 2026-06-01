@@ -2,8 +2,10 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { getContractParticipationGate } from "@/lib/subscription-participation";
 import { loadTicketByQrToken, type TicketRow, type TicketStatus } from "@/lib/tickets";
 
-export type AttendanceMethod = "teacher_scan" | "participant_scan" | "manual";
-export type AttendanceSource = "teacher_magic_link" | null;
+export type AttendanceMethod = "teacher_scan" | "participant_scan" | "manual" | "qr_scan";
+export type AttendanceStatus = "present" | "excused" | "absent";
+export type AttendanceDisplayStatus = AttendanceStatus | "open" | "unexcused";
+export type AttendanceSource = "checkin_link" | "qr_scan" | "manual" | "teacher_magic_link" | null;
 
 export type AttendanceRow = {
   id: string;
@@ -14,7 +16,9 @@ export type AttendanceRow = {
   booking_id: string | null;
   trial_reservation_id: string | null;
   subscription_id: string | null;
+  attendance_status: AttendanceStatus | null;
   checked_in_at: string;
+  marked_at: string | null;
   checked_in_by: string | null;
   method: AttendanceMethod;
   room: string | null;
@@ -77,6 +81,17 @@ function normalizeEventDate(value: string | null | undefined): string | null {
   return trimmed.slice(0, 10);
 }
 
+export function deriveAttendanceDisplayStatus(
+  record: Pick<AttendanceRow, "attendance_status"> | null | undefined,
+  eventDate: string | null | undefined
+): AttendanceDisplayStatus {
+  if (record?.attendance_status) return record.attendance_status;
+  const normalized = normalizeEventDate(eventDate);
+  if (!normalized) return "open";
+  const today = new Date().toISOString().slice(0, 10);
+  return normalized < today ? "unexcused" : "open";
+}
+
 function isDuplicateError(error: unknown): boolean {
   const maybeError = error as SupabaseErrorLike;
   return maybeError?.code === "23505" || /duplicate key|unique/i.test(String(maybeError?.message ?? ""));
@@ -110,6 +125,7 @@ function buildSyntheticAttendance(input: {
   checkedInAt: string;
   checkedInBy?: string | null;
   method: AttendanceMethod;
+  attendanceStatus?: AttendanceStatus;
   room?: string | null;
   instructorName?: string | null;
   source?: AttendanceSource;
@@ -125,7 +141,9 @@ function buildSyntheticAttendance(input: {
     booking_id: input.ticket.booking_id,
     trial_reservation_id: input.ticket.trial_reservation_id,
     subscription_id: input.ticket.subscription_id,
+    attendance_status: input.attendanceStatus ?? "present",
     checked_in_at: input.checkedInAt,
+    marked_at: input.checkedInAt,
     checked_in_by: input.checkedInBy ?? null,
     method: input.method,
     room: input.room ?? null,
@@ -247,11 +265,15 @@ export async function recordAttendanceForTicket(input: {
   eventDate?: string | null;
   checkedInBy?: string | null;
   method: AttendanceMethod;
+  attendanceStatus?: AttendanceStatus;
   room?: string | null;
   instructorName?: string | null;
   source?: AttendanceSource;
   checkInAccessLinkId?: string | null;
   checkedInByLabel?: string | null;
+  overwriteExisting?: boolean;
+  updateLegacyTicket?: boolean;
+  allowLegacyFallback?: boolean;
 }): Promise<AttendanceRecordResult> {
   const ticket = await loadTicketById(input.ticketId);
   if (!ticket) {
@@ -276,6 +298,33 @@ export async function recordAttendanceForTicket(input: {
 
   const existing = await findAttendanceRecord(scope, ticket.id);
   if (existing) {
+    if (input.overwriteExisting) {
+      const markedAt = new Date().toISOString();
+      const updatePayload = {
+        attendance_status: input.attendanceStatus ?? "present",
+        checked_in_at: markedAt,
+        marked_at: markedAt,
+        checked_in_by: input.checkedInBy ?? null,
+        method: input.method,
+        room: input.room ?? null,
+        instructor_name: input.instructorName ?? null,
+        source: input.source ?? null,
+        checkin_access_link_id: input.checkInAccessLinkId ?? null,
+        checked_in_by_label: input.checkedInByLabel ?? null,
+      };
+      const { data: updated, error: updateError } = await createSupabaseAdmin()
+        .from("attendance_records")
+        .update(updatePayload)
+        .eq("id", existing.id)
+        .select("*")
+        .maybeSingle<AttendanceRow>();
+      if (updateError) throw updateError;
+      return {
+        attendance: updated ?? { ...existing, ...updatePayload },
+        ticket,
+        alreadyRecorded: true,
+      };
+    }
     return {
       attendance: existing,
       ticket,
@@ -293,7 +342,9 @@ export async function recordAttendanceForTicket(input: {
     booking_id: ticket.booking_id,
     trial_reservation_id: ticket.trial_reservation_id,
     subscription_id: ticket.subscription_id,
+    attendance_status: input.attendanceStatus ?? "present",
     checked_in_at: checkedInAt,
+    marked_at: checkedInAt,
     checked_in_by: input.checkedInBy ?? null,
     method: input.method,
     room: input.room ?? null,
@@ -313,6 +364,9 @@ export async function recordAttendanceForTicket(input: {
     error = retry.error;
   }
   if (error && isMissingAttendanceTableError(error)) {
+    if (input.allowLegacyFallback === false) {
+      throw new Error("Terminbezogene Anwesenheit ist aktuell nicht verfügbar.");
+    }
     const legacyCheckedInAt = ticket.checked_in_at ?? checkedInAt;
     const alreadyRecorded = Boolean(ticket.checked_in_at);
     if (!alreadyRecorded) {
@@ -328,6 +382,7 @@ export async function recordAttendanceForTicket(input: {
         checkedInAt: legacyCheckedInAt,
         checkedInBy: input.checkedInBy ?? null,
         method: input.method,
+        attendanceStatus: input.attendanceStatus ?? "present",
         room: input.room ?? null,
         instructorName: input.instructorName ?? null,
         source: input.source ?? null,
@@ -352,7 +407,9 @@ export async function recordAttendanceForTicket(input: {
     throw error ?? new Error("Attendance could not be stored.");
   }
 
-  await markLegacyTicketCheckedIn(ticket, data.checked_in_at, input.checkedInBy ?? null);
+  if (input.updateLegacyTicket !== false) {
+    await markLegacyTicketCheckedIn(ticket, data.checked_in_at, input.checkedInBy ?? null);
+  }
 
   return {
     attendance: data,
@@ -368,11 +425,15 @@ export async function recordAttendanceForTicketToken(input: {
   eventDate?: string | null;
   checkedInBy?: string | null;
   method: AttendanceMethod;
+  attendanceStatus?: AttendanceStatus;
   room?: string | null;
   instructorName?: string | null;
   source?: AttendanceSource;
   checkInAccessLinkId?: string | null;
   checkedInByLabel?: string | null;
+  overwriteExisting?: boolean;
+  updateLegacyTicket?: boolean;
+  allowLegacyFallback?: boolean;
 }): Promise<AttendanceRecordResult> {
   const lookup = await loadTicketByQrToken(input.qrToken);
   if (!lookup) {
@@ -386,11 +447,15 @@ export async function recordAttendanceForTicketToken(input: {
     eventDate: input.eventDate ?? null,
     checkedInBy: input.checkedInBy ?? null,
     method: input.method,
+    attendanceStatus: input.attendanceStatus ?? "present",
     room: input.room ?? null,
     instructorName: input.instructorName ?? null,
     source: input.source ?? null,
     checkInAccessLinkId: input.checkInAccessLinkId ?? null,
     checkedInByLabel: input.checkedInByLabel ?? null,
+    overwriteExisting: input.overwriteExisting,
+    updateLegacyTicket: input.updateLegacyTicket,
+    allowLegacyFallback: input.allowLegacyFallback,
   });
 }
 

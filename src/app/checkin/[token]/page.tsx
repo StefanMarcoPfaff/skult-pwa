@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { recordAttendanceForTicketToken, loadAttendanceMap } from "@/lib/attendance";
+import { deriveAttendanceDisplayStatus, recordAttendanceForTicketToken, loadAttendanceMap } from "@/lib/attendance";
 import { loadValidCheckInAccessLink } from "@/lib/checkin-access-links";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import CheckInScannerClient from "@/app/dashboard/check-in/CheckInScannerClient";
@@ -10,8 +10,13 @@ type SearchParams = Record<string, string | string[] | undefined>;
 type CourseRow = {
   id: string;
   title: string | null;
+  kind: string | null;
   starts_at: string | null;
   ends_at: string | null;
+  weekday: number | null;
+  start_time: string | null;
+  duration_minutes: number | null;
+  recurrence_type: string | null;
   location: string | null;
   instructor_name: string | null;
 };
@@ -39,6 +44,7 @@ type EventOption = {
   sessionId: string | null;
   eventDate: string;
   label: string;
+  isToday: boolean;
 };
 
 function getParam(sp: SearchParams, key: string): string {
@@ -58,6 +64,27 @@ function formatDateTimeRange(start: string | null, end: string | null): string {
     ? "-"
     : endDate.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
   return `${day} | ${startTime}-${endTime}`;
+}
+
+function getDateKey(value: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(value);
+}
+
+function getWeekdayInBerlin(value: Date = new Date()): number {
+  const shortDay = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Berlin", weekday: "short" }).format(value);
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(shortDay);
+}
+
+function formatEventDate(start: string | null): string {
+  if (!start) return getDateKey();
+  const date = new Date(start);
+  if (Number.isNaN(date.getTime())) return String(start).slice(0, 10);
+  return getDateKey(date);
 }
 
 function splitName(name: string): { firstName: string; lastName: string } {
@@ -102,13 +129,13 @@ export default async function TeacherMagicCheckInPage({
   const admin = createSupabaseAdmin();
   let courseResult = await admin
     .from("courses")
-    .select("id,title,starts_at,ends_at,location,instructor_name")
+    .select("id,title,kind,starts_at,ends_at,weekday,start_time,duration_minutes,recurrence_type,location,instructor_name")
     .eq("id", verified.link.course_id)
     .maybeSingle<CourseRow>();
   if (courseResult.error && isMissingTableOrColumnError(courseResult.error)) {
     courseResult = await admin
       .from("courses")
-      .select("id,title,starts_at,ends_at")
+      .select("id,title,kind,starts_at,ends_at,weekday,start_time,duration_minutes,recurrence_type")
       .eq("id", verified.link.course_id)
       .maybeSingle<CourseRow>();
   }
@@ -127,55 +154,79 @@ export default async function TeacherMagicCheckInPage({
     throw sessionsError;
   }
 
+  const today = getDateKey();
   const eventOptions: EventOption[] =
     (sessions ?? []).length > 0
       ? (sessions ?? []).map((session) => ({
           key: session.id,
           sessionId: session.id,
-          eventDate: String(session.starts_at ?? "").slice(0, 10),
+          eventDate: formatEventDate(session.starts_at),
           label: formatDateTimeRange(session.starts_at, session.ends_at),
+          isToday: formatEventDate(session.starts_at) === today,
         }))
-      : [
+      : course.kind === "course" && course.weekday === getWeekdayInBerlin() && course.start_time
+        ? [
+            {
+              key: `recurring-${course.id}-${today}`,
+              sessionId: null,
+              eventDate: today,
+              label: `${new Date().toLocaleDateString("de-DE", { dateStyle: "medium" })} | ${course.start_time.slice(0, 5)}`,
+              isToday: true,
+            },
+          ]
+        : [
           {
             key: `course-${course.id}`,
             sessionId: null,
-            eventDate: String(course.starts_at ?? new Date().toISOString()).slice(0, 10),
+            eventDate: formatEventDate(course.starts_at),
             label: formatDateTimeRange(course.starts_at, course.ends_at),
+            isToday: formatEventDate(course.starts_at) === today,
           },
         ];
 
   const selectedSessionId = getParam(sp, "sessionId");
   const selectedEventDate = getParam(sp, "eventDate");
-  const selectedEvent =
+  const selectedEventFromParams =
     eventOptions.find(
       (option) =>
         (selectedSessionId && option.sessionId === selectedSessionId) ||
         (!selectedSessionId && selectedEventDate && option.eventDate === selectedEventDate)
-    ) ?? eventOptions[0];
+    ) ?? null;
+  const todayEvent = eventOptions.find((option) => option.isToday) ?? null;
+  const selectedEvent = todayEvent ?? selectedEventFromParams ?? eventOptions[0];
+  const checkInEnabled = Boolean(todayEvent);
 
   const scannedTicketToken = getParam(sp, "token");
   let scanMessage: { ok: boolean; text: string } | null = null;
   if (scannedTicketToken) {
-    try {
+    if (!todayEvent) {
+      scanMessage = { ok: false, text: "Heute ist kein Check-in für dieses Angebot möglich." };
+    } else {
+      try {
       const result = await recordAttendanceForTicketToken({
         qrToken: scannedTicketToken,
         courseId: course.id,
-        sessionId: selectedEvent.sessionId,
-        eventDate: selectedEvent.eventDate,
+        sessionId: todayEvent.sessionId,
+        eventDate: todayEvent.eventDate,
         checkedInBy: null,
-        method: "teacher_scan",
+        method: "qr_scan",
+        attendanceStatus: "present",
         room: course.location,
         instructorName: course.instructor_name,
-        source: "teacher_magic_link",
+        source: "qr_scan",
         checkInAccessLinkId: verified.link.id,
         checkedInByLabel: "Check-in-Link",
+        overwriteExisting: true,
+        updateLegacyTicket: false,
+        allowLegacyFallback: false,
       });
       scanMessage = {
         ok: true,
         text: result.alreadyRecorded ? "Ticket war bereits eingecheckt." : "Ticket wurde eingecheckt.",
       };
-    } catch {
+      } catch {
       scanMessage = { ok: false, text: "Dieses Ticket gehört nicht zu diesem Angebot oder ist ungültig." };
+      }
     }
   }
 
@@ -210,26 +261,35 @@ export default async function TeacherMagicCheckInPage({
   const entries: TeacherMagicEntry[] = tickets
     .filter((ticket) => ticket.status !== "cancelled" && ticket.status !== "expired")
     .map((ticket) => {
-    const name = splitName(ticket.customer_name);
-    return {
-      id: ticket.id,
-      ticketId: ticket.id,
-      firstName: name.firstName,
-      lastName: name.lastName,
-      attendanceCheckedInAt: attendanceMap.get(ticket.id)?.checked_in_at ?? ticket.checked_in_at ?? null,
-    };
-  });
+      const name = splitName(ticket.customer_name);
+      const attendance = attendanceMap.get(ticket.id) ?? null;
+      const allowLegacyStatus = eventOptions.length === 1 && course.kind !== "course";
+      const attendanceStatus = attendance
+        ? deriveAttendanceDisplayStatus(attendance, selectedEvent.eventDate)
+        : allowLegacyStatus && ticket.checked_in_at
+          ? "present"
+          : deriveAttendanceDisplayStatus(null, selectedEvent.eventDate);
+      return {
+        id: ticket.id,
+        ticketId: ticket.id,
+        firstName: name.firstName,
+        lastName: name.lastName,
+        attendanceStatus,
+        markedAt: attendance?.marked_at ?? attendance?.checked_in_at ?? (allowLegacyStatus ? ticket.checked_in_at : null),
+      };
+    });
 
   return (
     <main className="mx-auto max-w-4xl space-y-6 p-6">
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold">{course.title ?? "Check-in"}</h1>
-        <p className="text-sm text-muted-foreground">{selectedEvent.label}</p>
+        <p className="text-sm text-muted-foreground">
+          {todayEvent ? `Heute: ${todayEvent.label}` : "Check-in ist nur am jeweiligen Angebotstag möglich."}
+        </p>
       </header>
 
-      {eventOptions.length > 1 ? (
-        <section className="rounded-2xl border p-5">
-          <h2 className="text-lg font-semibold">Termin wählen</h2>
+      <section className="rounded-2xl border p-5">
+          <h2 className="text-lg font-semibold">Termine</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {eventOptions.map((option) => {
               const params = new URLSearchParams();
@@ -240,15 +300,22 @@ export default async function TeacherMagicCheckInPage({
                 <a
                   key={option.key}
                   href={`/checkin/${encodeURIComponent(token)}?${params.toString()}`}
-                  className={`rounded-2xl border p-4 text-sm ${isSelected ? "border-foreground bg-muted" : ""}`}
+                  className={`rounded-2xl border p-4 text-sm ${
+                    option.isToday ? "border-green-600 bg-green-50 text-green-900" : isSelected ? "border-foreground bg-muted" : ""
+                  }`}
                 >
                   {option.label}
+                  {option.isToday ? <span className="mt-1 block text-xs font-semibold">Heute - Check-in möglich</span> : null}
                 </a>
               );
             })}
           </div>
+          {!todayEvent ? (
+            <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Check-in ist nur am jeweiligen Angebotstag möglich.
+            </p>
+          ) : null}
         </section>
-      ) : null}
 
       {scanMessage ? (
         <section className={`rounded-2xl border p-4 text-sm ${scanMessage.ok ? "border-green-200 bg-green-50 text-green-800" : "border-red-200 bg-red-50 text-red-800"}`}>
@@ -256,13 +323,15 @@ export default async function TeacherMagicCheckInPage({
         </section>
       ) : null}
 
-      <CheckInScannerClient
-        redirectPath={`/checkin/${token}`}
-        redirectParams={{
-          sessionId: selectedEvent.sessionId ?? undefined,
-          eventDate: selectedEvent.eventDate,
-        }}
-      />
+      {todayEvent ? (
+        <CheckInScannerClient
+          redirectPath={`/checkin/${token}`}
+          redirectParams={{
+            sessionId: todayEvent.sessionId ?? undefined,
+            eventDate: todayEvent.eventDate,
+          }}
+        />
+      ) : null}
 
       <section className="space-y-3">
         <h2 className="text-xl font-semibold">Teilnehmende</h2>
@@ -272,6 +341,7 @@ export default async function TeacherMagicCheckInPage({
           eventDate={selectedEvent.eventDate}
           room={course.location}
           instructorName={course.instructor_name}
+          checkInEnabled={checkInEnabled}
           entries={entries}
         />
       </section>
