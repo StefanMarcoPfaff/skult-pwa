@@ -3,6 +3,7 @@ import { getContractParticipationGate } from "@/lib/subscription-participation";
 import { loadTicketByQrToken, type TicketRow, type TicketStatus } from "@/lib/tickets";
 
 export type AttendanceMethod = "teacher_scan" | "participant_scan" | "manual";
+export type AttendanceSource = "teacher_magic_link" | null;
 
 export type AttendanceRow = {
   id: string;
@@ -18,6 +19,9 @@ export type AttendanceRow = {
   method: AttendanceMethod;
   room: string | null;
   instructor_name: string | null;
+  source: AttendanceSource;
+  checkin_access_link_id: string | null;
+  checked_in_by_label: string | null;
   created_at: string;
 };
 
@@ -61,6 +65,11 @@ type AttendanceScope = {
   eventDate?: string | null;
 };
 
+type SupabaseErrorLike = {
+  code?: string;
+  message?: string;
+};
+
 function normalizeEventDate(value: string | null | undefined): string | null {
   if (!value) return null;
   const trimmed = value.trim();
@@ -69,8 +78,53 @@ function normalizeEventDate(value: string | null | undefined): string | null {
 }
 
 function isDuplicateError(error: unknown): boolean {
-  const maybeError = error as { code?: string; message?: string };
+  const maybeError = error as SupabaseErrorLike;
   return maybeError?.code === "23505" || /duplicate key|unique/i.test(String(maybeError?.message ?? ""));
+}
+
+function isMissingAttendanceTableError(error: unknown): boolean {
+  const maybeError = error as SupabaseErrorLike;
+  return maybeError?.code === "42P01" || /attendance_records.*does not exist|relation .*attendance_records.* does not exist/i.test(String(maybeError?.message ?? ""));
+}
+
+function isMissingAttendanceAuditColumnError(error: unknown): boolean {
+  const maybeError = error as SupabaseErrorLike;
+  return maybeError?.code === "42703" || /source|checkin_access_link_id|checked_in_by_label/i.test(String(maybeError?.message ?? ""));
+}
+
+function buildSyntheticAttendance(input: {
+  ticket: AttendanceTicketRow;
+  courseId: string;
+  sessionId?: string | null;
+  eventDate?: string | null;
+  checkedInAt: string;
+  checkedInBy?: string | null;
+  method: AttendanceMethod;
+  room?: string | null;
+  instructorName?: string | null;
+  source?: AttendanceSource;
+  checkInAccessLinkId?: string | null;
+  checkedInByLabel?: string | null;
+}): AttendanceRow {
+  return {
+    id: `legacy-ticket-${input.ticket.id}`,
+    course_id: input.courseId,
+    session_id: input.sessionId ?? null,
+    event_date: normalizeEventDate(input.eventDate),
+    ticket_id: input.ticket.id,
+    booking_id: input.ticket.booking_id,
+    trial_reservation_id: input.ticket.trial_reservation_id,
+    subscription_id: input.ticket.subscription_id,
+    checked_in_at: input.checkedInAt,
+    checked_in_by: input.checkedInBy ?? null,
+    method: input.method,
+    room: input.room ?? null,
+    instructor_name: input.instructorName ?? null,
+    source: input.source ?? null,
+    checkin_access_link_id: input.checkInAccessLinkId ?? null,
+    checked_in_by_label: input.checkedInByLabel ?? null,
+    created_at: input.checkedInAt,
+  };
 }
 
 async function loadTicketById(ticketId: string): Promise<AttendanceTicketRow | null> {
@@ -99,7 +153,13 @@ async function findAttendanceRecord(scope: AttendanceScope, ticketId: string): P
     throw new Error("Attendance scope requires sessionId or eventDate.");
   }
 
-  const { data } = await scopedQuery.maybeSingle<AttendanceRow>();
+  const { data, error } = await scopedQuery.maybeSingle<AttendanceRow>();
+  if (error && isMissingAttendanceTableError(error)) {
+    return null;
+  }
+  if (error) {
+    throw error;
+  }
   return (data as AttendanceRow | null) ?? null;
 }
 
@@ -179,6 +239,9 @@ export async function recordAttendanceForTicket(input: {
   method: AttendanceMethod;
   room?: string | null;
   instructorName?: string | null;
+  source?: AttendanceSource;
+  checkInAccessLinkId?: string | null;
+  checkedInByLabel?: string | null;
 }): Promise<AttendanceRecordResult> {
   const ticket = await loadTicketById(input.ticketId);
   if (!ticket) {
@@ -212,7 +275,7 @@ export async function recordAttendanceForTicket(input: {
 
   const checkedInAt = new Date().toISOString();
   const admin = createSupabaseAdmin();
-  const payload = {
+  const payloadWithoutAudit = {
     course_id: input.courseId,
     session_id: input.sessionId ?? null,
     event_date: normalizeEventDate(input.eventDate),
@@ -226,8 +289,45 @@ export async function recordAttendanceForTicket(input: {
     room: input.room ?? null,
     instructor_name: input.instructorName ?? null,
   };
+  const payload = {
+    ...payloadWithoutAudit,
+    source: input.source ?? null,
+    checkin_access_link_id: input.checkInAccessLinkId ?? null,
+    checked_in_by_label: input.checkedInByLabel ?? null,
+  };
 
-  const { data, error } = await admin.from("attendance_records").insert(payload).select("*").maybeSingle<AttendanceRow>();
+  let { data, error } = await admin.from("attendance_records").insert(payload).select("*").maybeSingle<AttendanceRow>();
+  if (error && isMissingAttendanceAuditColumnError(error)) {
+    const retry = await admin.from("attendance_records").insert(payloadWithoutAudit).select("*").maybeSingle<AttendanceRow>();
+    data = retry.data;
+    error = retry.error;
+  }
+  if (error && isMissingAttendanceTableError(error)) {
+    const legacyCheckedInAt = ticket.checked_in_at ?? checkedInAt;
+    const alreadyRecorded = Boolean(ticket.checked_in_at);
+    if (!alreadyRecorded) {
+      await markLegacyTicketCheckedIn(ticket, legacyCheckedInAt, input.checkedInBy ?? null);
+    }
+
+    return {
+      attendance: buildSyntheticAttendance({
+        ticket,
+        courseId: input.courseId,
+        sessionId: input.sessionId ?? null,
+        eventDate: input.eventDate ?? null,
+        checkedInAt: legacyCheckedInAt,
+        checkedInBy: input.checkedInBy ?? null,
+        method: input.method,
+        room: input.room ?? null,
+        instructorName: input.instructorName ?? null,
+        source: input.source ?? null,
+        checkInAccessLinkId: input.checkInAccessLinkId ?? null,
+        checkedInByLabel: input.checkedInByLabel ?? null,
+      }),
+      ticket,
+      alreadyRecorded,
+    };
+  }
   if (error && isDuplicateError(error)) {
     const duplicate = await findAttendanceRecord(scope, ticket.id);
     if (duplicate) {
@@ -260,6 +360,9 @@ export async function recordAttendanceForTicketToken(input: {
   method: AttendanceMethod;
   room?: string | null;
   instructorName?: string | null;
+  source?: AttendanceSource;
+  checkInAccessLinkId?: string | null;
+  checkedInByLabel?: string | null;
 }): Promise<AttendanceRecordResult> {
   const lookup = await loadTicketByQrToken(input.qrToken);
   if (!lookup) {
@@ -275,6 +378,9 @@ export async function recordAttendanceForTicketToken(input: {
     method: input.method,
     room: input.room ?? null,
     instructorName: input.instructorName ?? null,
+    source: input.source ?? null,
+    checkInAccessLinkId: input.checkInAccessLinkId ?? null,
+    checkedInByLabel: input.checkedInByLabel ?? null,
   });
 }
 
@@ -302,6 +408,9 @@ export async function removeAttendanceForTicket(input: {
   }
 
   const { error } = await scopedQuery;
+  if (error && isMissingAttendanceTableError(error)) {
+    return;
+  }
   if (error) throw error;
 }
 
@@ -330,6 +439,12 @@ export async function loadAttendanceMap(input: {
     throw new Error("Attendance scope requires sessionId or eventDate.");
   }
 
-  const { data } = await scopedQuery.returns<AttendanceRow[]>();
+  const { data, error } = await scopedQuery.returns<AttendanceRow[]>();
+  if (error && isMissingAttendanceTableError(error)) {
+    return new Map();
+  }
+  if (error) {
+    throw error;
+  }
   return new Map(((data as AttendanceRow[] | null) ?? []).map((row: AttendanceRow) => [row.ticket_id, row]));
 }

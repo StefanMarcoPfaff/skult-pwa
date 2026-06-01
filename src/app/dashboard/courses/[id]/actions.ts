@@ -4,6 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type Stripe from "stripe";
 import { getOfferArchiveEligibility } from "@/app/dashboard/archive-rules";
+import {
+  buildCheckInAccessUrl,
+  generateCheckInAccessToken,
+  getDefaultCheckInAccessExpiry,
+  hashCheckInAccessToken,
+} from "@/lib/checkin-access-links";
 import { sendCoursePauseNotificationEmail, sendCourseStopNotificationEmail } from "@/lib/course-lifecycle-emails";
 import { mirrorStripeRefundToLedger } from "@/lib/payments/ledger";
 import { paymentService } from "@/lib/payments/payment-service";
@@ -129,6 +135,14 @@ type TrialSlotCopyRow = {
   source_type: string | null;
 };
 
+type CheckInAccessSessionRow = {
+  ends_at: string | null;
+};
+
+export type CreateTeacherCheckInLinkResult =
+  | { ok: true; url: string; expiresAt: string }
+  | { ok: false; error: "invalid_request" | "not_found" | "create_failed" };
+
 function withSavedParam(targetPath: string, value: string) {
   return `${targetPath}${targetPath.includes("?") ? "&" : "?"}saved=${value}`;
 }
@@ -168,6 +182,54 @@ async function cleanupCopiedCourse(admin: ReturnType<typeof createSupabaseAdmin>
   await admin.from("trial_slots").delete().eq("course_id", courseId);
   await admin.from("course_sessions").delete().eq("course_id", courseId);
   await admin.from("courses").delete().eq("id", courseId);
+}
+
+export async function createTeacherCheckInLinkAction(formData: FormData): Promise<CreateTeacherCheckInLinkResult> {
+  const courseId = String(formData.get("course_id") || "").trim();
+
+  if (!courseId) {
+    return { ok: false, error: "invalid_request" };
+  }
+
+  const { admin, user, course } = await requireOwnedCourse(courseId);
+  if (!course) {
+    return { ok: false, error: "not_found" };
+  }
+
+  const { data: sessions } = await admin
+    .from("course_sessions")
+    .select("ends_at")
+    .eq("course_id", course.id)
+    .returns<CheckInAccessSessionRow[]>();
+
+  const token = generateCheckInAccessToken();
+  const expiresAt = getDefaultCheckInAccessExpiry({
+    courseEndsAt: course.ends_at ?? null,
+    sessionEndsAt: (sessions ?? []).map((session) => session.ends_at),
+  });
+
+  const { error } = await admin.from("checkin_access_links").insert({
+    token_hash: hashCheckInAccessToken(token),
+    course_id: course.id,
+    scope: "workshop",
+    expires_at: expiresAt.toISOString(),
+    created_by: user.id,
+    metadata: {
+      created_from: "dashboard_course_detail",
+      course_kind: course.kind,
+    },
+  });
+
+  if (error) {
+    return { ok: false, error: "create_failed" };
+  }
+
+  revalidatePath(`/dashboard/courses/${course.id}`);
+  return {
+    ok: true,
+    url: buildCheckInAccessUrl(token),
+    expiresAt: expiresAt.toISOString(),
+  };
 }
 
 export async function setCoursePublishStateAction(formData: FormData) {

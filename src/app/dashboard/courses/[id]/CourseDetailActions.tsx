@@ -17,6 +17,7 @@ import {
   setCoursePublishStateAction,
 } from "./actions";
 import { PauseCourseModal, StopCourseModal } from "./CourseLifecycleModal";
+import { TeacherCheckInShareDialog } from "./TeacherCheckInShareDialog";
 
 type CourseDetailActionsProps = {
   courseId: string;
@@ -320,6 +321,8 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
               </OfferActionIcon>
             </Link>
           </OfferActionItem>
+
+          <TeacherCheckInShareDialog courseId={props.courseId} />
 
           <MailActionLink
             href={props.contactMailHref}
