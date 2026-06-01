@@ -16,7 +16,7 @@ export type CheckInAccessLinkRow = {
   created_at: string;
   revoked_at: string | null;
   last_used_at: string | null;
-  metadata: Record<string, unknown>;
+  metadata: Record<string, unknown> | null;
 };
 
 export type ValidCheckInAccessLink = {

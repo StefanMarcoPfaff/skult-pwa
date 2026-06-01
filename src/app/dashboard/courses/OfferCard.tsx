@@ -6,6 +6,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 import { ConfirmIconAction } from "./ConfirmIconAction";
 import { DuplicateOfferAction } from "./DuplicateOfferAction";
 import { archiveCourseAction, setCoursePublishStateAction } from "./[id]/actions";
+import { TeacherCheckInShareDialog } from "./[id]/TeacherCheckInShareDialog";
 import { CourseCardShareButton } from "./CourseCardShareButton";
 import { OfferActionIcon, OfferActionItem } from "./OfferActionIcon";
 
@@ -224,14 +225,14 @@ function OneTimeActionItem(props: {
 function getCourseBadgeLabel(props: OfferCardProps): string {
   if (props.normalizedStatus === "paused" || props.normalizedStatus === "pause_scheduled") {
     if (props.pauseStartLabel && props.pauseEndLabel) {
-      return `Kurs pausiert von ${props.pauseStartLabel} bis ${props.pauseEndLabel}`;
+      return `Laufendes Angebot pausiert von ${props.pauseStartLabel} bis ${props.pauseEndLabel}`;
     }
-    return "Kurs pausiert";
+    return "Laufendes Angebot pausiert";
   }
 
   if (props.normalizedStatus === "stop_scheduled" || props.normalizedStatus === "ended") {
     const endLabel = props.stopDateLabel ?? props.endDateLabel;
-    return endLabel ? `Kurs beendet zum ${endLabel}` : "Beendet";
+    return endLabel ? `Laufendes Angebot beendet zum ${endLabel}` : "Beendet";
   }
 
   if (props.normalizedStatus === "active") {
@@ -357,6 +358,8 @@ function CourseActionSections(props: OfferCardProps) {
               <OneTimeActionItem label="Check-in" title="Check-in" icon={<CheckInGlyph />} />
             </Link>
           )}
+
+          <TeacherCheckInShareDialog courseId={props.id} />
 
           {props.mailHref ? (
             <a href={props.mailHref} className="inline-flex" title="E-Mail an Teilnehmende" aria-label="E-Mail an Teilnehmende">
@@ -506,6 +509,8 @@ function OneTimeActionSections(props: OfferCardProps & { state: OneTimeOfferStat
           ) : (
             <OneTimeActionItem label="Check-in" title="Check-in" icon={<CheckInGlyph />} disabled={true} />
           )}
+
+          <TeacherCheckInShareDialog courseId={props.id} />
 
           {props.mailHref && isPublishedWithBookings ? (
             <a href={props.mailHref} className="inline-flex" title="E-Mail an Teilnehmende" aria-label="E-Mail an Teilnehmende">

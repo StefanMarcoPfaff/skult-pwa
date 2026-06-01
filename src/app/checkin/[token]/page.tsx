@@ -22,6 +22,11 @@ type SessionRow = {
   ends_at: string | null;
 };
 
+type SupabaseErrorLike = {
+  code?: string;
+  message?: string;
+};
+
 type TicketRow = {
   id: string;
   customer_name: string;
@@ -62,6 +67,17 @@ function splitName(name: string): { firstName: string; lastName: string } {
   return { firstName: parts.slice(0, -1).join(" "), lastName: parts[parts.length - 1] };
 }
 
+function isMissingTableOrColumnError(error: unknown): boolean {
+  const maybeError = error as SupabaseErrorLike;
+  return (
+    maybeError?.code === "42P01" ||
+    maybeError?.code === "42703" ||
+    maybeError?.code === "PGRST204" ||
+    maybeError?.code === "PGRST205" ||
+    /schema cache|does not exist|Could not find/i.test(String(maybeError?.message ?? ""))
+  );
+}
+
 export default async function TeacherMagicCheckInPage({
   params,
   searchParams,
@@ -84,20 +100,32 @@ export default async function TeacherMagicCheckInPage({
   }
 
   const admin = createSupabaseAdmin();
-  const { data: course } = await admin
+  let courseResult = await admin
     .from("courses")
     .select("id,title,starts_at,ends_at,location,instructor_name")
     .eq("id", verified.link.course_id)
     .maybeSingle<CourseRow>();
+  if (courseResult.error && isMissingTableOrColumnError(courseResult.error)) {
+    courseResult = await admin
+      .from("courses")
+      .select("id,title,starts_at,ends_at")
+      .eq("id", verified.link.course_id)
+      .maybeSingle<CourseRow>();
+  }
+
+  const course = courseResult.data ?? null;
 
   if (!course) notFound();
 
-  const { data: sessions } = await admin
+  const { data: sessions, error: sessionsError } = await admin
     .from("course_sessions")
     .select("id,starts_at,ends_at")
     .eq("course_id", course.id)
     .order("starts_at", { ascending: true })
     .returns<SessionRow[]>();
+  if (sessionsError && !isMissingTableOrColumnError(sessionsError)) {
+    throw sessionsError;
+  }
 
   const eventOptions: EventOption[] =
     (sessions ?? []).length > 0
@@ -140,7 +168,7 @@ export default async function TeacherMagicCheckInPage({
         instructorName: course.instructor_name,
         source: "teacher_magic_link",
         checkInAccessLinkId: verified.link.id,
-        checkedInByLabel: "Dozent*innen-Link",
+        checkedInByLabel: "Check-in-Link",
       });
       scanMessage = {
         ok: true,
@@ -151,15 +179,27 @@ export default async function TeacherMagicCheckInPage({
     }
   }
 
-  const { data: tickets } = await admin
+  let ticketsResult = await admin
     .from("tickets")
     .select("id,customer_name,checked_in_at,status")
     .eq("course_id", course.id)
     .not("status", "in", '("cancelled","expired")')
     .order("customer_name", { ascending: true })
     .returns<TicketRow[]>();
+  if (ticketsResult.error && isMissingTableOrColumnError(ticketsResult.error)) {
+    ticketsResult = await admin
+      .from("tickets")
+      .select("id,customer_name,checked_in_at")
+      .eq("course_id", course.id)
+      .order("customer_name", { ascending: true })
+      .returns<TicketRow[]>();
+  }
+  if (ticketsResult.error) {
+    throw ticketsResult.error;
+  }
+  const tickets = ticketsResult.data ?? [];
 
-  const ticketIds = (tickets ?? []).map((ticket) => ticket.id);
+  const ticketIds = tickets.map((ticket) => ticket.id);
   const attendanceMap = await loadAttendanceMap({
     courseId: course.id,
     sessionId: selectedEvent.sessionId,
@@ -167,7 +207,9 @@ export default async function TeacherMagicCheckInPage({
     ticketIds,
   });
 
-  const entries: TeacherMagicEntry[] = (tickets ?? []).map((ticket) => {
+  const entries: TeacherMagicEntry[] = tickets
+    .filter((ticket) => ticket.status !== "cancelled" && ticket.status !== "expired")
+    .map((ticket) => {
     const name = splitName(ticket.customer_name);
     return {
       id: ticket.id,

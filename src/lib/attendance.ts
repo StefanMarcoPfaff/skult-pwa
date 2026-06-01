@@ -84,12 +84,22 @@ function isDuplicateError(error: unknown): boolean {
 
 function isMissingAttendanceTableError(error: unknown): boolean {
   const maybeError = error as SupabaseErrorLike;
-  return maybeError?.code === "42P01" || /attendance_records.*does not exist|relation .*attendance_records.* does not exist/i.test(String(maybeError?.message ?? ""));
+  return (
+    maybeError?.code === "42P01" ||
+    maybeError?.code === "PGRST205" ||
+    /attendance_records.*does not exist|relation .*attendance_records.* does not exist|attendance_records.*schema cache/i.test(
+      String(maybeError?.message ?? "")
+    )
+  );
 }
 
 function isMissingAttendanceAuditColumnError(error: unknown): boolean {
   const maybeError = error as SupabaseErrorLike;
-  return maybeError?.code === "42703" || /source|checkin_access_link_id|checked_in_by_label/i.test(String(maybeError?.message ?? ""));
+  return (
+    maybeError?.code === "42703" ||
+    maybeError?.code === "PGRST204" ||
+    /source|checkin_access_link_id|checked_in_by_label|schema cache/i.test(String(maybeError?.message ?? ""))
+  );
 }
 
 function buildSyntheticAttendance(input: {

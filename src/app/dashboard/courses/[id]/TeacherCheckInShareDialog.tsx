@@ -4,11 +4,15 @@ import { useRef, useState, useTransition } from "react";
 import { OfferActionIcon, OfferActionItem } from "../OfferActionIcon";
 import { createTeacherCheckInLinkAction, type CreateTeacherCheckInLinkResult } from "./actions";
 
-function LinkGlyph() {
+function QrCodeGlyph() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-      <path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L10.7 5.22" />
-      <path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.12a5 5 0 0 0 7.07 7.07l1.41-1.41" />
+      <rect x="4" y="4" width="6" height="6" rx="1" />
+      <rect x="14" y="4" width="6" height="6" rx="1" />
+      <rect x="4" y="14" width="6" height="6" rx="1" />
+      <path d="M14 14h2v2h-2z" />
+      <path d="M18 14h2v6h-6v-2" />
+      <path d="M14 18h2" />
     </svg>
   );
 }
@@ -49,30 +53,30 @@ export function TeacherCheckInShareDialog(props: { courseId: string }) {
   }
 
   return (
-    <OfferActionItem label="Dozent*innen-Link">
+    <OfferActionItem label="Check-in-Link">
       <button
         type="button"
         className="inline-flex"
-        title="Dozent*innen-Zugang teilen"
-        aria-label="Dozent*innen-Zugang teilen"
+        title="Check-in-Link teilen"
+        aria-label="Check-in-Link teilen"
         onClick={() => {
           setResult(null);
           setCopied(false);
           dialogRef.current?.showModal();
         }}
       >
-        <OfferActionIcon title="Dozent*innen-Zugang teilen" label="Dozent*innen-Zugang teilen">
-          <LinkGlyph />
+        <OfferActionIcon title="Check-in-Link teilen" label="Check-in-Link teilen">
+          <QrCodeGlyph />
         </OfferActionIcon>
       </button>
 
       <dialog ref={dialogRef} className="w-full max-w-xl rounded-2xl border p-0 backdrop:bg-black/30">
         <div className="space-y-4 p-6 text-left">
           <div className="space-y-2">
-            <h3 className="text-lg font-semibold">Dozent*innen-Zugang teilen</h3>
+            <h3 className="text-lg font-semibold">Check-in-Link teilen</h3>
             <p className="text-sm text-muted-foreground">
               Dieser Link erlaubt nur den Check-in für dieses Angebot. Er gibt keinen Zugriff auf Zahlungen,
-              Kundendaten oder Studioverwaltung.
+              Daten von Teilnehmenden oder Verwaltung.
             </p>
           </div>
 

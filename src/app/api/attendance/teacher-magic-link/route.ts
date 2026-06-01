@@ -43,7 +43,7 @@ export async function POST(req: Request) {
       instructorName: body.instructorName ?? null,
       source: "teacher_magic_link" as const,
       checkInAccessLinkId: verified.link.id,
-      checkedInByLabel: "Dozent*innen-Link",
+      checkedInByLabel: "Check-in-Link",
     };
 
     const result = ticketToken
@@ -63,11 +63,11 @@ export async function POST(req: Request) {
       .update({
         last_used_at: new Date().toISOString(),
         metadata: {
-          ...verified.link.metadata,
+          ...(verified.link.metadata ?? {}),
           last_checkin_source: "teacher_magic_link",
           last_checked_in_ticket_id: result.ticket.id,
           last_checked_in_at: result.attendance.checked_in_at,
-          last_checked_in_by_label: "Dozent*innen-Link",
+          last_checked_in_by_label: "Check-in-Link",
         },
       })
       .eq("id", verified.link.id);
