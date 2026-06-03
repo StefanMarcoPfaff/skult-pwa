@@ -1,6 +1,7 @@
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import { formatBerlinDate } from "@/lib/formatting/berlin-time";
+import { getProviderDisplayName, getWorkshopStornoPolicyLabel, type ProviderType } from "@/lib/provider-profiles";
 import { finalizeWorkshopBookingBySession } from "@/lib/workshop-booking-finalization";
+import { formatWorkshopPriceLabel, formatWorkshopSessionLine, shouldShowWorkshopCancellationPolicy } from "@/lib/workshop-offer-display";
 import SuccessClient, { type WorkshopSuccessData } from "./SuccessClient";
 
 type Props = {
@@ -8,26 +9,7 @@ type Props = {
 };
 
 function formatSessionLine(startsAt: string | null, endsAt: string | null): string {
-  if (!startsAt) return "Termin folgt";
-
-  const start = new Date(startsAt);
-  const date = formatBerlinDate(startsAt);
-  const startTime = start.toLocaleTimeString("de-DE", {
-    timeZone: "Europe/Berlin",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  if (!endsAt) return `${date} | ${startTime}`;
-
-  const end = new Date(endsAt);
-  const endTime = end.toLocaleTimeString("de-DE", {
-    timeZone: "Europe/Berlin",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  return `${date} | ${startTime}-${endTime}`;
+  return formatWorkshopSessionLine(startsAt, endsAt);
 }
 
 export default async function SuccessPage({ searchParams }: Props) {
@@ -54,10 +36,14 @@ export default async function SuccessPage({ searchParams }: Props) {
             location: finalized.location,
             locationDetails: finalized.locationDetails,
             sessionLines: finalized.sessionLines,
+            providerType: finalized.providerType,
             providerName: finalized.providerName,
             instructorName: finalized.instructorName,
             stornoPolicyLabel: finalized.stornoPolicyLabel,
             priceLabel: finalized.priceLabel,
+            providerLogoUrl: finalized.providerLogoUrl,
+            providerPhotoUrl: finalized.providerPhotoUrl,
+            offerImageUrl: finalized.offerImageUrl,
             qrToken: finalized.ticket?.qr_token ?? null,
           }}
         />
@@ -94,10 +80,16 @@ export default async function SuccessPage({ searchParams }: Props) {
   const [{ data: ticket }, { data: course }, { data: sessions }] = await Promise.all([
     admin.from("tickets").select("qr_token").eq("booking_id", booking.id).maybeSingle<{ qr_token: string | null }>(),
     booking.course_id
-      ? admin.from("courses").select("title,location,location_details").eq("id", booking.course_id).maybeSingle<{
+      ? admin.from("courses").select("title,location,location_details,teacher_id,instructor_name,workshop_storno_policy,price_cents,currency,offer_image_url").eq("id", booking.course_id).maybeSingle<{
           title: string | null;
           location: string | null;
           location_details: string | null;
+          teacher_id: string | null;
+          instructor_name: string | null;
+          workshop_storno_policy: string | null;
+          price_cents: number | null;
+          currency: string | null;
+          offer_image_url: string | null;
         }>()
       : Promise.resolve({ data: null }),
     booking.course_id
@@ -108,6 +100,27 @@ export default async function SuccessPage({ searchParams }: Props) {
           .order("starts_at", { ascending: true })
       : Promise.resolve({ data: [] as Array<{ starts_at: string | null; ends_at: string | null }> }),
   ]);
+
+  const { data: profile } = course?.teacher_id
+    ? await admin
+        .from("profiles")
+        .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url")
+        .eq("id", course.teacher_id)
+        .maybeSingle<{
+          first_name: string | null;
+          last_name: string | null;
+          provider_type: ProviderType | null;
+          organization_name: string | null;
+          photo_url: string | null;
+          company_logo_url: string | null;
+        }>()
+    : { data: null };
+
+  const providerName = profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
+  const priceLabel = formatWorkshopPriceLabel(course?.price_cents ?? null, course?.currency ?? null, booking.payment_status);
+  const stornoPolicyLabel = shouldShowWorkshopCancellationPolicy(course?.price_cents ?? null, booking.payment_status)
+    ? getWorkshopStornoPolicyLabel(course?.workshop_storno_policy)
+    : null;
 
   const fallbackData: WorkshopSuccessData = {
     bookingId: booking.id,
@@ -122,6 +135,14 @@ export default async function SuccessPage({ searchParams }: Props) {
     location: course?.location ?? null,
     locationDetails: course?.location_details ?? null,
     sessionLines: (sessions ?? []).map((session) => formatSessionLine(session.starts_at, session.ends_at)),
+    providerType: profile?.provider_type ?? null,
+    providerName,
+    instructorName: course?.instructor_name ?? null,
+    priceLabel,
+    stornoPolicyLabel,
+    providerLogoUrl: profile?.company_logo_url ?? null,
+    providerPhotoUrl: profile?.photo_url ?? null,
+    offerImageUrl: course?.offer_image_url ?? null,
     qrToken: ticket?.qr_token ?? null,
   };
 

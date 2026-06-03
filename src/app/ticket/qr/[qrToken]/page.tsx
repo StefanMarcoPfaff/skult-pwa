@@ -1,5 +1,7 @@
 import Link from "next/link";
 import QRCode from "react-qr-code";
+import OfferSummaryCard from "@/components/offer/OfferSummaryCard";
+import { buildOfferViewModel } from "@/lib/offers/offer-view-model";
 import { TicketQrTokenSaver } from "@/components/tickets/TicketQrTokenSaver";
 import { buildTicketCheckInUrl } from "@/lib/ticket-qr";
 import { loadTicketByQrToken } from "@/lib/tickets";
@@ -33,6 +35,30 @@ export default async function TicketQrPage({
   }
 
   const checkInUrl = buildTicketCheckInUrl(lookup.ticket.qr_token);
+  const offerViewModel = buildOfferViewModel({
+    course: {
+      title: lookup.courseTitle,
+      kind: lookup.courseKind,
+      location: lookup.courseLocation,
+      location_details: lookup.courseLocationDetails,
+      instructor_name: lookup.instructorName,
+    },
+    providerProfile: {
+      provider_type: lookup.providerType,
+      organization_name: lookup.providerName,
+      first_name: lookup.providerType === "studio_provider" ? null : lookup.providerName,
+      last_name: null,
+      company_logo_url: lookup.providerLogoUrl,
+      photo_url: lookup.providerPhotoUrl,
+    },
+  });
+  offerViewModel.sessions = lookup.sessionLines.map((line) => ({
+    dateLabel: line,
+    timeLabel: line,
+    dateTimeLabel: line,
+    startsAtBerlin: null,
+    endsAtBerlin: null,
+  }));
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
@@ -45,30 +71,12 @@ export default async function TicketQrPage({
         </p>
       </section>
 
-      <section className="rounded-2xl border p-6">
-        <h2 className="text-xl font-semibold">{lookup.courseTitle ?? "Ticket"}</h2>
-        <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-          <p>
-            Name: <span className="font-medium text-foreground">{lookup.ticket.customer_name}</span>
-          </p>
-          <p>
-            E-Mail: <span className="font-medium text-foreground">{lookup.ticket.customer_email}</span>
-          </p>
-          {lookup.courseLocation ? (
-            <p>
-              Ort: <span className="font-medium text-foreground">{lookup.courseLocation}</span>
-            </p>
-          ) : null}
-          <p>
-            Status: <span className="font-medium text-foreground">{lookup.ticket.status}</span>
-          </p>
-        </div>
-      </section>
+      <OfferSummaryCard viewModel={offerViewModel} compact showTicketInfo />
 
       <section className="rounded-2xl border p-6">
         <h2 className="text-xl font-semibold">QR-Ticket</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Bitte zeige diesen QR-Code beim Einlass vor. Der Check-in wird nur durch das Team vor Ort
+          Bitte zeige dieses Ticket beim Einlass vor. Der Check-in wird nur durch das Team vor Ort
           ausgelöst.
         </p>
         <div className="mt-4 inline-block rounded-2xl border bg-white p-4">

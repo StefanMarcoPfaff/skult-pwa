@@ -50,7 +50,7 @@ export function PayButton({
           phone: form.phone,
           agbAccepted: consents.agbAccepted,
           privacyAccepted: consents.privacyAccepted,
-          workshopStornoAccepted: consents.workshopStornoAccepted,
+          workshopStornoAccepted: isFreeOffer ? true : consents.workshopStornoAccepted,
         }),
       });
 
@@ -74,6 +74,7 @@ export function PayButton({
     }
   }
 
+  const isFreeOffer = priceLabel === "Kostenlos" || priceLabel === "Kostenfreie Reservierung";
   const isComplete =
     form.firstName.trim() &&
     form.lastName.trim() &&
@@ -81,8 +82,7 @@ export function PayButton({
     form.phone.trim() &&
     consents.agbAccepted &&
     consents.privacyAccepted &&
-    consents.workshopStornoAccepted;
-  const isFreeOffer = priceLabel === "Kostenlos";
+    (isFreeOffer || consents.workshopStornoAccepted);
 
   return (
     <div className="space-y-4">
@@ -146,9 +146,11 @@ export function PayButton({
               Leitung: <span className="font-medium text-foreground">{teacherName}</span>
             </p>
           ) : null}
-          <p>
-            Stornierungsbedingungen: <span className="font-medium text-foreground">{stornoPolicyLabel}</span>
-          </p>
+          {!isFreeOffer && stornoPolicyLabel ? (
+            <p>
+              Stornierungsbedingungen: <span className="font-medium text-foreground">{stornoPolicyLabel}</span>
+            </p>
+          ) : null}
           <p>
             Angebot: <span className="font-medium text-foreground">{offerLabel}</span>
           </p>
@@ -156,6 +158,7 @@ export function PayButton({
       </section>
 
       <div className="space-y-3 rounded-xl border p-4 text-sm">
+        {!isFreeOffer ? (
         <label className="flex items-start gap-3">
           <input
             type="checkbox"
@@ -173,6 +176,7 @@ export function PayButton({
             .
           </span>
         </label>
+        ) : null}
 
         <label className="flex items-start gap-3">
           <input

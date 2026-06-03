@@ -80,6 +80,8 @@ type ProfileRow = {
   last_name: string | null;
   provider_type: ProviderType | null;
   organization_name: string | null;
+  photo_url: string | null;
+  company_logo_url: string | null;
 };
 
 type TrialParticipantRow = {
@@ -250,7 +252,7 @@ export default async function DashboardCourseDetailPage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("first_name,last_name,provider_type,organization_name")
+    .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url")
     .eq("id", user.id)
     .maybeSingle<ProfileRow>();
 
@@ -329,8 +331,8 @@ export default async function DashboardCourseDetailPage({
   const embedUrl = `${siteUrl}/embed/courses/${data.id}`;
 
   const providerLabel =
-    profile?.provider_type === "studio_provider"
-      ? getProviderDisplayName("studio_provider", {
+    profile?.provider_type
+      ? getProviderDisplayName(profile.provider_type, {
           first_name: profile.first_name,
           last_name: profile.last_name,
           organization_name: profile.organization_name,
@@ -767,6 +769,11 @@ export default async function DashboardCourseDetailPage({
               description={data.description}
               location={data.location}
               locationDetails={data.location_details}
+              providerType={profile?.provider_type ?? null}
+              providerName={providerLabel}
+              instructorName={data.instructor_name}
+              providerLogoUrl={profile?.company_logo_url ?? null}
+              providerPhotoUrl={profile?.photo_url ?? null}
               offerImageUrl={data.offer_image_url}
               priceCents={data.price_cents}
               currency={data.currency}

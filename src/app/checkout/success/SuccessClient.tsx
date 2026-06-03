@@ -3,7 +3,9 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import QRCode from "react-qr-code";
+import OfferSummaryCard from "@/components/offer/OfferSummaryCard";
 import { buildBookingCalendarPath } from "@/lib/calendar";
+import { buildOfferViewModel } from "@/lib/offers/offer-view-model";
 import { storeTicketQrToken } from "@/lib/ticket-device-store";
 import { buildTicketCheckInUrl } from "@/lib/ticket-qr";
 
@@ -24,6 +26,9 @@ export type WorkshopSuccessData = {
   instructorName?: string | null;
   stornoPolicyLabel?: string | null;
   priceLabel?: string | null;
+  providerLogoUrl?: string | null;
+  providerPhotoUrl?: string | null;
+  offerImageUrl?: string | null;
   qrToken?: string | null;
   error?: string;
 };
@@ -60,6 +65,40 @@ export default function SuccessClient({ bookingData }: Props) {
   const paid = bookingData?.status === "paid";
   const isFreeBooking = bookingData?.paymentStatus === "free";
   const checkInUrl = bookingData?.qrToken ? buildTicketCheckInUrl(bookingData.qrToken) : null;
+  const offerViewModel = bookingData
+    ? buildOfferViewModel({
+        course: {
+          title: bookingData.workshopTitle,
+          kind: "workshop",
+          location: bookingData.location,
+          location_details: bookingData.locationDetails,
+          instructor_name: bookingData.instructorName,
+          price_cents: bookingData.paymentStatus === "free" ? 0 : null,
+          offer_image_url: bookingData.offerImageUrl,
+        },
+        providerProfile: {
+          provider_type: bookingData.providerType ?? null,
+          organization_name: bookingData.providerName,
+          first_name: bookingData.providerType === "studio_provider" ? null : bookingData.providerName,
+          last_name: null,
+          company_logo_url: bookingData.providerLogoUrl,
+          photo_url: bookingData.providerPhotoUrl,
+        },
+        paymentStatus: bookingData.paymentStatus,
+      })
+    : null;
+  if (offerViewModel && bookingData?.sessionLines?.length) {
+    offerViewModel.sessions = bookingData.sessionLines.map((line) => ({
+      dateLabel: line,
+      timeLabel: line,
+      dateTimeLabel: line,
+      startsAtBerlin: null,
+      endsAtBerlin: null,
+    }));
+    offerViewModel.priceLabel = bookingData.priceLabel ?? offerViewModel.priceLabel;
+    offerViewModel.cancellationLabel = bookingData.stornoPolicyLabel ?? null;
+    offerViewModel.showCancellationTerms = !isFreeBooking && Boolean(bookingData.stornoPolicyLabel);
+  }
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
@@ -74,15 +113,13 @@ export default function SuccessClient({ bookingData }: Props) {
         ) : paid ? (
           <div className="mt-3 space-y-3 text-sm text-muted-foreground">
             <p>Dein Platz wurde erfolgreich reserviert.</p>
-            {isFreeBooking ? (
-              <p>Alle weiteren Informationen erhältst du per E-Mail.</p>
-            ) : (
+            {!isFreeBooking ? (
               <p>
                 Deine Zahlung wurde bestätigt und bleibt bis zum Abschluss des Angebots sicher vorgemerkt. Sollte das
-                Angebot durch den/die Anbieter*in abgesagt werden, erhältst du automatisch eine Rückerstattung. Bei
+                Angebot durch die Anbietenden abgesagt werden, erhältst du automatisch eine Rückerstattung. Bei
                 einer Stornierung durch dich gelten die jeweiligen Stornierungsbedingungen.
               </p>
-            )}
+            ) : null}
             <p>Alle weiteren Informationen zu deinem Erlebnis erhältst du per E-Mail.</p>
           </div>
         ) : (
@@ -93,43 +130,7 @@ export default function SuccessClient({ bookingData }: Props) {
       </section>
 
       {paid && bookingData ? (
-        <section className="rounded-2xl border p-6">
-          <h2 className="text-xl font-semibold">{bookingData.workshopTitle ?? "Angebot"}</h2>
-          <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-            {bookingData.providerType === "studio_provider" && bookingData.providerName ? (
-              <p>
-                Anbieter: <span className="font-medium text-foreground">{bookingData.providerName}</span>
-              </p>
-            ) : null}
-            {bookingData.instructorName ? (
-              <p>
-                Anbietende: <span className="font-medium text-foreground">{bookingData.instructorName}</span>
-              </p>
-            ) : null}
-            {bookingData.location ? (
-              <p>
-                Ort: <span className="font-medium text-foreground">{bookingData.location}</span>
-              </p>
-            ) : null}
-            {bookingData.locationDetails ? (
-              <p>
-                Ort / Zusatzinfo: <span className="font-medium text-foreground">{bookingData.locationDetails}</span>
-              </p>
-            ) : null}
-            {bookingData.sessionLines && bookingData.sessionLines.length > 0 ? (
-              <div>
-                <p>Datum / Zeiten:</p>
-                <ul className="ml-5 list-disc">
-                  {bookingData.sessionLines.map((line) => (
-                    <li key={line}>
-                      <span className="font-medium text-foreground">{line}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </div>
-        </section>
+        offerViewModel ? <OfferSummaryCard viewModel={offerViewModel} compact /> : null
       ) : null}
 
       {paid && bookingData?.qrToken && checkInUrl ? (

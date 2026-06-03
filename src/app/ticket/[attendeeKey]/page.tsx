@@ -1,15 +1,14 @@
 import Link from "next/link";
 import QRCode from "react-qr-code";
-import { createClient } from "@supabase/supabase-js";
+import OfferSummaryCard from "@/components/offer/OfferSummaryCard";
 import { TicketQrTokenSaver } from "@/components/tickets/TicketQrTokenSaver";
 import { buildTicketCheckInUrl } from "@/lib/ticket-qr";
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import type { ProviderType } from "@/lib/provider-profiles";
+import { buildOfferViewModel } from "@/lib/offers/offer-view-model";
+import { formatWorkshopSessionLine } from "@/lib/workshop-offer-display";
 
 export const runtime = "nodejs";
-
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!
-);
 
 function shortKey(key: string) {
   return key.length > 10 ? `${key.slice(0, 6)}...${key.slice(-4)}` : key;
@@ -21,6 +20,7 @@ export default async function TicketPage({
   params: Promise<{ attendeeKey: string }>;
 }) {
   const { attendeeKey } = await params;
+  const supabase = createSupabaseAdmin();
 
   const { data: booking } = await supabase
     .from("bookings")
@@ -39,11 +39,67 @@ export default async function TicketPage({
   let course: Record<string, unknown> | null = null;
   if (booking?.course_id) {
     const { data } = await supabase
-      .from("courses_lite")
-      .select("*")
+      .from("courses")
+      .select("id,title,location,location_details,starts_at,teacher_id,instructor_name,offer_image_url")
       .eq("id", booking.course_id)
       .maybeSingle();
     course = data;
+  }
+
+  const [{ data: sessions }, { data: profile }] = await Promise.all([
+    booking?.course_id
+      ? supabase
+          .from("course_sessions")
+          .select("starts_at,ends_at")
+          .eq("course_id", booking.course_id)
+          .order("starts_at", { ascending: true })
+      : Promise.resolve({ data: [] as Array<{ starts_at: string | null; ends_at: string | null }> }),
+    typeof course?.teacher_id === "string"
+      ? supabase
+          .from("profiles")
+          .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url")
+          .eq("id", course.teacher_id)
+          .maybeSingle<{
+            first_name: string | null;
+            last_name: string | null;
+            provider_type: ProviderType | null;
+            organization_name: string | null;
+            photo_url: string | null;
+            company_logo_url: string | null;
+          }>()
+      : Promise.resolve({ data: null }),
+  ]);
+  const sessionLines = (sessions ?? []).map((session) => formatWorkshopSessionLine(session.starts_at, session.ends_at));
+  const offerViewModel = buildOfferViewModel({
+    course: {
+      title: typeof course?.title === "string" ? course.title : "Angebot",
+      kind: "workshop",
+      location: typeof course?.location === "string" ? course.location : null,
+      location_details: typeof course?.location_details === "string" ? course.location_details : null,
+      starts_at: typeof course?.starts_at === "string" ? course.starts_at : null,
+      instructor_name: typeof course?.instructor_name === "string" ? course.instructor_name : null,
+      offer_image_url: typeof course?.offer_image_url === "string" ? course.offer_image_url : null,
+    },
+    providerProfile: profile
+      ? {
+          provider_type: profile.provider_type,
+          organization_name: profile.organization_name,
+          first_name: profile.first_name,
+          last_name: profile.last_name,
+          photo_url: profile.photo_url,
+          company_logo_url: profile.company_logo_url,
+        }
+      : null,
+    sessions: sessions ?? [],
+  });
+  if (sessionLines.length > 0) {
+    offerViewModel.sessions = sessionLines.map((line) => ({
+      dateLabel: line,
+      timeLabel: line,
+      dateTimeLabel: line,
+      startsAtBerlin: null,
+      endsAtBerlin: null,
+    }));
   }
 
   const status = booking?.status ?? null;
@@ -71,25 +127,8 @@ export default async function TicketPage({
         </Link>
       </div>
 
-      <div
-        style={{
-          marginTop: 22,
-          padding: 18,
-          borderRadius: 16,
-          border: "1px solid #e5e5e5",
-        }}
-      >
-        <div style={{ fontSize: 14, letterSpacing: 0.3, color: "#666" }}>Angebot</div>
-        <div style={{ fontSize: 24, fontWeight: 800, marginTop: 6 }}>
-          {typeof course?.title === "string" ? course.title : "Angebot"}
-        </div>
-
-        <div style={{ marginTop: 10, color: "#444", lineHeight: 1.5 }}>
-          {ticket?.customer_name ? <div>Name: {ticket.customer_name}</div> : null}
-          {ticket?.customer_email ? <div>E-Mail: {ticket.customer_email}</div> : null}
-          {typeof course?.location === "string" ? <div>Ort: {course.location}</div> : null}
-          {typeof course?.starts_at === "string" ? <div>Start: {String(course.starts_at)}</div> : null}
-        </div>
+      <div style={{ marginTop: 22 }}>
+        <OfferSummaryCard viewModel={offerViewModel} compact showTicketInfo />
       </div>
 
       <div style={{ marginTop: 26 }}>
@@ -115,7 +154,7 @@ export default async function TicketPage({
 
         <div style={{ marginTop: 18, display: "flex", gap: 14, flexWrap: "wrap" }}>
           <div style={{ color: "#555", maxWidth: 520 }}>
-            Dieser QR-Code ist nur zur Ansicht. Der Check-in wird ausschließlich vom Team vor Ort ausgelöst.
+            Bitte zeige dieses Ticket beim Einlass vor. Der Check-in wird ausschließlich vom Team vor Ort ausgelöst.
           </div>
 
           <Link href="/courses">Alle Angebote</Link>

@@ -18,6 +18,7 @@ type PublicProfileRow = {
   provider_type: ProviderType | null;
   organization_name: string | null;
   photo_url: string | null;
+  company_logo_url: string | null;
   bio: string | null;
   intro_video_url: string | null;
 };
@@ -141,7 +142,7 @@ export async function getPublicCourseById(id: string): Promise<PublicOfferDetail
   if (publicCourse?.teacher_id) {
     const { data: loadedProfile } = await admin
       .from("profiles")
-      .select("first_name,last_name,provider_type,organization_name,photo_url,bio,intro_video_url")
+      .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url,bio,intro_video_url")
       .eq("id", publicCourse.teacher_id)
       .maybeSingle<PublicProfileRow>();
 

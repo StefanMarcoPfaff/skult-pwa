@@ -4,6 +4,8 @@ import { RESER_BRAND_NAME, RESER_BRAND_TAGLINE } from "@/lib/brand";
 import { shouldShowStudioLabel } from "@/lib/provider-profiles";
 import { buildBookingCalendarUrl } from "@/lib/calendar";
 import { buildTicketQrCodeDataUrl, buildTicketViewUrl, buildTicketWalletUrl } from "@/lib/ticket-qr";
+import { buildOfferViewModel, renderOfferSummaryEmailHtml } from "@/lib/offers/offer-view-model";
+import { resolveWorkshopProviderDisplay } from "@/lib/workshop-offer-display";
 
 export type WorkshopBookingEmailData = {
   bookingId: string;
@@ -14,6 +16,8 @@ export type WorkshopBookingEmailData = {
   teacherEmail: string | null;
   senderDisplayName?: string | null;
   senderImageUrl?: string | null;
+  providerLogoUrl?: string | null;
+  offerImageUrl?: string | null;
   customerName: string;
   customerEmail: string;
   customerPhone?: string | null;
@@ -49,11 +53,15 @@ function buildProviderInfoItems(input: {
   providerName: string | null;
   teacherName: string | null;
 }): InfoItem[] {
+  const display = resolveWorkshopProviderDisplay({
+    providerType: input.providerType,
+    providerName: input.providerName,
+    instructorName: input.teacherName,
+  });
+
   return [
-    ...(shouldShowStudioLabel(input.providerType)
-      ? [{ label: "Organisation", value: input.providerName }]
-      : []),
-    { label: "Anbietende", value: input.teacherName },
+    { label: "Organisation / Anbietende", value: display.organizationLabel },
+    { label: "Leitung", value: display.instructorLabel },
   ];
 }
 
@@ -68,10 +76,10 @@ function buildAbsoluteUrl(path: string): string {
 function renderInfoBlockHtml(items: InfoItem[]): string {
   const rows = items.filter((item) => item.value).map(
     (item) => `
-      <tr>
-        <td style="padding: 6px 0; vertical-align: top; color: #5b6470; width: 170px;"><b>${item.label}</b></td>
-        <td style="padding: 6px 0; color: #111827;">${item.value}</td>
-      </tr>
+      <div style="margin: 0 0 14px;">
+        <div style="font-size: 12px; line-height: 1.35; color: #5b6470; font-weight: 700;">${item.label}</div>
+        <div style="margin-top: 3px; color: #111827;">${item.value}</div>
+      </div>
     `
   );
 
@@ -79,9 +87,7 @@ function renderInfoBlockHtml(items: InfoItem[]): string {
 
   return `
     <div style="margin: 24px 0; padding: 18px 20px; border: 1px solid #e5e7eb; border-radius: 14px; background: #f8fafc;">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse;">
-        ${rows.join("")}
-      </table>
+      ${rows.join("")}
     </div>
   `;
 }
@@ -162,11 +168,54 @@ function buildFooterBranding(data: WorkshopBookingEmailData): FooterBranding {
   };
 }
 
+function buildEmailOfferViewModel(data: WorkshopBookingEmailData) {
+  const viewModel = buildOfferViewModel({
+    course: {
+      title: data.workshopTitle,
+      kind: "workshop",
+      location: data.location,
+      location_details: data.locationDetails,
+      instructor_name: data.teacherName,
+      price_cents: data.paymentStatus === "free" ? 0 : null,
+      offer_image_url: data.offerImageUrl ?? null,
+    },
+    providerProfile: {
+      provider_type: data.providerType ?? null,
+      organization_name: data.providerName,
+      first_name: data.providerType === "studio_provider" ? null : data.providerName,
+      last_name: null,
+      photo_url: data.senderImageUrl ?? null,
+      company_logo_url: data.providerLogoUrl ?? null,
+      email: data.teacherEmail,
+    },
+    sessions: [{ starts_at: data.startsAt ?? null, ends_at: data.endsAt ?? null }],
+    paymentStatus: data.paymentStatus,
+    replyToEmail: data.teacherEmail,
+  });
+  return {
+    ...viewModel,
+    priceLabel: data.priceLabel ?? viewModel.priceLabel,
+    cancellationLabel: data.stornoPolicyLabel,
+    showCancellationTerms: Boolean(data.stornoPolicyLabel),
+    sessions:
+      data.sessionLines.length > 0
+        ? data.sessionLines.map((line) => ({
+            dateLabel: line,
+            timeLabel: line,
+            dateTimeLabel: line,
+            startsAtBerlin: null,
+            endsAtBerlin: null,
+          }))
+        : viewModel.sessions,
+  };
+}
+
 function createHtmlEmail(input: {
   title: string;
   greeting?: string;
   intro: string;
   infoItems?: InfoItem[];
+  offerSummaryHtml?: string;
   nextSteps?: string[];
   actions?: EmailAction[];
   support?: string;
@@ -191,6 +240,7 @@ function createHtmlEmail(input: {
       <h2 style="margin: 0 0 18px; font-size: 26px; line-height: 1.25;">${input.title}</h2>
       ${greeting}
       <p style="margin: 0;">${input.intro}</p>
+      ${input.offerSummaryHtml ?? ""}
       ${infoBlock}
       ${nextSteps}
       ${renderActionsHtml(input.actions ?? [])}
@@ -242,31 +292,24 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
   const qrDataUrl = await buildTicketQrCodeDataUrl(data.qrToken);
   const calendarUrl = buildBookingCalendarUrl(data.qrToken, "ticket");
   const isFreeBooking = data.paymentStatus === "free";
+  const replyTo = data.teacherEmail?.trim() || "hello@getreser.app";
+  const offerViewModel = buildEmailOfferViewModel(data);
 
   return {
     to: data.customerEmail,
-    subject: `${isFreeBooking ? "Dein Platz wurde reserviert" : "Deine Buchung war erfolgreich"} 🎉 ${data.workshopTitle}`,
+    replyTo,
+    subject: isFreeBooking
+      ? `Dein Platz wurde reserviert: ${data.workshopTitle}`
+      : `Deine Buchung war erfolgreich: ${data.workshopTitle}`,
     html:
       createHtmlEmail({
-        title: isFreeBooking ? "Dein Platz wurde erfolgreich reserviert 🎉" : "Deine Buchung war erfolgreich 🎉",
+        title: isFreeBooking ? "Dein Platz wurde reserviert" : "Deine Buchung war erfolgreich",
         greeting: data.customerName,
         intro: isFreeBooking
-          ? `Dein Platz für <b>${data.workshopTitle}</b> wurde erfolgreich reserviert.`
-          : `Deine Buchung für <b>${data.workshopTitle}</b> ist erfolgreich abgeschlossen. Deine Zahlung wurde bestätigt.`,
-        infoItems: [
-          { label: "Angebot", value: data.workshopTitle },
-          ...buildProviderInfoItems(data),
-          { label: "Preis", value: data.priceLabel },
-          { label: "Stornierungsbedingungen", value: data.stornoPolicyLabel },
-          { label: "Ort", value: data.location },
-          { label: "Weitere Infos", value: data.locationDetails },
-          {
-            label: "Datum / Zeiten",
-            value: data.sessionLines.length > 0 ? data.sessionLines.join("<br />") : "Termin folgt",
-          },
-        ],
+          ? `dein Platz für <b>${data.workshopTitle}</b> wurde erfolgreich reserviert.`
+          : `deine Buchung für <b>${data.workshopTitle}</b> ist erfolgreich abgeschlossen. Deine Zahlung wurde bestätigt.`,
+        offerSummaryHtml: renderOfferSummaryEmailHtml(offerViewModel),
         nextSteps: [
-          "Dein Platz ist fest für dich reserviert.",
           "Bitte zeige dein Ticket beim Einlass vor.",
         ],
         actions: [
@@ -286,11 +329,11 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
         footer: buildFooterBranding(data),
       }),
     text: createTextEmail({
-      title: isFreeBooking ? "Dein Platz wurde erfolgreich reserviert 🎉" : "Deine Buchung war erfolgreich 🎉",
+      title: isFreeBooking ? "Dein Platz wurde reserviert" : "Deine Buchung war erfolgreich",
       greeting: data.customerName,
       intro: isFreeBooking
-        ? `Dein Platz für ${data.workshopTitle} wurde erfolgreich reserviert.`
-        : `Deine Buchung für ${data.workshopTitle} ist erfolgreich abgeschlossen. Deine Zahlung wurde bestätigt.`,
+        ? `dein Platz für ${data.workshopTitle} wurde erfolgreich reserviert.`
+        : `deine Buchung für ${data.workshopTitle} ist erfolgreich abgeschlossen. Deine Zahlung wurde bestätigt.`,
       infoItems: [
         { label: "Angebot", value: data.workshopTitle },
         ...buildProviderInfoItems(data),
@@ -301,7 +344,6 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
         { label: "Datum / Zeiten", value: data.sessionLines.length > 0 ? data.sessionLines.join(" | ") : "Termin folgt" },
       ],
       nextSteps: [
-        "Dein Platz ist fest für dich reserviert.",
         "Bitte zeige dein Ticket beim Einlass vor.",
       ],
       actions: [
@@ -321,35 +363,29 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
   const footerText = renderReserFooterText();
   const calendarUrl = buildBookingCalendarUrl(data.qrToken, "ticket");
   const isFreeBooking = data.paymentStatus === "free";
+  const offerSummaryHtml = renderOfferSummaryEmailHtml(buildEmailOfferViewModel(data));
 
   return {
     to: data.teacherEmail ?? "",
-    subject: `Neue Buchung: ${data.workshopTitle}`,
+    subject: `Neue Reservierung: ${data.workshopTitle}`,
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2>Neue Buchung</h2>
-        <p><b>${data.customerName}</b> hat für <b>${data.workshopTitle}</b> ${isFreeBooking ? "kostenlos einen Platz reserviert" : "gebucht und bezahlt"}.</p>
+        <h2>Neue Reservierung</h2>
+        <p>Es gibt eine neue Reservierung für dein Angebot.</p>
+        <p><b>${data.customerName}</b> hat ${isFreeBooking ? "kostenlos reserviert" : "gebucht und bezahlt"}.</p>
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
         ${data.customerPhone ? `<p><b>Telefon:</b> ${data.customerPhone}</p>` : ""}
-        ${data.providerName ? `<p><b>Anbieter:</b> ${data.providerName}</p>` : ""}
-        ${data.location ? `<p><b>Ort:</b> ${data.location}</p>` : ""}
-        ${data.locationDetails ? `<p><b>Ort / Zusatzinfo:</b> ${data.locationDetails}</p>` : ""}
-        ${data.priceLabel ? `<p><b>Preis:</b> ${data.priceLabel}</p>` : ""}
-        ${
-          data.sessionLines.length > 0
-            ? `<div><p><b>Termine:</b></p><ul>${data.sessionLines.map((line) => `<li>${line}</li>`).join("")}</ul></div>`
-            : "<p><b>Termin:</b> Termin folgt</p>"
-        }
+        ${offerSummaryHtml}
         <p><a href="${calendarUrl}">Zum Kalender hinzufügen</a></p>
         ${footerHtml}
       </div>
     `,
     text: [
-      `Neue Buchung: ${data.workshopTitle}`,
-      `${data.customerName} hat für ${data.workshopTitle} ${isFreeBooking ? "kostenlos einen Platz reserviert" : "gebucht und bezahlt"}.`,
+      `Neue Reservierung: ${data.workshopTitle}`,
+      `Es gibt eine neue Reservierung für dein Angebot.`,
+      `${data.customerName} hat ${isFreeBooking ? "kostenlos reserviert" : "gebucht und bezahlt"}.`,
       `E-Mail: ${data.customerEmail}`,
       data.customerPhone ? `Telefon: ${data.customerPhone}` : null,
-      data.providerName ? `Anbieter: ${data.providerName}` : null,
       data.location ? `Ort: ${data.location}` : null,
       data.locationDetails ? `Ort / Zusatzinfo: ${data.locationDetails}` : null,
       data.priceLabel ? `Preis: ${data.priceLabel}` : null,
@@ -371,6 +407,7 @@ export async function sendWorkshopCustomerBookingConfirmationEmail(data: Worksho
     subject: email.subject,
     html: email.html,
     text: email.text,
+    replyTo: email.replyTo,
     attachments: data.attachments,
   });
 }

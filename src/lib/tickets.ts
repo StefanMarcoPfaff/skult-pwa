@@ -1,5 +1,7 @@
 import { randomBytes } from "crypto";
+import { getProviderDisplayName, type ProviderType } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { formatWorkshopSessionLine } from "@/lib/workshop-offer-display";
 
 export type TicketType = "workshop" | "trial" | "course_session" | "course_participant";
 export type TicketStatus = "issued" | "checked_in" | "cancelled" | "expired";
@@ -34,8 +36,15 @@ type TicketLookup = {
   ticket: TicketRow;
   courseTitle: string | null;
   courseLocation: string | null;
+  courseLocationDetails: string | null;
   courseKind: string | null;
   teacherId: string | null;
+  providerType: ProviderType | null;
+  providerName: string | null;
+  instructorName: string | null;
+  providerLogoUrl: string | null;
+  providerPhotoUrl: string | null;
+  sessionLines: string[];
 };
 
 type SupabaseErrorLike = {
@@ -280,26 +289,67 @@ export async function loadTicketByQrToken(qrToken: string): Promise<TicketLookup
     | {
         title: string | null;
         location: string | null;
+        location_details: string | null;
         kind: string | null;
         teacher_id: string | null;
+        instructor_name: string | null;
       }
     | null = null;
 
   if (data.course_id) {
     const { data: courseData } = await admin
       .from("courses")
-      .select("title,location,kind,teacher_id")
+      .select("title,location,location_details,kind,teacher_id,instructor_name")
       .eq("id", data.course_id)
-      .maybeSingle<{ title: string | null; location: string | null; kind: string | null; teacher_id: string | null }>();
+      .maybeSingle<{
+        title: string | null;
+        location: string | null;
+        location_details: string | null;
+        kind: string | null;
+        teacher_id: string | null;
+        instructor_name: string | null;
+      }>();
 
     course = courseData ?? null;
   }
+
+  const [{ data: sessions }, { data: profile }] = await Promise.all([
+    data.course_id
+      ? admin
+          .from("course_sessions")
+          .select("starts_at,ends_at")
+          .eq("course_id", data.course_id)
+          .order("starts_at", { ascending: true })
+          .returns<Array<{ starts_at: string | null; ends_at: string | null }>>()
+      : Promise.resolve({ data: [] as Array<{ starts_at: string | null; ends_at: string | null }> }),
+    course?.teacher_id
+      ? admin
+          .from("profiles")
+          .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url")
+          .eq("id", course.teacher_id)
+          .maybeSingle<{
+            first_name: string | null;
+            last_name: string | null;
+            provider_type: ProviderType | null;
+            organization_name: string | null;
+            photo_url: string | null;
+            company_logo_url: string | null;
+          }>()
+      : Promise.resolve({ data: null }),
+  ]);
 
   return {
     ticket: data,
     courseTitle: course?.title ?? null,
     courseLocation: course?.location ?? null,
+    courseLocationDetails: course?.location_details ?? null,
     courseKind: course?.kind ?? null,
     teacherId: course?.teacher_id ?? null,
+    providerType: profile?.provider_type ?? null,
+    providerName: profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null,
+    instructorName: course?.instructor_name ?? null,
+    providerLogoUrl: profile?.company_logo_url ?? null,
+    providerPhotoUrl: profile?.photo_url ?? null,
+    sessionLines: (sessions ?? []).map((session) => formatWorkshopSessionLine(session.starts_at, session.ends_at)),
   };
 }

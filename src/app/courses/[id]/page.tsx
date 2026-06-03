@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import FormattedOfferDescription from "@/components/offer/FormattedOfferDescription";
+import OfferSummaryCard from "@/components/offer/OfferSummaryCard";
 import {
   formatCourseEndDate,
   isCourseClosedForNewRegistrations,
@@ -15,6 +15,11 @@ import {
 import { formatCoursePriceFromRow } from "@/lib/course-display";
 import { formatBerlinDateTimeRange } from "@/lib/formatting/berlin-time";
 import {
+  formatWorkshopPriceLabel,
+  shouldShowWorkshopCancellationPolicy,
+} from "@/lib/workshop-offer-display";
+import { buildOfferViewModel } from "@/lib/offers/offer-view-model";
+import {
   buildOfferAvailability,
   loadOccupiedCourseSeats,
   loadOccupiedWorkshopSeats,
@@ -25,7 +30,7 @@ import { PayButton } from "./PayButton";
 import ReserveTrialButton from "./ReserveTrialButton";
 import SoldOutInquiryForm from "./SoldOutInquiryForm";
 import { buildTrialSlot, computeUpcomingTrialSlots, type TrialSlot } from "./trial-slots";
-import { getOfferKindLabel, isOneTimeOfferKind } from "@/lib/offer-ui";
+import { isOneTimeOfferKind } from "@/lib/offer-ui";
 
 type Row = Record<string, unknown>;
 type SessionRow = {
@@ -107,7 +112,6 @@ export default async function CourseDetailPage({
   const location = asString(data.location);
   const price = formatPrice(data);
   const isSinglePaymentOffer = isOneTimeOfferKind(kind);
-  const offerKindLabel = getOfferKindLabel(kind);
 
   const weekday = asNumber(data.weekday);
   const startTime = asString(data.start_time);
@@ -121,6 +125,7 @@ export default async function CourseDetailPage({
   const startsAt = asString(data.starts_at);
   const endsAt = asString(data.ends_at);
   const capacity = asNumber(data.capacity);
+  const priceCents = asNumber(data.price_cents);
   const courseEndLabel = formatCourseEndDate(endsAt);
   const courseClosedForNewRegistrations =
     kind === "course" && isCourseClosedForNewRegistrations(endsAt);
@@ -200,8 +205,30 @@ export default async function CourseDetailPage({
   );
   const resolvedWorkshopPolicy =
     publicCourse?.workshop_storno_policy ?? workshopStornoPolicy;
-  const workshopPolicyLabel = getWorkshopCancellationPolicySummary({
-    cancellation_policy: resolvedWorkshopPolicy,
+  const workshopPolicyLabel = shouldShowWorkshopCancellationPolicy(priceCents)
+    ? getWorkshopCancellationPolicySummary({
+        cancellation_policy: resolvedWorkshopPolicy,
+      })
+    : null;
+  const displayedPrice = isSinglePaymentOffer ? formatWorkshopPriceLabel(priceCents, asString(data.currency)) : price;
+  const offerViewModel = buildOfferViewModel({
+    course: {
+      title,
+      kind,
+      description,
+      location,
+      location_details: asString(data.location_details),
+      price_cents: priceCents,
+      currency: asString(data.currency),
+      price_type: asString(data.price_type),
+      starts_at: startsAt,
+      ends_at: endsAt,
+      instructor_name: publicCourse?.instructor_name ?? null,
+      workshop_storno_policy: resolvedWorkshopPolicy,
+      offer_image_url: asString(data.offer_image_url),
+    },
+    providerProfile: publicProfile,
+    sessions,
   });
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
@@ -211,14 +238,9 @@ export default async function CourseDetailPage({
         </Link>
       </p>
 
-      <header className="space-y-2">
-        <h1 className="text-3xl font-black">{title}</h1>
-        <p className="text-sm text-muted-foreground">{offerKindLabel}</p>
-      </header>
+      <OfferSummaryCard viewModel={offerViewModel} showDescription />
 
       <section className="rounded-2xl border p-4 text-sm text-muted-foreground">
-        {location ? <p>Ort: {location}</p> : null}
-        {price ? <p>Preis: {price}</p> : null}
         {capacity !== null ? <p>Max. Teilnehmende: {capacity}</p> : null}
         {capacity !== null ? (
           <p>
@@ -241,8 +263,6 @@ export default async function CourseDetailPage({
         {kind === "course" && cancellationModel ? <p>Der Preis ist als Monatsbeitrag zu verstehen.</p> : null}
       </section>
 
-      <FormattedOfferDescription text={description} />
-
       {shouldShowProfileSection ? (
         <section className="rounded-2xl border p-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
@@ -259,7 +279,7 @@ export default async function CourseDetailPage({
             <div className="space-y-3">
               {profileHeading ? <h2 className="text-xl font-semibold">{profileHeading}</h2> : null}
               {publicProfile?.provider_type === "studio_provider" && providerLabel && providerLabel !== profileHeading ? (
-                <p className="text-sm text-muted-foreground">Anbieter: {providerLabel}</p>
+                <p className="text-sm text-muted-foreground">Organisation / Anbietende: {providerLabel}</p>
               ) : null}
               {profileDescription ? (
                 <p className="text-sm leading-7 text-muted-foreground">{profileDescription}</p>
@@ -318,7 +338,7 @@ export default async function CourseDetailPage({
               <PayButton
                 courseId={id}
                 teacherName={profileHeading ?? publicCourse?.instructor_name ?? providerLabel}
-                priceLabel={price}
+                priceLabel={displayedPrice}
                 stornoPolicyLabel={workshopPolicyLabel}
                 offerLabel="einmaliges Angebot"
               />

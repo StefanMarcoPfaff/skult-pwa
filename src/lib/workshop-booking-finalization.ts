@@ -10,6 +10,11 @@ import {
   sendWorkshopBookingNotificationEmail,
   sendWorkshopCustomerBookingConfirmationEmail,
 } from "@/lib/workshop-booking-emails";
+import {
+  formatWorkshopPriceLabel,
+  formatWorkshopSessionLine,
+  shouldShowWorkshopCancellationPolicy,
+} from "@/lib/workshop-offer-display";
 
 type BookingRow = {
   id: string;
@@ -35,6 +40,7 @@ type CourseRow = {
   workshop_storno_policy: string | null;
   price_cents: number | null;
   currency: string | null;
+  offer_image_url: string | null;
 };
 
 type SessionRow = {
@@ -48,6 +54,7 @@ type ProfileRow = {
   provider_type: "independent_teacher" | "studio_provider" | null;
   organization_name: string | null;
   photo_url: string | null;
+  company_logo_url: string | null;
   stripe_account_id: string | null;
 };
 
@@ -57,6 +64,7 @@ type ProviderContact = {
   providerEmail: string | null;
   providerContactName: string | null;
   senderImageUrl: string | null;
+  providerLogoUrl: string | null;
   providerAccountId: string | null;
 };
 
@@ -67,39 +75,6 @@ function isDev() {
 function logWorkshopFinalization(message: string, payload: Record<string, unknown>) {
   if (!isDev()) return;
   console.log("[workshop booking finalization]", message, payload);
-}
-
-function formatPrice(priceCents: number | null, currency: string | null): string | null {
-  if (priceCents === null || !Number.isFinite(priceCents)) return null;
-  return new Intl.NumberFormat("de-DE", {
-    style: "currency",
-    currency: currency || "EUR",
-  }).format(priceCents / 100);
-}
-
-function formatSessionLine(startsAt: string | null, endsAt: string | null): string {
-  if (!startsAt) return "Termin folgt";
-
-  const start = new Date(startsAt);
-  const date = start.toLocaleDateString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-  const startTime = start.toLocaleTimeString("de-DE", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  if (!endsAt) return `${date} | ${startTime}`;
-
-  const end = new Date(endsAt);
-  const endTime = end.toLocaleTimeString("de-DE", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  return `${date} | ${startTime}-${endTime}`;
 }
 
 function resolveLastWorkshopSessionEnd(sessions: SessionRow[] | null | undefined): string | null {
@@ -130,6 +105,7 @@ async function resolveWorkshopProviderContact(
       providerEmail: null,
       providerContactName: null,
       senderImageUrl: null,
+      providerLogoUrl: null,
       providerAccountId: null,
     };
   }
@@ -137,7 +113,7 @@ async function resolveWorkshopProviderContact(
   const [{ data: profile }, authResult] = await Promise.all([
     admin
       .from("profiles")
-      .select("first_name,last_name,provider_type,organization_name,photo_url,stripe_account_id")
+      .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url,stripe_account_id")
       .eq("id", course.teacher_id)
       .maybeSingle<ProfileRow>(),
     admin.auth.admin.getUserById(course.teacher_id),
@@ -154,6 +130,7 @@ async function resolveWorkshopProviderContact(
     providerEmail,
     providerContactName,
     senderImageUrl: profile?.photo_url ?? null,
+    providerLogoUrl: profile?.company_logo_url ?? null,
     providerAccountId: profile?.stripe_account_id ?? null,
   };
 }
@@ -175,6 +152,9 @@ export type FinalizedWorkshopBooking = {
   instructorName: string | null;
   stornoPolicyLabel: string | null;
   priceLabel: string | null;
+  providerLogoUrl: string | null;
+  providerPhotoUrl: string | null;
+  offerImageUrl: string | null;
   paymentStatus: "paid" | "free";
 };
 
@@ -241,7 +221,7 @@ async function finalizeWorkshopBookingRecord(input: {
       ? admin
           .from("courses")
           .select(
-            "id,title,location,location_details,teacher_id,instructor_name,workshop_storno_policy,price_cents,currency"
+            "id,title,location,location_details,teacher_id,instructor_name,workshop_storno_policy,price_cents,currency,offer_image_url"
           )
           .eq("id", booking.course_id)
           .maybeSingle<CourseRow>()
@@ -259,7 +239,7 @@ async function finalizeWorkshopBookingRecord(input: {
   const providerContact = await resolveWorkshopProviderContact(admin, course ?? null);
   const sessionLines =
     (workshopSessions ?? []).length > 0
-      ? (workshopSessions ?? []).map((item) => formatSessionLine(item.starts_at, item.ends_at))
+      ? (workshopSessions ?? []).map((item) => formatWorkshopSessionLine(item.starts_at, item.ends_at))
       : [];
   const firstSessionStart = workshopSessions?.[0]?.starts_at ?? null;
   const lastSessionEnd = resolveLastWorkshopSessionEnd(workshopSessions ?? []);
@@ -301,18 +281,22 @@ async function finalizeWorkshopBookingRecord(input: {
             })
           : [];
 
+      const stornoPolicyLabel = shouldShowWorkshopCancellationPolicy(course?.price_cents ?? null, input.paymentStatus)
+        ? getWorkshopStornoPolicyLabel(course?.workshop_storno_policy)
+        : null;
       const result = await sendWorkshopCustomerBookingConfirmationEmail({
         bookingId: booking.id,
         workshopTitle: course?.title ?? "Angebot",
         providerType: providerContact.providerType,
         providerName: providerContact.providerName,
         teacherName: course?.instructor_name ?? null,
-        teacherEmail: null,
+        teacherEmail: providerContact.providerEmail,
         senderDisplayName:
           providerContact.providerType === "studio_provider"
             ? providerContact.providerName
             : course?.instructor_name ?? providerContact.providerContactName,
         senderImageUrl: providerContact.senderImageUrl,
+        providerLogoUrl: providerContact.providerLogoUrl,
         customerName,
         customerEmail,
         customerPhone: booking.customer_phone?.trim() || null,
@@ -321,8 +305,8 @@ async function finalizeWorkshopBookingRecord(input: {
         startsAt: firstSessionStart,
         endsAt: lastSessionEnd,
         sessionLines,
-        stornoPolicyLabel: getWorkshopStornoPolicyLabel(course?.workshop_storno_policy),
-        priceLabel: formatPrice(course?.price_cents ?? null, course?.currency ?? null),
+        stornoPolicyLabel,
+        priceLabel: formatWorkshopPriceLabel(course?.price_cents ?? null, course?.currency ?? null, input.paymentStatus),
         paymentStatus: input.paymentStatus,
         qrToken: ticket.qr_token,
         attachments,
@@ -370,6 +354,9 @@ async function finalizeWorkshopBookingRecord(input: {
       });
     } else if (claimedRows && claimedRows.length > 0) {
       try {
+        const stornoPolicyLabel = shouldShowWorkshopCancellationPolicy(course?.price_cents ?? null, input.paymentStatus)
+          ? getWorkshopStornoPolicyLabel(course?.workshop_storno_policy)
+          : null;
         const result = await sendWorkshopBookingNotificationEmail({
           bookingId: booking.id,
           workshopTitle: course?.title ?? "Angebot",
@@ -382,6 +369,7 @@ async function finalizeWorkshopBookingRecord(input: {
               ? providerContact.providerName
               : providerContact.providerContactName,
           senderImageUrl: providerContact.senderImageUrl,
+          providerLogoUrl: providerContact.providerLogoUrl,
           customerName,
           customerEmail: customerEmail ?? "",
           customerPhone: booking.customer_phone?.trim() || null,
@@ -390,8 +378,8 @@ async function finalizeWorkshopBookingRecord(input: {
           startsAt: firstSessionStart,
           endsAt: lastSessionEnd,
           sessionLines,
-          stornoPolicyLabel: getWorkshopStornoPolicyLabel(course?.workshop_storno_policy),
-          priceLabel: formatPrice(course?.price_cents ?? null, course?.currency ?? null),
+          stornoPolicyLabel,
+          priceLabel: formatWorkshopPriceLabel(course?.price_cents ?? null, course?.currency ?? null, input.paymentStatus),
           paymentStatus: input.paymentStatus,
           qrToken: ticket.qr_token,
         });
@@ -436,8 +424,13 @@ async function finalizeWorkshopBookingRecord(input: {
     providerType: providerContact.providerType,
     providerName: providerContact.providerName,
     instructorName: course?.instructor_name ?? null,
-    stornoPolicyLabel: getWorkshopStornoPolicyLabel(course?.workshop_storno_policy),
-    priceLabel: formatPrice(course?.price_cents ?? null, course?.currency ?? null),
+    stornoPolicyLabel: shouldShowWorkshopCancellationPolicy(course?.price_cents ?? null, input.paymentStatus)
+      ? getWorkshopStornoPolicyLabel(course?.workshop_storno_policy)
+      : null,
+    priceLabel: formatWorkshopPriceLabel(course?.price_cents ?? null, course?.currency ?? null, input.paymentStatus),
+    providerLogoUrl: providerContact.providerLogoUrl,
+    providerPhotoUrl: providerContact.senderImageUrl,
+    offerImageUrl: course?.offer_image_url ?? null,
     paymentStatus: input.paymentStatus,
   };
 }
