@@ -318,6 +318,7 @@ async function createOrUpdateWorkshop(
   const offerKind = parseSinglePaymentOfferKind(formData.get("offer_kind"));
   const visibility = parseOfferVisibility(formData.get("visibility"));
   const internal_note = parseOptionalString(formData.get("internal_note"));
+  const reservation_notice = parseOptionalString(formData.get("reservation_notice"));
   const { offerImageFile } = getOfferImageInput(formData);
   if (offerImageFile) {
     const validation = validateOfferImageFile({
@@ -384,6 +385,7 @@ async function createOrUpdateWorkshop(
           currency,
           visibility,
           internal_note,
+          reservation_notice,
           starts_at: firstSessionStart,
           ends_at: lastSessionEnd,
           status: "draft",
@@ -462,6 +464,7 @@ async function createOrUpdateWorkshop(
           is_published: false,
           visibility,
           internal_note,
+          reservation_notice,
           offer_image_url: offerImageResult.url,
         })
         .eq("id", newId)
@@ -519,6 +522,7 @@ async function createOrUpdateWorkshop(
           ends_at: offerKind === "exclusive_offer" ? lastSessionEnd : null,
           visibility,
           internal_note,
+          reservation_notice,
           offer_image_url: offerImageResult.url,
         })
         .eq("id", options.courseId)

@@ -16,7 +16,7 @@ export default async function SuccessPage({ searchParams }: Props) {
   const { session_id, booking_id } = await searchParams;
 
   if (!session_id && !booking_id) {
-    return <SuccessClient bookingData={{ error: "session_id oder booking_id fehlt" }} />;
+    return <SuccessClient bookingData={{ error: "Bestätigungsseite konnte nicht geladen werden: Buchungsreferenz fehlt." }} />;
   }
 
   if (session_id) {
@@ -74,7 +74,7 @@ export default async function SuccessPage({ searchParams }: Props) {
   }>();
 
   if (!booking) {
-    return <SuccessClient bookingData={{ error: "Buchung konnte nicht geladen werden" }} />;
+    return <SuccessClient bookingData={{ error: "Bestätigungsseite konnte nicht geladen werden: Buchung konnte nicht geladen werden." }} />;
   }
 
   const [{ data: ticket }, { data: course }, { data: sessions }] = await Promise.all([

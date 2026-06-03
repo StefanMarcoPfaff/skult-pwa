@@ -10,6 +10,7 @@ type PublicCourseRow = {
   teacher_id: string | null;
   instructor_name: string | null;
   workshop_storno_policy: string | null;
+  reservation_notice: string | null;
 };
 
 type PublicProfileRow = {
@@ -132,7 +133,7 @@ export async function getPublicCourseById(id: string): Promise<PublicOfferDetail
   const admin = createSupabaseAdmin();
   const { data: loadedCourse } = await admin
     .from("courses")
-    .select("teacher_id,instructor_name,workshop_storno_policy")
+    .select("teacher_id,instructor_name,workshop_storno_policy,reservation_notice")
     .eq("id", id)
     .maybeSingle<PublicCourseRow>();
 

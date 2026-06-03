@@ -35,6 +35,7 @@ export type WorkshopFormValues = {
   sessions?: Array<{ starts_at: string; ends_at: string }>;
   visibility?: "public" | "private_link";
   internal_note?: string;
+  reservation_notice?: string;
   offer_image_url?: string;
 };
 
@@ -349,6 +350,20 @@ export default function WorkshopForm({
         />
         <span className="block text-xs text-muted-foreground">
           Nur fuer dich sichtbar. Teilnehmende sehen diese Notiz nicht.
+        </span>
+      </label>
+
+      <label className="block space-y-1">
+        <span className="text-sm font-medium">Reservierungshinweis (optional)</span>
+        <textarea
+          name="reservation_notice"
+          rows={3}
+          defaultValue={initialValues?.reservation_notice ?? ""}
+          className="w-full rounded-xl border px-3 py-2 text-sm"
+          placeholder="Hinweis fuer Teilnehmende vor der Reservierung."
+        />
+        <span className="block text-xs text-muted-foreground">
+          Dieser Hinweis wird direkt über dem Reservierungsformular angezeigt.
         </span>
       </label>
 

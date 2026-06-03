@@ -13,7 +13,6 @@ import {
   getWorkshopCancellationPolicySummary,
 } from "@/lib/offer-policies";
 import { formatCoursePriceFromRow } from "@/lib/course-display";
-import { formatBerlinDateTimeRange } from "@/lib/formatting/berlin-time";
 import {
   formatWorkshopPriceLabel,
   shouldShowWorkshopCancellationPolicy,
@@ -79,10 +78,6 @@ function recurrenceLabel(value: string | null): string | null {
   if (v === "biweekly") return "14-tägig";
   if (v === "monthly") return "monatlich";
   return value;
-}
-
-function formatSessionLine(startsAt: string | null, endsAt: string | null): string {
-  return formatBerlinDateTimeRange(startsAt, endsAt) ?? "-";
 }
 
 function isWorkshopBookable(startsAt: string | null, endsAt: string | null) {
@@ -199,10 +194,11 @@ export default async function CourseDetailPage({
 
   const { publicCourse, publicProfile, providerLabel, profileHeading, profileDescription, profilePhotoUrl, profileVideoUrl } =
     publicOffer;
+  const reservationNotice = publicCourse?.reservation_notice?.trim() || null;
 
-  const shouldShowProfileSection = Boolean(
-    profileHeading || profileDescription || profilePhotoUrl || profileVideoUrl || providerLabel
-  );
+  const shouldShowProfileSection =
+    !isSinglePaymentOffer &&
+    Boolean(profileHeading || profileDescription || profilePhotoUrl || profileVideoUrl || providerLabel);
   const resolvedWorkshopPolicy =
     publicCourse?.workshop_storno_policy ?? workshopStornoPolicy;
   const workshopPolicyLabel = shouldShowWorkshopCancellationPolicy(priceCents)
@@ -240,16 +236,8 @@ export default async function CourseDetailPage({
 
       <OfferSummaryCard viewModel={offerViewModel} showDescription />
 
+      {!isSinglePaymentOffer ? (
       <section className="rounded-2xl border p-4 text-sm text-muted-foreground">
-        {capacity !== null ? <p>Max. Teilnehmende: {capacity}</p> : null}
-        {capacity !== null ? (
-          <p>
-            Freie Plätze:{" "}
-            <span className={`rounded-full px-2 py-0.5 text-xs ${availability.badgeClassName}`}>
-              {availability.badgeText}
-            </span>
-          </p>
-        ) : null}
         {kind === "course" ? <p>Abrechnung: {COURSE_BILLING_SUMMARY}</p> : null}
         {kind === "course" ? <p>Kündigung: {COURSE_CANCELLATION_SUMMARY}</p> : null}
         {kind === "course" && weekday !== null && weekdayLabels[weekday] ? (
@@ -262,6 +250,7 @@ export default async function CourseDetailPage({
         ) : null}
         {kind === "course" && cancellationModel ? <p>Der Preis ist als Monatsbeitrag zu verstehen.</p> : null}
       </section>
+      ) : null}
 
       {shouldShowProfileSection ? (
         <section className="rounded-2xl border p-5">
@@ -303,28 +292,10 @@ export default async function CourseDetailPage({
 
       {isSinglePaymentOffer ? (
         <section className="space-y-3">
-          <h2 className="text-xl font-semibold">Termine</h2>
-          <div className="rounded-2xl border p-4 text-sm text-muted-foreground">
-            {sessions.length > 0 ? (
-              <ul className="space-y-2">
-                {sessions.map((session) => (
-                  <li key={session.id}>{formatSessionLine(session.starts_at, session.ends_at)}</li>
-                ))}
-              </ul>
-            ) : startsAt ? (
-              <p>{formatSessionLine(startsAt, null)}</p>
-            ) : (
-              <p>Termindetails folgen in Kürze.</p>
-            )}
-          </div>
-
           <div className="space-y-2 rounded-2xl border p-4">
             <h3 className="text-base font-semibold">
               {availability.isSoldOut || !workshopCanBook ? "Anfragen" : "Jetzt reservieren"}
             </h3>
-            {capacity !== null ? (
-              <p className={`text-sm font-medium ${availability.badgeClassName}`}>{availability.badgeText}</p>
-            ) : null}
             {!workshopCanBook ? (
               <p className="text-sm text-muted-foreground">
                 Dieses Angebot ist nicht mehr buchbar.
@@ -335,14 +306,20 @@ export default async function CourseDetailPage({
                 offerLabel="einmaliges Angebot"
               />
             ) : (
+              <>
+              {reservationNotice ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                  <h4 className="font-semibold">Wichtiger Hinweis</h4>
+                  <p className="mt-2 whitespace-pre-line leading-6">{reservationNotice}</p>
+                </div>
+              ) : null}
               <PayButton
                 courseId={id}
-                teacherName={profileHeading ?? publicCourse?.instructor_name ?? providerLabel}
                 priceLabel={displayedPrice}
                 stornoPolicyLabel={workshopPolicyLabel}
                 showCancellationTerms={offerViewModel.showCancellationTerms}
-                offerLabel="einmaliges Angebot"
               />
+              </>
             )}
           </div>
         </section>

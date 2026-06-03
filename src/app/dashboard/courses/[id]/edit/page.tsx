@@ -32,6 +32,7 @@ type OfferRow = {
   currency: string | null;
   visibility: "public" | "private_link" | null;
   internal_note: string | null;
+  reservation_notice: string | null;
   offer_image_url: string | null;
 };
 
@@ -90,7 +91,7 @@ export default async function EditOfferPage({
   const { data, error } = await supabase
     .from("courses")
     .select(
-      "id,teacher_id,title,description,location,location_details,capacity,kind,starts_at,weekday,start_time,duration_minutes,recurrence_type,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,price_cents,currency,visibility,internal_note,offer_image_url"
+      "id,teacher_id,title,description,location,location_details,capacity,kind,starts_at,weekday,start_time,duration_minutes,recurrence_type,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,price_cents,currency,visibility,internal_note,reservation_notice,offer_image_url"
     )
     .eq("id", id)
     .eq("teacher_id", user.id)
@@ -169,6 +170,7 @@ export default async function EditOfferPage({
       })),
     visibility: data.visibility ?? "public",
     internal_note: data.internal_note ?? "",
+    reservation_notice: data.reservation_notice ?? "",
     offer_image_url: data.offer_image_url ?? "",
   };
 

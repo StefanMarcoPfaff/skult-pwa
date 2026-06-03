@@ -11,7 +11,7 @@ import {
   summarizeStripeAccount,
 } from "@/lib/stripe-connect";
 import type { ProviderType } from "@/lib/provider-profiles";
-import { createClient } from "@/lib/supabase-server";
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   getWorkshopCheckoutCurrencyError,
   isWorkshopCheckoutCurrencySupported,
@@ -89,18 +89,32 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = await createClient();
+    const supabase = createSupabaseAdmin();
     const { data: course, error: courseErr } = await supabase
-      .from("courses_lite")
-      .select("id,title,price_type,price_cents,currency,offer_type,capacity,starts_at,ends_at,is_published,status,visibility,workshop_storno_policy")
+      .from("courses")
+      .select("id,title,teacher_id,kind,price_cents,currency,capacity,starts_at,ends_at,is_published,status,visibility,workshop_storno_policy")
       .eq("id", courseId)
-      .single();
+      .maybeSingle<{
+        id: string;
+        title: string | null;
+        teacher_id: string | null;
+        kind: string | null;
+        price_cents: number | null;
+        currency: string | null;
+        capacity: number | null;
+        starts_at: string | null;
+        ends_at: string | null;
+        is_published: boolean | null;
+        status: string | null;
+        visibility: string | null;
+        workshop_storno_policy: string | null;
+      }>();
 
     if (courseErr || !course) {
-      return NextResponse.json({ error: "Nicht gefunden" }, { status: 404 });
+      return NextResponse.json({ error: "Angebot nicht gefunden." }, { status: 404 });
     }
 
-    if (course.offer_type !== "workshop" && course.offer_type !== "exclusive_offer") {
+    if (course.kind !== "workshop" && course.kind !== "exclusive_offer") {
       return NextResponse.json({ error: "Checkout nur für einmalige Angebote" }, { status: 400 });
     }
 
@@ -117,30 +131,22 @@ export async function POST(req: Request) {
 
     if (
       !isDirectlyAccessibleOffer({
-        kind: course.offer_type,
-        status: typeof course.status === "string" ? course.status : null,
-        isPublished: typeof course.is_published === "boolean" ? course.is_published : true,
-        visibility: typeof course.visibility === "string" ? course.visibility : null,
-        startsAt: typeof course.starts_at === "string" ? course.starts_at : null,
-        endsAt: typeof course.ends_at === "string" ? course.ends_at : null,
+        kind: course.kind,
+        status: course.status,
+        isPublished: course.is_published ?? false,
+        visibility: course.visibility,
+        startsAt: course.starts_at,
+        endsAt: course.ends_at,
       })
     ) {
       return NextResponse.json({ error: "Dieses Angebot ist nicht buchbar." }, { status: 400 });
     }
 
     const normalizedPriceCents = typeof course.price_cents === "number" ? course.price_cents : 0;
-    const isFreeOffer = course.price_type === "free" || normalizedPriceCents <= 0;
+    const isFreeOffer = normalizedPriceCents <= 0;
 
-    const capacity =
-      typeof course.capacity === "number"
-        ? course.capacity
-        : typeof course.capacity === "string" && course.capacity.trim()
-          ? Number(course.capacity)
-          : null;
-    const workshopCanBook = isWorkshopBookable(
-      typeof course.starts_at === "string" ? course.starts_at : null,
-      typeof course.ends_at === "string" ? course.ends_at : null
-    );
+    const capacity = typeof course.capacity === "number" ? course.capacity : null;
+    const workshopCanBook = isWorkshopBookable(course.starts_at, course.ends_at);
     const availability = buildOfferAvailability(
       Number.isFinite(capacity) ? capacity : null,
       await loadOccupiedWorkshopSeats(courseId),
@@ -179,7 +185,7 @@ export async function POST(req: Request) {
 
     if (bookingErr || !booking) {
       return NextResponse.json(
-        { error: bookingErr?.message || "Booking konnte nicht erstellt werden" },
+        { error: bookingErr?.message || "Reservierung konnte nicht erstellt werden." },
         { status: 500 }
       );
     }
@@ -197,9 +203,22 @@ export async function POST(req: Request) {
     const usePlatformCharge = isPaymentsV2StripePlatformChargesEnabled();
 
     if (isFreeOffer) {
-      const finalized = await finalizeFreeWorkshopBooking(booking.id);
-      if (!finalized) {
-        return NextResponse.json({ error: "Kostenlose Buchung konnte nicht bestätigt werden." }, { status: 500 });
+      let finalized: Awaited<ReturnType<typeof finalizeFreeWorkshopBooking>> = null;
+      try {
+        finalized = await finalizeFreeWorkshopBooking(booking.id);
+      } catch (error) {
+        console.error("[free-workshop-booking]", {
+          context: "finalize.failed",
+          bookingId: booking.id,
+          courseId: course.id,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+      if (!finalized?.ticket) {
+        return NextResponse.json(
+          { error: "Ticket konnte nicht erstellt werden oder die Reservierung konnte nicht bestätigt werden." },
+          { status: 500 }
+        );
       }
 
       logCheckoutConnectState("free booking finalized", {
@@ -222,14 +241,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: ownerCourse, error: ownerCourseError } = await supabase
-      .from("courses")
-      .select("id,teacher_id")
-      .eq("id", course.id)
-      .eq("is_published", true)
-      .maybeSingle<{ id: string; teacher_id: string | null }>();
-
-    if (ownerCourseError || !ownerCourse?.teacher_id) {
+    if (!course.teacher_id) {
       return NextResponse.json(
         { error: "Die Anbietenden haben noch keine Zahlungsdaten hinterlegt." },
         { status: 400 }
@@ -239,7 +251,7 @@ export async function POST(req: Request) {
     const { data: teacherProfile, error: teacherProfileError } = await supabase
       .from("profiles")
       .select("stripe_account_id,provider_type")
-      .eq("id", ownerCourse.teacher_id)
+      .eq("id", course.teacher_id)
       .maybeSingle<{ stripe_account_id: string | null; provider_type: ProviderType | null }>();
 
     if (teacherProfileError || !teacherProfile) {
@@ -321,7 +333,7 @@ export async function POST(req: Request) {
       metadata: {
         payment_model: usePlatformCharge ? "platform_charge" : "connect_destination_charge",
         ledger_mode: usePlatformCharge ? "reser_managed_split" : "stripe_connect_destination_split",
-        provider_id: ownerCourse.teacher_id,
+        provider_id: course.teacher_id,
         booking_id: booking.id,
         bookingId: booking.id,
         courseId: course.id,

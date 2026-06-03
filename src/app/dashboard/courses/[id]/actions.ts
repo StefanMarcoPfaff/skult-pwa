@@ -119,6 +119,7 @@ type CourseCopySourceRow = {
   workshop_storno_policy: string | null;
   visibility: string | null;
   internal_note: string | null;
+  reservation_notice: string | null;
   price_cents: number | null;
   currency: string | null;
 };
@@ -356,7 +357,7 @@ export async function duplicateCourseAction(formData: FormData) {
   const { data: sourceCourse } = await admin
     .from("courses")
     .select(
-      "id,teacher_id,kind,title,description,location,location_details,capacity,starts_at,ends_at,weekday,start_time,duration_minutes,recurrence_type,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,visibility,internal_note,price_cents,currency"
+      "id,teacher_id,kind,title,description,location,location_details,capacity,starts_at,ends_at,weekday,start_time,duration_minutes,recurrence_type,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,visibility,internal_note,reservation_notice,price_cents,currency"
     )
     .eq("id", courseId)
     .eq("teacher_id", user.id)
@@ -388,6 +389,7 @@ export async function duplicateCourseAction(formData: FormData) {
       workshop_storno_policy: sourceCourse.workshop_storno_policy,
       visibility: sourceCourse.visibility,
       internal_note: sourceCourse.internal_note,
+      reservation_notice: sourceCourse.reservation_notice,
       price_cents: sourceCourse.price_cents,
       currency: sourceCourse.currency,
       status: "draft",

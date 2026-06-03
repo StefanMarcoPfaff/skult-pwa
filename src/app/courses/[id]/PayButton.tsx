@@ -6,12 +6,10 @@ import { LEGAL_LINKS } from "@/lib/legal";
 
 type PayButtonProps = {
   courseId: string;
-  teacherName?: string | null;
   priceLabel?: string | null;
   stornoPolicyLabel?: string | null;
   showCancellationTerms?: boolean;
   disabled?: boolean;
-  offerLabel?: string;
 };
 
 type BookingConsentFieldsProps = {
@@ -90,12 +88,10 @@ function BookingConsentFields({
 
 export function PayButton({
   courseId,
-  teacherName,
   priceLabel,
   stornoPolicyLabel,
   showCancellationTerms = false,
   disabled,
-  offerLabel = "einmaliges Angebot",
 }: PayButtonProps) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -208,30 +204,6 @@ export function PayButton({
           Land und Buchung an, zum Beispiel Karte, Apple Pay, Google Pay, SEPA oder Klarna.
         </p>
       )}
-
-      <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
-        <h3 className="font-semibold text-foreground">Buchungsübersicht</h3>
-        <div className="mt-3 space-y-2 text-muted-foreground">
-          {priceLabel ? (
-            <p>
-              Preis: <span className="font-medium text-foreground">{priceLabel}</span>
-            </p>
-          ) : null}
-          {teacherName ? (
-            <p>
-              Leitung: <span className="font-medium text-foreground">{teacherName}</span>
-            </p>
-          ) : null}
-          {cancellationRequired ? (
-            <p>
-              Stornierungsbedingungen: <span className="font-medium text-foreground">{cancellationLabel}</span>
-            </p>
-          ) : null}
-          <p>
-            Angebot: <span className="font-medium text-foreground">{offerLabel}</span>
-          </p>
-        </div>
-      </section>
 
       <BookingConsentFields
         termsAndPrivacyAccepted={consents.termsAndPrivacyAccepted}
