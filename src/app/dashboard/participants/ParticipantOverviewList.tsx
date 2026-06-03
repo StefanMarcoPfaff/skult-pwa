@@ -48,6 +48,10 @@ type RegisteredLifecycleAction = {
 
 type WorkshopLifecycleAction = {
   kind: "workshop";
+  bookingId: string;
+  redirectTo: string;
+  paymentStatus: string | null;
+  stopDisabled: boolean;
   playClassName: string;
   pauseClassName: string;
   stopClassName: string;
@@ -460,6 +464,10 @@ function LifecycleActions(props: { action: ParticipantLifecycleAction }) {
 
   return (
     <WorkshopParticipantLifecycleButtons
+      bookingId={props.action.bookingId}
+      redirectTo={props.action.redirectTo}
+      paymentStatus={props.action.paymentStatus}
+      stopDisabled={props.action.stopDisabled}
       playClassName={props.action.playClassName}
       pauseClassName={props.action.pauseClassName}
       stopClassName={props.action.stopClassName}

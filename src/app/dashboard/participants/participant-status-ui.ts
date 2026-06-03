@@ -13,6 +13,7 @@ export type RegisteredStatusSource = {
 export type WorkshopStatusSource = {
   kind: "workshop";
   bookingStatus: string | null;
+  paymentStatus?: string | null;
   refundedAt?: string | null;
   stripeRefundId?: string | null;
 };
@@ -132,21 +133,21 @@ export function getParticipantStatusPresentation(
     };
   }
 
-  if (checkedInAt) {
-    return {
-      badgeLabel: "Eingecheckt",
-      badgeClassName: "border-emerald-200 bg-emerald-50 text-emerald-700",
-      cardClassName: "border-emerald-200 bg-emerald-50/60",
-      sortLabel: "Eingecheckt",
-    };
-  }
-
-  if (status.refundedAt || status.stripeRefundId) {
+  if (status.refundedAt || status.stripeRefundId || status.bookingStatus === "refunded") {
     return {
       badgeLabel: "Erstattet",
       badgeClassName: "border-red-200 bg-red-50 text-red-700",
       cardClassName: "border-red-200 bg-red-50/60",
       sortLabel: "Erstattet",
+    };
+  }
+
+  if (status.paymentStatus === "refund_pending") {
+    return {
+      badgeLabel: "Rückerstattung offen",
+      badgeClassName: "border-amber-200 bg-amber-50 text-amber-800",
+      cardClassName: "border-amber-200 bg-amber-50/60",
+      sortLabel: "Rückerstattung offen",
     };
   }
 
@@ -156,6 +157,15 @@ export function getParticipantStatusPresentation(
       badgeClassName: "border-red-200 bg-red-50 text-red-700",
       cardClassName: "border-red-200 bg-red-50/60",
       sortLabel: "Storniert",
+    };
+  }
+
+  if (checkedInAt) {
+    return {
+      badgeLabel: "Eingecheckt",
+      badgeClassName: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      cardClassName: "border-emerald-200 bg-emerald-50/60",
+      sortLabel: "Eingecheckt",
     };
   }
 

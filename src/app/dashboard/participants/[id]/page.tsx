@@ -106,9 +106,12 @@ type WorkshopBookingRow = {
   id: string;
   course_id: string | null;
   status: string | null;
+  payment_status: string | null;
   checked_in_at: string | null;
   created_at: string | null;
   payment_provider: string | null;
+  refunded_at: string | null;
+  stripe_refund_id: string | null;
   customer_first_name: string | null;
   customer_last_name: string | null;
   customer_email: string | null;
@@ -201,6 +204,26 @@ function FlashMessages(props: { saved?: string }) {
           Eine Freigabe oder Ablehnung ist erst nach erfolgreichem Check-in der Probeteilnahme möglich.
         </p>
       ) : null}
+      {props.saved === "workshop_participant_cancelled_free" ? (
+        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Die kostenlose Reservierung wurde storniert. Es wurde keine Rückzahlung ausgelöst.
+        </p>
+      ) : null}
+      {props.saved === "workshop_participant_refunded" ? (
+        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Die Teilnahme wurde storniert und die Rückerstattung wurde ausgelöst.
+        </p>
+      ) : null}
+      {props.saved === "workshop_participant_refund_pending" ? (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Die Teilnahme wurde storniert. Die Rückerstattung muss noch geprüft oder nachbearbeitet werden.
+        </p>
+      ) : null}
+      {props.saved === "workshop_participant_already_cancelled" ? (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Diese Teilnahme ist bereits storniert.
+        </p>
+      ) : null}
       {props.saved?.includes("invalid") || props.saved?.includes("error") ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           Die Aktion konnte nicht abgeschlossen werden.
@@ -226,7 +249,7 @@ export default async function DashboardParticipantDetailPage({
     const { data: booking } = await admin
       .from("bookings")
       .select(
-        "id,course_id,status,checked_in_at,created_at,payment_provider,customer_first_name,customer_last_name,customer_email,customer_phone"
+        "id,course_id,status,payment_status,checked_in_at,created_at,payment_provider,refunded_at,stripe_refund_id,customer_first_name,customer_last_name,customer_email,customer_phone"
       )
       .eq("id", id)
       .maybeSingle<WorkshopBookingRow>();
@@ -292,6 +315,14 @@ export default async function DashboardParticipantDetailPage({
               </p>
               <div className="mt-4">
                 <WorkshopParticipantLifecycleButtons
+                  bookingId={booking.id}
+                  redirectTo={`/dashboard/participants/${booking.id}?source=workshop`}
+                  paymentStatus={booking.payment_status}
+                  stopDisabled={
+                    booking.status !== "paid" ||
+                    Boolean(booking.refunded_at) ||
+                    Boolean(booking.stripe_refund_id)
+                  }
                   playClassName={lifecycle.playClassName}
                   pauseClassName={lifecycle.pauseClassName}
                   stopClassName={lifecycle.stopClassName}

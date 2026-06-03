@@ -5,7 +5,12 @@ import { ConfirmIconAction } from "@/app/dashboard/courses/ConfirmIconAction";
 import { OfferActionIcon } from "@/app/dashboard/courses/OfferActionIcon";
 import { ParticipantPauseModal, ParticipantStopModal } from "./[id]/ParticipantSubscriptionModal";
 import { pauseParticipantSubscriptionAction, stopParticipantSubscriptionAction } from "./[id]/actions";
-import { approveTrialReservationAction, cancelTrialReservationAction, rejectTrialReservationAction } from "./actions";
+import {
+  approveTrialReservationAction,
+  cancelTrialReservationAction,
+  cancelWorkshopParticipantBookingAction,
+  rejectTrialReservationAction,
+} from "./actions";
 
 function PlayGlyph() {
   return (
@@ -199,12 +204,20 @@ export function RegisteredParticipantLifecycleButtons(props: {
 }
 
 export function WorkshopParticipantLifecycleButtons(props: {
+  bookingId: string;
+  redirectTo: string;
+  paymentStatus?: string | null;
+  stopDisabled: boolean;
   playClassName: string;
   pauseClassName: string;
   stopClassName: string;
 }) {
   const isPaid = props.playClassName.includes("green-600");
-  const playLabel = isPaid ? "Bezahlt" : "Beendet";
+  const isFree = props.paymentStatus === "free";
+  const playLabel = isPaid ? (isFree ? "Reserviert" : "Bezahlt") : "Beendet";
+  const confirmationText = isFree
+    ? "Möchtest du diese Teilnahme wirklich stornieren? Es wird keine Rückzahlung ausgelöst, weil diese Reservierung kostenlos war."
+    : "Möchtest du diese Teilnahme wirklich stornieren? Die Rückerstattung richtet sich nach den Stornierungsbedingungen.";
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -219,9 +232,26 @@ export function WorkshopParticipantLifecycleButtons(props: {
         </DisabledAction>
       </IconSlot>
       <IconSlot label="Stornieren">
-        <DisabledAction title="Stornieren" className={props.stopClassName}>
-          <StopGlyph />
-        </DisabledAction>
+        {props.stopDisabled ? (
+          <DisabledAction title="Stornieren" className={props.stopClassName}>
+            <StopGlyph />
+          </DisabledAction>
+        ) : (
+          <ConfirmIconAction
+            action={cancelWorkshopParticipantBookingAction}
+            fields={{ booking_id: props.bookingId, redirect_to: props.redirectTo }}
+            title="Teilnahme stornieren?"
+            text={confirmationText}
+            cancelLabel="Nein, abbrechen"
+            confirmLabel="Ja, Teilnahme stornieren"
+            triggerLabel="Teilnahme stornieren"
+            trigger={
+              <OfferActionIcon title="Teilnahme stornieren" label="Teilnahme stornieren" className={props.stopClassName}>
+                <StopGlyph />
+              </OfferActionIcon>
+            }
+          />
+        )}
       </IconSlot>
     </div>
   );

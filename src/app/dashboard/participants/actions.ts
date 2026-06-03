@@ -3,7 +3,10 @@
 import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type Stripe from "stripe";
 import { getParticipantArchiveEligibility } from "@/app/dashboard/archive-rules";
+import { mirrorStripeRefundToLedger } from "@/lib/payments/ledger";
+import { paymentService } from "@/lib/payments/payment-service";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -12,6 +15,7 @@ import {
   sendTrialRegistrationApprovedEmail,
   sendTrialRegistrationRejectedEmail,
 } from "@/lib/trial-reservation-emails";
+import { sendWorkshopCancellationEmail } from "@/lib/workshop-booking-emails";
 
 type ReservationMailRow = {
   id: string;
@@ -31,6 +35,21 @@ type CourseMailRow = {
   id: string;
   title: string | null;
   teacher_id: string | null;
+};
+
+type WorkshopParticipantBookingRow = {
+  id: string;
+  course_id: string | null;
+  customer_first_name: string | null;
+  customer_last_name: string | null;
+  customer_email: string | null;
+  is_simulation?: boolean | null;
+  status: string | null;
+  payment_status: string | null;
+  stripe_session_id: string | null;
+  refunded_at: string | null;
+  stripe_refund_id: string | null;
+  archived_at: string | null;
 };
 
 type ProfileRow = {
@@ -176,6 +195,10 @@ async function assertTeacherOwnsReservation(teacherId: string, reservationId: st
 
 function getCustomerName(reservation: ReservationMailRow): string {
   return [reservation.first_name, reservation.last_name].filter(Boolean).join(" ").trim() || "dein Kind";
+}
+
+function getBookingCustomerName(booking: WorkshopParticipantBookingRow): string {
+  return [booking.customer_first_name, booking.customer_last_name].filter(Boolean).join(" ").trim() || "Teilnehmende";
 }
 
 function canTakeDecision(reservation: ReservationMailRow): boolean {
@@ -396,6 +419,153 @@ export async function cancelTrialReservationAction(formData: FormData) {
   }
 
   redirect(withSavedParam(redirectTo, "trial_cancelled"));
+}
+
+export async function cancelWorkshopParticipantBookingAction(formData: FormData) {
+  const bookingId = String(formData.get("booking_id") ?? "").trim();
+  const redirectTo = String(formData.get("redirect_to") ?? "").trim() || "/dashboard/participants";
+
+  if (!bookingId) {
+    redirect(withSavedParam(redirectTo, "workshop_participant_cancel_invalid"));
+  }
+
+  const user = await requireTeacher();
+  const admin = createSupabaseAdmin();
+
+  const { data: booking } = await admin
+    .from("bookings")
+    .select(
+      "id,course_id,customer_first_name,customer_last_name,customer_email,is_simulation,status,payment_status,stripe_session_id,refunded_at,stripe_refund_id,archived_at"
+    )
+    .eq("id", bookingId)
+    .maybeSingle<WorkshopParticipantBookingRow>();
+
+  if (!booking?.course_id || booking.archived_at) {
+    redirect(withSavedParam(redirectTo, "workshop_participant_cancel_invalid"));
+  }
+
+  const { data: course } = await admin
+    .from("courses")
+    .select("id,teacher_id,kind")
+    .eq("id", booking.course_id)
+    .maybeSingle<{ id: string; teacher_id: string | null; kind: string | null }>();
+
+  if (
+    !course ||
+    course.teacher_id !== user.id ||
+    (course.kind !== "workshop" && course.kind !== "exclusive_offer")
+  ) {
+    redirect(withSavedParam(redirectTo, "workshop_participant_cancel_invalid"));
+  }
+
+  if (
+    booking.status === "cancelled" ||
+    booking.status === "refunded" ||
+    booking.payment_status === "cancelled" ||
+    booking.payment_status === "refunded" ||
+    booking.refunded_at ||
+    booking.stripe_refund_id
+  ) {
+    redirect(withSavedParam(redirectTo, "workshop_participant_already_cancelled"));
+  }
+
+  const now = new Date().toISOString();
+  const isFreeBooking = booking.payment_status === "free";
+  const recipientEmail = booking.customer_email?.trim();
+  let savedStatus = "workshop_participant_cancelled";
+  let refunded = false;
+
+  if (isFreeBooking || !booking.stripe_session_id) {
+    const { error: bookingUpdateError } = await admin
+      .from("bookings")
+      .update({
+        status: "cancelled",
+        payment_status: isFreeBooking ? "cancelled" : "refund_pending",
+      })
+      .eq("id", booking.id)
+      .eq("course_id", course.id);
+
+    if (bookingUpdateError) {
+      redirect(withSavedParam(redirectTo, "workshop_participant_cancel_error"));
+    }
+
+    savedStatus = isFreeBooking
+      ? "workshop_participant_cancelled_free"
+      : "workshop_participant_refund_pending";
+  } else {
+    try {
+      const refund = await paymentService.refundPayment({
+        provider: "stripe",
+        referenceType: "checkout_session",
+        referenceId: booking.stripe_session_id,
+      });
+
+      if (refund.raw) {
+        try {
+          await mirrorStripeRefundToLedger({
+            bookingId: booking.id,
+            checkoutSessionId: booking.stripe_session_id,
+            refund: refund.raw as Stripe.Refund,
+          });
+        } catch {
+          // The Stripe refund is the source of truth; keep the booking refunded even if ledger mirroring needs repair.
+        }
+      }
+
+      const { error: bookingUpdateError } = await admin
+        .from("bookings")
+        .update({
+          status: "refunded",
+          payment_status: "refunded",
+          refunded_at: now,
+          stripe_refund_id: refund.refundId,
+          refund_amount_cents: refund.amountCents,
+        })
+        .eq("id", booking.id)
+        .eq("course_id", course.id);
+
+      if (bookingUpdateError) {
+        redirect(withSavedParam(redirectTo, "workshop_participant_cancel_error"));
+      }
+
+      savedStatus = "workshop_participant_refunded";
+      refunded = true;
+    } catch {
+      const { error: pendingUpdateError } = await admin
+        .from("bookings")
+        .update({
+          status: "cancelled",
+          payment_status: "refund_pending",
+        })
+        .eq("id", booking.id)
+        .eq("course_id", course.id);
+
+      if (pendingUpdateError) {
+        redirect(withSavedParam(redirectTo, "workshop_participant_cancel_error"));
+      }
+
+      savedStatus = "workshop_participant_refund_pending";
+    }
+  }
+
+  await admin.from("tickets").update({ status: "cancelled" }).eq("booking_id", booking.id);
+
+  if (recipientEmail && !booking.is_simulation) {
+    try {
+      await sendWorkshopCancellationEmail({
+        customerEmail: recipientEmail,
+        customerName: getBookingCustomerName(booking),
+        refunded,
+      });
+    } catch {
+      // The cancellation itself must not be rolled back because of a notification failure.
+    }
+  }
+
+  revalidatePath("/dashboard/participants");
+  revalidatePath(`/dashboard/participants/${booking.id}`);
+  revalidatePath(`/dashboard/courses/${course.id}`);
+  redirect(withSavedParam(redirectTo, savedStatus));
 }
 
 export async function archiveParticipantAction(formData: FormData) {

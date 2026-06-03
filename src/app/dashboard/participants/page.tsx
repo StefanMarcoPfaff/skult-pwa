@@ -73,6 +73,31 @@ function FlashMessages(props: { saved: string | null }) {
           Die Teilnahme wurde archiviert.
         </p>
       ) : null}
+      {props.saved === "workshop_participant_cancelled_free" ? (
+        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Die kostenlose Reservierung wurde storniert. Es wurde keine Rückzahlung ausgelöst.
+        </p>
+      ) : null}
+      {props.saved === "workshop_participant_refunded" ? (
+        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Die Teilnahme wurde storniert und die Rückerstattung wurde ausgelöst.
+        </p>
+      ) : null}
+      {props.saved === "workshop_participant_refund_pending" ? (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Die Teilnahme wurde storniert. Die Rückerstattung muss noch geprüft oder nachbearbeitet werden.
+        </p>
+      ) : null}
+      {props.saved === "workshop_participant_already_cancelled" ? (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Diese Teilnahme ist bereits storniert.
+        </p>
+      ) : null}
+      {props.saved === "workshop_participant_cancel_invalid" || props.saved === "workshop_participant_cancel_error" ? (
+        <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Die Teilnahme konnte nicht storniert werden.
+        </p>
+      ) : null}
     </>
   );
 }

@@ -121,10 +121,10 @@ export function getWorkshopParticipantLifecycleDisplay(paid: boolean): Participa
   return {
     playClassName: paid ? ACTIVE_FILLED_CLASS : DISABLED_OFFER_ACTION_ICON_CLASS,
     pauseClassName: DISABLED_OFFER_ACTION_ICON_CLASS,
-    stopClassName: DISABLED_OFFER_ACTION_ICON_CLASS,
+    stopClassName: paid ? STOP_CLASS : DISABLED_OFFER_ACTION_ICON_CLASS,
     playDisabled: true,
     pauseDisabled: true,
-    stopDisabled: true,
+    stopDisabled: !paid,
     playMode: paid ? "workshop_paid" : "inactive",
   };
 }

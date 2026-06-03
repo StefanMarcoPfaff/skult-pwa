@@ -82,6 +82,7 @@ type BookingRow = {
   id: string;
   course_id: string | null;
   status: string | null;
+  payment_status: string | null;
   checked_in_at: string | null;
   created_at: string | null;
   customer_first_name: string | null;
@@ -248,7 +249,7 @@ export async function loadParticipantOverviewItems(input: {
     admin
       .from("bookings")
       .select(
-        "id,course_id,status,checked_in_at,created_at,customer_first_name,customer_last_name,customer_email,refunded_at,stripe_refund_id,archived_at"
+        "id,course_id,status,payment_status,checked_in_at,created_at,customer_first_name,customer_last_name,customer_email,refunded_at,stripe_refund_id,archived_at"
       )
       .in("course_id", courseIds)
       .returns<BookingRow[]>(),
@@ -661,6 +662,7 @@ export async function loadParticipantOverviewItems(input: {
     const workshopStatus = {
       kind: "workshop" as const,
       bookingStatus: booking.status,
+      paymentStatus: booking.payment_status,
       refundedAt: booking.refunded_at,
       stripeRefundId: booking.stripe_refund_id,
     };
@@ -699,6 +701,13 @@ export async function loadParticipantOverviewItems(input: {
       },
       lifecycleAction: {
         kind: "workshop",
+        bookingId: booking.id,
+        redirectTo: "/dashboard/participants",
+        paymentStatus: booking.payment_status,
+        stopDisabled:
+          booking.status !== "paid" ||
+          Boolean(booking.refunded_at) ||
+          Boolean(booking.stripe_refund_id),
         playClassName: lifecycle.playClassName,
         pauseClassName: lifecycle.pauseClassName,
         stopClassName: lifecycle.stopClassName,
@@ -714,8 +723,16 @@ export async function loadParticipantOverviewItems(input: {
               instructorName: course.instructor_name,
               scanHref: buildTeacherScanHref(course.id, event),
               showHref: buildModeHref(course.id, event, "show"),
-              enabled: !checkedInAt,
-              disabledReason: checkedInAt ? "Bereits eingecheckt" : null,
+              enabled:
+                !checkedInAt &&
+                booking.status === "paid" &&
+                ticket.status !== "cancelled" &&
+                ticket.status !== "expired",
+              disabledReason: checkedInAt
+                ? "Bereits eingecheckt"
+                : booking.status !== "paid" || ticket.status === "cancelled" || ticket.status === "expired"
+                  ? "Teilnahme storniert"
+                  : null,
               checkedInAt,
             }
           : null,
