@@ -151,7 +151,7 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
   const isRunningOffer = props.kind === "course";
   const playLabel =
     props.normalizedStatus === "draft"
-      ? "Veröffentlichen"
+      ? "Jetzt veröffentlichen"
       : displayState.normalizedStatus === "active"
         ? "Veröffentlicht"
         : displayState.normalizedStatus === "ended" || displayState.normalizedStatus === "stop_scheduled"
@@ -173,6 +173,10 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
     : displayState.normalizedStatus === "ended"
       ? "Storniert"
       : "Stornieren";
+  const isDraft = props.normalizedStatus === "draft";
+  const checkInDisabled = !isRunningOffer && isDraft;
+  const draftPlayIconClassName =
+    isDraft && !playActionDisabled ? `${playIconClassName} animate-pulse shadow-lg shadow-green-200` : playIconClassName;
 
   return (
     <section className="mt-6 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
@@ -183,16 +187,16 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
               <ConfirmIconAction
                 action={setCoursePublishStateAction}
                 fields={{ course_id: props.courseId, mode: "play", redirect_to: props.redirectTo }}
-                title="Angebot aktivieren?"
-                text={`Möchtest du dieses Angebot jetzt aktivieren? Danach ist es buchbar. Aktuelle Sichtbarkeit: ${props.visibilityLabel}.`}
+                title="Angebot jetzt veröffentlichen?"
+                text={`Möchtest du dieses Angebot jetzt veröffentlichen? Danach ist es buchbar. Aktuelle Sichtbarkeit: ${props.visibilityLabel}.`}
                 cancelLabel="Nein, abbrechen"
-                confirmLabel="Ja, aktivieren"
+                confirmLabel="Ja, veröffentlichen"
                 disabled={playActionDisabled}
-                triggerLabel="aktivieren / starten"
+                triggerLabel="Jetzt veröffentlichen"
                 clientAction={true}
                 timeoutMs={15000}
                 trigger={
-                  <OfferActionIcon title={playLabel} label={playLabel} className={playIconClassName} disabled={playActionDisabled}>
+                  <OfferActionIcon title={playLabel} label={playLabel} className={draftPlayIconClassName} disabled={playActionDisabled}>
                     <PlayGlyph />
                   </OfferActionIcon>
                 }
@@ -315,11 +319,17 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
 
         <ActionGroup title="Angebotsnutzung & Kommunikation">
           <OfferActionItem label="Check-in">
-            <Link href={`/dashboard/courses/${props.courseId}/check-in`} className="inline-flex">
-              <OfferActionIcon title="Check-in starten" label="Check-in starten">
+            {checkInDisabled ? (
+              <OfferActionIcon title="Check-in erst nach Veröffentlichung verfügbar" label="Check-in starten" className="border-slate-200 bg-slate-100 text-slate-400" disabled={true}>
                 <CheckInGlyph />
               </OfferActionIcon>
-            </Link>
+            ) : (
+              <Link href={`/dashboard/courses/${props.courseId}/check-in`} className="inline-flex">
+                <OfferActionIcon title="Check-in starten" label="Check-in starten">
+                  <CheckInGlyph />
+                </OfferActionIcon>
+              </Link>
+            )}
           </OfferActionItem>
 
           <TeacherCheckInShareDialog courseId={props.courseId} />

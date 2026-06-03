@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import FormattedOfferDescription from "@/components/offer/FormattedOfferDescription";
+import OneTimeOfferPreview from "@/components/offer/OneTimeOfferPreview";
 import { getOfferArchiveEligibility } from "@/app/dashboard/archive-rules";
 import {
   formatCourseLifecycleDate,
@@ -14,6 +16,8 @@ import {
 } from "@/lib/offer-policies";
 import { buildOfferCalendarPath } from "@/lib/calendar";
 import { hasOfferCalendarData } from "@/lib/calendar-resolver";
+import { formatMoney } from "@/lib/course-display";
+import { formatBerlinDateTime, formatBerlinDateTimeRange } from "@/lib/formatting/berlin-time";
 import {
   buildMailtoHref,
   buildOfferMailSubject,
@@ -59,6 +63,9 @@ type Row = {
   pause_end_date: string | null;
   stop_date: string | null;
   archived_at?: string | null;
+  offer_image_url: string | null;
+  price_cents: number | null;
+  currency: string | null;
 };
 
 type SessionRow = {
@@ -151,11 +158,7 @@ type WorkshopParticipantEntry = {
 };
 
 function formatDateTime(dt: string | null) {
-  if (!dt) return "";
-  const d = new Date(dt);
-  const date = d.toLocaleDateString("de-DE");
-  const time = d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-  return `${date} | ${time}`;
+  return formatBerlinDateTime(dt);
 }
 
 function formatTrialMode(value: string | null): string {
@@ -172,31 +175,12 @@ function resolveCourseParticipantEmail(participant: TrialParticipantRow): string
 }
 
 function formatDateTimeRange(start: string | null, end: string | null): string | null {
-  if (!start) return null;
-  const startDate = new Date(start);
-  if (Number.isNaN(startDate.getTime())) return null;
+  return formatBerlinDateTimeRange(start, end);
+}
 
-  const date = startDate.toLocaleDateString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-  const startTime = startDate.toLocaleTimeString("de-DE", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  if (!end) return `${date} | ${startTime}`;
-
-  const endDate = new Date(end);
-  if (Number.isNaN(endDate.getTime())) return `${date} | ${startTime}`;
-
-  const endTime = endDate.toLocaleTimeString("de-DE", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  return `${date} | ${startTime}-${endTime}`;
+function formatOfferPrice(priceCents: number | null, currency: string | null): string {
+  if (priceCents === null || !Number.isFinite(priceCents) || priceCents <= 0) return "Kostenlos";
+  return formatMoney(priceCents, currency || "EUR");
 }
 
 function getDetailStatusPresentation(normalizedStatus: string) {
@@ -245,7 +229,7 @@ export default async function DashboardCourseDetailPage({
     .from("courses")
     .select(
       "id,title,description,internal_note,location,location_details,starts_at,start_time,duration_minutes,recurrence_type,capacity,kind,status,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,pause_start_date,pause_end_date,stop_date"
-      + ",archived_at,visibility"
+      + ",archived_at,visibility,offer_image_url,price_cents,currency"
     )
     .eq("id", id)
     .eq("teacher_id", user.id)
@@ -255,7 +239,7 @@ export default async function DashboardCourseDetailPage({
     courseResponse = await admin
       .from("courses")
       .select(
-        "id,title,description,internal_note,location,location_details,starts_at,start_time,duration_minutes,recurrence_type,capacity,kind,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,archived_at,visibility"
+        "id,title,description,internal_note,location,location_details,starts_at,start_time,duration_minutes,recurrence_type,capacity,kind,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,archived_at,visibility,offer_image_url,price_cents,currency"
       )
       .eq("id", id)
       .eq("teacher_id", user.id)
@@ -361,6 +345,7 @@ export default async function DashboardCourseDetailPage({
   });
   const normalizedStatus = displayState.normalizedStatus;
   const statusLabel = displayState.currentStatusLabel;
+  const isSinglePaymentOffer = isOneTimeOfferKind(data.kind);
   const detailStatusPresentation = getDetailStatusPresentation(normalizedStatus);
   const pauseStartLabel = formatCourseLifecycleDate(data.pause_start_date);
   const pauseEndLabel = formatCourseLifecycleDate(data.pause_end_date);
@@ -537,6 +522,11 @@ export default async function DashboardCourseDetailPage({
     subject: buildOfferMailSubject(data.kind, data.title),
   });
   const showOfferMailWarning = shouldWarnAboutLargeMailingGroup(offerRecipientEmails.length, contactMailHref);
+  const activeWorkshopBookingCount = (workshopBookings ?? []).filter(
+    (booking) => !booking.archived_at && booking.status === "paid" && !booking.refunded_at && !booking.stripe_refund_id
+  ).length;
+  const freeWorkshopSeats =
+    data.capacity === null ? null : Math.max(0, data.capacity - activeWorkshopBookingCount);
   const archiveEligibility = getOfferArchiveEligibility({
     kind: data.kind,
     status: data.status,
@@ -552,12 +542,8 @@ export default async function DashboardCourseDetailPage({
         intent.status === "checkout_completed" &&
         ["active", "pause_scheduled", "paused", "cancel_scheduled"].includes(intent.subscription_status ?? "active")
     ).length,
-    activeBookingCount: (workshopBookings ?? []).filter(
-      (booking) => !booking.archived_at && booking.status === "paid" && !booking.refunded_at && !booking.stripe_refund_id
-    ).length,
-    openPaymentCount: (workshopBookings ?? []).filter(
-      (booking) => !booking.archived_at && booking.status === "paid" && !booking.refunded_at && !booking.stripe_refund_id
-    ).length,
+    activeBookingCount: activeWorkshopBookingCount,
+    openPaymentCount: activeWorkshopBookingCount,
   });
   const calendarEnabled = hasOfferCalendarData({
     kind: data.kind,
@@ -573,7 +559,7 @@ export default async function DashboardCourseDetailPage({
   });
 
   return (
-    <main style={{ padding: 24, maxWidth: 820 }}>
+    <main className="mx-auto max-w-7xl p-6">
       <Link href="/dashboard/courses" style={{ fontWeight: 700 }}>
         Zurück
       </Link>
@@ -660,6 +646,8 @@ export default async function DashboardCourseDetailPage({
         </p>
       ) : null}
 
+      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)] xl:items-start">
+        <div>
       <CourseDetailActions
         courseId={data.id}
         kind={data.kind}
@@ -717,10 +705,13 @@ export default async function DashboardCourseDetailPage({
         {data.location_details ? <div>Raum / Zusatzinfo: {data.location_details}</div> : null}
         {data.kind === "course" && data.starts_at ? <div>Start des laufenden Angebots: {formatDateTime(data.starts_at)}</div> : null}
         {data.kind !== "course" && data.starts_at ? <div>Start: {formatDateTime(data.starts_at)}</div> : null}
-        {data.capacity !== null ? <div>Plätze: {data.capacity}</div> : null}
+        {data.capacity !== null ? <div>Max. Teilnehmende: {data.capacity}</div> : null}
+        {isSinglePaymentOffer && freeWorkshopSeats !== null ? <div>Freie Plätze: {freeWorkshopSeats}</div> : null}
+        {isSinglePaymentOffer ? <div>Reservierungen/Buchungen: {activeWorkshopBookingCount}</div> : null}
+        {data.price_cents !== null ? <div>Preis: {formatOfferPrice(data.price_cents, data.currency)}</div> : null}
       </div>
 
-      {data.description ? <p style={{ marginTop: 16, lineHeight: 1.6 }}>{data.description}</p> : null}
+      <FormattedOfferDescription text={data.description} className="mt-4 space-y-4 text-sm leading-7 text-slate-700" />
 
       {data.internal_note ? (
         <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
@@ -745,7 +736,7 @@ export default async function DashboardCourseDetailPage({
         </section>
       ) : null}
 
-      {isOneTimeOfferKind(data.kind) ? (
+      {isSinglePaymentOffer ? (
         <section style={{ marginTop: 24 }}>
           <h2 style={{ fontSize: 22, fontWeight: 800 }}>Termine</h2>
           <div style={{ marginTop: 8, borderTop: "1px solid #ddd", paddingTop: 12 }}>
@@ -754,23 +745,7 @@ export default async function DashboardCourseDetailPage({
                 <div key={session.id} style={{ marginBottom: 8 }}>
                   {session.starts_at ? (
                     <>
-                      {new Date(session.starts_at).toLocaleDateString("de-DE", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                      })}{" "}
-                      |{" "}
-                      {new Date(session.starts_at).toLocaleTimeString("de-DE", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                      -
-                      {session.ends_at
-                        ? new Date(session.ends_at).toLocaleTimeString("de-DE", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : "-"}
+                      {formatDateTimeRange(session.starts_at, session.ends_at)}
                     </>
                   ) : (
                     "-"
@@ -783,6 +758,30 @@ export default async function DashboardCourseDetailPage({
           </div>
         </section>
       ) : null}
+        </div>
+
+        {isSinglePaymentOffer ? (
+          <aside className="xl:sticky xl:top-6">
+            <OneTimeOfferPreview
+              title={data.title}
+              description={data.description}
+              location={data.location}
+              locationDetails={data.location_details}
+              offerImageUrl={data.offer_image_url}
+              priceCents={data.price_cents}
+              currency={data.currency}
+              sessions={(sessions ?? []).map((session) => ({
+                id: session.id,
+                starts_at: session.starts_at,
+                ends_at: session.ends_at,
+              }))}
+              startsAt={data.starts_at}
+              endsAt={data.ends_at}
+              previewMode={normalizedStatus === "draft"}
+            />
+          </aside>
+        ) : null}
+      </div>
 
       {participantOverviewItems.length > 0 ? (
         <section className="mt-8 space-y-4">

@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import FormattedOfferDescription from "@/components/offer/FormattedOfferDescription";
 import {
   formatCourseEndDate,
   isCourseClosedForNewRegistrations,
@@ -12,6 +13,7 @@ import {
   getWorkshopCancellationPolicySummary,
 } from "@/lib/offer-policies";
 import { formatCoursePriceFromRow } from "@/lib/course-display";
+import { formatBerlinDateTimeRange } from "@/lib/formatting/berlin-time";
 import {
   buildOfferAvailability,
   loadOccupiedCourseSeats,
@@ -75,25 +77,7 @@ function recurrenceLabel(value: string | null): string | null {
 }
 
 function formatSessionLine(startsAt: string | null, endsAt: string | null): string {
-  if (!startsAt) return "-";
-  const start = new Date(startsAt);
-  const date = start.toLocaleDateString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-  const startTime = start.toLocaleTimeString("de-DE", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const endTime = endsAt
-    ? new Date(endsAt).toLocaleTimeString("de-DE", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "-";
-
-  return `${date} | ${startTime}-${endTime}`;
+  return formatBerlinDateTimeRange(startsAt, endsAt) ?? "-";
 }
 
 function isWorkshopBookable(startsAt: string | null, endsAt: string | null) {
@@ -235,6 +219,7 @@ export default async function CourseDetailPage({
       <section className="rounded-2xl border p-4 text-sm text-muted-foreground">
         {location ? <p>Ort: {location}</p> : null}
         {price ? <p>Preis: {price}</p> : null}
+        {capacity !== null ? <p>Max. Teilnehmende: {capacity}</p> : null}
         {capacity !== null ? (
           <p>
             Freie Plätze:{" "}
@@ -256,7 +241,7 @@ export default async function CourseDetailPage({
         {kind === "course" && cancellationModel ? <p>Der Preis ist als Monatsbeitrag zu verstehen.</p> : null}
       </section>
 
-      {description ? <p className="leading-7">{description}</p> : null}
+      <FormattedOfferDescription text={description} />
 
       {shouldShowProfileSection ? (
         <section className="rounded-2xl border p-5">

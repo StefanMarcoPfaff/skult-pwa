@@ -24,6 +24,9 @@ export type OfferCardProps = {
   visibilityLabel: string;
   visibility: "public" | "private_link";
   location: string | null;
+  capacity: number | null;
+  occupiedSeats: number;
+  freeSeats: number | null;
   workshopTiming: string | null;
   courseTiming: string | null;
   pauseStartLabel: string | null;
@@ -608,6 +611,9 @@ export function OfferCard(props: OfferCardProps) {
           {!props.oneTimeOfferState && !props.normalizedStatus ? <p>Status: {props.statusLabel}</p> : null}
           {props.location ? <p>Ort: {props.location}</p> : null}
           <p>Sichtbarkeit: {props.visibilityLabel}</p>
+          {props.capacity !== null ? <p>Max. Teilnehmende: {props.capacity}</p> : null}
+          {props.freeSeats !== null ? <p>Freie Plätze: {props.freeSeats}</p> : null}
+          {props.capacity !== null ? <p>Reservierungen/Buchungen: {props.occupiedSeats}</p> : null}
           {props.workshopTiming ? <p>{props.workshopTiming}</p> : null}
           {props.courseTiming ? <p>{props.courseTiming}</p> : null}
           {props.pauseStartLabel ? <p>Pausenstart: {props.pauseStartLabel}</p> : null}

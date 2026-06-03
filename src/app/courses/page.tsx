@@ -2,6 +2,7 @@ import Link from "next/link";
 import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatCoursePriceFromRow } from "@/lib/course-display";
+import { formatBerlinDateTimeRange } from "@/lib/formatting/berlin-time";
 import { buildOfferAvailability, loadOccupiedSeatCountsForOffers } from "@/lib/public-offer-availability";
 import { isPubliclyVisibleOffer } from "@/lib/public-offer-visibility";
 import { getOfferKindLabel, isOneTimeOfferKind } from "@/lib/offer-ui";
@@ -17,11 +18,7 @@ function asNumber(value: unknown): number | null {
 }
 
 function formatDateTime(dt: string | null) {
-  if (!dt) return "";
-  return new Date(dt).toLocaleString("de-DE", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  return formatBerlinDateTimeRange(dt, null) ?? "";
 }
 
 function getKind(row: Row): "workshop" | "course" | "exclusive_offer" | null {
@@ -220,7 +217,7 @@ export default async function CoursesPage() {
                   <p className="mt-1 text-sm text-gray-600">
                     {location ?? "—"}
                     {price ? ` · ${price}` : ""}
-                    {capacity !== null ? ` · Plätze: ${capacity}` : ""}
+                    {capacity !== null ? ` · Max. Teilnehmende: ${capacity}` : ""}
                   </p>
 
                   <p className="mt-2 text-sm font-medium text-gray-700">{availabilityText}</p>

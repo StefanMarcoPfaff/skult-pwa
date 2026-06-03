@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
 import { DEFAULT_PLATFORM_FEE_PERCENT } from "@/lib/platform-fees";
@@ -70,7 +70,7 @@ function formatCurrency(cents: number, currency: string): string {
 export default function WorkshopForm({
   initialValues,
   submitActionOverride,
-  submitLabel = "Einmaliges Angebot erstellen",
+  submitLabel = "Entwurf speichern",
   providerType,
   providerDisplayName,
   platformFeePercent = DEFAULT_PLATFORM_FEE_PERCENT,
@@ -90,6 +90,7 @@ export default function WorkshopForm({
   const isLegacyExclusiveOffer = offerKind === "exclusive_offer";
   const [error, setError] = useState<string | null>(null);
   const [offerImageError, setOfferImageError] = useState<string | null>(null);
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const [priceEur, setPriceEur] = useState(initialValues?.price_eur ?? "");
   const [currency] = useState(workshopCurrency);
   const [sessions, setSessions] = useState<SessionInput[]>(() =>
@@ -234,6 +235,19 @@ export default function WorkshopForm({
     });
   };
 
+  function insertDescriptionMarkup(before: string, after = before) {
+    const textarea = descriptionRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = textarea.value.slice(start, end);
+    const nextValue = `${textarea.value.slice(0, start)}${before}${selected}${after}${textarea.value.slice(end)}`;
+    textarea.value = nextValue;
+    const nextCursor = selected ? start + before.length + selected.length + after.length : start + before.length;
+    textarea.focus();
+    textarea.setSelectionRange(nextCursor, nextCursor);
+  }
+
   return (
     <form action={submitAction} className="space-y-4">
       <input type="hidden" name="offer_kind" value={offerKind} readOnly />
@@ -275,13 +289,51 @@ export default function WorkshopForm({
 
       <label className="block space-y-1">
         <span className="text-sm font-medium">Beschreibung</span>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => insertDescriptionMarkup("**")}
+            className="rounded-lg border px-2 py-1 text-xs font-bold"
+            title="Fett"
+          >
+            B
+          </button>
+          <button
+            type="button"
+            onClick={() => insertDescriptionMarkup("*")}
+            className="rounded-lg border px-2 py-1 text-xs italic"
+            title="Kursiv"
+          >
+            I
+          </button>
+          <button
+            type="button"
+            onClick={() => insertDescriptionMarkup("<u>", "</u>")}
+            className="rounded-lg border px-2 py-1 text-xs underline"
+            title="Unterstrichen"
+          >
+            U
+          </button>
+          <button
+            type="button"
+            onClick={() => insertDescriptionMarkup("\n\n", "")}
+            className="rounded-lg border px-2 py-1 text-xs font-semibold"
+            title="Absatz"
+          >
+            ¶
+          </button>
+        </div>
         <textarea
+          ref={descriptionRef}
           name="description"
           rows={4}
           defaultValue={initialValues?.description ?? ""}
           className="w-full rounded-xl border px-3 py-2 text-sm"
-          placeholder="Kurzbeschreibung fuer die Angebotsseite."
+          placeholder="Kurzbeschreibung fuer die Angebotsseite. Absätze bleiben erhalten."
         />
+        <span className="block text-xs text-muted-foreground">
+          Unterstützt **fett**, *kursiv*, &lt;u&gt;unterstrichen&lt;/u&gt; und Leerzeilen als Absätze.
+        </span>
       </label>
 
       <OfferImageField initialUrl={initialValues?.offer_image_url ?? ""} onValidationError={setOfferImageError} />
@@ -293,10 +345,10 @@ export default function WorkshopForm({
           rows={3}
           defaultValue={initialValues?.internal_note ?? ""}
           className="w-full rounded-xl border px-3 py-2 text-sm"
-          placeholder="Nur intern sichtbar, z. B. Anlass, Konditionen oder Kund*innen-Kontext."
+          placeholder="Nur intern sichtbar, z. B. Anlass, Konditionen oder Teilnehmenden-Kontext."
         />
         <span className="block text-xs text-muted-foreground">
-          Nur fuer dich sichtbar. Kund*innen sehen diese Notiz nicht.
+          Nur fuer dich sichtbar. Teilnehmende sehen diese Notiz nicht.
         </span>
       </label>
 
@@ -451,7 +503,7 @@ export default function WorkshopForm({
       </div>
 
       <label className="space-y-1">
-        <span className="text-sm font-medium">Maximale Teilnehmerzahl</span>
+        <span className="text-sm font-medium">Max. Teilnehmende</span>
         <input
           type="number"
           name="capacity"
@@ -504,7 +556,7 @@ export default function WorkshopForm({
             <span>{formatCurrency(priceBreakdown.platformFeeCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4 font-medium text-foreground">
-            <span>Deine Einnahmen pro Kunde</span>
+            <span>Deine Einnahmen pro Teilnehmende</span>
             <span>{formatCurrency(priceBreakdown.payoutCents, currency)}</span>
           </div>
         </div>
@@ -538,6 +590,9 @@ export default function WorkshopForm({
       >
         {pending ? "Speichert..." : submitLabel}
       </button>
+      <p className="text-xs text-muted-foreground">
+        Dein Angebot wird zunächst als Entwurf gespeichert. Im nächsten Schritt kannst du es prüfen und veröffentlichen.
+      </p>
     </form>
   );
 }

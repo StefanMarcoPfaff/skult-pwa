@@ -5,6 +5,7 @@ import { buildOfferCalendarPath } from "@/lib/calendar";
 import { hasOfferCalendarData } from "@/lib/calendar-resolver";
 import { formatMoney } from "@/lib/course-display";
 import { formatCourseLifecycleDate, type CourseStatus } from "@/lib/course-lifecycle-shared";
+import { formatBerlinDateTimeRange } from "@/lib/formatting/berlin-time";
 import {
   buildMailtoHref,
   buildOfferMailSubject,
@@ -42,6 +43,7 @@ type OfferRow = {
   location: string | null;
   starts_at: string | null;
   duration_minutes: number | null;
+  capacity: number | null;
   weekday: number | null;
   start_time: string | null;
   recurrence_type: string | null;
@@ -96,14 +98,6 @@ const weekdayLabels: Record<number, string> = {
   5: "Fr",
   6: "Sa",
 };
-
-function formatWorkshopDateTime(value: string | null) {
-  if (!value) return null;
-  return new Date(value).toLocaleString("de-DE", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
 
 function formatOfferEndDate(value: string | null) {
   if (!value) return null;
@@ -165,9 +159,9 @@ export default async function DashboardCoursesPage({
   }
 
   const baseSelect =
-    "id,teacher_id,title,kind,status,is_published,visibility,location,starts_at,ends_at,duration_minutes,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,pause_start_date,pause_end_date,stop_date,archived_at,price_cents,currency";
+    "id,teacher_id,title,kind,status,is_published,visibility,location,starts_at,ends_at,duration_minutes,capacity,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,pause_start_date,pause_end_date,stop_date,archived_at,price_cents,currency";
   const fallbackSelect =
-    "id,teacher_id,title,kind,is_published,visibility,location,starts_at,ends_at,duration_minutes,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,archived_at,price_cents,currency";
+    "id,teacher_id,title,kind,is_published,visibility,location,starts_at,ends_at,duration_minutes,capacity,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,archived_at,price_cents,currency";
 
   let offersResult = await admin
     .from("courses")
@@ -232,8 +226,16 @@ export default async function DashboardCoursesPage({
 
   const sessionCountByCourseId = new Map<string, number>();
   const lastSessionEndByCourseId = new Map<string, string | null>();
+  const firstSessionByCourseId = new Map<string, SessionRow>();
   for (const row of sessionRows) {
     sessionCountByCourseId.set(row.course_id, (sessionCountByCourseId.get(row.course_id) ?? 0) + 1);
+    const currentFirstSession = firstSessionByCourseId.get(row.course_id);
+    if (
+      !currentFirstSession ||
+      String(row.starts_at ?? "").localeCompare(String(currentFirstSession.starts_at ?? "")) < 0
+    ) {
+      firstSessionByCourseId.set(row.course_id, row);
+    }
     const currentLastEnd = lastSessionEndByCourseId.get(row.course_id);
     const nextEnd = row.ends_at ?? row.starts_at ?? null;
     if (!nextEnd) continue;
@@ -286,7 +288,10 @@ export default async function DashboardCoursesPage({
     const pauseEndLabel = formatCourseLifecycleDate(offer.pause_end_date);
     const stopDateLabel = formatCourseLifecycleDate(offer.stop_date);
     const workshopHasMultipleSessions = (sessionCountByCourseId.get(offer.id) ?? 0) > 1;
-    const workshopTiming = workshopHasMultipleSessions ? "Mehrere Termine" : formatWorkshopDateTime(offer.starts_at);
+    const firstSession = firstSessionByCourseId.get(offer.id);
+    const workshopTiming = workshopHasMultipleSessions
+      ? "Mehrere Termine"
+      : formatBerlinDateTimeRange(firstSession?.starts_at ?? offer.starts_at, firstSession?.ends_at ?? offer.ends_at ?? null);
     const courseTiming = formatCourseSchedule(offer.weekday, offer.start_time, offer.recurrence_type);
     const policyLabel =
       kind === "course"
@@ -364,6 +369,9 @@ export default async function DashboardCoursesPage({
       visibility,
       visibilityLabel: getOfferVisibilityLabel(offer.visibility),
       location: offer.location,
+      capacity: offer.capacity,
+      occupiedSeats: isOneTimeOfferKind(kind) ? activeBookingCount : activeTrialCount + activeRegistrationCount,
+      freeSeats: offer.capacity === null ? null : Math.max(0, offer.capacity - (isOneTimeOfferKind(kind) ? activeBookingCount : activeTrialCount + activeRegistrationCount)),
       workshopTiming: isOneTimeOfferKind(kind) ? workshopTiming : null,
       courseTiming: kind === "course" ? courseTiming : null,
       pauseStartLabel: kind === "course" ? pauseStartLabel : null,

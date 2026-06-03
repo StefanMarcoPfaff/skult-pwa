@@ -23,6 +23,31 @@ export function formatBerlinDate(value: string | null | undefined): string {
   }).format(date);
 }
 
+export function formatBerlinTime(value: string | null | undefined): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return new Intl.DateTimeFormat("de-DE", {
+    timeZone: BERLIN_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+export function formatBerlinDateTimeRange(
+  startsAt: string | null | undefined,
+  endsAt: string | null | undefined
+): string | null {
+  if (!startsAt) return null;
+  const date = formatBerlinDate(startsAt);
+  const startTime = formatBerlinTime(startsAt);
+  if (date === "-" || startTime === "-") return null;
+
+  const endTime = endsAt ? formatBerlinTime(endsAt) : null;
+  return endTime && endTime !== "-" ? `${date} | ${startTime}-${endTime}` : `${date} | ${startTime}`;
+}
+
 function getBerlinDateParts(date: Date): { year: number; month: number; day: number } {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: BERLIN_TIME_ZONE,
