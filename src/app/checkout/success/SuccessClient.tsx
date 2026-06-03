@@ -26,6 +26,8 @@ export type WorkshopSuccessData = {
   instructorName?: string | null;
   stornoPolicyLabel?: string | null;
   priceLabel?: string | null;
+  priceCents?: number | null;
+  currency?: string | null;
   providerLogoUrl?: string | null;
   providerPhotoUrl?: string | null;
   offerImageUrl?: string | null;
@@ -73,7 +75,8 @@ export default function SuccessClient({ bookingData }: Props) {
           location: bookingData.location,
           location_details: bookingData.locationDetails,
           instructor_name: bookingData.instructorName,
-          price_cents: bookingData.paymentStatus === "free" ? 0 : null,
+          price_cents: bookingData.paymentStatus === "free" ? 0 : bookingData.priceCents ?? null,
+          currency: bookingData.currency ?? null,
           offer_image_url: bookingData.offerImageUrl,
         },
         providerProfile: {
@@ -95,7 +98,6 @@ export default function SuccessClient({ bookingData }: Props) {
       startsAtBerlin: null,
       endsAtBerlin: null,
     }));
-    offerViewModel.priceLabel = bookingData.priceLabel ?? offerViewModel.priceLabel;
     offerViewModel.cancellationLabel = bookingData.stornoPolicyLabel ?? null;
     offerViewModel.showCancellationTerms = !isFreeBooking && Boolean(bookingData.stornoPolicyLabel);
   }

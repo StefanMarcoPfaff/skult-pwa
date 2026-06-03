@@ -152,6 +152,8 @@ export type FinalizedWorkshopBooking = {
   instructorName: string | null;
   stornoPolicyLabel: string | null;
   priceLabel: string | null;
+  priceCents: number | null;
+  currency: string | null;
   providerLogoUrl: string | null;
   providerPhotoUrl: string | null;
   offerImageUrl: string | null;
@@ -428,6 +430,8 @@ async function finalizeWorkshopBookingRecord(input: {
       ? getWorkshopStornoPolicyLabel(course?.workshop_storno_policy)
       : null,
     priceLabel: formatWorkshopPriceLabel(course?.price_cents ?? null, course?.currency ?? null, input.paymentStatus),
+    priceCents: course?.price_cents ?? null,
+    currency: course?.currency ?? null,
     providerLogoUrl: providerContact.providerLogoUrl,
     providerPhotoUrl: providerContact.senderImageUrl,
     offerImageUrl: course?.offer_image_url ?? null,

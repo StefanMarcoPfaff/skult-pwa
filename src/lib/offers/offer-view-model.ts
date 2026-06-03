@@ -162,11 +162,20 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function renderEmailValue(value: string | string[]): string {
+  if (Array.isArray(value)) {
+    return value.map((item) => `<div>${escapeHtml(item)}</div>`).join("");
+  }
+
+  return escapeHtml(value);
+}
+
 export function renderOfferSummaryEmailHtml(viewModel: OfferViewModel): string {
   const imageUrl = viewModel.providerLogoUrl || viewModel.providerPhotoUrl;
   const imageHtml = imageUrl
     ? `<div style="margin:0 0 16px;"><img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(viewModel.organizationLabel ?? viewModel.offerTitle)}" style="max-height:72px;max-width:180px;width:auto;border-radius:10px;display:block;" /></div>`
     : "";
+  const sessionLabels = viewModel.sessions.map((session) => session.dateTimeLabel).filter(Boolean);
   const rows = [
     ["Angebot", viewModel.offerTitle],
     ["Art", viewModel.offerTypeLabel],
@@ -174,10 +183,12 @@ export function renderOfferSummaryEmailHtml(viewModel: OfferViewModel): string {
     ["Leitung", viewModel.leaderName],
     ["Ort", viewModel.locationLabel],
     ["Ort / Zusatzinfo", viewModel.locationDetails],
-    ["Datum / Zeiten", viewModel.sessions.map((session) => session.dateTimeLabel).join("<br />")],
+    ["Datum / Zeiten", sessionLabels.length > 0 ? sessionLabels : null],
     ["Preis", viewModel.priceLabel],
     viewModel.showCancellationTerms ? ["Stornierungsbedingungen", viewModel.cancellationLabel] : null,
-  ].filter((row): row is [string, string] => Boolean(row?.[1]));
+  ].filter((row): row is [string, string | string[]] =>
+    Array.isArray(row?.[1]) ? row[1].length > 0 : Boolean(row?.[1])
+  );
 
   return `
     <div style="margin:24px 0;padding:18px 20px;border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;">
@@ -187,7 +198,7 @@ export function renderOfferSummaryEmailHtml(viewModel: OfferViewModel): string {
           ([label, value]) => `
             <div style="margin:0 0 14px;">
               <div style="font-size:12px;line-height:1.35;color:#5b6470;font-weight:700;">${escapeHtml(label)}</div>
-              <div style="margin-top:3px;color:#111827;">${value.includes("<br />") ? value : escapeHtml(value)}</div>
+              <div style="margin-top:3px;color:#111827;">${renderEmailValue(value)}</div>
             </div>
           `
         )

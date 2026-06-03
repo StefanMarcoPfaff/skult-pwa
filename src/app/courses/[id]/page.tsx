@@ -194,6 +194,8 @@ export default async function CourseDetailPage({
 
   const { publicCourse, publicProfile, providerLabel, profileHeading, profileDescription, profilePhotoUrl, profileVideoUrl } =
     publicOffer;
+  // reservation_notice is intentionally local to the public reservation form.
+  // Do not add it to Success, ticket, or email surfaces unless explicitly requested.
   const reservationNotice = publicCourse?.reservation_notice?.trim() || null;
 
   const shouldShowProfileSection =
