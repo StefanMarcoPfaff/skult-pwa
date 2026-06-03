@@ -18,6 +18,8 @@ import {
   normalizeWorkshopCurrency,
 } from "@/lib/workshop-checkout";
 import { finalizeFreeWorkshopBooking } from "@/lib/workshop-booking-finalization";
+import { getWorkshopCancellationPolicyValue } from "@/lib/offer-policies";
+import { shouldShowWorkshopCancellationPolicy } from "@/lib/workshop-offer-display";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
@@ -80,9 +82,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Bitte fülle alle Pflichtfelder aus." }, { status: 400 });
     }
 
-    if (!agbAccepted || !privacyAccepted || !workshopStornoAccepted) {
+    if (!agbAccepted || !privacyAccepted) {
       return NextResponse.json(
-        { error: "Bitte bestätige AGB, Datenschutz und die Stornoregelung." },
+        { error: "Bitte bestätige AGB und Datenschutz." },
         { status: 400 }
       );
     }
@@ -90,7 +92,7 @@ export async function POST(req: Request) {
     const supabase = await createClient();
     const { data: course, error: courseErr } = await supabase
       .from("courses_lite")
-      .select("id,title,price_type,price_cents,currency,offer_type,capacity,starts_at,ends_at,is_published,status,visibility")
+      .select("id,title,price_type,price_cents,currency,offer_type,capacity,starts_at,ends_at,is_published,status,visibility,workshop_storno_policy")
       .eq("id", courseId)
       .single();
 
@@ -100,6 +102,17 @@ export async function POST(req: Request) {
 
     if (course.offer_type !== "workshop" && course.offer_type !== "exclusive_offer") {
       return NextResponse.json({ error: "Checkout nur für einmalige Angebote" }, { status: 400 });
+    }
+
+    const requiresWorkshopStornoConsent =
+      shouldShowWorkshopCancellationPolicy(course.price_cents) &&
+      Boolean(getWorkshopCancellationPolicyValue({ workshop_storno_policy: course.workshop_storno_policy }));
+
+    if (requiresWorkshopStornoConsent && !workshopStornoAccepted) {
+      return NextResponse.json(
+        { error: "Bitte bestätige die Stornierungsbedingungen." },
+        { status: 400 }
+      );
     }
 
     if (

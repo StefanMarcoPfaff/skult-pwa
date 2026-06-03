@@ -340,6 +340,7 @@ export default async function CourseDetailPage({
                 teacherName={profileHeading ?? publicCourse?.instructor_name ?? providerLabel}
                 priceLabel={displayedPrice}
                 stornoPolicyLabel={workshopPolicyLabel}
+                showCancellationTerms={offerViewModel.showCancellationTerms}
                 offerLabel="einmaliges Angebot"
               />
             )}

@@ -9,15 +9,91 @@ type PayButtonProps = {
   teacherName?: string | null;
   priceLabel?: string | null;
   stornoPolicyLabel?: string | null;
+  showCancellationTerms?: boolean;
   disabled?: boolean;
   offerLabel?: string;
 };
+
+type BookingConsentFieldsProps = {
+  termsAndPrivacyAccepted: boolean;
+  cancellationAccepted: boolean;
+  cancellationLabel: string | null;
+  cancellationRequired: boolean;
+  onTermsAndPrivacyChange: (accepted: boolean) => void;
+  onCancellationChange: (accepted: boolean) => void;
+};
+
+function BookingConsentFields({
+  termsAndPrivacyAccepted,
+  cancellationAccepted,
+  cancellationLabel,
+  cancellationRequired,
+  onTermsAndPrivacyChange,
+  onCancellationChange,
+}: BookingConsentFieldsProps) {
+  return (
+    <div className="space-y-3 rounded-xl border p-4 text-sm">
+      <label className="flex items-start gap-3">
+        <input
+          type="checkbox"
+          checked={termsAndPrivacyAccepted}
+          onChange={(event) => onTermsAndPrivacyChange(event.target.checked)}
+          className="mt-1"
+        />
+        <span>
+          Ich akzeptiere die{" "}
+          <Link href={LEGAL_LINKS.agb} target="_blank" className="underline underline-offset-4">
+            AGB
+          </Link>{" "}
+          und habe die{" "}
+          <Link href={LEGAL_LINKS.privacy} target="_blank" className="underline underline-offset-4">
+            Datenschutzhinweise
+          </Link>{" "}
+          gelesen.
+        </span>
+      </label>
+
+      <p className="text-xs text-muted-foreground">
+        Weitere Informationen findest du im{" "}
+        <Link href={LEGAL_LINKS.imprint} target="_blank" className="underline underline-offset-4">
+          Impressum
+        </Link>
+        .
+      </p>
+
+      {cancellationRequired ? (
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={cancellationAccepted}
+            onChange={(event) => onCancellationChange(event.target.checked)}
+            className="mt-1"
+          />
+          <span>
+            Ich habe die Stornierungsbedingungen
+            {cancellationLabel ? <> ({cancellationLabel})</> : null} gelesen und akzeptiere diese
+            sowie den{" "}
+            <Link
+              href={LEGAL_LINKS.workshopStorno}
+              target="_blank"
+              className="underline underline-offset-4"
+            >
+              rechtlichen Hinweis zur Stornierung einmaliger Angebote
+            </Link>
+            .
+          </span>
+        </label>
+      ) : null}
+    </div>
+  );
+}
 
 export function PayButton({
   courseId,
   teacherName,
   priceLabel,
   stornoPolicyLabel,
+  showCancellationTerms = false,
   disabled,
   offerLabel = "einmaliges Angebot",
 }: PayButtonProps) {
@@ -30,10 +106,20 @@ export function PayButton({
     phone: "",
   });
   const [consents, setConsents] = useState({
-    agbAccepted: false,
-    privacyAccepted: false,
+    termsAndPrivacyAccepted: false,
     workshopStornoAccepted: false,
   });
+
+  const isFreeOffer = priceLabel === "Kostenlos" || priceLabel === "Kostenfreie Reservierung";
+  const cancellationLabel = stornoPolicyLabel?.trim() || null;
+  const cancellationRequired = showCancellationTerms && Boolean(cancellationLabel);
+  const canSubmit =
+    Boolean(form.firstName.trim()) &&
+    Boolean(form.lastName.trim()) &&
+    Boolean(form.email.trim()) &&
+    Boolean(form.phone.trim()) &&
+    consents.termsAndPrivacyAccepted &&
+    (!cancellationRequired || consents.workshopStornoAccepted);
 
   async function startCheckout() {
     setErr(null);
@@ -48,9 +134,9 @@ export function PayButton({
           lastName: form.lastName,
           email: form.email,
           phone: form.phone,
-          agbAccepted: consents.agbAccepted,
-          privacyAccepted: consents.privacyAccepted,
-          workshopStornoAccepted: isFreeOffer ? true : consents.workshopStornoAccepted,
+          agbAccepted: consents.termsAndPrivacyAccepted,
+          privacyAccepted: consents.termsAndPrivacyAccepted,
+          workshopStornoAccepted: cancellationRequired ? consents.workshopStornoAccepted : true,
         }),
       });
 
@@ -73,16 +159,6 @@ export function PayButton({
       setLoading(false);
     }
   }
-
-  const isFreeOffer = priceLabel === "Kostenlos" || priceLabel === "Kostenfreie Reservierung";
-  const isComplete =
-    form.firstName.trim() &&
-    form.lastName.trim() &&
-    form.email.trim() &&
-    form.phone.trim() &&
-    consents.agbAccepted &&
-    consents.privacyAccepted &&
-    (isFreeOffer || consents.workshopStornoAccepted);
 
   return (
     <div className="space-y-4">
@@ -124,12 +200,12 @@ export function PayButton({
 
       {isFreeOffer ? (
         <p className="text-sm text-muted-foreground">
-          Dieses einmalige Angebot ist kostenlos. Deine Buchung wird direkt bestätigt.
+          Dieses einmalige Angebot ist kostenlos. Deine Reservierung wird direkt bestätigt.
         </p>
       ) : (
         <p className="text-sm text-muted-foreground">
-          Im Checkout zeigt Stripe automatisch die verfügbaren Zahlungsmethoden für Gerät, Land
-          und Buchung an, zum Beispiel Karte, Apple Pay, Google Pay, SEPA oder Klarna.
+          Im Checkout zeigt Stripe automatisch die verfügbaren Zahlungsmethoden für Gerät,
+          Land und Buchung an, zum Beispiel Karte, Apple Pay, Google Pay, SEPA oder Klarna.
         </p>
       )}
 
@@ -146,9 +222,9 @@ export function PayButton({
               Leitung: <span className="font-medium text-foreground">{teacherName}</span>
             </p>
           ) : null}
-          {!isFreeOffer && stornoPolicyLabel ? (
+          {cancellationRequired ? (
             <p>
-              Stornierungsbedingungen: <span className="font-medium text-foreground">{stornoPolicyLabel}</span>
+              Stornierungsbedingungen: <span className="font-medium text-foreground">{cancellationLabel}</span>
             </p>
           ) : null}
           <p>
@@ -157,85 +233,24 @@ export function PayButton({
         </div>
       </section>
 
-      <div className="space-y-3 rounded-xl border p-4 text-sm">
-        {!isFreeOffer ? (
-        <label className="flex items-start gap-3">
-          <input
-            type="checkbox"
-            checked={consents.agbAccepted}
-            onChange={(event) =>
-              setConsents((current) => ({ ...current, agbAccepted: event.target.checked }))
-            }
-            className="mt-1"
-          />
-          <span>
-            Ich akzeptiere die{" "}
-            <Link href={LEGAL_LINKS.agb} target="_blank" className="underline underline-offset-4">
-              AGB
-            </Link>
-            .
-          </span>
-        </label>
-        ) : null}
-
-        <label className="flex items-start gap-3">
-          <input
-            type="checkbox"
-            checked={consents.privacyAccepted}
-            onChange={(event) =>
-              setConsents((current) => ({ ...current, privacyAccepted: event.target.checked }))
-            }
-            className="mt-1"
-          />
-          <span>
-            Ich habe die{" "}
-            <Link href={LEGAL_LINKS.privacy} target="_blank" className="underline underline-offset-4">
-              Datenschutzerklärung
-            </Link>{" "}
-            zur Kenntnis genommen.
-          </span>
-        </label>
-
-        <p className="text-xs text-muted-foreground">
-          Weitere Informationen findest du im{" "}
-          <Link href={LEGAL_LINKS.imprint} target="_blank" className="underline underline-offset-4">
-            Impressum
-          </Link>
-          .
-        </p>
-
-        <label className="flex items-start gap-3">
-          <input
-            type="checkbox"
-            checked={consents.workshopStornoAccepted}
-            onChange={(event) =>
-              setConsents((current) => ({
-                ...current,
-                workshopStornoAccepted: event.target.checked,
-              }))
-            }
-            className="mt-1"
-          />
-          <span>
-            Ich habe die Stornierungs- bzw. Kündigungsbedingungen gelesen und akzeptiere diese
-            sowie den{" "}
-            <Link
-              href={LEGAL_LINKS.workshopStorno}
-              target="_blank"
-              className="underline underline-offset-4"
-            >
-              rechtlichen Hinweis zur Stornierung einmaliger Angebote
-            </Link>
-            .
-          </span>
-        </label>
-      </div>
+      <BookingConsentFields
+        termsAndPrivacyAccepted={consents.termsAndPrivacyAccepted}
+        cancellationAccepted={consents.workshopStornoAccepted}
+        cancellationLabel={cancellationLabel}
+        cancellationRequired={cancellationRequired}
+        onTermsAndPrivacyChange={(accepted) =>
+          setConsents((current) => ({ ...current, termsAndPrivacyAccepted: accepted }))
+        }
+        onCancellationChange={(accepted) =>
+          setConsents((current) => ({ ...current, workshopStornoAccepted: accepted }))
+        }
+      />
 
       <button
         onClick={startCheckout}
-        disabled={disabled || loading || !isComplete}
+        disabled={disabled || loading || !canSubmit}
         className={`w-full rounded-2xl py-4 text-lg font-bold ${
-          disabled || loading || !isComplete ? "bg-gray-200 text-gray-500" : "bg-black text-white"
+          disabled || loading || !canSubmit ? "bg-gray-200 text-gray-500" : "bg-black text-white"
         }`}
       >
         {loading ? "Reservierung..." : "Jetzt reservieren"}
