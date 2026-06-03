@@ -544,10 +544,20 @@ export async function loadParticipantOverviewItems(input: {
       intent.subscription_status === "paused"
         ? "Pausiert"
         : intent.subscription_status === "pause_scheduled"
-          ? "Pause geplant"
+          ? "Pausierung geplant"
           : "Pausieren";
-    const playLabel = intent.subscription_status === "cancel_scheduled" ? "Kündigung geplant" : "Aktiv";
-    const stopLabel = intent.subscription_status === "cancel_scheduled" ? "Kündigung geplant" : "Kündigen";
+    const playLabel =
+      intent.subscription_status === "paused" || intent.subscription_status === "pause_scheduled"
+        ? "Angemeldet"
+        : intent.subscription_status === "cancelled" || intent.subscription_status === "inactive"
+          ? "Gekündigt"
+          : "Verbindlich angemeldet";
+    const stopLabel =
+      intent.subscription_status === "cancel_scheduled"
+        ? "Kündigung geplant"
+        : intent.subscription_status === "cancelled" || intent.subscription_status === "inactive"
+          ? "Gekündigt"
+          : "Kündigen";
     const archiveEligibility = getParticipantArchiveEligibility({
       source: "registered",
       archivedAt: intent.archived_at,
@@ -654,7 +664,12 @@ export async function loadParticipantOverviewItems(input: {
           booking.checked_in_at ??
           null
         : ticket?.checked_in_at ?? booking.checked_in_at ?? null;
-    const lifecycle = getWorkshopParticipantLifecycleDisplay(booking.status === "paid");
+    const lifecycle = getWorkshopParticipantLifecycleDisplay({
+      bookingStatus: booking.status,
+      checkedInAt,
+      refundedAt: booking.refunded_at,
+      stripeRefundId: booking.stripe_refund_id,
+    });
     const mailHref = buildMailtoHref({
       to: booking.customer_email ? [booking.customer_email] : [],
       subject: buildParticipantMailSubject(course.title),
@@ -704,6 +719,7 @@ export async function loadParticipantOverviewItems(input: {
         bookingId: booking.id,
         redirectTo: "/dashboard/participants",
         paymentStatus: booking.payment_status,
+        playMode: lifecycle.playMode,
         stopDisabled:
           booking.status !== "paid" ||
           Boolean(booking.refunded_at) ||

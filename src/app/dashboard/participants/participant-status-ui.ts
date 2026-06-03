@@ -54,26 +54,26 @@ export function getParticipantStatusPresentation(
 
     if ((status.decisionStatus ?? "pending") === "pending" && checkedInAt) {
       return {
-        badgeLabel: "Entscheidung offen",
-        badgeClassName: "border-amber-200 bg-amber-50 text-amber-800",
-        cardClassName: "border-amber-200 bg-amber-50/60",
-        sortLabel: "Entscheidung offen",
+        badgeLabel: "Freigabe offen",
+        badgeClassName: "border-slate-200 bg-white text-slate-700",
+        cardClassName: "border-slate-200 bg-white",
+        sortLabel: "Freigabe offen",
       };
     }
 
     if (status.decisionStatus === "approved") {
       return {
-        badgeLabel: "Zugesagt",
-        badgeClassName: "border-green-200 bg-green-50 text-green-700",
-        cardClassName: "border-green-200 bg-green-50/60",
-        sortLabel: "Zugesagt",
+        badgeLabel: "Freigegeben",
+        badgeClassName: "border-slate-200 bg-white text-slate-700",
+        cardClassName: "border-slate-200 bg-white",
+        sortLabel: "Freigegeben",
       };
     }
 
     return {
       badgeLabel: "Nicht eingecheckt",
-      badgeClassName: "border-slate-200 bg-slate-50 text-slate-700",
-      cardClassName: "border-green-200 bg-green-50/45",
+      badgeClassName: "border-slate-200 bg-white text-slate-700",
+      cardClassName: "border-slate-200 bg-white",
       sortLabel: "Nicht eingecheckt",
     };
   }
@@ -101,26 +101,26 @@ export function getParticipantStatusPresentation(
       const stopDateLabel = formatShortDate(status.subscriptionStopDate);
       return {
         badgeLabel: stopDateLabel ? `Kündigt zum ${stopDateLabel}` : "Kündigung geplant",
-        badgeClassName: "border-amber-200 bg-amber-50 text-amber-800",
-        cardClassName: "border-amber-200 bg-amber-50/60",
+        badgeClassName: "border-red-200 bg-red-50 text-red-700",
+        cardClassName: "border-red-200 bg-red-50/60",
         sortLabel: stopDateLabel ? `Kündigt zum ${stopDateLabel}` : "Kündigung geplant",
       };
     }
 
     if (status.subscriptionStatus === "cancelled" || status.subscriptionStatus === "inactive") {
       return {
-        badgeLabel: "Beendet",
+        badgeLabel: "Gekündigt",
         badgeClassName: "border-red-200 bg-red-50 text-red-700",
         cardClassName: "border-red-200 bg-red-50/60",
-        sortLabel: "Beendet",
+        sortLabel: "Gekündigt",
       };
     }
 
     if (checkedInAt) {
       return {
         badgeLabel: "Eingecheckt",
-        badgeClassName: "border-emerald-200 bg-emerald-50 text-emerald-700",
-        cardClassName: "border-emerald-200 bg-emerald-50/60",
+        badgeClassName: "border-green-200 bg-green-50 text-green-700",
+        cardClassName: "border-green-200 bg-green-50/60",
         sortLabel: "Eingecheckt",
       };
     }
@@ -163,18 +163,18 @@ export function getParticipantStatusPresentation(
   if (checkedInAt) {
     return {
       badgeLabel: "Eingecheckt",
-      badgeClassName: "border-emerald-200 bg-emerald-50 text-emerald-700",
-      cardClassName: "border-emerald-200 bg-emerald-50/60",
+      badgeClassName: "border-green-200 bg-green-50 text-green-700",
+      cardClassName: "border-green-200 bg-green-50/60",
       sortLabel: "Eingecheckt",
     };
   }
 
   if (status.bookingStatus === "paid") {
     return {
-      badgeLabel: "Bezahlt",
+      badgeLabel: "Reserviert",
       badgeClassName: "border-green-200 bg-green-50 text-green-700",
       cardClassName: "border-green-200 bg-green-50/60",
-      sortLabel: "Bezahlt",
+      sortLabel: "Reserviert",
     };
   }
 

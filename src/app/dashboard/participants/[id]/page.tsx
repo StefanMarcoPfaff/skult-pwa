@@ -161,6 +161,25 @@ function formatParticipantSubscriptionStatus(status: string | null): string {
   return status ?? "-";
 }
 
+function getRegisteredLifecycleLabels(status: string | null) {
+  return {
+    playLabel:
+      status === "paused" || status === "pause_scheduled"
+        ? "Angemeldet"
+        : status === "cancelled" || status === "inactive"
+          ? "Gekündigt"
+          : "Verbindlich angemeldet",
+    pauseLabel:
+      status === "paused" ? "Pausiert" : status === "pause_scheduled" ? "Pausierung geplant" : "Pausieren",
+    stopLabel:
+      status === "cancel_scheduled"
+        ? "Kündigung geplant"
+        : status === "cancelled" || status === "inactive"
+          ? "Gekündigt"
+          : "Kündigen",
+  };
+}
+
 async function requireTeacherId() {
   const supabase = await createSupabaseServerClient();
   const {
@@ -286,7 +305,13 @@ export default async function DashboardParticipantDetailPage({
       to: [booking.customer_email ?? ticket?.customer_email ?? null],
       subject: buildParticipantMailSubject(course.title),
     });
-    const lifecycle = getWorkshopParticipantLifecycleDisplay(booking.status === "paid");
+    const checkedInAt = ticket?.checked_in_at ?? booking.checked_in_at ?? null;
+    const lifecycle = getWorkshopParticipantLifecycleDisplay({
+      bookingStatus: booking.status,
+      checkedInAt,
+      refundedAt: booking.refunded_at,
+      stripeRefundId: booking.stripe_refund_id,
+    });
     const workshopCalendarEnabled = hasOfferCalendarData({
       kind: course.kind,
       startsAt: course.starts_at,
@@ -318,6 +343,7 @@ export default async function DashboardParticipantDetailPage({
                   bookingId={booking.id}
                   redirectTo={`/dashboard/participants/${booking.id}?source=workshop`}
                   paymentStatus={booking.payment_status}
+                  playMode={lifecycle.playMode}
                   stopDisabled={
                     booking.status !== "paid" ||
                     Boolean(booking.refunded_at) ||
@@ -352,7 +378,7 @@ export default async function DashboardParticipantDetailPage({
             <p>Telefon: <span className="font-medium text-foreground">{booking.customer_phone ?? "-"}</span></p>
             <p>Status: <span className="font-medium text-foreground">{ticket?.status ?? booking.status ?? "-"}</span></p>
             <p>Gebucht am: <span className="font-medium text-foreground">{formatDateTime(booking.created_at)}</span></p>
-            <p>Check-in: <span className="font-medium text-foreground">{formatDateTime(ticket?.checked_in_at ?? booking.checked_in_at)}</span></p>
+            <p>Check-in: <span className="font-medium text-foreground">{formatDateTime(checkedInAt)}</span></p>
             {booking.payment_provider ? <p>Zahlungsanbieter: <span className="font-medium text-foreground">{booking.payment_provider}</span></p> : null}
           </div>
         </section>
@@ -454,6 +480,7 @@ export default async function DashboardParticipantDetailPage({
       hasCompletedRegistration: Boolean(participantBindingId),
       subscriptionStatus: intent.subscription_status ?? null,
     });
+    const lifecycleLabels = getRegisteredLifecycleLabels(intent.subscription_status ?? null);
     const defaultMonthEnd = getNextMonthEndDate();
     const hasInteractiveLifecycle = Boolean(intent.trial_reservation_id) && !intent.is_simulation;
 
@@ -481,12 +508,22 @@ export default async function DashboardParticipantDetailPage({
                   defaultActiveUntilDate={defaultMonthEnd}
                   defaultPauseEndDate={intent?.subscription_pause_end_date ?? null}
                   defaultStopDate={defaultMonthEnd}
-                  playLabel={intent.is_simulation && !intent.trial_reservation_id ? "Simulation aktiv" : undefined}
+                  playLabel={
+                    intent.is_simulation && !intent.trial_reservation_id
+                      ? "Simulation aktiv"
+                      : lifecycleLabels.playLabel
+                  }
                   playClassName={lifecycle.playClassName}
                   pauseClassName={lifecycle.pauseClassName}
                   stopClassName={lifecycle.stopClassName}
-                  pauseLabel={intent.is_simulation && !intent.trial_reservation_id ? "Pause spaeter" : undefined}
-                  stopLabel={intent.is_simulation && !intent.trial_reservation_id ? "Kuendigung spaeter" : undefined}
+                  pauseLabel={
+                    intent.is_simulation && !intent.trial_reservation_id ? "Pause spaeter" : lifecycleLabels.pauseLabel
+                  }
+                  stopLabel={
+                    intent.is_simulation && !intent.trial_reservation_id
+                      ? "Kuendigung spaeter"
+                      : lifecycleLabels.stopLabel
+                  }
                   pauseDisabled={lifecycle.pauseDisabled || !hasInteractiveLifecycle}
                   stopDisabled={lifecycle.stopDisabled || !hasInteractiveLifecycle}
                 />
@@ -684,6 +721,7 @@ export default async function DashboardParticipantDetailPage({
     hasCompletedRegistration: hasRegisteredParticipation,
     subscriptionStatus: intent?.subscription_status ?? null,
   });
+  const lifecycleLabels = getRegisteredLifecycleLabels(intent?.subscription_status ?? null);
   const defaultMonthEnd = getNextMonthEndDate();
 
   return (
@@ -709,9 +747,12 @@ export default async function DashboardParticipantDetailPage({
                   defaultActiveUntilDate={defaultMonthEnd}
                   defaultPauseEndDate={intent?.subscription_pause_end_date ?? null}
                   defaultStopDate={defaultMonthEnd}
+                  playLabel={lifecycleLabels.playLabel}
                   playClassName={lifecycle.playClassName}
                   pauseClassName={lifecycle.pauseClassName}
                   stopClassName={lifecycle.stopClassName}
+                  pauseLabel={lifecycleLabels.pauseLabel}
+                  stopLabel={lifecycleLabels.stopLabel}
                   pauseDisabled={lifecycle.pauseDisabled}
                   stopDisabled={lifecycle.stopDisabled}
                 />

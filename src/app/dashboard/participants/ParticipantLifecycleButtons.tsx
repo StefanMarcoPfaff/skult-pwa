@@ -55,6 +55,16 @@ function DisabledAction(props: { title: string; className: string; children: Rea
   );
 }
 
+function StatusAction(props: { title: string; className: string; children: ReactNode }) {
+  return (
+    <span className="inline-flex">
+      <OfferActionIcon title={props.title} label={props.title} className={props.className}>
+        {props.children}
+      </OfferActionIcon>
+    </span>
+  );
+}
+
 export function TrialParticipantLifecycleButtons(props: {
   reservationId: string;
   redirectTo: string;
@@ -66,7 +76,12 @@ export function TrialParticipantLifecycleButtons(props: {
   showApprovalAction: boolean;
   showCancellationAction: boolean;
 }) {
-  const playLabel = props.showApprovalAction && !props.playDisabled ? "Jetzt zusagen" : "Zugesagt";
+  const playLabel =
+    props.showApprovalAction && !props.playDisabled
+      ? "Jetzt zur Anmeldung freigeben"
+      : props.showCancellationAction
+        ? "Warten auf Anmeldung"
+        : "Nicht aktiv";
   const stopLabel = props.showApprovalAction ? "Jetzt absagen" : "Stornieren";
 
   return (
@@ -88,9 +103,9 @@ export function TrialParticipantLifecycleButtons(props: {
             }
           />
         ) : (
-          <DisabledAction title={playLabel} className={props.playClassName}>
+          <StatusAction title={playLabel} className={props.playClassName}>
             <PlayGlyph />
-          </DisabledAction>
+          </StatusAction>
         )}
       </IconSlot>
 
@@ -152,16 +167,16 @@ export function RegisteredParticipantLifecycleButtons(props: {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <IconSlot label={playLabel}>
-        <DisabledAction title={playLabel} className={props.playClassName}>
+        <StatusAction title={playLabel} className={props.playClassName}>
           <PlayGlyph />
-        </DisabledAction>
+        </StatusAction>
       </IconSlot>
 
       <IconSlot label={pauseLabel}>
         {props.pauseDisabled ? (
-          <DisabledAction title={pauseLabel} className={props.pauseClassName}>
+          <StatusAction title={pauseLabel} className={props.pauseClassName}>
             <PauseGlyph />
-          </DisabledAction>
+          </StatusAction>
         ) : (
           <ParticipantPauseModal
             reservationId={props.reservationId}
@@ -181,9 +196,9 @@ export function RegisteredParticipantLifecycleButtons(props: {
 
       <IconSlot label={stopLabel}>
         {props.stopDisabled ? (
-          <DisabledAction title={stopLabel} className={props.stopClassName}>
+          <StatusAction title={stopLabel} className={props.stopClassName}>
             <StopGlyph />
-          </DisabledAction>
+          </StatusAction>
         ) : (
           <ParticipantStopModal
             reservationId={props.reservationId}
@@ -207,14 +222,20 @@ export function WorkshopParticipantLifecycleButtons(props: {
   bookingId: string;
   redirectTo: string;
   paymentStatus?: string | null;
+  playMode: string;
   stopDisabled: boolean;
   playClassName: string;
   pauseClassName: string;
   stopClassName: string;
 }) {
-  const isPaid = props.playClassName.includes("green-600");
   const isFree = props.paymentStatus === "free";
-  const playLabel = isPaid ? (isFree ? "Reserviert" : "Bezahlt") : "Beendet";
+  const playLabel =
+    props.playMode === "workshop_checked_in"
+      ? "Eingecheckt"
+      : props.playMode === "workshop_cancelled" || props.playMode === "inactive"
+        ? "Storniert"
+        : "Reserviert";
+  const stopLabel = props.playMode === "workshop_cancelled" || props.playMode === "inactive" ? "Storniert" : "Stornieren";
   const confirmationText = isFree
     ? "Möchtest du diese Teilnahme wirklich stornieren? Es wird keine Rückzahlung ausgelöst, weil diese Reservierung kostenlos war."
     : "Möchtest du diese Teilnahme wirklich stornieren? Die Rückerstattung richtet sich nach den Stornierungsbedingungen.";
@@ -222,20 +243,20 @@ export function WorkshopParticipantLifecycleButtons(props: {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <IconSlot label={playLabel}>
-        <DisabledAction title={playLabel} className={props.playClassName}>
+        <StatusAction title={playLabel} className={props.playClassName}>
           <PlayGlyph />
-        </DisabledAction>
+        </StatusAction>
       </IconSlot>
       <IconSlot label="Pausieren">
         <DisabledAction title="Pausieren" className={props.pauseClassName}>
           <PauseGlyph />
         </DisabledAction>
       </IconSlot>
-      <IconSlot label="Stornieren">
+      <IconSlot label={stopLabel}>
         {props.stopDisabled ? (
-          <DisabledAction title="Stornieren" className={props.stopClassName}>
+          <StatusAction title={stopLabel} className={props.stopClassName}>
             <StopGlyph />
-          </DisabledAction>
+          </StatusAction>
         ) : (
           <ConfirmIconAction
             action={cancelWorkshopParticipantBookingAction}

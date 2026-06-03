@@ -51,6 +51,7 @@ type WorkshopLifecycleAction = {
   bookingId: string;
   redirectTo: string;
   paymentStatus: string | null;
+  playMode: string;
   stopDisabled: boolean;
   playClassName: string;
   pauseClassName: string;
@@ -286,7 +287,7 @@ function CheckInAction(props: {
   const isDone = Boolean(props.checkedInAt);
   const disabled = pending || isDone || !resolvedCheckIn.enabled;
   const className = isDone
-    ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+    ? "border-green-600 bg-green-600 text-white"
     : disabled
       ? "border-slate-200 bg-slate-100 text-slate-400"
       : "border-slate-900 bg-slate-900 text-white";
@@ -467,6 +468,7 @@ function LifecycleActions(props: { action: ParticipantLifecycleAction }) {
       bookingId={props.action.bookingId}
       redirectTo={props.action.redirectTo}
       paymentStatus={props.action.paymentStatus}
+      playMode={props.action.playMode}
       stopDisabled={props.action.stopDisabled}
       playClassName={props.action.playClassName}
       pauseClassName={props.action.pauseClassName}
