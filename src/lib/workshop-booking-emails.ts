@@ -452,7 +452,7 @@ export async function sendWorkshopCancellationEmail(input: {
     qrToken: "status-change",
   });
 
-  return sendStatusChangeEmail({
+  const participantResult = await sendStatusChangeEmail({
     to: input.customerEmail,
     audience: "participant",
     status: input.refunded ? "refunded" : "cancelled",
@@ -467,4 +467,27 @@ export async function sendWorkshopCancellationEmail(input: {
         : null,
     replyTo: input.teacherEmail,
   });
+
+  if (input.teacherEmail) {
+    await sendStatusChangeEmail({
+      to: input.teacherEmail,
+      audience: "provider",
+      status: input.refunded ? "refunded" : "cancelled",
+      statusLabel: input.refunded ? "Storniert und erstattet" : "Storniert",
+      greetingName: input.providerName ?? input.teacherName ?? undefined,
+      participantName: input.customerName,
+      participantEmail: input.customerEmail,
+      offer: offerViewModel,
+      financialImpact:
+        input.refunded && input.refundAmountLabel
+          ? {
+              providerRefundLabel: input.refundAmountLabel,
+              providerPayoutImpactLabel: `-${input.refundAmountLabel}`,
+            }
+          : null,
+      replyTo: input.teacherEmail,
+    });
+  }
+
+  return participantResult;
 }

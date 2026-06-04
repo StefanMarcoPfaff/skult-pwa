@@ -185,6 +185,14 @@ export function prepareStatusChangeEmail(input: StatusChangeEmailInput) {
   const branding = buildOfferEmailBrandingFromOffer(input.offer);
   const greeting = input.greetingName?.trim() ? `<p style="margin:0 0 16px;">Hallo ${escapeEmailHtml(input.greetingName.trim())},</p>` : "";
   const textGreeting = input.greetingName?.trim() ? `Hallo ${input.greetingName.trim()},` : null;
+  const providerConfirmationHtml =
+    input.audience === "provider"
+      ? `<p style="margin:0 0 16px;color:#4b5563;">Die folgende Statusänderung wurde erfolgreich durchgeführt:</p>`
+      : "";
+  const providerConfirmationText =
+    input.audience === "provider"
+      ? "Die folgende Statusänderung wurde erfolgreich durchgeführt:"
+      : null;
 
   const financialHtml = hasFinancialBlock(input)
     ? renderInfoBlockHtml("Finanzielle Auswirkungen", financialItems, financialNote)
@@ -207,6 +215,7 @@ export function prepareStatusChangeEmail(input: StatusChangeEmailInput) {
       branding,
       childrenHtml: `
         ${greeting}
+        ${providerConfirmationHtml}
         <div style="margin:0 0 24px;padding:18px 20px;border:1px solid #ddd6fe;border-radius:14px;background:#f5f3ff;">
           <p style="margin:0;font-size:17px;line-height:1.55;color:#111827;">${escapeEmailHtml(statusSentence)}</p>
         </div>
@@ -219,6 +228,7 @@ export function prepareStatusChangeEmail(input: StatusChangeEmailInput) {
     text: [
       statusLabel,
       textGreeting,
+      providerConfirmationText,
       statusSentence,
       financialText ? "" : null,
       financialText,

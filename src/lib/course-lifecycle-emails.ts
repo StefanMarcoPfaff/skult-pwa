@@ -5,6 +5,8 @@ type CourseLifecycleRecipientEmailData = {
   courseTitle: string;
   customerName: string;
   customerEmail: string;
+  providerEmail?: string | null;
+  providerName?: string | null;
   offer?: OfferViewModel | null;
 };
 
@@ -29,7 +31,8 @@ function buildFallbackCourseOfferViewModel(courseTitle: string): OfferViewModel 
 }
 
 export async function sendCoursePauseNotificationEmail(data: CoursePauseNotificationEmailData) {
-  return sendStatusChangeEmail({
+  const offer = data.offer ?? buildFallbackCourseOfferViewModel(data.courseTitle);
+  const participantResult = await sendStatusChangeEmail({
     to: data.customerEmail,
     audience: "participant",
     status: "paused",
@@ -37,16 +40,38 @@ export async function sendCoursePauseNotificationEmail(data: CoursePauseNotifica
     greetingName: data.customerName,
     participantName: data.customerName,
     participantEmail: data.customerEmail,
-    offer: data.offer ?? buildFallbackCourseOfferViewModel(data.courseTitle),
+    offer,
     details: {
       pauseStartLabel: data.pauseStartDateLabel,
       pauseEndLabel: data.pauseEndExclusiveDateLabel,
     },
+    replyTo: data.providerEmail ?? undefined,
   });
+
+  if (data.providerEmail) {
+    await sendStatusChangeEmail({
+      to: data.providerEmail,
+      audience: "provider",
+      status: "paused",
+      statusLabel: "Angebot pausiert",
+      greetingName: data.providerName ?? undefined,
+      participantName: data.customerName,
+      participantEmail: data.customerEmail,
+      offer,
+      details: {
+        pauseStartLabel: data.pauseStartDateLabel,
+        pauseEndLabel: data.pauseEndExclusiveDateLabel,
+      },
+      replyTo: data.providerEmail,
+    });
+  }
+
+  return participantResult;
 }
 
 export async function sendCourseStopNotificationEmail(data: CourseStopNotificationEmailData) {
-  return sendStatusChangeEmail({
+  const offer = data.offer ?? buildFallbackCourseOfferViewModel(data.courseTitle);
+  const participantResult = await sendStatusChangeEmail({
     to: data.customerEmail,
     audience: "participant",
     status: "terminated",
@@ -54,9 +79,29 @@ export async function sendCourseStopNotificationEmail(data: CourseStopNotificati
     greetingName: data.customerName,
     participantName: data.customerName,
     participantEmail: data.customerEmail,
-    offer: data.offer ?? buildFallbackCourseOfferViewModel(data.courseTitle),
+    offer,
     details: {
       effectiveDateLabel: data.stopDateLabel,
     },
+    replyTo: data.providerEmail ?? undefined,
   });
+
+  if (data.providerEmail) {
+    await sendStatusChangeEmail({
+      to: data.providerEmail,
+      audience: "provider",
+      status: "terminated",
+      statusLabel: "Angebot beendet",
+      greetingName: data.providerName ?? undefined,
+      participantName: data.customerName,
+      participantEmail: data.customerEmail,
+      offer,
+      details: {
+        effectiveDateLabel: data.stopDateLabel,
+      },
+      replyTo: data.providerEmail,
+    });
+  }
+
+  return participantResult;
 }

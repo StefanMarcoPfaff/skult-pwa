@@ -171,6 +171,7 @@ export async function pauseParticipantSubscriptionAction(formData: FormData) {
         courseTitle: course.title ?? "Kurs",
         customerName: formatRecipientName(subscription.first_name, subscription.last_name),
         customerEmail: recipientEmail,
+        providerEmail: user.email ?? null,
         activeUntilDateLabel: formatCourseLifecycleDate(activeUntilDate) ?? activeUntilDate,
         pauseStartDateLabel: formatCourseLifecycleDate(pauseStartDate) ?? pauseStartDate,
         pauseEndDateLabel: formatCourseLifecycleDate(pauseEndDate) ?? pauseEndDate,
@@ -243,6 +244,7 @@ export async function stopParticipantSubscriptionAction(formData: FormData) {
         courseTitle: course.title ?? "Kurs",
         customerName: formatRecipientName(subscription.first_name, subscription.last_name),
         customerEmail: recipientEmail,
+        providerEmail: user.email ?? null,
         cancellationDateLabel: formatCourseLifecycleDate(stopDate) ?? stopDate,
         offer: buildStatusOfferViewModel(course),
       });

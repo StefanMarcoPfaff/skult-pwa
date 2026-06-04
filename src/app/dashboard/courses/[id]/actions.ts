@@ -585,6 +585,7 @@ export async function scheduleCoursePauseAction(formData: FormData) {
         courseTitle: course.title ?? "Kurs",
         customerName: formatRecipientName(recipient.first_name, recipient.last_name),
         customerEmail: recipientEmail,
+        providerEmail: user.email ?? null,
         activeUntilDateLabel,
         pauseStartDateLabel,
         pauseEndDateLabel,
@@ -672,6 +673,7 @@ export async function scheduleCourseStopAction(formData: FormData) {
           courseTitle: course.title ?? "Kurs",
           customerName: formatRecipientName(intent.first_name, intent.last_name),
           customerEmail: recipientEmail,
+          providerEmail: user.email ?? null,
           stopDateLabel,
           offer: buildStatusOfferViewModel(course),
         });

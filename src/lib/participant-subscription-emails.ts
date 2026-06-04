@@ -5,6 +5,8 @@ type ParticipantSubscriptionPauseEmailData = {
   courseTitle: string;
   customerName: string;
   customerEmail: string;
+  providerEmail?: string | null;
+  providerName?: string | null;
   activeUntilDateLabel: string;
   pauseStartDateLabel: string;
   pauseEndDateLabel: string;
@@ -16,6 +18,8 @@ type ParticipantSubscriptionCancellationEmailData = {
   courseTitle: string;
   customerName: string;
   customerEmail: string;
+  providerEmail?: string | null;
+  providerName?: string | null;
   cancellationDateLabel: string;
   offer?: OfferViewModel | null;
 };
@@ -30,7 +34,8 @@ function buildFallbackCourseOfferViewModel(courseTitle: string): OfferViewModel 
 }
 
 export async function sendParticipantPauseConfirmationEmail(data: ParticipantSubscriptionPauseEmailData) {
-  return sendStatusChangeEmail({
+  const offer = data.offer ?? buildFallbackCourseOfferViewModel(data.courseTitle);
+  const participantResult = await sendStatusChangeEmail({
     to: data.customerEmail,
     audience: "participant",
     status: "paused",
@@ -38,18 +43,40 @@ export async function sendParticipantPauseConfirmationEmail(data: ParticipantSub
     greetingName: data.customerName,
     participantName: data.customerName,
     participantEmail: data.customerEmail,
-    offer: data.offer ?? buildFallbackCourseOfferViewModel(data.courseTitle),
+    offer,
     details: {
       pauseStartLabel: data.pauseStartDateLabel,
       pauseEndLabel: data.pauseEndExclusiveDateLabel,
     },
+    replyTo: data.providerEmail ?? undefined,
   });
+
+  if (data.providerEmail) {
+    await sendStatusChangeEmail({
+      to: data.providerEmail,
+      audience: "provider",
+      status: "paused",
+      statusLabel: "Pausiert",
+      greetingName: data.providerName ?? undefined,
+      participantName: data.customerName,
+      participantEmail: data.customerEmail,
+      offer,
+      details: {
+        pauseStartLabel: data.pauseStartDateLabel,
+        pauseEndLabel: data.pauseEndExclusiveDateLabel,
+      },
+      replyTo: data.providerEmail,
+    });
+  }
+
+  return participantResult;
 }
 
 export async function sendParticipantCancellationConfirmationEmail(
   data: ParticipantSubscriptionCancellationEmailData
 ) {
-  return sendStatusChangeEmail({
+  const offer = data.offer ?? buildFallbackCourseOfferViewModel(data.courseTitle);
+  const participantResult = await sendStatusChangeEmail({
     to: data.customerEmail,
     audience: "participant",
     status: "terminated",
@@ -57,9 +84,29 @@ export async function sendParticipantCancellationConfirmationEmail(
     greetingName: data.customerName,
     participantName: data.customerName,
     participantEmail: data.customerEmail,
-    offer: data.offer ?? buildFallbackCourseOfferViewModel(data.courseTitle),
+    offer,
     details: {
       effectiveDateLabel: data.cancellationDateLabel,
     },
+    replyTo: data.providerEmail ?? undefined,
   });
+
+  if (data.providerEmail) {
+    await sendStatusChangeEmail({
+      to: data.providerEmail,
+      audience: "provider",
+      status: "terminated",
+      statusLabel: "Beendet",
+      greetingName: data.providerName ?? undefined,
+      participantName: data.customerName,
+      participantEmail: data.customerEmail,
+      offer,
+      details: {
+        effectiveDateLabel: data.cancellationDateLabel,
+      },
+      replyTo: data.providerEmail,
+    });
+  }
+
+  return participantResult;
 }
