@@ -36,6 +36,7 @@ type ProfileRow = {
   provider_type: "independent_teacher" | "studio_provider" | null;
   organization_name: string | null;
   photo_url: string | null;
+  company_logo_url: string | null;
 };
 
 type SupabaseLikeError = {
@@ -112,7 +113,7 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
   const [{ data: profile }, authResult] = await Promise.all([
     admin
       .from("profiles")
-      .select("first_name,last_name,provider_type,organization_name,photo_url")
+      .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url")
       .eq("id", course.teacher_id)
       .maybeSingle<ProfileRow>(),
     admin.auth.admin.getUserById(course.teacher_id),
@@ -127,6 +128,7 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
         ? getProviderDisplayName(profile.provider_type, profile)
         : [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null,
     senderImageUrl: profile?.photo_url ?? null,
+    providerLogoUrl: profile?.company_logo_url ?? null,
   };
 }
 
@@ -143,6 +145,7 @@ function toEmailPayload(
     teacherEmail: mailContext.teacherEmail,
     senderDisplayName: mailContext.senderDisplayName,
     senderImageUrl: mailContext.senderImageUrl,
+    providerLogoUrl: mailContext.providerLogoUrl,
     customerName: [reservation.first_name, reservation.last_name].filter(Boolean).join(" ").trim() || "Der Probeschüler",
     customerEmail: reservation.email,
     trialStartsAt: reservation.trial_starts_at,

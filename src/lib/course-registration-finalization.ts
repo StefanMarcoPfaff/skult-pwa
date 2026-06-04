@@ -56,6 +56,7 @@ type ProfileRow = {
   provider_type: "independent_teacher" | "studio_provider" | null;
   organization_name: string | null;
   photo_url: string | null;
+  company_logo_url: string | null;
   stripe_account_id: string | null;
 };
 
@@ -65,6 +66,7 @@ type ProviderContact = {
   providerEmail: string | null;
   providerContactName: string | null;
   senderImageUrl: string | null;
+  providerLogoUrl: string | null;
   providerAccountId: string | null;
 };
 
@@ -140,6 +142,7 @@ async function resolveProviderContact(
       providerEmail: null,
       providerContactName: null,
       senderImageUrl: null,
+      providerLogoUrl: null,
       providerAccountId: null,
     };
   }
@@ -147,7 +150,7 @@ async function resolveProviderContact(
   const [{ data: profile }, authResult] = await Promise.all([
     admin
       .from("profiles")
-      .select("first_name,last_name,provider_type,organization_name,photo_url,stripe_account_id")
+      .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url,stripe_account_id")
       .eq("id", course.teacher_id)
       .maybeSingle<ProfileRow>(),
     admin.auth.admin.getUserById(course.teacher_id),
@@ -161,6 +164,7 @@ async function resolveProviderContact(
     providerContactName:
       [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null,
     senderImageUrl: profile?.photo_url ?? null,
+    providerLogoUrl: profile?.company_logo_url ?? null,
     providerAccountId: profile?.stripe_account_id ?? null,
   };
 }
@@ -388,6 +392,7 @@ export async function finalizeCourseRegistrationCheckoutSession(input: {
             ? providerName
             : course?.instructor_name ?? providerContact.providerContactName,
         senderImageUrl: providerContact.senderImageUrl,
+        providerLogoUrl: providerContact.providerLogoUrl,
         customerName,
         customerEmail: recipientEmail,
         priceLabel,
@@ -452,6 +457,7 @@ export async function finalizeCourseRegistrationCheckoutSession(input: {
               ? providerName
               : course?.instructor_name ?? providerContact.providerContactName,
           senderImageUrl: providerContact.senderImageUrl,
+          providerLogoUrl: providerContact.providerLogoUrl,
           priceLabel,
           cancellationLabel: "Monatlich zum Ende des Abrechnungszeitraums moeglich.",
           qrToken: ticketForDisplay?.qr_token ?? null,

@@ -177,6 +177,7 @@ async function loadReservationContext(admin: ReturnType<typeof createSupabaseAdm
     course,
     senderDisplayName: profile?.provider_type === "studio_provider" ? providerName : teacherName,
     senderImageUrl: profile?.photo_url ?? null,
+    providerLogoUrl: profile?.company_logo_url ?? null,
     teacherEmail: authResult.data.user?.email?.trim() || null,
   };
 }
@@ -296,6 +297,7 @@ export async function approveTrialReservationAction(formData: FormData) {
         courseTitle: context.course.title ?? "Kurs",
         senderDisplayName: context.senderDisplayName,
         senderImageUrl: context.senderImageUrl,
+        providerLogoUrl: context.providerLogoUrl,
         teacherEmail: context.teacherEmail,
         customerName: getCustomerName(context.reservation),
         customerEmail: context.reservation.email,
@@ -388,6 +390,7 @@ export async function rejectTrialReservationAction(formData: FormData) {
         courseTitle: context.course.title ?? "Kurs",
         senderDisplayName: context.senderDisplayName,
         senderImageUrl: context.senderImageUrl,
+        providerLogoUrl: context.providerLogoUrl,
         teacherEmail: context.teacherEmail,
         customerName: getCustomerName(context.reservation),
         customerEmail: context.reservation.email,

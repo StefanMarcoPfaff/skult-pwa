@@ -1,9 +1,9 @@
-import { RESER_BRAND_NAME } from "@/lib/brand";
 import { getSiteUrl as getCanonicalSiteUrl } from "@/lib/site-url";
 import { shouldShowStudioLabel } from "@/lib/provider-profiles";
 import { buildBookingCalendarUrl } from "@/lib/calendar";
 import { buildTicketQrCodeDataUrl, buildTicketViewUrl, buildTicketWalletUrl } from "@/lib/ticket-qr";
 import {
+  renderOfferEmailFooterHtml,
   renderOfferEmailFooterText,
   renderOfferEmailLayout,
   sendOfferRelatedEmail,
@@ -27,6 +27,7 @@ export type TrialReservationEmailData = {
   teacherEmail: string | null;
   senderDisplayName?: string | null;
   senderImageUrl?: string | null;
+  providerLogoUrl?: string | null;
   customerName: string;
   customerEmail: string;
   location: string | null;
@@ -41,6 +42,7 @@ export type TrialRegistrationDecisionEmailData = {
   courseTitle: string;
   senderDisplayName?: string | null;
   senderImageUrl?: string | null;
+  providerLogoUrl?: string | null;
   teacherEmail?: string | null;
   customerName: string;
   customerEmail: string;
@@ -61,6 +63,7 @@ export type CourseSubscriptionConfirmationEmailData = {
   instructorName: string | null;
   senderDisplayName?: string | null;
   senderImageUrl?: string | null;
+  providerLogoUrl?: string | null;
   customerName: string;
   customerEmail: string;
   priceLabel: string | null;
@@ -78,6 +81,7 @@ export type CourseSubscriptionProviderNotificationEmailData = {
   teacherEmail: string | null;
   senderDisplayName?: string | null;
   senderImageUrl?: string | null;
+  providerLogoUrl?: string | null;
   participantName: string;
   participantEmail: string;
   participantPhone?: string | null;
@@ -98,6 +102,7 @@ export type CourseEndingNotificationEmailData = {
   instructorName: string | null;
   senderDisplayName?: string | null;
   senderImageUrl?: string | null;
+  providerLogoUrl?: string | null;
   customerName: string;
   customerEmail: string;
   courseEndsAt: string;
@@ -114,6 +119,7 @@ export type TrialCourseStopNotificationEmailData = {
   teacherEmail?: string | null;
   senderDisplayName?: string | null;
   senderImageUrl?: string | null;
+  providerLogoUrl?: string | null;
   trialStartsAt: string | null;
   trialEndsAt: string | null;
 };
@@ -124,6 +130,9 @@ export type CourseEndingProviderSummaryEmailData = {
   courseEndsAt: string;
   recipientCount: number;
   recipientEmails: string[];
+  senderDisplayName?: string | null;
+  senderImageUrl?: string | null;
+  providerLogoUrl?: string | null;
 };
 
 export type TeacherTrialDecisionReminderEmailData = {
@@ -133,6 +142,7 @@ export type TeacherTrialDecisionReminderEmailData = {
   teacherEmail: string | null;
   senderDisplayName?: string | null;
   senderImageUrl?: string | null;
+  providerLogoUrl?: string | null;
   customerName: string;
   customerEmail: string | null;
   trialStartsAt: string;
@@ -234,20 +244,6 @@ function renderFooterText(branding?: FooterBranding) {
   });
 }
 
-function renderReserFooterHtml() {
-  return `
-    <div style="margin: 24px 0 0; text-align: center;">
-      <p style="margin: 0;">Herzliche Grüße,</p>
-      <p style="margin: 10px 0 0; font-weight: 600;">${RESER_BRAND_NAME}</p>
-      <p style="margin: 4px 0 0; color: #4b5563;">Versendet über RESER</p>
-    </div>
-  `;
-}
-
-function renderReserFooterText() {
-  return ["Herzliche Grüße,", RESER_BRAND_NAME, "Versendet über RESER"].join("\n");
-}
-
 function maskEmail(email: string): string {
   const [local, domain] = email.split("@");
   if (!local || !domain) return email;
@@ -262,6 +258,7 @@ function buildFooterBranding(input: {
   instructorName?: string | null;
   senderDisplayName?: string | null;
   senderImageUrl?: string | null;
+  providerLogoUrl?: string | null;
 }): FooterBranding {
   return {
     senderName:
@@ -270,7 +267,7 @@ function buildFooterBranding(input: {
       input.instructorName ??
       input.teacherName ??
       "SKULT",
-    senderImageUrl: input.senderImageUrl,
+    senderImageUrl: input.providerLogoUrl ?? input.senderImageUrl,
   };
 }
 
@@ -492,8 +489,9 @@ export function prepareTeacherTrialReservationNotification(data: TrialReservatio
   const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
   const dateLine = `<p><b>Termin:</b> ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}</p>`;
   const teacherEmail = data.teacherEmail ?? "";
-  const footerHtml = renderReserFooterHtml();
-  const footerText = renderReserFooterText();
+  const footerBranding = buildFooterBranding(data);
+  const footerHtml = renderOfferEmailFooterHtml(footerBranding);
+  const footerText = renderOfferEmailFooterText(footerBranding);
   const calendarUrl = data.qrToken ? buildBookingCalendarUrl(data.qrToken, "ticket") : null;
 
   return {
@@ -532,8 +530,9 @@ export function prepareTeacherTrialReservationCancellation(data: TrialReservatio
   const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
   const dateLine = `<p><b>Stornierter Termin:</b> ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}</p>`;
   const teacherEmail = data.teacherEmail ?? "";
-  const footerHtml = renderReserFooterHtml();
-  const footerText = renderReserFooterText();
+  const footerBranding = buildFooterBranding(data);
+  const footerHtml = renderOfferEmailFooterHtml(footerBranding);
+  const footerText = renderOfferEmailFooterText(footerBranding);
 
   return {
     to: teacherEmail,
@@ -825,8 +824,9 @@ export async function prepareCourseSubscriptionConfirmationEmail(
 export function prepareCourseSubscriptionProviderNotificationEmail(
   data: CourseSubscriptionProviderNotificationEmailData
 ) {
-  const footerHtml = renderReserFooterHtml();
-  const footerText = renderReserFooterText();
+  const footerBranding = buildFooterBranding(data);
+  const footerHtml = renderOfferEmailFooterHtml(footerBranding);
+  const footerText = renderOfferEmailFooterText(footerBranding);
   const calendarUrl = data.qrToken ? buildBookingCalendarUrl(data.qrToken, "ticket") : null;
 
   return {
@@ -926,8 +926,9 @@ export function prepareCourseEndingProviderSummaryEmail(data: CourseEndingProvid
     year: "numeric",
   });
   const maskedRecipients = data.recipientEmails.map(maskEmail);
-  const footerHtml = renderReserFooterHtml();
-  const footerText = renderReserFooterText();
+  const footerBranding = buildFooterBranding(data);
+  const footerHtml = renderOfferEmailFooterHtml(footerBranding);
+  const footerText = renderOfferEmailFooterText(footerBranding);
 
   return {
     to: data.teacherEmail ?? "",
@@ -1034,8 +1035,9 @@ export function prepareTrialCourseStopNotificationEmail(data: TrialCourseStopNot
 }
 
 export function prepareTeacherTrialDecisionReminderEmail(data: TeacherTrialDecisionReminderEmailData) {
-  const footerHtml = renderReserFooterHtml();
-  const footerText = renderReserFooterText();
+  const footerBranding = buildFooterBranding(data);
+  const footerHtml = renderOfferEmailFooterHtml(footerBranding);
+  const footerText = renderOfferEmailFooterText(footerBranding);
 
   return {
     to: data.teacherEmail ?? "",

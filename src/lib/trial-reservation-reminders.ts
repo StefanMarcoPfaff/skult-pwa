@@ -32,6 +32,7 @@ type ProfileRow = {
   provider_type: "independent_teacher" | "studio_provider" | null;
   organization_name: string | null;
   photo_url: string | null;
+  company_logo_url: string | null;
 };
 
 type SupabaseLikeError = {
@@ -81,12 +82,13 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
   let providerName: string | null = null;
   let senderDisplayName: string | null = null;
   let senderImageUrl: string | null = null;
+  let providerLogoUrl: string | null = null;
 
   if (course.teacher_id) {
     const [{ data: profile }, authResult] = await Promise.all([
       admin
         .from("profiles")
-        .select("first_name,last_name,provider_type,organization_name,photo_url")
+        .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url")
         .eq("id", course.teacher_id)
         .maybeSingle<ProfileRow>(),
       admin.auth.admin.getUserById(course.teacher_id),
@@ -98,6 +100,7 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
       profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
     senderDisplayName = providerType === "studio_provider" ? providerName : teacherName;
     senderImageUrl = profile?.photo_url ?? null;
+    providerLogoUrl = profile?.company_logo_url ?? null;
   }
 
   return {
@@ -109,6 +112,7 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
     providerName,
     senderDisplayName,
     senderImageUrl,
+    providerLogoUrl,
   };
 }
 
@@ -142,6 +146,7 @@ function toEmailPayload(
     teacherEmail: mailContext.teacherEmail,
     senderDisplayName: mailContext.senderDisplayName,
     senderImageUrl: mailContext.senderImageUrl,
+    providerLogoUrl: mailContext.providerLogoUrl,
     customerName: [reservation.first_name, reservation.last_name].filter(Boolean).join(" ").trim() || "du",
     customerEmail: reservation.email,
     location: mailContext.location,

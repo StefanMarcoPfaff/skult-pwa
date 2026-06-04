@@ -131,7 +131,7 @@ function buildFooterBranding(data: WorkshopBookingEmailData): FooterBranding {
       (shouldShowStudioLabel(data.providerType) ? data.providerName : null) ??
       data.teacherName ??
       "SKULT",
-    senderImageUrl: data.senderImageUrl,
+    senderImageUrl: data.providerLogoUrl ?? data.senderImageUrl,
   };
 }
 

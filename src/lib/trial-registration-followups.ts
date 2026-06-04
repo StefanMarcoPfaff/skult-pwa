@@ -39,6 +39,7 @@ type ProfileRow = {
   provider_type: "independent_teacher" | "studio_provider" | null;
   organization_name: string | null;
   photo_url: string | null;
+  company_logo_url: string | null;
 };
 
 type SupabaseLikeError = {
@@ -174,11 +175,12 @@ async function buildDecisionEmailData(
 
   let senderDisplayName: string | null = null;
   let senderImageUrl: string | null = null;
+  let providerLogoUrl: string | null = null;
 
   if (course.teacher_id) {
     const { data: profile } = await admin
       .from("profiles")
-      .select("first_name,last_name,provider_type,organization_name,photo_url")
+      .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url")
       .eq("id", course.teacher_id)
       .maybeSingle<ProfileRow>();
 
@@ -187,6 +189,7 @@ async function buildDecisionEmailData(
         ? getProviderDisplayName(profile.provider_type, profile)
         : [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null;
     senderImageUrl = profile?.photo_url ?? null;
+    providerLogoUrl = profile?.company_logo_url ?? null;
   }
 
   return {
@@ -194,6 +197,7 @@ async function buildDecisionEmailData(
     courseTitle: course.title ?? "Kurs",
     senderDisplayName,
     senderImageUrl,
+    providerLogoUrl,
     customerName: getCustomerName(reservation),
     customerEmail: reservation.email,
     registrationUrl: reservation.registration_token ? buildRegistrationUrl(reservation.registration_token) : undefined,
