@@ -352,7 +352,7 @@ async function assertNoOpenSimulationDuplicate(courseId: string, email: string) 
 async function loadWorkshopMailContext(course: WorkshopCourseRow): Promise<WorkshopMailContext> {
   const admin = createSupabaseAdmin();
 
-  let teacherName: string | null = null;
+  const teacherName: string | null = course.instructor_name ?? null;
   let teacherEmail: string | null = null;
   let providerType: "independent_teacher" | "studio_provider" | null = null;
   let providerName: string | null = null;
@@ -369,8 +369,6 @@ async function loadWorkshopMailContext(course: WorkshopCourseRow): Promise<Works
       admin.auth.admin.getUserById(course.teacher_id),
     ]);
 
-    const nameParts = [profile?.first_name, profile?.last_name].filter(Boolean);
-    teacherName = nameParts.length > 0 ? nameParts.join(" ") : null;
     teacherEmail = authResult.data.user?.email ?? null;
     providerType = profile?.provider_type ?? null;
     providerName = profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
@@ -381,7 +379,7 @@ async function loadWorkshopMailContext(course: WorkshopCourseRow): Promise<Works
   return {
     providerType,
     providerName,
-    teacherName: course.instructor_name ?? teacherName,
+    teacherName,
     teacherEmail,
     senderDisplayName,
     senderImageUrl,

@@ -23,6 +23,7 @@ type CourseMailRow = {
   title: string | null;
   location: string | null;
   teacher_id: string | null;
+  instructor_name: string | null;
 };
 
 type ProfileRow = {
@@ -65,7 +66,7 @@ function logReminderError(context: string, error: unknown, extra?: Record<string
 async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, courseId: string) {
   const { data: course, error: courseError } = await admin
     .from("courses")
-    .select("id,title,location,teacher_id")
+    .select("id,title,location,teacher_id,instructor_name")
     .eq("id", courseId)
     .maybeSingle<CourseMailRow>();
 
@@ -74,7 +75,7 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
     return null;
   }
 
-  let teacherName: string | null = null;
+  const teacherName: string | null = course.instructor_name ?? null;
   let teacherEmail: string | null = null;
   let providerType: "independent_teacher" | "studio_provider" | null = null;
   let providerName: string | null = null;
@@ -91,8 +92,6 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
       admin.auth.admin.getUserById(course.teacher_id),
     ]);
 
-    const nameParts = [profile?.first_name, profile?.last_name].filter(Boolean);
-    teacherName = nameParts.length > 0 ? nameParts.join(" ") : null;
     teacherEmail = authResult.data.user?.email ?? null;
     providerType = profile?.provider_type ?? null;
     providerName =

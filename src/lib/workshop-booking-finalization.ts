@@ -364,7 +364,7 @@ async function finalizeWorkshopBookingRecord(input: {
           workshopTitle: course?.title ?? "Angebot",
           providerType: providerContact.providerType,
           providerName: providerContact.providerName,
-          teacherName: providerContact.providerContactName,
+          teacherName: course?.instructor_name ?? null,
           teacherEmail: providerEmail,
           senderDisplayName:
             providerContact.providerType === "studio_provider"

@@ -446,7 +446,7 @@ export async function finalizeCourseRegistrationCheckoutSession(input: {
           participantPhone: finalizedIntent.phone?.trim() || null,
           courseTitle,
           providerName,
-          instructorName: course?.instructor_name ?? providerContact.providerContactName,
+          instructorName: course?.instructor_name ?? null,
           senderDisplayName:
             providerContact.providerType === "studio_provider"
               ? providerName

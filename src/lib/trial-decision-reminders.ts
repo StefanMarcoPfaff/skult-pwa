@@ -27,6 +27,7 @@ type CourseMailRow = {
   id: string;
   title: string | null;
   teacher_id: string | null;
+  instructor_name: string | null;
 };
 
 type ProfileRow = {
@@ -99,7 +100,7 @@ function getDashboardParticipantsUrl(): string {
 async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, courseId: string) {
   const { data: course, error: courseError } = await admin
     .from("courses")
-    .select("id,title,teacher_id")
+    .select("id,title,teacher_id,instructor_name")
     .eq("id", courseId)
     .maybeSingle<CourseMailRow>();
 
@@ -117,18 +118,14 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
     admin.auth.admin.getUserById(course.teacher_id),
   ]);
 
-  const nameParts = [profile?.first_name, profile?.last_name].filter(Boolean);
-
   return {
     courseTitle: course.title ?? "Kurs",
-    teacherName: nameParts.length > 0 ? nameParts.join(" ") : null,
+    teacherName: course.instructor_name ?? null,
     teacherEmail: authResult.data.user?.email ?? null,
     senderDisplayName:
       profile?.provider_type === "studio_provider"
         ? getProviderDisplayName(profile.provider_type, profile)
-        : nameParts.length > 0
-          ? nameParts.join(" ")
-          : null,
+        : [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null,
     senderImageUrl: profile?.photo_url ?? null,
   };
 }

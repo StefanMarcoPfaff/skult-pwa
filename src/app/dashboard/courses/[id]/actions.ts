@@ -782,13 +782,12 @@ export async function cancelWorkshopAction(formData: FormData) {
         admin.auth.admin.getUserById(course.teacher_id),
       ])
     : [{ data: null }, { data: { user: null } }];
-  const profileName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null;
   const providerName = profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
   const statusOfferEmailData = {
     workshopTitle: course.title,
     providerType: profile?.provider_type ?? null,
     providerName,
-    teacherName: course.instructor_name ?? profileName,
+    teacherName: course.instructor_name ?? null,
     teacherEmail: authResult.data.user?.email?.trim() || null,
     senderImageUrl: profile?.photo_url ?? null,
     providerLogoUrl: profile?.company_logo_url ?? null,

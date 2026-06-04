@@ -19,6 +19,7 @@ type CourseTrialSimulationRow = {
   title: string | null;
   location: string | null;
   teacher_id: string | null;
+  instructor_name: string | null;
   kind: string | null;
   weekday: number | null;
   start_time: string | null;
@@ -132,7 +133,7 @@ async function loadCourse(courseId: string): Promise<CourseTrialSimulationRow> {
   const admin = createSupabaseAdmin();
   const { data, error } = await admin
     .from("courses")
-    .select("id,title,location,teacher_id,kind,weekday,start_time,duration_minutes,recurrence_type,trial_mode,starts_at,ends_at,archived_at")
+    .select("id,title,location,teacher_id,instructor_name,kind,weekday,start_time,duration_minutes,recurrence_type,trial_mode,starts_at,ends_at,archived_at")
     .eq("id", courseId)
     .maybeSingle<CourseTrialSimulationRow>();
 
@@ -246,7 +247,7 @@ async function assertNoOpenSimulationDuplicate(courseId: string, email: string) 
 async function loadTrialMailContext(course: CourseTrialSimulationRow): Promise<TrialMailContext | null> {
   const admin = createSupabaseAdmin();
 
-  let teacherName: string | null = null;
+  const teacherName: string | null = course.instructor_name ?? null;
   let teacherEmail: string | null = null;
   let providerType: "independent_teacher" | "studio_provider" | null = null;
   let providerName: string | null = null;
@@ -263,8 +264,6 @@ async function loadTrialMailContext(course: CourseTrialSimulationRow): Promise<T
       admin.auth.admin.getUserById(course.teacher_id),
     ]);
 
-    const nameParts = [profile?.first_name, profile?.last_name].filter(Boolean);
-    teacherName = nameParts.length > 0 ? nameParts.join(" ") : null;
     teacherEmail = authResult.data.user?.email ?? null;
     providerType = profile?.provider_type ?? null;
     providerName = profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;

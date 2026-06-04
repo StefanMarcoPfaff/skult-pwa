@@ -503,7 +503,6 @@ export async function cancelWorkshopParticipantBookingAction(formData: FormData)
         admin.auth.admin.getUserById(course.teacher_id),
       ])
     : [{ data: null }, { data: { user: null } }];
-  const teacherName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null;
   const providerName = profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
   const providerEmail = authResult.data.user?.email?.trim() || null;
 
@@ -592,7 +591,7 @@ export async function cancelWorkshopParticipantBookingAction(formData: FormData)
         workshopTitle: course.title,
         providerType: profile?.provider_type ?? null,
         providerName,
-        teacherName: course.instructor_name ?? teacherName,
+        teacherName: course.instructor_name ?? null,
         teacherEmail: providerEmail,
         senderImageUrl: profile?.photo_url ?? null,
         providerLogoUrl: profile?.company_logo_url ?? null,
