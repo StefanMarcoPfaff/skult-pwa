@@ -1,5 +1,12 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import {
+  ACTIVE_BOOKING_DUPLICATE_MESSAGE,
+  hasActiveCourseParticipationForEmail,
+  hasActiveWorkshopBookingForEmail,
+  isActiveBookingDuplicateError,
+  normalizeBookingEmail,
+} from "@/lib/booking-duplicate-guard";
 import { isDirectlyAccessibleOffer } from "@/lib/public-offer-visibility";
 import { sendResendEmail } from "@/lib/resend";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
@@ -11,6 +18,7 @@ export async function POST(req: Request) {
     const { courseId, email } = (await req.json()) as { courseId?: string; email?: string };
     if (!courseId) return NextResponse.json({ ok: false, error: "courseId fehlt" }, { status: 400 });
     if (!email) return NextResponse.json({ ok: false, error: "email fehlt" }, { status: 400 });
+    const customerEmail = normalizeBookingEmail(email);
 
     const admin = createSupabaseAdmin();
     const { data: course, error: courseErr } = await admin
@@ -50,6 +58,15 @@ export async function POST(req: Request) {
       );
     }
 
+    const [hasDuplicateBooking, hasDuplicateParticipation] = await Promise.all([
+      hasActiveWorkshopBookingForEmail({ admin, courseId: course.id, email: customerEmail }),
+      hasActiveCourseParticipationForEmail({ admin, courseId: course.id, email: customerEmail }),
+    ]);
+
+    if (hasDuplicateBooking || hasDuplicateParticipation) {
+      return NextResponse.json({ ok: false, error: ACTIVE_BOOKING_DUPLICATE_MESSAGE }, { status: 409 });
+    }
+
     const attendeeKey = randomUUID();
     const { data: booking, error: insErr } = await admin
       .from("bookings")
@@ -58,12 +75,15 @@ export async function POST(req: Request) {
         attendee_key: attendeeKey,
         status: "trial_reserved",
         starts_at: course.starts_at,
-        customer_email: email,
+        customer_email: customerEmail,
       })
       .select("id, attendee_key")
       .single();
 
     if (insErr) {
+      if (isActiveBookingDuplicateError(insErr)) {
+        return NextResponse.json({ ok: false, error: ACTIVE_BOOKING_DUPLICATE_MESSAGE }, { status: 409 });
+      }
       return NextResponse.json({ ok: false, error: insErr.message }, { status: 500 });
     }
 
@@ -71,7 +91,7 @@ export async function POST(req: Request) {
     const ticketUrl = `${siteUrl}/ticket/${attendeeKey}`;
 
     await sendResendEmail({
-      to: email,
+      to: customerEmail,
       subject: `Probestunde bestaetigt: ${course.title}`,
       html: `
         <div style="font-family: Arial, sans-serif; line-height: 1.5;">

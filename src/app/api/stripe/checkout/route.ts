@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
+import {
+  ACTIVE_BOOKING_DUPLICATE_MESSAGE,
+  hasActiveWorkshopBookingForEmail,
+  isActiveBookingDuplicateError,
+  normalizeBookingEmail,
+} from "@/lib/booking-duplicate-guard";
 import { buildOfferAvailability, loadOccupiedWorkshopSeats } from "@/lib/public-offer-availability";
 import { isPaymentsV2StripePlatformChargesEnabled } from "@/lib/payments/config";
 import { paymentService } from "@/lib/payments/payment-service";
@@ -75,7 +81,7 @@ export async function POST(req: Request) {
 
     const customerFirstName = requiredText(firstName);
     const customerLastName = requiredText(lastName);
-    const customerEmail = requiredText(email).toLowerCase();
+    const customerEmail = normalizeBookingEmail(requiredText(email));
     const customerPhone = requiredText(phone);
 
     if (!customerFirstName || !customerLastName || !customerEmail || !customerPhone) {
@@ -161,6 +167,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Dieses Angebot ist aktuell ausgebucht." }, { status: 400 });
     }
 
+    const hasDuplicateBooking = await hasActiveWorkshopBookingForEmail({
+      admin: supabase,
+      courseId: course.id,
+      email: customerEmail,
+    });
+
+    if (hasDuplicateBooking) {
+      return NextResponse.json({ error: ACTIVE_BOOKING_DUPLICATE_MESSAGE }, { status: 409 });
+    }
+
     const attendeeKey = makeAttendeeKey();
     const acceptedAt = new Date().toISOString();
 
@@ -184,6 +200,9 @@ export async function POST(req: Request) {
       .single();
 
     if (bookingErr || !booking) {
+      if (bookingErr && isActiveBookingDuplicateError(bookingErr)) {
+        return NextResponse.json({ error: ACTIVE_BOOKING_DUPLICATE_MESSAGE }, { status: 409 });
+      }
       return NextResponse.json(
         { error: bookingErr?.message || "Reservierung konnte nicht erstellt werden." },
         { status: 500 }

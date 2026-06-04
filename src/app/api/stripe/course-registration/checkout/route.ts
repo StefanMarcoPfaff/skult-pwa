@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
+import {
+  ACTIVE_BOOKING_DUPLICATE_MESSAGE,
+  hasActiveCourseParticipationForEmail,
+} from "@/lib/booking-duplicate-guard";
 import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
 import { type CourseStatus, isCourseOpenForNewRegistrations } from "@/lib/course-lifecycle-shared";
 import {
@@ -187,6 +191,20 @@ export async function GET(req: Request) {
   const availability = buildOfferAvailability(course.capacity, await loadOccupiedCourseSeats(intent.course_id));
   if (availability.isSoldOut) {
     return NextResponse.redirect(new URL(`/trial/register/${token}?error=course_unavailable`, url));
+  }
+
+  const hasDuplicateParticipation = await hasActiveCourseParticipationForEmail({
+    admin,
+    courseId: intent.course_id,
+    email: intent.email,
+    excludeReservationId: intent.trial_reservation_id,
+    excludeIntentId: intent.id,
+  });
+
+  if (hasDuplicateParticipation) {
+    return NextResponse.redirect(
+      new URL(`/trial/register/${token}?error=${encodeURIComponent(ACTIVE_BOOKING_DUPLICATE_MESSAGE)}`, url)
+    );
   }
 
   const { data: profile } = await admin

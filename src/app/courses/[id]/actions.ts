@@ -2,6 +2,12 @@
 
 import { randomBytes } from "crypto";
 import { redirect } from "next/navigation";
+import {
+  ACTIVE_BOOKING_DUPLICATE_MESSAGE,
+  hasActiveCourseParticipationForEmail,
+  isActiveBookingDuplicateError,
+  normalizeBookingEmail,
+} from "@/lib/booking-duplicate-guard";
 import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
@@ -234,7 +240,7 @@ export async function reserveTrialAction(
 ): Promise<TrialReservationState> {
   const firstName = requiredText(formData.get("first_name"));
   const lastName = requiredText(formData.get("last_name"));
-  const email = requiredText(formData.get("email")).toLowerCase();
+  const email = normalizeBookingEmail(requiredText(formData.get("email")));
   const selectedTrialStartRaw = requiredText(formData.get("trial_starts_at"));
   const selectedTrialStart = normalizeIsoDateTime(selectedTrialStartRaw);
 
@@ -311,6 +317,21 @@ export async function reserveTrialAction(
     return { error: "Bitte wähle einen gültigen Probestunden-Termin aus." };
   }
 
+  try {
+    const hasDuplicateParticipation = await hasActiveCourseParticipationForEmail({
+      admin,
+      courseId,
+      email,
+    });
+
+    if (hasDuplicateParticipation) {
+      return { error: ACTIVE_BOOKING_DUPLICATE_MESSAGE };
+    }
+  } catch (error) {
+    logReservationError("check-duplicate", error);
+    return { error: formatReservationError(error) };
+  }
+
   const { data: existing, error: existingError } = await admin
     .from("trial_reservations")
     .select("id")
@@ -351,6 +372,9 @@ export async function reserveTrialAction(
 
   if (insertError) {
     logReservationError("insert-reservation", insertError);
+    if (isActiveBookingDuplicateError(insertError)) {
+      return { error: ACTIVE_BOOKING_DUPLICATE_MESSAGE };
+    }
     if (isDuplicateReservationError(insertError)) {
       return {
         error:

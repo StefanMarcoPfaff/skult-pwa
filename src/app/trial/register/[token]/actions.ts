@@ -1,6 +1,12 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import {
+  ACTIVE_BOOKING_DUPLICATE_MESSAGE,
+  hasActiveCourseParticipationForEmail,
+  isActiveBookingDuplicateError,
+  normalizeBookingEmail,
+} from "@/lib/booking-duplicate-guard";
 import { isCourseClosedForNewRegistrations } from "@/lib/course-ending";
 import { type CourseStatus, isCourseOpenForNewRegistrations } from "@/lib/course-lifecycle-shared";
 import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
@@ -120,7 +126,7 @@ export async function submitTrialRegistrationAction(
 
   const first_name = requiredText(formData, "first_name");
   const last_name = requiredText(formData, "last_name");
-  const email = requiredText(formData, "email");
+  const email = normalizeBookingEmail(requiredText(formData, "email"));
   const phone = requiredText(formData, "phone");
   const street_and_number = requiredText(formData, "street_and_number");
   const postal_code = requiredText(formData, "postal_code");
@@ -166,6 +172,24 @@ export async function submitTrialRegistrationAction(
   }
   if (existingIntent?.status !== "checkout_completed" && availability.isSoldOut) {
     return { error: "Dieses laufende Angebot ist aktuell ausgebucht." };
+  }
+
+  if (existingIntent?.status !== "checkout_completed") {
+    try {
+      const hasDuplicateParticipation = await hasActiveCourseParticipationForEmail({
+        admin,
+        courseId: reservation.course_id,
+        email,
+        excludeReservationId: reservation.id,
+        excludeIntentId: existingIntent?.id ?? null,
+      });
+
+      if (hasDuplicateParticipation) {
+        return { error: ACTIVE_BOOKING_DUPLICATE_MESSAGE };
+      }
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Anmeldung konnte nicht geprueft werden." };
+    }
   }
 
   if (existingIntent?.status === "checkout_completed") {
@@ -221,6 +245,9 @@ export async function submitTrialRegistrationAction(
     .single<{ id: string }>();
 
   if (error || !intent) {
+    if (error && isActiveBookingDuplicateError(error)) {
+      return { error: ACTIVE_BOOKING_DUPLICATE_MESSAGE };
+    }
     return { error: error?.message || "Anmeldung konnte nicht gespeichert werden." };
   }
 
