@@ -717,6 +717,7 @@ export async function scheduleCourseStopAction(formData: FormData) {
       await sendTrialCourseStopNotificationEmail({
         reservationId: trialUser.id,
         courseTitle: course.title ?? "Kurs",
+        teacherEmail: user.email ?? null,
         customerName: formatRecipientName(trialUser.first_name, trialUser.last_name),
         customerEmail: recipientEmail,
         trialStartsAt: trialUser.trial_starts_at,

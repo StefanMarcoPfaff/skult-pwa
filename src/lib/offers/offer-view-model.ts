@@ -173,12 +173,13 @@ function renderEmailValue(value: string | string[]): string {
 export function renderOfferSummaryEmailHtml(viewModel: OfferViewModel): string {
   const imageUrl = viewModel.providerLogoUrl || viewModel.providerPhotoUrl;
   const imageHtml = imageUrl
-    ? `<div style="margin:0 0 16px;"><img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(viewModel.organizationLabel ?? viewModel.offerTitle)}" style="max-height:72px;max-width:180px;width:auto;border-radius:10px;display:block;" /></div>`
+    ? `<div style="margin:0 0 16px;"><img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(viewModel.organizationLabel ?? viewModel.offerTitle)}" style="max-height:64px;max-width:176px;width:auto;border-radius:12px;display:block;object-fit:contain;" /></div>`
+    : "";
+  const offerImageHtml = viewModel.offerImageUrl
+    ? `<img src="${escapeHtml(viewModel.offerImageUrl)}" alt="${escapeHtml(viewModel.offerTitle)}" style="display:block;width:100%;height:220px;object-fit:cover;" />`
     : "";
   const sessionLabels = viewModel.sessions.map((session) => session.dateTimeLabel).filter(Boolean);
   const rows = [
-    ["Angebot", viewModel.offerTitle],
-    ["Art", viewModel.offerTypeLabel],
     ["Organisation / Anbietende", viewModel.organizationLabel],
     ["Leitung", viewModel.leaderName],
     ["Ort", viewModel.locationLabel],
@@ -191,19 +192,28 @@ export function renderOfferSummaryEmailHtml(viewModel: OfferViewModel): string {
   );
 
   return `
-    <div style="margin:24px 0;padding:18px 20px;border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;">
-      ${imageHtml}
-      ${rows
-        .map(
-          ([label, value]) => `
-            <div style="margin:0 0 14px;">
-              <div style="font-size:12px;line-height:1.35;color:#5b6470;font-weight:700;">${escapeHtml(label)}</div>
-              <div style="margin-top:3px;color:#111827;">${renderEmailValue(value)}</div>
-            </div>
-          `
-        )
-        .join("")}
-    </div>
+    <article style="margin:24px 0;border:1px solid #e2e8f0;border-radius:16px;background:#ffffff;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,0.06);">
+      ${offerImageHtml}
+      <div style="padding:20px;">
+        <header style="margin:0 0 18px;">
+          ${imageHtml}
+          <div style="font-size:11px;line-height:1.35;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:0.14em;">${escapeHtml(viewModel.offerTypeLabel)}</div>
+          <h3 style="margin:8px 0 0;font-size:24px;line-height:1.2;color:#020617;font-weight:800;">${escapeHtml(viewModel.offerTitle)}</h3>
+        </header>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px;font-size:14px;line-height:1.55;">
+          ${rows
+            .map(
+              ([label, value]) => `
+                <div style="margin:0;">
+                  <div style="font-size:13px;line-height:1.35;color:#020617;font-weight:700;">${escapeHtml(label)}</div>
+                  <div style="margin-top:4px;color:#334155;">${renderEmailValue(value)}</div>
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+      </div>
+    </article>
   `;
 }
 

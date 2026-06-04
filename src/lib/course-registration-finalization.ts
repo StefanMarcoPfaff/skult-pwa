@@ -375,9 +375,11 @@ export async function finalizeCourseRegistrationCheckoutSession(input: {
 
   if (recipientEmail && !finalizedIntent.registration_confirmation_email_sent_at) {
     try {
+      const providerEmail = providerContact.providerEmail;
       const result = await sendCourseSubscriptionConfirmationEmail({
         registrationIntentId: finalizedIntent.id,
         courseTitle,
+        teacherEmail: providerEmail,
         providerType: providerContact.providerType,
         providerName,
         instructorName: course?.instructor_name ?? null,

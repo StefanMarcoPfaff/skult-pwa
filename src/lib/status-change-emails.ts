@@ -1,7 +1,12 @@
-import { RESER_BRAND_NAME, RESER_BRAND_TAGLINE } from "@/lib/brand";
 import type { OfferViewModel } from "@/lib/offers/offer-view-model";
 import { renderOfferSummaryEmailHtml, renderOfferSummaryEmailText } from "@/lib/offers/offer-view-model";
-import { sendResendEmail } from "@/lib/resend";
+import {
+  buildOfferEmailBrandingFromOffer,
+  escapeEmailHtml,
+  renderOfferEmailFooterText,
+  renderOfferEmailLayout,
+  sendOfferRelatedEmail,
+} from "@/lib/offer-email-layout";
 
 export type StatusMailStatus =
   | "cancelled"
@@ -47,14 +52,6 @@ type InfoItem = {
   label: string;
   value: string | null | undefined;
 };
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 function getStatusLabel(status: StatusMailStatus, fallback?: string | null): string {
   if (fallback?.trim()) return fallback.trim();
@@ -136,18 +133,18 @@ function renderInfoBlockHtml(title: string, items: InfoItem[], note?: string | n
 
   return `
     <div style="margin:24px 0;padding:18px 20px;border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;">
-      <p style="margin:0 0 14px;font-weight:700;color:#111827;">${escapeHtml(title)}</p>
+      <p style="margin:0 0 14px;font-weight:700;color:#111827;">${escapeEmailHtml(title)}</p>
       ${visibleItems
         .map(
           (item) => `
             <div style="margin:0 0 12px;">
-              <div style="font-size:12px;line-height:1.35;color:#5b6470;font-weight:700;">${escapeHtml(item.label)}</div>
-              <div style="margin-top:3px;color:#111827;">${escapeHtml(item.value ?? "")}</div>
+              <div style="font-size:12px;line-height:1.35;color:#5b6470;font-weight:700;">${escapeEmailHtml(item.label)}</div>
+              <div style="margin-top:3px;color:#111827;">${escapeEmailHtml(item.value ?? "")}</div>
             </div>
           `
         )
         .join("")}
-      ${note ? `<p style="margin:4px 0 0;color:#4b5563;">${escapeHtml(note)}</p>` : ""}
+      ${note ? `<p style="margin:4px 0 0;color:#4b5563;">${escapeEmailHtml(note)}</p>` : ""}
     </div>
   `;
 }
@@ -174,20 +171,6 @@ function buildProviderItems(input: StatusChangeEmailInput): InfoItem[] {
   ];
 }
 
-function renderFooterHtml() {
-  return `
-    <div style="margin:24px 0 0;text-align:center;color:#111827;">
-      <p style="margin:0;">Herzliche Grüße,</p>
-      <p style="margin:10px 0 0;font-weight:700;">${RESER_BRAND_NAME}</p>
-      <p style="margin:4px 0 0;color:#4b5563;">${RESER_BRAND_TAGLINE}</p>
-    </div>
-  `;
-}
-
-function renderFooterText() {
-  return ["Herzliche Grüße,", RESER_BRAND_NAME, RESER_BRAND_TAGLINE].join("\n");
-}
-
 export function prepareStatusChangeEmail(input: StatusChangeEmailInput) {
   const statusLabel = getStatusLabel(input.status, input.statusLabel);
   const statusSentence = buildStatusSentence(input);
@@ -199,7 +182,8 @@ export function prepareStatusChangeEmail(input: StatusChangeEmailInput) {
       : null);
   const providerItems = buildProviderItems(input);
   const subject = input.subject?.trim() || `${statusLabel}: ${input.offer.offerTitle}`;
-  const greeting = input.greetingName?.trim() ? `<p style="margin:0 0 16px;">Hallo ${escapeHtml(input.greetingName.trim())},</p>` : "";
+  const branding = buildOfferEmailBrandingFromOffer(input.offer);
+  const greeting = input.greetingName?.trim() ? `<p style="margin:0 0 16px;">Hallo ${escapeEmailHtml(input.greetingName.trim())},</p>` : "";
   const textGreeting = input.greetingName?.trim() ? `Hallo ${input.greetingName.trim()},` : null;
 
   const financialHtml = hasFinancialBlock(input)
@@ -214,21 +198,24 @@ export function prepareStatusChangeEmail(input: StatusChangeEmailInput) {
   return {
     to: input.to,
     subject,
-    replyTo: input.replyTo,
-    html: `
-      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827;max-width:640px;">
-        <h2 style="margin:0 0 18px;font-size:26px;line-height:1.25;">${escapeHtml(statusLabel)}</h2>
+    replyTo: input.replyTo ?? input.offer.replyToEmail,
+    offer: input.offer,
+    branding,
+    html: renderOfferEmailLayout({
+      title: statusLabel,
+      preheader: statusSentence,
+      branding,
+      childrenHtml: `
         ${greeting}
         <div style="margin:0 0 24px;padding:18px 20px;border:1px solid #ddd6fe;border-radius:14px;background:#f5f3ff;">
-          <p style="margin:0;font-size:17px;line-height:1.55;color:#111827;">${escapeHtml(statusSentence)}</p>
+          <p style="margin:0;font-size:17px;line-height:1.55;color:#111827;">${escapeEmailHtml(statusSentence)}</p>
         </div>
         ${financialHtml}
         ${providerHtml}
         ${renderOfferSummaryEmailHtml(input.offer)}
         <p style="margin:24px 0 0;color:#4b5563;">Wenn du Fragen hast, antworte direkt auf diese E-Mail.</p>
-        ${renderFooterHtml()}
-      </div>
-    `,
+      `,
+    }),
     text: [
       statusLabel,
       textGreeting,
@@ -242,7 +229,7 @@ export function prepareStatusChangeEmail(input: StatusChangeEmailInput) {
       "",
       "Wenn du Fragen hast, antworte direkt auf diese E-Mail.",
       "",
-      renderFooterText(),
+      renderOfferEmailFooterText(branding),
     ]
       .filter(Boolean)
       .join("\n"),
@@ -251,11 +238,13 @@ export function prepareStatusChangeEmail(input: StatusChangeEmailInput) {
 
 export async function sendStatusChangeEmail(input: StatusChangeEmailInput) {
   const email = prepareStatusChangeEmail(input);
-  return sendResendEmail({
+  return sendOfferRelatedEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
     text: email.text,
+    offer: email.offer,
+    branding: email.branding,
     replyTo: email.replyTo ?? undefined,
   });
 }

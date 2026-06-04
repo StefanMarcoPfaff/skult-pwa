@@ -1,9 +1,13 @@
-import { sendResendEmail } from "@/lib/resend";
-import { RESER_BRAND_NAME, RESER_BRAND_TAGLINE } from "@/lib/brand";
+import { RESER_BRAND_NAME } from "@/lib/brand";
 import { getSiteUrl as getCanonicalSiteUrl } from "@/lib/site-url";
 import { shouldShowStudioLabel } from "@/lib/provider-profiles";
 import { buildBookingCalendarUrl } from "@/lib/calendar";
 import { buildTicketQrCodeDataUrl, buildTicketViewUrl, buildTicketWalletUrl } from "@/lib/ticket-qr";
+import {
+  renderOfferEmailFooterText,
+  renderOfferEmailLayout,
+  sendOfferRelatedEmail,
+} from "@/lib/offer-email-layout";
 
 /*
  * MVP verification checklist:
@@ -37,6 +41,7 @@ export type TrialRegistrationDecisionEmailData = {
   courseTitle: string;
   senderDisplayName?: string | null;
   senderImageUrl?: string | null;
+  teacherEmail?: string | null;
   customerName: string;
   customerEmail: string;
   registrationUrl?: string;
@@ -50,6 +55,7 @@ export type TrialRegistrationExpiredEmailData = TrialRegistrationDecisionEmailDa
 export type CourseSubscriptionConfirmationEmailData = {
   registrationIntentId: string;
   courseTitle: string;
+  teacherEmail?: string | null;
   providerType?: "independent_teacher" | "studio_provider" | null;
   providerName: string | null;
   instructorName: string | null;
@@ -86,6 +92,7 @@ export type CourseSubscriptionProviderNotificationEmailData = {
 export type CourseEndingNotificationEmailData = {
   registrationIntentId: string;
   courseTitle: string;
+  teacherEmail?: string | null;
   providerType?: "independent_teacher" | "studio_provider" | null;
   providerName: string | null;
   instructorName: string | null;
@@ -104,6 +111,9 @@ export type TrialCourseStopNotificationEmailData = {
   customerName: string;
   customerEmail: string;
   courseTitle: string;
+  teacherEmail?: string | null;
+  senderDisplayName?: string | null;
+  senderImageUrl?: string | null;
   trialStartsAt: string | null;
   trialEndsAt: string | null;
 };
@@ -217,35 +227,11 @@ function renderSupportHtml() {
   return `<p style="margin: 24px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>`;
 }
 
-function isHttpUrl(value: string | null | undefined): value is string {
-  return Boolean(value && /^https?:\/\//i.test(value));
-}
-
-function renderFooterHtml(branding?: FooterBranding) {
-  const senderName = branding?.senderName?.trim() || "SKULT";
-  const imageHtml = isHttpUrl(branding?.senderImageUrl)
-    ? `
-      <div style="margin: 18px 0 12px; text-align: center;">
-        <img
-          src="${branding?.senderImageUrl}"
-          alt="${senderName}"
-          style="max-height: 120px; width: auto; max-width: 220px; display: inline-block; border-radius: 12px;"
-        />
-      </div>
-    `
-    : "";
-
-  return `
-    <div style="margin: 24px 0 0; text-align: center;">
-      <p style="margin: 0;">Herzliche Grüße</p>
-      ${imageHtml}
-      <p style="margin: 0; font-weight: 600;">${senderName}</p>
-    </div>
-  `;
-}
-
 function renderFooterText(branding?: FooterBranding) {
-  return ["Herzliche Grüße", branding?.senderName?.trim() || "SKULT"].join("\n");
+  return renderOfferEmailFooterText({
+    senderName: branding?.senderName?.trim() || "SKULT",
+    senderImageUrl: branding?.senderImageUrl,
+  });
 }
 
 function renderReserFooterHtml() {
@@ -253,13 +239,13 @@ function renderReserFooterHtml() {
     <div style="margin: 24px 0 0; text-align: center;">
       <p style="margin: 0;">Herzliche Grüße,</p>
       <p style="margin: 10px 0 0; font-weight: 600;">${RESER_BRAND_NAME}</p>
-      <p style="margin: 4px 0 0; color: #4b5563;">${RESER_BRAND_TAGLINE}</p>
+      <p style="margin: 4px 0 0; color: #4b5563;">Versendet über RESER</p>
     </div>
   `;
 }
 
 function renderReserFooterText() {
-  return ["Herzliche Grüße,", RESER_BRAND_NAME, RESER_BRAND_TAGLINE].join("\n");
+  return ["Herzliche Grüße,", RESER_BRAND_NAME, "Versendet über RESER"].join("\n");
 }
 
 function maskEmail(email: string): string {
@@ -325,18 +311,18 @@ function createHtmlEmail(input: {
       `
       : "";
 
-  return `
-    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827; max-width: 640px;">
-      <h2 style="margin: 0 0 18px; font-size: 26px; line-height: 1.25;">${input.title}</h2>
+  return renderOfferEmailLayout({
+    title: input.title,
+    branding: input.footer ?? { senderName: "SKULT" },
+    childrenHtml: `
       ${greeting}
       <p style="margin: 0;">${input.intro}</p>
       ${infoBlock}
       ${nextSteps}
       ${renderActionsHtml(input.actions ?? [])}
       ${input.support ?? renderSupportHtml()}
-      ${renderFooterHtml(input.footer)}
-    </div>
-  `;
+    `,
+  });
 }
 
 function createTextEmail(input: {
@@ -1076,24 +1062,33 @@ export function prepareTeacherTrialDecisionReminderEmail(data: TeacherTrialDecis
   };
 }
 
-export async function sendTrialReservationConfirmationEmail(data: TrialReservationEmailData) {
-  const email = await prepareCustomerTrialReservationConfirmation(data);
-  return sendResendEmail({
+function sendPreparedOfferEmail(
+  email: { to: string; subject: string; html: string; text: string },
+  branding: FooterBranding,
+  replyToEmail?: string | null
+) {
+  return sendOfferRelatedEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
     text: email.text,
+    branding: {
+      senderName: branding.senderName,
+      senderImageUrl: branding.senderImageUrl,
+      replyToEmail,
+    },
+    replyTo: replyToEmail,
   });
+}
+
+export async function sendTrialReservationConfirmationEmail(data: TrialReservationEmailData) {
+  const email = await prepareCustomerTrialReservationConfirmation(data);
+  return sendPreparedOfferEmail(email, buildFooterBranding(data), data.teacherEmail);
 }
 
 export async function sendTrialReservationReminderEmail(data: TrialReservationEmailData) {
   const email = prepareCustomerTrialReservationReminder(data);
-  return sendResendEmail({
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
+  return sendPreparedOfferEmail(email, buildFooterBranding(data), data.teacherEmail);
 }
 
 export async function sendTeacherTrialReservationNotificationEmail(data: TrialReservationEmailData) {
@@ -1106,12 +1101,7 @@ export async function sendTeacherTrialReservationNotificationEmail(data: TrialRe
   }
 
   const email = prepareTeacherTrialReservationNotification(data);
-  return sendResendEmail({
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
+  return sendPreparedOfferEmail(email, buildFooterBranding(data), data.teacherEmail);
 }
 
 export async function sendTeacherTrialReservationCancellationEmail(data: TrialReservationEmailData) {
@@ -1124,104 +1114,54 @@ export async function sendTeacherTrialReservationCancellationEmail(data: TrialRe
   }
 
   const email = prepareTeacherTrialReservationCancellation(data);
-  return sendResendEmail({
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
+  return sendPreparedOfferEmail(email, buildFooterBranding(data), data.teacherEmail);
 }
 
 export async function sendCustomerTrialReservationCancellationEmail(data: TrialReservationEmailData) {
   const email = prepareCustomerTrialReservationCancellation(data);
-  return sendResendEmail({
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
+  return sendPreparedOfferEmail(email, buildFooterBranding(data), data.teacherEmail);
 }
 
 export async function sendTrialRegistrationApprovedEmail(data: TrialRegistrationDecisionEmailData) {
   const email = prepareTrialRegistrationApprovedEmail(data);
-  return sendResendEmail({
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
+  return sendPreparedOfferEmail(email, buildFooterBranding(data), data.teacherEmail);
 }
 
 export async function sendTrialRegistrationRejectedEmail(data: TrialRegistrationDecisionEmailData) {
   const email = prepareTrialRegistrationRejectedEmail(data);
-  return sendResendEmail({
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
+  return sendPreparedOfferEmail(email, buildFooterBranding(data), data.teacherEmail);
 }
 
 export async function sendTrialCourseStopNotificationEmail(data: TrialCourseStopNotificationEmailData) {
   const email = prepareTrialCourseStopNotificationEmail(data);
-  return sendResendEmail({
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
+  return sendPreparedOfferEmail(email, buildFooterBranding(data), data.teacherEmail);
 }
 
 export async function sendTrialRegistrationReminder24hEmail(data: TrialRegistrationDecisionEmailData) {
   const email = prepareTrialRegistrationReminder24hEmail(data);
-  return sendResendEmail({
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
+  return sendPreparedOfferEmail(email, buildFooterBranding(data), data.teacherEmail);
 }
 
 export async function sendTrialRegistrationReminder48hEmail(data: TrialRegistrationDecisionEmailData) {
   const email = prepareTrialRegistrationReminder48hEmail(data);
-  return sendResendEmail({
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
+  return sendPreparedOfferEmail(email, buildFooterBranding(data), data.teacherEmail);
 }
 
 export async function sendTrialRegistrationReminder72hEmail(data: TrialRegistrationDecisionEmailData) {
   const email = prepareTrialRegistrationReminder72hEmail(data);
-  return sendResendEmail({
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
+  return sendPreparedOfferEmail(email, buildFooterBranding(data), data.teacherEmail);
 }
 
 export async function sendTrialRegistrationExpiredEmail(data: TrialRegistrationExpiredEmailData) {
   const email = prepareTrialRegistrationExpiredEmail(data);
-  return sendResendEmail({
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
+  return sendPreparedOfferEmail(email, buildFooterBranding(data), data.teacherEmail);
 }
 
 export async function sendCourseSubscriptionConfirmationEmail(
   data: CourseSubscriptionConfirmationEmailData
 ) {
   const email = await prepareCourseSubscriptionConfirmationEmail(data);
-  return sendResendEmail({
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
+  return sendPreparedOfferEmail(email, buildFooterBranding(data), data.teacherEmail);
 }
 
 export async function sendCourseSubscriptionProviderNotificationEmail(
@@ -1236,22 +1176,12 @@ export async function sendCourseSubscriptionProviderNotificationEmail(
   }
 
   const email = prepareCourseSubscriptionProviderNotificationEmail(data);
-  return sendResendEmail({
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
+  return sendPreparedOfferEmail(email, buildFooterBranding(data), data.teacherEmail);
 }
 
 export async function sendCourseEndingNotificationEmail(data: CourseEndingNotificationEmailData) {
   const email = prepareCourseEndingNotificationEmail(data);
-  return sendResendEmail({
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
+  return sendPreparedOfferEmail(email, buildFooterBranding(data), data.teacherEmail);
 }
 
 export async function sendCourseEndingProviderSummaryEmail(
@@ -1266,12 +1196,7 @@ export async function sendCourseEndingProviderSummaryEmail(
   }
 
   const email = prepareCourseEndingProviderSummaryEmail(data);
-  return sendResendEmail({
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
+  return sendPreparedOfferEmail(email, { senderName: data.courseTitle }, data.teacherEmail);
 }
 
 export async function sendTeacherTrialDecisionReminderEmail(data: TeacherTrialDecisionReminderEmailData) {
@@ -1284,10 +1209,5 @@ export async function sendTeacherTrialDecisionReminderEmail(data: TeacherTrialDe
   }
 
   const email = prepareTeacherTrialDecisionReminderEmail(data);
-  return sendResendEmail({
-    to: email.to,
-    subject: email.subject,
-    html: email.html,
-    text: email.text,
-  });
+  return sendPreparedOfferEmail(email, buildFooterBranding(data), data.teacherEmail);
 }

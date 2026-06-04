@@ -1,10 +1,14 @@
-import { sendResendEmail } from "@/lib/resend";
 import type { Attachment } from "resend";
-import { RESER_BRAND_NAME, RESER_BRAND_TAGLINE } from "@/lib/brand";
 import { shouldShowStudioLabel } from "@/lib/provider-profiles";
 import { buildBookingCalendarUrl } from "@/lib/calendar";
 import { buildTicketQrCodeDataUrl, buildTicketViewUrl, buildTicketWalletUrl } from "@/lib/ticket-qr";
 import { buildOfferViewModel, renderOfferSummaryEmailHtml } from "@/lib/offers/offer-view-model";
+import {
+  renderOfferEmailFooterHtml,
+  renderOfferEmailFooterText,
+  renderOfferEmailLayout,
+  sendOfferRelatedEmail,
+} from "@/lib/offer-email-layout";
 import { resolveWorkshopProviderDisplay } from "@/lib/workshop-offer-display";
 import { sendStatusChangeEmail } from "@/lib/status-change-emails";
 
@@ -113,49 +117,11 @@ function renderActionsHtml(actions: EmailAction[]): string {
   `;
 }
 
-function isHttpUrl(value: string | null | undefined): value is string {
-  return Boolean(value && /^https?:\/\//i.test(value));
-}
-
-function renderFooterHtml(branding?: FooterBranding) {
-  const senderName = branding?.senderName?.trim() || "SKULT";
-  const imageHtml = isHttpUrl(branding?.senderImageUrl)
-    ? `
-      <div style="margin: 18px 0 12px; text-align: center;">
-        <img
-          src="${branding?.senderImageUrl}"
-          alt="${senderName}"
-          style="max-height: 120px; width: auto; max-width: 220px; display: inline-block; border-radius: 12px;"
-        />
-      </div>
-    `
-    : "";
-
-  return `
-    <div style="margin: 24px 0 0; text-align: center;">
-      <p style="margin: 0;">Herzliche Grüße</p>
-      ${imageHtml}
-      <p style="margin: 0; font-weight: 600;">${senderName}</p>
-    </div>
-  `;
-}
-
 function renderFooterText(branding?: FooterBranding) {
-  return ["Herzliche Grüße", branding?.senderName?.trim() || "SKULT"].join("\n");
-}
-
-function renderReserFooterHtml() {
-  return `
-    <div style="margin: 24px 0 0; text-align: center;">
-      <p style="margin: 0;">Herzliche Grüße,</p>
-      <p style="margin: 10px 0 0; font-weight: 600;">${RESER_BRAND_NAME}</p>
-      <p style="margin: 4px 0 0; color: #4b5563;">${RESER_BRAND_TAGLINE}</p>
-    </div>
-  `;
-}
-
-function renderReserFooterText() {
-  return ["Herzliche Grüße,", RESER_BRAND_NAME, RESER_BRAND_TAGLINE].join("\n");
+  return renderOfferEmailFooterText({
+    senderName: branding?.senderName?.trim() || "SKULT",
+    senderImageUrl: branding?.senderImageUrl,
+  });
 }
 
 function buildFooterBranding(data: WorkshopBookingEmailData): FooterBranding {
@@ -236,9 +202,10 @@ function createHtmlEmail(input: {
       `
       : "";
 
-  return `
-    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827; max-width: 640px;">
-      <h2 style="margin: 0 0 18px; font-size: 26px; line-height: 1.25;">${input.title}</h2>
+  return renderOfferEmailLayout({
+    title: input.title,
+    branding: input.footer ?? { senderName: "SKULT" },
+    childrenHtml: `
       ${greeting}
       <p style="margin: 0;">${input.intro}</p>
       ${input.offerSummaryHtml ?? ""}
@@ -246,9 +213,8 @@ function createHtmlEmail(input: {
       ${nextSteps}
       ${renderActionsHtml(input.actions ?? [])}
       ${input.support ?? `<p style="margin: 24px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>`}
-      ${renderFooterHtml(input.footer)}
-    </div>
-  `;
+    `,
+  });
 }
 
 function createTextEmail(input: {
@@ -293,7 +259,7 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
   const qrDataUrl = await buildTicketQrCodeDataUrl(data.qrToken);
   const calendarUrl = buildBookingCalendarUrl(data.qrToken, "ticket");
   const isFreeBooking = data.paymentStatus === "free";
-  const replyTo = data.teacherEmail?.trim() || "hello@getreser.app";
+  const replyTo = data.teacherEmail?.trim() || null;
   const offerViewModel = buildEmailOfferViewModel(data);
 
   return {
@@ -360,8 +326,9 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
 }
 
 export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingEmailData) {
-  const footerHtml = renderReserFooterHtml();
-  const footerText = renderReserFooterText();
+  const footerBranding = buildFooterBranding(data);
+  const footerHtml = renderOfferEmailFooterHtml(footerBranding);
+  const footerText = renderOfferEmailFooterText(footerBranding);
   const calendarUrl = buildBookingCalendarUrl(data.qrToken, "ticket");
   const isFreeBooking = data.paymentStatus === "free";
   const offerSummaryHtml = renderOfferSummaryEmailHtml(buildEmailOfferViewModel(data));
@@ -403,12 +370,14 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
 
 export async function sendWorkshopCustomerBookingConfirmationEmail(data: WorkshopBookingEmailData) {
   const email = await prepareWorkshopCustomerBookingConfirmation(data);
-  return sendResendEmail({
+  return sendOfferRelatedEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
     text: email.text,
     replyTo: email.replyTo,
+    offer: buildEmailOfferViewModel(data),
+    branding: buildFooterBranding(data),
     attachments: data.attachments,
   });
 }
@@ -423,11 +392,14 @@ export async function sendWorkshopTeacherBookingNotificationEmail(data: Workshop
   }
 
   const email = prepareWorkshopTeacherBookingNotification(data);
-  return sendResendEmail({
+  return sendOfferRelatedEmail({
     to: email.to,
     subject: email.subject,
     html: email.html,
     text: email.text,
+    replyTo: data.teacherEmail,
+    offer: buildEmailOfferViewModel(data),
+    branding: buildFooterBranding(data),
   });
 }
 
