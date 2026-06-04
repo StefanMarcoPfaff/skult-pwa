@@ -1,9 +1,11 @@
-import { sendResendEmail } from "@/lib/resend";
+import { buildOfferViewModel, type OfferViewModel } from "@/lib/offers/offer-view-model";
+import { sendStatusChangeEmail } from "@/lib/status-change-emails";
 
 type CourseLifecycleRecipientEmailData = {
   courseTitle: string;
   customerName: string;
   customerEmail: string;
+  offer?: OfferViewModel | null;
 };
 
 type CoursePauseNotificationEmailData = CourseLifecycleRecipientEmailData & {
@@ -17,33 +19,44 @@ type CourseStopNotificationEmailData = CourseLifecycleRecipientEmailData & {
   stopDateLabel: string;
 };
 
+function buildFallbackCourseOfferViewModel(courseTitle: string): OfferViewModel {
+  return buildOfferViewModel({
+    course: {
+      title: courseTitle,
+      kind: "course",
+    },
+  });
+}
+
 export async function sendCoursePauseNotificationEmail(data: CoursePauseNotificationEmailData) {
-  return sendResendEmail({
+  return sendStatusChangeEmail({
     to: data.customerEmail,
-    subject: "Dein laufendes Angebot pausiert vorübergehend",
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-        <p>Hallo ${data.customerName},</p>
-        <p>dein laufendes Angebot <strong>${data.courseTitle}</strong> pausiert vorübergehend.</p>
-        <p>Das Angebot läuft noch bis ${data.activeUntilDateLabel} und pausiert anschließend vom ${data.pauseStartDateLabel} bis ${data.pauseEndExclusiveDateLabel}.</p>
-        <p>Ab ${data.pauseEndDateLabel} geht es weiter. Während der Pause wird keine Gebühr abgebucht.</p>
-      </div>
-    `,
-    text: `Hallo ${data.customerName},\n\ndein laufendes Angebot ${data.courseTitle} pausiert vorübergehend.\nDas Angebot läuft noch bis ${data.activeUntilDateLabel} und pausiert anschließend vom ${data.pauseStartDateLabel} bis ${data.pauseEndExclusiveDateLabel}.\nAb ${data.pauseEndDateLabel} geht es weiter. Während der Pause wird keine Gebühr abgebucht.`,
+    audience: "participant",
+    status: "paused",
+    statusLabel: "Pausiert",
+    greetingName: data.customerName,
+    participantName: data.customerName,
+    participantEmail: data.customerEmail,
+    offer: data.offer ?? buildFallbackCourseOfferViewModel(data.courseTitle),
+    details: {
+      pauseStartLabel: data.pauseStartDateLabel,
+      pauseEndLabel: data.pauseEndExclusiveDateLabel,
+    },
   });
 }
 
 export async function sendCourseStopNotificationEmail(data: CourseStopNotificationEmailData) {
-  return sendResendEmail({
+  return sendStatusChangeEmail({
     to: data.customerEmail,
-    subject: "Dein laufendes Angebot endet",
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-        <p>Hallo ${data.customerName},</p>
-        <p>dein laufendes Angebot <strong>${data.courseTitle}</strong> endet zum ${data.stopDateLabel}.</p>
-        <p>Ab dem Folgemonat wird keine Gebühr mehr abgebucht. Du findest weitere Angebote auf RESER.</p>
-      </div>
-    `,
-    text: `Hallo ${data.customerName},\n\ndein laufendes Angebot ${data.courseTitle} endet zum ${data.stopDateLabel}.\nAb dem Folgemonat wird keine Gebühr mehr abgebucht. Du findest weitere Angebote auf RESER.`,
+    audience: "participant",
+    status: "terminated",
+    statusLabel: "Beendet",
+    greetingName: data.customerName,
+    participantName: data.customerName,
+    participantEmail: data.customerEmail,
+    offer: data.offer ?? buildFallbackCourseOfferViewModel(data.courseTitle),
+    details: {
+      effectiveDateLabel: data.stopDateLabel,
+    },
   });
 }

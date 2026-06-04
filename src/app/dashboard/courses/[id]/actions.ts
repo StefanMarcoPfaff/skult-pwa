@@ -11,6 +11,7 @@ import {
   hashCheckInAccessToken,
 } from "@/lib/checkin-access-links";
 import { sendCoursePauseNotificationEmail, sendCourseStopNotificationEmail } from "@/lib/course-lifecycle-emails";
+import { formatMoney } from "@/lib/course-display";
 import { mirrorStripeRefundToLedger } from "@/lib/payments/ledger";
 import { paymentService } from "@/lib/payments/payment-service";
 import { getStripe } from "@/lib/stripe";
@@ -25,6 +26,8 @@ import {
   toCourseLifecycleDate,
 } from "@/lib/course-lifecycle-shared";
 import { getCourseTerminationModelValue, getWorkshopCancellationPolicyValue } from "@/lib/offer-policies";
+import { buildOfferViewModel } from "@/lib/offers/offer-view-model";
+import { getProviderDisplayName } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { sendTrialCourseStopNotificationEmail } from "@/lib/trial-reservation-emails";
@@ -39,6 +42,12 @@ type CourseOwnerRow = {
   is_published: boolean | null;
   starts_at?: string | null;
   ends_at?: string | null;
+  location?: string | null;
+  location_details?: string | null;
+  instructor_name?: string | null;
+  price_cents?: number | null;
+  currency?: string | null;
+  offer_image_url?: string | null;
   pause_start_date: string | null;
   pause_end_date: string | null;
   stop_date: string | null;
@@ -81,6 +90,16 @@ type WorkshopBookingRefundRow = {
   stripe_session_id: string | null;
   refunded_at: string | null;
   stripe_refund_id: string | null;
+};
+
+type StatusEmailProfileRow = {
+  first_name: string | null;
+  last_name: string | null;
+  provider_type: "independent_teacher" | "studio_provider" | null;
+  organization_name: string | null;
+  photo_url: string | null;
+  company_logo_url: string | null;
+  email: string | null;
 };
 
 type PublishMode = "play";
@@ -156,6 +175,25 @@ function formatRecipientName(firstName: string | null, lastName: string | null):
   return [firstName, lastName].filter(Boolean).join(" ").trim() || "Kursteilnehmer*in";
 }
 
+function buildStatusOfferViewModel(course: CourseOwnerRow) {
+  return buildOfferViewModel({
+    course: {
+      title: course.title,
+      kind: course.kind,
+      location: course.location ?? null,
+      location_details: course.location_details ?? null,
+      starts_at: course.starts_at ?? null,
+      ends_at: course.ends_at ?? null,
+      instructor_name: course.instructor_name ?? null,
+      price_cents: course.price_cents ?? null,
+      currency: course.currency ?? null,
+      workshop_storno_policy: course.workshop_storno_policy ?? null,
+      cancellation_model: course.cancellation_model ?? null,
+      offer_image_url: course.offer_image_url ?? null,
+    },
+  });
+}
+
 async function requireOwnedCourse(courseId: string) {
   const supabase = await createSupabaseServerClient();
   const admin = createSupabaseAdmin();
@@ -170,7 +208,7 @@ async function requireOwnedCourse(courseId: string) {
   const { data: course } = await admin
     .from("courses")
     .select(
-      "id,title,kind,teacher_id,status,is_published,starts_at,ends_at,pause_start_date,pause_end_date,stop_date,cancellation_model,workshop_storno_policy,archived_at"
+      "id,title,kind,teacher_id,status,is_published,starts_at,ends_at,location,location_details,instructor_name,price_cents,currency,offer_image_url,pause_start_date,pause_end_date,stop_date,cancellation_model,workshop_storno_policy,archived_at"
     )
     .eq("id", courseId)
     .eq("teacher_id", user.id)
@@ -552,6 +590,7 @@ export async function scheduleCoursePauseAction(formData: FormData) {
         pauseStartDateLabel,
         pauseEndDateLabel,
         pauseEndExclusiveDateLabel,
+        offer: buildStatusOfferViewModel(course),
       });
       await admin
         .from("course_registration_intents")
@@ -635,6 +674,7 @@ export async function scheduleCourseStopAction(formData: FormData) {
           customerName: formatRecipientName(intent.first_name, intent.last_name),
           customerEmail: recipientEmail,
           stopDateLabel,
+          offer: buildStatusOfferViewModel(course),
         });
         await admin
           .from("course_registration_intents")
@@ -732,6 +772,30 @@ export async function cancelWorkshopAction(formData: FormData) {
     .returns<WorkshopBookingRefundRow[]>();
 
   let hadRefundErrors = false;
+  const { data: profile } = course.teacher_id
+    ? await admin
+        .from("profiles")
+        .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url,email")
+        .eq("id", course.teacher_id)
+        .maybeSingle<StatusEmailProfileRow>()
+    : { data: null };
+  const profileName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null;
+  const providerName = profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
+  const statusOfferEmailData = {
+    workshopTitle: course.title,
+    providerType: profile?.provider_type ?? null,
+    providerName,
+    teacherName: course.instructor_name ?? profileName,
+    teacherEmail: profile?.email ?? null,
+    senderImageUrl: profile?.photo_url ?? null,
+    providerLogoUrl: profile?.company_logo_url ?? null,
+    offerImageUrl: course.offer_image_url ?? null,
+    location: course.location ?? null,
+    locationDetails: course.location_details ?? null,
+    startsAt: course.starts_at ?? null,
+    endsAt: course.ends_at ?? null,
+    priceLabel: typeof course.price_cents === "number" ? formatMoney(course.price_cents, course.currency ?? "EUR") : null,
+  };
 
   for (const booking of bookings ?? []) {
     if (booking.status === "refunded" || booking.refunded_at || booking.stripe_refund_id) {
@@ -757,6 +821,8 @@ export async function cancelWorkshopAction(formData: FormData) {
           await sendWorkshopCancellationEmail({
             customerEmail: recipientEmail,
             customerName: formatRecipientName(booking.customer_first_name, booking.customer_last_name),
+            ...statusOfferEmailData,
+            paymentStatus: booking.payment_status === "free" ? "free" : "paid",
             refunded: false,
           });
         } catch {
@@ -766,12 +832,15 @@ export async function cancelWorkshopAction(formData: FormData) {
       continue;
     }
 
+    let refundAmountLabel: string | null = null;
     try {
       const refund = await paymentService.refundPayment({
         provider: "stripe",
         referenceType: "checkout_session",
         referenceId: booking.stripe_session_id,
       });
+      refundAmountLabel =
+        typeof refund.amountCents === "number" ? formatMoney(refund.amountCents, course.currency ?? "EUR") : null;
       if (refund.raw) {
         try {
           await mirrorStripeRefundToLedger({
@@ -809,6 +878,9 @@ export async function cancelWorkshopAction(formData: FormData) {
         await sendWorkshopCancellationEmail({
           customerEmail: recipientEmail,
           customerName: formatRecipientName(booking.customer_first_name, booking.customer_last_name),
+          ...statusOfferEmailData,
+          paymentStatus: "paid",
+          refundAmountLabel,
           refunded: true,
         });
       } catch {

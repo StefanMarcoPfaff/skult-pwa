@@ -114,7 +114,10 @@ export default function SuccessClient({ bookingData }: Props) {
           </p>
         ) : paid ? (
           <div className="mt-3 space-y-3 text-sm text-muted-foreground">
-            <p>Dein Platz wurde erfolgreich reserviert.</p>
+            <div className="rounded-2xl border border-violet-100 bg-violet-50/70 p-4 text-base leading-7 text-slate-700 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+              Eine Reservierungsbestätigung wird automatisch per E-Mail an Dich weitergeleitet. Bitte prüfe auch Deinen
+              Spam-/Junk-Ordner.
+            </div>
             {!isFreeBooking ? (
               <p>
                 Deine Zahlung wurde bestätigt und bleibt bis zum Abschluss des Angebots sicher vorgemerkt. Sollte das
@@ -122,7 +125,6 @@ export default function SuccessClient({ bookingData }: Props) {
                 einer Stornierung durch dich gelten die jeweiligen Stornierungsbedingungen.
               </p>
             ) : null}
-            <p>Alle weiteren Informationen zu deinem Erlebnis erhältst du per E-Mail.</p>
           </div>
         ) : (
           <p className="mt-3 text-base text-muted-foreground">

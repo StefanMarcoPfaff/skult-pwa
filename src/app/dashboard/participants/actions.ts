@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type Stripe from "stripe";
 import { getParticipantArchiveEligibility } from "@/app/dashboard/archive-rules";
+import { formatMoney } from "@/lib/course-display";
 import { mirrorStripeRefundToLedger } from "@/lib/payments/ledger";
 import { paymentService } from "@/lib/payments/payment-service";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
@@ -35,6 +36,15 @@ type CourseMailRow = {
   id: string;
   title: string | null;
   teacher_id: string | null;
+  kind?: string | null;
+  instructor_name?: string | null;
+  location?: string | null;
+  location_details?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  price_cents?: number | null;
+  currency?: string | null;
+  offer_image_url?: string | null;
 };
 
 type WorkshopParticipantBookingRow = {
@@ -58,6 +68,8 @@ type ProfileRow = {
   provider_type: "independent_teacher" | "studio_provider" | null;
   organization_name: string | null;
   photo_url: string | null;
+  company_logo_url?: string | null;
+  email?: string | null;
 };
 
 type SupabaseLikeError = {
@@ -136,7 +148,7 @@ async function loadReservationContext(admin: ReturnType<typeof createSupabaseAdm
 
   const { data: course, error: courseError } = await admin
     .from("courses")
-    .select("id,title,teacher_id")
+    .select("id,title,teacher_id,kind,instructor_name,location,location_details,starts_at,ends_at,price_cents,currency,offer_image_url")
     .eq("id", reservation.course_id)
     .maybeSingle<CourseMailRow>();
 
@@ -148,7 +160,7 @@ async function loadReservationContext(admin: ReturnType<typeof createSupabaseAdm
   const { data: profile } = course.teacher_id
     ? await admin
         .from("profiles")
-        .select("first_name,last_name,provider_type,organization_name,photo_url")
+        .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url,email")
         .eq("id", course.teacher_id)
         .maybeSingle<ProfileRow>()
     : { data: null };
@@ -446,9 +458,9 @@ export async function cancelWorkshopParticipantBookingAction(formData: FormData)
 
   const { data: course } = await admin
     .from("courses")
-    .select("id,teacher_id,kind")
+    .select("id,title,teacher_id,kind,instructor_name,location,location_details,starts_at,ends_at,price_cents,currency,offer_image_url")
     .eq("id", booking.course_id)
-    .maybeSingle<{ id: string; teacher_id: string | null; kind: string | null }>();
+    .maybeSingle<CourseMailRow>();
 
   if (
     !course ||
@@ -474,6 +486,17 @@ export async function cancelWorkshopParticipantBookingAction(formData: FormData)
   const recipientEmail = booking.customer_email?.trim();
   let savedStatus = "workshop_participant_cancelled";
   let refunded = false;
+  let refundAmountLabel: string | null = null;
+
+  const { data: profile } = course.teacher_id
+    ? await admin
+        .from("profiles")
+        .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url,email")
+        .eq("id", course.teacher_id)
+        .maybeSingle<ProfileRow>()
+    : { data: null };
+  const teacherName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null;
+  const providerName = profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
 
   if (isFreeBooking || !booking.stripe_session_id) {
     const { error: bookingUpdateError } = await admin
@@ -530,6 +553,8 @@ export async function cancelWorkshopParticipantBookingAction(formData: FormData)
 
       savedStatus = "workshop_participant_refunded";
       refunded = true;
+      refundAmountLabel =
+        typeof refund.amountCents === "number" ? formatMoney(refund.amountCents, course.currency ?? "EUR") : null;
     } catch {
       const { error: pendingUpdateError } = await admin
         .from("bookings")
@@ -555,6 +580,21 @@ export async function cancelWorkshopParticipantBookingAction(formData: FormData)
       await sendWorkshopCancellationEmail({
         customerEmail: recipientEmail,
         customerName: getBookingCustomerName(booking),
+        workshopTitle: course.title,
+        providerType: profile?.provider_type ?? null,
+        providerName,
+        teacherName: course.instructor_name ?? teacherName,
+        teacherEmail: profile?.email ?? null,
+        senderImageUrl: profile?.photo_url ?? null,
+        providerLogoUrl: profile?.company_logo_url ?? null,
+        offerImageUrl: course.offer_image_url ?? null,
+        location: course.location ?? null,
+        locationDetails: course.location_details ?? null,
+        startsAt: course.starts_at ?? null,
+        endsAt: course.ends_at ?? null,
+        priceLabel: typeof course.price_cents === "number" ? formatMoney(course.price_cents, course.currency ?? "EUR") : null,
+        paymentStatus: booking.payment_status === "free" ? "free" : "paid",
+        refundAmountLabel,
         refunded,
       });
     } catch {

@@ -206,3 +206,20 @@ export function renderOfferSummaryEmailHtml(viewModel: OfferViewModel): string {
     </div>
   `;
 }
+
+export function renderOfferSummaryEmailText(viewModel: OfferViewModel): string {
+  const sessionLabels = viewModel.sessions.map((session) => session.dateTimeLabel).filter(Boolean);
+  const rows = [
+    ["Angebot", viewModel.offerTitle],
+    ["Art", viewModel.offerTypeLabel],
+    ["Organisation / Anbietende", viewModel.organizationLabel],
+    ["Leitung", viewModel.leaderName],
+    ["Ort", viewModel.locationLabel],
+    ["Ort / Zusatzinfo", viewModel.locationDetails],
+    ["Datum / Zeiten", sessionLabels.length > 0 ? sessionLabels.join(" | ") : null],
+    ["Preis", viewModel.priceLabel],
+    viewModel.showCancellationTerms ? ["Stornierungsbedingungen", viewModel.cancellationLabel] : null,
+  ].filter((row): row is [string, string] => Boolean(row?.[1]));
+
+  return ["Angebot", ...rows.map(([label, value]) => `${label}: ${value}`)].join("\n");
+}

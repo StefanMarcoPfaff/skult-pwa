@@ -6,6 +6,7 @@ import { buildBookingCalendarUrl } from "@/lib/calendar";
 import { buildTicketQrCodeDataUrl, buildTicketViewUrl, buildTicketWalletUrl } from "@/lib/ticket-qr";
 import { buildOfferViewModel, renderOfferSummaryEmailHtml } from "@/lib/offers/offer-view-model";
 import { resolveWorkshopProviderDisplay } from "@/lib/workshop-offer-display";
+import { sendStatusChangeEmail } from "@/lib/status-change-emails";
 
 export type WorkshopBookingEmailData = {
   bookingId: string;
@@ -437,22 +438,61 @@ export async function sendWorkshopBookingNotificationEmail(data: WorkshopBooking
 export async function sendWorkshopCancellationEmail(input: {
   customerEmail: string;
   customerName: string;
+  workshopTitle?: string | null;
+  providerType?: "independent_teacher" | "studio_provider" | null;
+  providerName?: string | null;
+  teacherName?: string | null;
+  teacherEmail?: string | null;
+  senderImageUrl?: string | null;
+  providerLogoUrl?: string | null;
+  offerImageUrl?: string | null;
+  location?: string | null;
+  locationDetails?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  sessionLines?: string[];
+  priceLabel?: string | null;
+  paymentStatus?: "paid" | "free" | null;
+  refundAmountLabel?: string | null;
   refunded?: boolean;
 }) {
-  const followUp = input.refunded
-    ? "Der Betrag wird automatisch zurueckerstattet."
-    : "Deine Buchung wurde entsprechend aktualisiert.";
+  const offerViewModel = buildEmailOfferViewModel({
+    bookingId: "status-change",
+    workshopTitle: input.workshopTitle ?? "Angebot",
+    providerType: input.providerType ?? null,
+    providerName: input.providerName ?? null,
+    teacherName: input.teacherName ?? null,
+    teacherEmail: input.teacherEmail ?? null,
+    senderDisplayName: input.providerName ?? input.teacherName ?? null,
+    senderImageUrl: input.senderImageUrl ?? null,
+    providerLogoUrl: input.providerLogoUrl ?? null,
+    offerImageUrl: input.offerImageUrl ?? null,
+    customerName: input.customerName,
+    customerEmail: input.customerEmail,
+    location: input.location ?? null,
+    locationDetails: input.locationDetails ?? null,
+    startsAt: input.startsAt ?? null,
+    endsAt: input.endsAt ?? null,
+    sessionLines: input.sessionLines ?? [],
+    stornoPolicyLabel: null,
+    priceLabel: input.priceLabel ?? null,
+    paymentStatus: input.paymentStatus ?? null,
+    qrToken: "status-change",
+  });
 
-  return sendResendEmail({
+  return sendStatusChangeEmail({
     to: input.customerEmail,
-    subject: "Angebot abgesagt",
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-        <p>Hallo ${input.customerName},</p>
-        <p>das Angebot wurde abgesagt.</p>
-        <p>${followUp}</p>
-      </div>
-    `,
-    text: `Hallo ${input.customerName},\n\ndas Angebot wurde abgesagt.\n${followUp}`,
+    audience: "participant",
+    status: input.refunded ? "refunded" : "cancelled",
+    statusLabel: input.refunded ? "Storniert und erstattet" : "Storniert",
+    greetingName: input.customerName,
+    participantName: input.customerName,
+    participantEmail: input.customerEmail,
+    offer: offerViewModel,
+    financialImpact:
+      input.refunded && input.refundAmountLabel
+        ? { participantRefundLabel: input.refundAmountLabel }
+        : null,
+    replyTo: input.teacherEmail,
   });
 }

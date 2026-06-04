@@ -13,6 +13,7 @@ import {
   sendParticipantCancellationConfirmationEmail,
   sendParticipantPauseConfirmationEmail,
 } from "@/lib/participant-subscription-emails";
+import { buildOfferViewModel } from "@/lib/offers/offer-view-model";
 import { getStripe } from "@/lib/stripe";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -37,6 +38,14 @@ type CourseOwnershipRow = {
   id: string;
   title: string | null;
   teacher_id: string | null;
+  kind?: string | null;
+  location?: string | null;
+  location_details?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  instructor_name?: string | null;
+  price_cents?: number | null;
+  currency?: string | null;
 };
 
 function withSavedParam(targetPath: string, value: string) {
@@ -45,6 +54,22 @@ function withSavedParam(targetPath: string, value: string) {
 
 function formatRecipientName(firstName: string | null, lastName: string | null): string {
   return [firstName, lastName].filter(Boolean).join(" ").trim() || "Kursteilnehmer*in";
+}
+
+function buildStatusOfferViewModel(course: CourseOwnershipRow) {
+  return buildOfferViewModel({
+    course: {
+      title: course.title,
+      kind: course.kind ?? "course",
+      location: course.location ?? null,
+      location_details: course.location_details ?? null,
+      starts_at: course.starts_at ?? null,
+      ends_at: course.ends_at ?? null,
+      instructor_name: course.instructor_name ?? null,
+      price_cents: course.price_cents ?? null,
+      currency: course.currency ?? null,
+    },
+  });
 }
 
 function dateToEndUnix(date: string): number {
@@ -80,7 +105,7 @@ async function loadParticipantSubscriptionContext(reservationId: string, teacher
 
   const { data: course } = await admin
     .from("courses")
-    .select("id,title,teacher_id")
+    .select("id,title,teacher_id,kind,location,location_details,starts_at,ends_at,instructor_name,price_cents,currency")
     .eq("id", subscription.course_id)
     .eq("teacher_id", teacherId)
     .maybeSingle<CourseOwnershipRow>();
@@ -151,6 +176,7 @@ export async function pauseParticipantSubscriptionAction(formData: FormData) {
         pauseEndDateLabel: formatCourseLifecycleDate(pauseEndDate) ?? pauseEndDate,
         pauseEndExclusiveDateLabel:
           formatCourseLifecycleDate(getPreviousDate(pauseEndDate)) ?? formatCourseLifecycleDate(pauseEndDate) ?? pauseEndDate,
+        offer: buildStatusOfferViewModel(course),
       });
       await admin
         .from("course_registration_intents")
@@ -218,6 +244,7 @@ export async function stopParticipantSubscriptionAction(formData: FormData) {
         customerName: formatRecipientName(subscription.first_name, subscription.last_name),
         customerEmail: recipientEmail,
         cancellationDateLabel: formatCourseLifecycleDate(stopDate) ?? stopDate,
+        offer: buildStatusOfferViewModel(course),
       });
     } catch {
       // Keep cancellation state even if email delivery fails.
