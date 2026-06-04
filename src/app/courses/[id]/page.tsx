@@ -1,5 +1,4 @@
 import Image from "next/image";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import OfferSummaryCard from "@/components/offer/OfferSummaryCard";
 import {
@@ -239,12 +238,6 @@ export default async function CourseDetailPage({
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
-      <p>
-        <Link href="/courses" className="text-sm font-semibold underline underline-offset-4">
-          ← Zurück
-        </Link>
-      </p>
-
       <OfferSummaryCard viewModel={offerViewModel} showDescription />
 
       {!isSinglePaymentOffer ? (
@@ -319,9 +312,9 @@ export default async function CourseDetailPage({
             ) : (
               <>
               {reservationNotice ? (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-                  <h4 className="font-semibold">Wichtiger Hinweis</h4>
-                  <p className="mt-2 whitespace-pre-line leading-6">{reservationNotice}</p>
+                <div className="rounded-2xl border border-violet-100 bg-violet-50/70 p-4 text-sm text-slate-800 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+                  <h4 className="font-semibold text-slate-950">Wichtiger Hinweis</h4>
+                  <p className="mt-2 whitespace-pre-line leading-6 text-slate-700">{reservationNotice}</p>
                 </div>
               ) : null}
               <PayButton
