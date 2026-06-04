@@ -228,6 +228,15 @@ export default async function CourseDetailPage({
     providerProfile: publicProfile,
     sessions,
   });
+  const workshopAvailabilityClassName =
+    availability.free === null
+      ? null
+      : availability.free <= 1
+        ? "bg-red-100 text-red-700"
+        : availability.free <= 4
+          ? "bg-amber-100 text-amber-800"
+          : "bg-emerald-100 text-emerald-700";
+
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       <p>
@@ -295,18 +304,18 @@ export default async function CourseDetailPage({
       {isSinglePaymentOffer ? (
         <section className="space-y-3">
           <div className="space-y-2 rounded-2xl border p-4">
-            <h3 className="text-base font-semibold">
-              {availability.isSoldOut || !workshopCanBook ? "Anfragen" : "Jetzt reservieren"}
-            </h3>
+            <h3 className="text-base font-semibold">Jetzt reservieren</h3>
+            {availability.free !== null && workshopAvailabilityClassName ? (
+              <p
+                className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${workshopAvailabilityClassName}`}
+              >
+                {availability.badgeText}
+              </p>
+            ) : null}
             {!workshopCanBook ? (
               <p className="text-sm text-muted-foreground">
                 Dieses Angebot ist nicht mehr buchbar.
               </p>
-            ) : availability.isSoldOut ? (
-              <SoldOutInquiryForm
-                courseId={id}
-                offerLabel="einmaliges Angebot"
-              />
             ) : (
               <>
               {reservationNotice ? (
@@ -320,6 +329,7 @@ export default async function CourseDetailPage({
                 priceLabel={displayedPrice}
                 stornoPolicyLabel={workshopPolicyLabel}
                 showCancellationTerms={offerViewModel.showCancellationTerms}
+                disabled={availability.isSoldOut}
               />
               </>
             )}

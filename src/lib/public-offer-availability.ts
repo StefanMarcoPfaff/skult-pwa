@@ -4,6 +4,14 @@ type CountRow = {
   course_id: string | null;
 };
 
+type WorkshopBookingCountRow = {
+  course_id: string | null;
+  status: string | null;
+  payment_status: string | null;
+  refunded_at: string | null;
+  archived_at: string | null;
+};
+
 type TrialReservationCountRow = {
   course_id: string | null;
   status: string | null;
@@ -53,6 +61,18 @@ function buildCountMap(rows: CountRow[]): Map<string, number> {
   return map;
 }
 
+function isActiveWorkshopBookingForCapacity(row: WorkshopBookingCountRow): boolean {
+  if (!row.course_id || row.archived_at || row.refunded_at) return false;
+
+  const status = (row.status ?? "").toLowerCase();
+  const paymentStatus = (row.payment_status ?? "").toLowerCase();
+
+  if (status === "cancelled" || status === "refunded") return false;
+  if (paymentStatus === "cancelled" || paymentStatus === "refunded") return false;
+
+  return status === "paid";
+}
+
 export async function loadOccupiedSeatCountsForOffers(courseIds: string[]): Promise<{
   courseCounts: Map<string, number>;
   workshopCounts: Map<string, number>;
@@ -74,10 +94,9 @@ export async function loadOccupiedSeatCountsForOffers(courseIds: string[]): Prom
       .returns<CountRow[]>(),
     admin
       .from("bookings")
-      .select("course_id")
+      .select("course_id,status,payment_status,refunded_at,archived_at")
       .in("course_id", courseIds)
-      .eq("status", "paid")
-      .returns<CountRow[]>(),
+      .returns<WorkshopBookingCountRow[]>(),
     admin
       .from("trial_reservations")
       .select("course_id,status,decision_status,trial_starts_at,trial_ends_at,cancelled_at,converted_at")
@@ -95,7 +114,7 @@ export async function loadOccupiedSeatCountsForOffers(courseIds: string[]): Prom
 
   return {
     courseCounts,
-    workshopCounts: buildCountMap(workshopRows ?? []),
+    workshopCounts: buildCountMap((workshopRows ?? []).filter(isActiveWorkshopBookingForCapacity)),
   };
 }
 
@@ -158,7 +177,19 @@ export function buildOfferAvailability(
     };
   }
 
-  if (free <= 5) {
+  if (free === 1) {
+    return {
+      capacity,
+      occupied,
+      free,
+      isSoldOut: false,
+      isBookable: true,
+      badgeClassName: "bg-red-100 text-red-700",
+      badgeText: formatFreeSeatText(free),
+    };
+  }
+
+  if (free <= 4) {
     return {
       capacity,
       occupied,
