@@ -99,7 +99,6 @@ type StatusEmailProfileRow = {
   organization_name: string | null;
   photo_url: string | null;
   company_logo_url: string | null;
-  email: string | null;
 };
 
 type PublishMode = "play";
@@ -773,13 +772,16 @@ export async function cancelWorkshopAction(formData: FormData) {
     .returns<WorkshopBookingRefundRow[]>();
 
   let hadRefundErrors = false;
-  const { data: profile } = course.teacher_id
-    ? await admin
-        .from("profiles")
-        .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url,email")
-        .eq("id", course.teacher_id)
-        .maybeSingle<StatusEmailProfileRow>()
-    : { data: null };
+  const [{ data: profile }, authResult] = course.teacher_id
+    ? await Promise.all([
+        admin
+          .from("profiles")
+          .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url")
+          .eq("id", course.teacher_id)
+          .maybeSingle<StatusEmailProfileRow>(),
+        admin.auth.admin.getUserById(course.teacher_id),
+      ])
+    : [{ data: null }, { data: { user: null } }];
   const profileName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null;
   const providerName = profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
   const statusOfferEmailData = {
@@ -787,7 +789,7 @@ export async function cancelWorkshopAction(formData: FormData) {
     providerType: profile?.provider_type ?? null,
     providerName,
     teacherName: course.instructor_name ?? profileName,
-    teacherEmail: profile?.email ?? null,
+    teacherEmail: authResult.data.user?.email?.trim() || null,
     senderImageUrl: profile?.photo_url ?? null,
     providerLogoUrl: profile?.company_logo_url ?? null,
     offerImageUrl: course.offer_image_url ?? null,

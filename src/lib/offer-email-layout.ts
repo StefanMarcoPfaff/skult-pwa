@@ -60,7 +60,7 @@ export function getOfferEmailReplyTo(input: {
 
 export function buildOfferEmailBrandingFromOffer(offer: OfferViewModel): OfferEmailBranding {
   return {
-    senderName: offer.organizationLabel ?? offer.providerDisplayName ?? offer.leaderName,
+    senderName: offer.organizationLabel ?? offer.providerDisplayName,
     senderImageUrl: offer.providerLogoUrl ?? offer.providerPhotoUrl,
     replyToEmail: offer.replyToEmail,
   };

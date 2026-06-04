@@ -69,7 +69,6 @@ type ProfileRow = {
   organization_name: string | null;
   photo_url: string | null;
   company_logo_url?: string | null;
-  email?: string | null;
 };
 
 type SupabaseLikeError = {
@@ -157,13 +156,16 @@ async function loadReservationContext(admin: ReturnType<typeof createSupabaseAdm
     return null;
   }
 
-  const { data: profile } = course.teacher_id
-    ? await admin
-        .from("profiles")
-        .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url,email")
-        .eq("id", course.teacher_id)
-        .maybeSingle<ProfileRow>()
-    : { data: null };
+  const [{ data: profile }, authResult] = course.teacher_id
+    ? await Promise.all([
+        admin
+          .from("profiles")
+          .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url")
+          .eq("id", course.teacher_id)
+          .maybeSingle<ProfileRow>(),
+        admin.auth.admin.getUserById(course.teacher_id),
+      ])
+    : [{ data: null }, { data: { user: null } }];
 
   const teacherName =
     [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null;
@@ -175,7 +177,7 @@ async function loadReservationContext(admin: ReturnType<typeof createSupabaseAdm
     course,
     senderDisplayName: profile?.provider_type === "studio_provider" ? providerName : teacherName,
     senderImageUrl: profile?.photo_url ?? null,
-    teacherEmail: profile?.email ?? null,
+    teacherEmail: authResult.data.user?.email?.trim() || null,
   };
 }
 
@@ -491,15 +493,19 @@ export async function cancelWorkshopParticipantBookingAction(formData: FormData)
   let refunded = false;
   let refundAmountLabel: string | null = null;
 
-  const { data: profile } = course.teacher_id
-    ? await admin
-        .from("profiles")
-        .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url,email")
-        .eq("id", course.teacher_id)
-        .maybeSingle<ProfileRow>()
-    : { data: null };
+  const [{ data: profile }, authResult] = course.teacher_id
+    ? await Promise.all([
+        admin
+          .from("profiles")
+          .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url")
+          .eq("id", course.teacher_id)
+          .maybeSingle<ProfileRow>(),
+        admin.auth.admin.getUserById(course.teacher_id),
+      ])
+    : [{ data: null }, { data: { user: null } }];
   const teacherName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() || null;
   const providerName = profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
+  const providerEmail = authResult.data.user?.email?.trim() || null;
 
   if (isFreeBooking || !booking.stripe_session_id) {
     const { error: bookingUpdateError } = await admin
@@ -587,7 +593,7 @@ export async function cancelWorkshopParticipantBookingAction(formData: FormData)
         providerType: profile?.provider_type ?? null,
         providerName,
         teacherName: course.instructor_name ?? teacherName,
-        teacherEmail: profile?.email ?? null,
+        teacherEmail: providerEmail,
         senderImageUrl: profile?.photo_url ?? null,
         providerLogoUrl: profile?.company_logo_url ?? null,
         offerImageUrl: course.offer_image_url ?? null,
