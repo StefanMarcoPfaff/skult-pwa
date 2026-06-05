@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import ProviderBenefitsSection from "@/components/provider/ProviderBenefitsSection";
+import ProviderOfferTypesSection from "@/components/provider/ProviderOfferTypesSection";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function SignupClient() {
@@ -127,6 +128,7 @@ export default function SignupClient() {
         </section>
 
         <ProviderBenefitsSection />
+        <ProviderOfferTypesSection />
       </div>
     </main>
   );
