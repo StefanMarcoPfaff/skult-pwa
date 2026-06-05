@@ -67,9 +67,9 @@ export default function OfferSummaryCard(props: OfferSummaryCardProps) {
           <SummaryRow
             label="Ort"
             value={
-              vm.locationLabel ? (
+              vm.locationLabel || vm.locationDetails ? (
                 <>
-                  {vm.locationLabel}
+                  {vm.locationLabel ? <span className="block">{vm.locationLabel}</span> : null}
                   {vm.locationDetails ? <span className="block text-slate-500">{vm.locationDetails}</span> : null}
                 </>
               ) : null

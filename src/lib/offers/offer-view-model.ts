@@ -73,6 +73,33 @@ export type OfferViewModelSessionInput = {
   ends_at?: string | null;
 };
 
+function normalizeDisplayText(value: string | null | undefined): string | null {
+  return value?.trim() || null;
+}
+
+function isDuplicateLocationDetail(location: string | null, locationDetails: string | null): boolean {
+  if (!location || !locationDetails) return false;
+  const normalizedLocation = location.toLocaleLowerCase("de-DE");
+  const normalizedDetails = locationDetails.toLocaleLowerCase("de-DE");
+  return normalizedLocation === normalizedDetails || normalizedLocation.includes(normalizedDetails);
+}
+
+export function buildOfferLocationDisplay(input: {
+  location?: string | null;
+  locationDetails?: string | null;
+}): { locationLabel: string | null; locationDetails: string | null; locationLines: string[] } {
+  const locationLabel = normalizeDisplayText(input.location);
+  const rawLocationDetails = normalizeDisplayText(input.locationDetails);
+  const locationDetails = isDuplicateLocationDetail(locationLabel, rawLocationDetails) ? null : rawLocationDetails;
+  const locationLines = [locationLabel, locationDetails].filter((line): line is string => Boolean(line));
+
+  return {
+    locationLabel,
+    locationDetails,
+    locationLines,
+  };
+}
+
 function isOneTimeOfferKind(kind: string | null | undefined): boolean {
   return kind === "workshop" || kind === "exclusive_offer";
 }
@@ -119,6 +146,10 @@ export function buildOfferViewModel(input: {
     isOneTime && shouldShowWorkshopCancellationPolicy(priceCents, input.paymentStatus);
   const sessions = (input.sessions && input.sessions.length > 0 ? input.sessions : [{ starts_at: input.course.starts_at, ends_at: input.course.ends_at }])
     .map(buildSessionViewModel);
+  const locationDisplay = buildOfferLocationDisplay({
+    location: input.course.location,
+    locationDetails: input.course.location_details,
+  });
 
   return {
     offerTitle: input.course.title?.trim() || "Angebot",
@@ -129,8 +160,8 @@ export function buildOfferViewModel(input: {
     providerLogoUrl: providerProfile?.company_logo_url ?? null,
     providerPhotoUrl: providerProfile?.photo_url ?? null,
     offerImageUrl: input.course.offer_image_url ?? null,
-    locationLabel: input.course.location ?? null,
-    locationDetails: input.course.location_details ?? null,
+    locationLabel: locationDisplay.locationLabel,
+    locationDetails: locationDisplay.locationDetails,
     priceLabel: isOneTime
       ? formatWorkshopPriceLabel(priceCents, input.course.currency ?? null, input.paymentStatus)
       : formatCoursePriceFromRow({
@@ -179,11 +210,11 @@ export function renderOfferSummaryEmailHtml(viewModel: OfferViewModel): string {
     ? `<img src="${escapeHtml(viewModel.offerImageUrl)}" alt="${escapeHtml(viewModel.offerTitle)}" style="display:block;width:100%;height:220px;object-fit:cover;" />`
     : "";
   const sessionLabels = viewModel.sessions.map((session) => session.dateTimeLabel).filter(Boolean);
+  const locationLines = [viewModel.locationLabel, viewModel.locationDetails].filter((line): line is string => Boolean(line));
   const rows = [
     ["Organisation / Anbietende", viewModel.organizationLabel],
     ["Leitung", viewModel.leaderName],
-    ["Ort", viewModel.locationLabel],
-    ["Ort / Zusatzinfo", viewModel.locationDetails],
+    ["Ort", locationLines.length > 0 ? locationLines : null],
     ["Datum / Zeiten", sessionLabels.length > 0 ? sessionLabels : null],
     ["Preis", viewModel.priceLabel],
     viewModel.showCancellationTerms ? ["Stornierungsbedingungen", viewModel.cancellationLabel] : null,
@@ -219,17 +250,20 @@ export function renderOfferSummaryEmailHtml(viewModel: OfferViewModel): string {
 
 export function renderOfferSummaryEmailText(viewModel: OfferViewModel): string {
   const sessionLabels = viewModel.sessions.map((session) => session.dateTimeLabel).filter(Boolean);
+  const locationLines = [viewModel.locationLabel, viewModel.locationDetails].filter((line): line is string => Boolean(line));
   const rows = [
     ["Angebot", viewModel.offerTitle],
     ["Art", viewModel.offerTypeLabel],
     ["Organisation / Anbietende", viewModel.organizationLabel],
     ["Leitung", viewModel.leaderName],
-    ["Ort", viewModel.locationLabel],
-    ["Ort / Zusatzinfo", viewModel.locationDetails],
+    ["Ort", locationLines.length > 0 ? locationLines : null],
     ["Datum / Zeiten", sessionLabels.length > 0 ? sessionLabels.join(" | ") : null],
     ["Preis", viewModel.priceLabel],
     viewModel.showCancellationTerms ? ["Stornierungsbedingungen", viewModel.cancellationLabel] : null,
-  ].filter((row): row is [string, string] => Boolean(row?.[1]));
+  ].filter((row): row is [string, string | string[]] => Boolean(row?.[1]));
 
-  return ["Angebot", ...rows.map(([label, value]) => `${label}: ${value}`)].join("\n");
+  return [
+    "Angebot",
+    ...rows.map(([label, value]) => `${label}: ${Array.isArray(value) ? value.join("\n") : value}`),
+  ].join("\n");
 }

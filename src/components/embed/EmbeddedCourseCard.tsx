@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { formatCoursePriceFromRow } from "@/lib/course-display";
+import { buildOfferLocationDisplay } from "@/lib/offers/offer-view-model";
 import type { PublicOfferDetails } from "@/lib/public-offers";
 
 function asString(value: unknown): string | null {
@@ -93,7 +94,10 @@ export function EmbeddedCourseCard({
   details: PublicOfferDetails;
 }) {
   const title = asString(details.offer.title) ?? "Ohne Titel";
-  const location = asString(details.offer.location);
+  const locationDisplay = buildOfferLocationDisplay({
+    location: asString(details.offer.location),
+    locationDetails: asString(details.offer.location_details) ?? details.publicCourse?.location_details ?? null,
+  });
   const teaser = getTeaserText(details.offer);
   const price = getPriceLabel(details.offer);
   const dateTime =
@@ -130,10 +134,13 @@ export function EmbeddedCourseCard({
         </div>
 
         <div className="mt-6 grid gap-3 text-sm text-slate-700 sm:grid-cols-2">
-          {location ? (
+          {locationDisplay.locationLines.length > 0 ? (
             <div className="rounded-2xl bg-white/80 px-4 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Ort</p>
-              <p className="mt-1 font-medium text-slate-900">{location}</p>
+              <p className="mt-1 font-medium text-slate-900">
+                {locationDisplay.locationLabel}
+                {locationDisplay.locationDetails ? <span className="block text-slate-600">{locationDisplay.locationDetails}</span> : null}
+              </p>
             </div>
           ) : null}
           {dateTime ? (

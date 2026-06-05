@@ -24,6 +24,7 @@ export type OfferCardProps = {
   visibilityLabel: string;
   visibility: "public" | "private_link";
   location: string | null;
+  locationDetails: string | null;
   capacity: number | null;
   occupiedSeats: number;
   freeSeats: number | null;
@@ -609,7 +610,12 @@ export function OfferCard(props: OfferCardProps) {
 
         <div className="space-y-1 text-sm text-muted-foreground">
           {!props.oneTimeOfferState && !props.normalizedStatus ? <p>Status: {props.statusLabel}</p> : null}
-          {props.location ? <p>Ort: {props.location}</p> : null}
+          {props.location || props.locationDetails ? (
+            <p>
+              Ort: {props.location ?? props.locationDetails}
+              {props.location && props.locationDetails ? <span className="block">{props.locationDetails}</span> : null}
+            </p>
+          ) : null}
           <p>Sichtbarkeit: {props.visibilityLabel}</p>
           {props.capacity !== null ? <p>Max. Teilnehmende: {props.capacity}</p> : null}
           {props.freeSeats !== null ? <p>Freie Plätze: {props.freeSeats}</p> : null}

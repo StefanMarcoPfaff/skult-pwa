@@ -2,6 +2,7 @@ import { getSiteUrl as getCanonicalSiteUrl } from "@/lib/site-url";
 import { shouldShowStudioLabel } from "@/lib/provider-profiles";
 import { buildBookingCalendarUrl } from "@/lib/calendar";
 import { buildTicketQrCodeDataUrl, buildTicketViewUrl, buildTicketWalletUrl } from "@/lib/ticket-qr";
+import { buildOfferLocationDisplay } from "@/lib/offers/offer-view-model";
 import {
   renderOfferEmailFooterHtml,
   renderOfferEmailFooterText,
@@ -31,6 +32,7 @@ export type TrialReservationEmailData = {
   customerName: string;
   customerEmail: string;
   location: string | null;
+  locationDetails?: string | null;
   trialStartsAt: string;
   trialEndsAt: string;
   cancelUrl: string;
@@ -197,7 +199,7 @@ function renderInfoBlockHtml(items: InfoItem[]): string {
     (item) => `
       <tr>
         <td style="padding: 6px 0; vertical-align: top; color: #5b6470; width: 150px;"><b>${item.label}</b></td>
-        <td style="padding: 6px 0; color: #111827;">${item.value}</td>
+        <td style="padding: 6px 0; color: #111827;">${item.value?.replace(/\n/g, "<br />")}</td>
       </tr>
     `
   );
@@ -322,6 +324,14 @@ function createHtmlEmail(input: {
   });
 }
 
+function buildLocationInfoItem(input: { location?: string | null; locationDetails?: string | null }): InfoItem {
+  const location = buildOfferLocationDisplay(input);
+  return {
+    label: "Ort",
+    value: location.locationLines.length > 0 ? location.locationLines.join("\n") : null,
+  };
+}
+
 function createTextEmail(input: {
   title: string;
   greeting?: string;
@@ -401,7 +411,7 @@ export async function prepareCustomerTrialReservationConfirmation(data: TrialRes
           { label: "Laufendes Angebot", value: data.courseTitle },
           { label: "Leitung", value: data.teacherName },
           { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
-          { label: "Ort", value: data.location },
+          buildLocationInfoItem(data),
         ],
         nextSteps: [
           "Bitte bring dein Ticket zum Termin mit.",
@@ -425,7 +435,7 @@ export async function prepareCustomerTrialReservationConfirmation(data: TrialRes
         { label: "Laufendes Angebot", value: data.courseTitle },
         { label: "Leitung", value: data.teacherName },
         { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
-        { label: "Ort", value: data.location },
+        buildLocationInfoItem(data),
       ],
       nextSteps: [
         "Bitte bring dein Ticket zum Termin mit.",
@@ -456,7 +466,7 @@ export function prepareCustomerTrialReservationReminder(data: TrialReservationEm
         { label: "Laufendes Angebot", value: data.courseTitle },
         { label: "Leitung", value: data.teacherName },
         { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
-        { label: "Ort", value: data.location },
+        buildLocationInfoItem(data),
       ],
       nextSteps: [
         "Bitte plane genug Zeit für deine Anreise ein.",
@@ -473,7 +483,7 @@ export function prepareCustomerTrialReservationReminder(data: TrialReservationEm
         { label: "Laufendes Angebot", value: data.courseTitle },
         { label: "Leitung", value: data.teacherName },
         { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
-        { label: "Ort", value: data.location },
+        buildLocationInfoItem(data),
       ],
       nextSteps: [
         "Bitte plane genug Zeit für deine Anreise ein.",
@@ -486,7 +496,7 @@ export function prepareCustomerTrialReservationReminder(data: TrialReservationEm
 }
 
 export function prepareTeacherTrialReservationNotification(data: TrialReservationEmailData) {
-  const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
+  const locationLine = buildLocationInfoItem(data).value?.replace(/\n/g, "<br />");
   const dateLine = `<p><b>Termin:</b> ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}</p>`;
   const teacherEmail = data.teacherEmail ?? "";
   const footerBranding = buildFooterBranding(data);
@@ -503,7 +513,7 @@ export function prepareTeacherTrialReservationNotification(data: TrialReservatio
         <p>Für dein laufendes Angebot <b>${data.courseTitle}</b> wurde ein neuer Probetermin reserviert.</p>
         <p><b>Name:</b> ${data.customerName}</p>
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
-        ${locationLine}
+        ${locationLine ? `<p><b>Ort:</b><br />${locationLine}</p>` : ""}
         ${dateLine}
         ${calendarUrl ? `<p><a href="${calendarUrl}">Zum Kalender hinzufügen</a></p>` : ""}
         <p>Eine erfolgreiche Probestunde kann sp?ter in eine regul?re Anmeldung ?bergehen.</p>
@@ -514,7 +524,7 @@ export function prepareTeacherTrialReservationNotification(data: TrialReservatio
       `Neue Probestunden-Reservierung für ${data.courseTitle}`,
       `Name: ${data.customerName}`,
       `E-Mail: ${data.customerEmail}`,
-      data.location ? `Ort: ${data.location}` : null,
+      buildLocationInfoItem(data).value ? `Ort: ${buildLocationInfoItem(data).value}` : null,
       `Termin: ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}`,
       calendarUrl ? `Zum Kalender hinzufügen: ${calendarUrl}` : null,
       "Hinweis: Diese Probestunde kann sp?ter in eine regul?re Anmeldung ?bergehen.",
@@ -527,7 +537,7 @@ export function prepareTeacherTrialReservationNotification(data: TrialReservatio
 }
 
 export function prepareTeacherTrialReservationCancellation(data: TrialReservationEmailData) {
-  const locationLine = data.location ? `<p><b>Ort:</b> ${data.location}</p>` : "";
+  const locationLine = buildLocationInfoItem(data).value?.replace(/\n/g, "<br />");
   const dateLine = `<p><b>Stornierter Termin:</b> ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}</p>`;
   const teacherEmail = data.teacherEmail ?? "";
   const footerBranding = buildFooterBranding(data);
@@ -543,7 +553,7 @@ export function prepareTeacherTrialReservationCancellation(data: TrialReservatio
         <p>Eine Probetermin-Reservierung für dein laufendes Angebot <b>${data.courseTitle}</b> wurde storniert.</p>
         <p><b>Name:</b> ${data.customerName}</p>
         <p><b>E-Mail:</b> ${data.customerEmail}</p>
-        ${locationLine}
+        ${locationLine ? `<p><b>Ort:</b><br />${locationLine}</p>` : ""}
         ${dateLine}
         ${footerHtml}
       </div>
@@ -552,7 +562,7 @@ export function prepareTeacherTrialReservationCancellation(data: TrialReservatio
       `Eine Probestunden-Reservierung für ${data.courseTitle} wurde storniert.`,
       `Name: ${data.customerName}`,
       `E-Mail: ${data.customerEmail}`,
-      data.location ? `Ort: ${data.location}` : null,
+      buildLocationInfoItem(data).value ? `Ort: ${buildLocationInfoItem(data).value}` : null,
       `Stornierter Termin: ${formatDateTimeRange(data.trialStartsAt, data.trialEndsAt)}`,
       "",
       footerText,
@@ -573,7 +583,7 @@ export function prepareCustomerTrialReservationCancellation(data: TrialReservati
       infoItems: [
         { label: "Laufendes Angebot", value: data.courseTitle },
         { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
-        { label: "Ort", value: data.location },
+        buildLocationInfoItem(data),
       ],
       nextSteps: ["Wenn du weiterhin Interesse hast, kannst du später jederzeit erneut eine Probestunde anfragen."],
       actions: [{ label: "Zu den Angeboten", href: buildAbsoluteUrl("/courses") }],
@@ -586,7 +596,7 @@ export function prepareCustomerTrialReservationCancellation(data: TrialReservati
       infoItems: [
         { label: "Laufendes Angebot", value: data.courseTitle },
         { label: "Termin", value: formatDateTimeRange(data.trialStartsAt, data.trialEndsAt) },
-        { label: "Ort", value: data.location },
+        buildLocationInfoItem(data),
       ],
       nextSteps: ["Wenn du weiterhin Interesse hast, kannst du später jederzeit erneut eine Probestunde anfragen."],
       actions: [{ label: "Zu den Angeboten", href: buildAbsoluteUrl("/courses") }],
@@ -775,8 +785,7 @@ export async function prepareCourseSubscriptionConfirmationEmail(
           ...buildProviderInfoItems(data),
           { label: "Preis", value: data.priceLabel },
           { label: "Kündigungsbedingungen", value: data.cancellationLabel },
-          { label: "Ort", value: data.location },
-          { label: "Weitere Infos", value: data.locationDetails },
+          buildLocationInfoItem(data),
           { label: "Währung", value: data.currency },
         ],
         nextSteps: [
@@ -801,8 +810,7 @@ export async function prepareCourseSubscriptionConfirmationEmail(
         ...buildProviderInfoItems(data),
         { label: "Preis", value: data.priceLabel },
         { label: "Kündigungsbedingungen", value: data.cancellationLabel },
-        { label: "Ort", value: data.location },
-        { label: "Weitere Infos", value: data.locationDetails },
+        buildLocationInfoItem(data),
         { label: "Währung", value: data.currency },
       ],
       nextSteps: [
@@ -884,8 +892,7 @@ export function prepareCourseEndingNotificationEmail(data: CourseEndingNotificat
         { label: "Name des laufenden Angebots", value: data.courseTitle },
         ...buildProviderInfoItems(data),
         { label: "Letzter Angebotstag", value: endDate },
-        { label: "Ort", value: data.location },
-        { label: "Weitere Infos", value: data.locationDetails },
+        buildLocationInfoItem(data),
         { label: "Kündigungsregelung", value: data.cancellationLabel },
       ],
       nextSteps: [
@@ -904,8 +911,7 @@ export function prepareCourseEndingNotificationEmail(data: CourseEndingNotificat
         { label: "Name des laufenden Angebots", value: data.courseTitle },
         ...buildProviderInfoItems(data),
         { label: "Letzter Angebotstag", value: endDate },
-        { label: "Ort", value: data.location },
-        { label: "Weitere Infos", value: data.locationDetails },
+        buildLocationInfoItem(data),
         { label: "Kündigungsregelung", value: data.cancellationLabel },
       ],
       nextSteps: [

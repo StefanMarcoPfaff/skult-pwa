@@ -22,6 +22,7 @@ type CourseMailRow = {
   id: string;
   title: string | null;
   location: string | null;
+  location_details: string | null;
   teacher_id: string | null;
   instructor_name: string | null;
 };
@@ -67,7 +68,7 @@ function logReminderError(context: string, error: unknown, extra?: Record<string
 async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, courseId: string) {
   const { data: course, error: courseError } = await admin
     .from("courses")
-    .select("id,title,location,teacher_id,instructor_name")
+    .select("id,title,location,location_details,teacher_id,instructor_name")
     .eq("id", courseId)
     .maybeSingle<CourseMailRow>();
 
@@ -106,6 +107,7 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
   return {
     courseTitle: course.title ?? "Kurs",
     location: course.location,
+    locationDetails: course.location_details,
     teacherName,
     teacherEmail,
     providerType,
@@ -150,6 +152,7 @@ function toEmailPayload(
     customerName: [reservation.first_name, reservation.last_name].filter(Boolean).join(" ").trim() || "du",
     customerEmail: reservation.email,
     location: mailContext.location,
+    locationDetails: mailContext.locationDetails,
     trialStartsAt: reservation.trial_starts_at,
     trialEndsAt: reservation.trial_ends_at,
     cancelUrl: buildCancelUrl(reservation.cancel_token),

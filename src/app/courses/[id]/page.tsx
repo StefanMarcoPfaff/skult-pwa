@@ -214,7 +214,7 @@ export default async function CourseDetailPage({
       kind,
       description,
       location,
-      location_details: asString(data.location_details),
+      location_details: asString(data.location_details) ?? publicCourse?.location_details ?? null,
       price_cents: priceCents,
       currency: asString(data.currency),
       price_type: asString(data.price_type),

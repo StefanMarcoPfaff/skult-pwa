@@ -52,6 +52,7 @@ type CourseMailRow = {
   id: string;
   title: string | null;
   location: string | null;
+  location_details: string | null;
   teacher_id: string | null;
   instructor_name: string | null;
 };
@@ -137,7 +138,7 @@ function generateCancelToken(): string {
 async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, courseId: string) {
   const { data: course, error: courseError } = await admin
     .from("courses")
-    .select("id,title,location,teacher_id,instructor_name")
+    .select("id,title,location,location_details,teacher_id,instructor_name")
     .eq("id", courseId)
     .maybeSingle<CourseMailRow>();
 
@@ -164,6 +165,7 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
     return {
       courseTitle: course.title ?? "Kurs",
       location: course.location,
+      locationDetails: course.location_details,
       teacherName,
       teacherEmail,
       providerType: profile?.provider_type ?? null,
@@ -181,6 +183,7 @@ async function loadMailContext(admin: ReturnType<typeof createSupabaseAdmin>, co
   return {
     courseTitle: course.title ?? "Kurs",
     location: course.location,
+    locationDetails: course.location_details,
     teacherName,
     teacherEmail,
     providerType: null,
@@ -422,6 +425,7 @@ export async function reserveTrialAction(
       customerName: `${firstName} ${lastName}`.trim(),
       customerEmail: email,
       location: mailContext.location,
+      locationDetails: mailContext.locationDetails,
       trialStartsAt: selectedSlot.startsAt,
       trialEndsAt: selectedSlot.endsAt,
       cancelUrl,

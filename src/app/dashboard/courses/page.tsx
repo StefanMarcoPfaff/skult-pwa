@@ -18,6 +18,7 @@ import {
   getWorkshopCancellationPolicyValue,
 } from "@/lib/offer-policies";
 import { getOfferKindLabel, getOfferVisibilityLabel, isOneTimeOfferKind } from "@/lib/offer-ui";
+import { buildOfferLocationDisplay } from "@/lib/offers/offer-view-model";
 import { normalizeOfferVisibility } from "@/lib/public-offer-visibility";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -41,6 +42,7 @@ type OfferRow = {
   is_published: boolean | null;
   visibility: string | null;
   location: string | null;
+  location_details: string | null;
   starts_at: string | null;
   duration_minutes: number | null;
   capacity: number | null;
@@ -159,9 +161,9 @@ export default async function DashboardCoursesPage({
   }
 
   const baseSelect =
-    "id,teacher_id,title,kind,status,is_published,visibility,location,starts_at,ends_at,duration_minutes,capacity,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,pause_start_date,pause_end_date,stop_date,archived_at,price_cents,currency";
+    "id,teacher_id,title,kind,status,is_published,visibility,location,location_details,starts_at,ends_at,duration_minutes,capacity,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,pause_start_date,pause_end_date,stop_date,archived_at,price_cents,currency";
   const fallbackSelect =
-    "id,teacher_id,title,kind,is_published,visibility,location,starts_at,ends_at,duration_minutes,capacity,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,archived_at,price_cents,currency";
+    "id,teacher_id,title,kind,is_published,visibility,location,location_details,starts_at,ends_at,duration_minutes,capacity,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,archived_at,price_cents,currency";
 
   let offersResult = await admin
     .from("courses")
@@ -279,6 +281,10 @@ export default async function DashboardCoursesPage({
 
   const courseOverviewItems: CourseOverviewItem[] = visibleOffers.map((offer) => {
     const kind = (offer.kind ?? "").toLowerCase();
+    const locationDisplay = buildOfferLocationDisplay({
+      location: offer.location,
+      locationDetails: offer.location_details,
+    });
     const displayState = offerDisplayStateById.get(offer.id);
     if (!displayState) {
       throw new Error(`Display state missing for offer ${offer.id}`);
@@ -368,7 +374,8 @@ export default async function DashboardCoursesPage({
       priceLabel: formatOfferPrice(offer.price_cents, offer.currency),
       visibility,
       visibilityLabel: getOfferVisibilityLabel(offer.visibility),
-      location: offer.location,
+      location: locationDisplay.locationLabel,
+      locationDetails: locationDisplay.locationDetails,
       capacity: offer.capacity,
       occupiedSeats: isOneTimeOfferKind(kind) ? activeBookingCount : activeTrialCount + activeRegistrationCount,
       freeSeats: offer.capacity === null ? null : Math.max(0, offer.capacity - (isOneTimeOfferKind(kind) ? activeBookingCount : activeTrialCount + activeRegistrationCount)),

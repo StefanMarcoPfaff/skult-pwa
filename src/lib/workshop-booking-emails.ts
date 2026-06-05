@@ -2,7 +2,7 @@ import type { Attachment } from "resend";
 import { shouldShowStudioLabel } from "@/lib/provider-profiles";
 import { buildBookingCalendarUrl } from "@/lib/calendar";
 import { buildTicketQrCodeDataUrl, buildTicketViewUrl, buildTicketWalletUrl } from "@/lib/ticket-qr";
-import { buildOfferViewModel, renderOfferSummaryEmailHtml } from "@/lib/offers/offer-view-model";
+import { buildOfferLocationDisplay, buildOfferViewModel, renderOfferSummaryEmailHtml } from "@/lib/offers/offer-view-model";
 import {
   renderOfferEmailFooterHtml,
   renderOfferEmailFooterText,
@@ -83,7 +83,7 @@ function renderInfoBlockHtml(items: InfoItem[]): string {
     (item) => `
       <div style="margin: 0 0 14px;">
         <div style="font-size: 12px; line-height: 1.35; color: #5b6470; font-weight: 700;">${item.label}</div>
-        <div style="margin-top: 3px; color: #111827;">${item.value}</div>
+        <div style="margin-top: 3px; color: #111827;">${item.value?.replace(/\n/g, "<br />")}</div>
       </div>
     `
   );
@@ -132,6 +132,14 @@ function buildFooterBranding(data: WorkshopBookingEmailData): FooterBranding {
       data.teacherName ??
       "SKULT",
     senderImageUrl: data.providerLogoUrl ?? data.senderImageUrl,
+  };
+}
+
+function buildLocationInfoItem(input: { location?: string | null; locationDetails?: string | null }): InfoItem {
+  const location = buildOfferLocationDisplay(input);
+  return {
+    label: "Ort",
+    value: location.locationLines.length > 0 ? location.locationLines.join("\n") : null,
   };
 }
 
@@ -306,8 +314,7 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
         ...buildProviderInfoItems(data),
         { label: "Preis", value: data.priceLabel },
         { label: "Stornierungsbedingungen", value: data.stornoPolicyLabel },
-        { label: "Ort", value: data.location },
-        { label: "Weitere Infos", value: data.locationDetails },
+        buildLocationInfoItem(data),
         { label: "Datum / Zeiten", value: data.sessionLines.length > 0 ? data.sessionLines.join(" | ") : "Termin folgt" },
       ],
       nextSteps: [
@@ -354,8 +361,7 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
       `${data.customerName} hat ${isFreeBooking ? "kostenlos reserviert" : "gebucht und bezahlt"}.`,
       `E-Mail: ${data.customerEmail}`,
       data.customerPhone ? `Telefon: ${data.customerPhone}` : null,
-      data.location ? `Ort: ${data.location}` : null,
-      data.locationDetails ? `Ort / Zusatzinfo: ${data.locationDetails}` : null,
+      buildLocationInfoItem(data).value ? `Ort: ${buildLocationInfoItem(data).value}` : null,
       data.priceLabel ? `Preis: ${data.priceLabel}` : null,
       data.sessionLines.length > 0 ? "Termine:" : "Termin: Termin folgt",
       ...data.sessionLines,
