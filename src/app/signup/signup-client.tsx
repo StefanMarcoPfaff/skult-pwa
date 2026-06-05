@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import ProviderBenefitsSection from "@/components/provider/ProviderBenefitsSection";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function SignupClient() {
@@ -62,76 +63,71 @@ export default function SignupClient() {
   }
 
   return (
-    <main style={{ maxWidth: 520, margin: "0 auto", padding: "48px 16px" }}>
-      <h1 style={{ fontSize: 48, fontWeight: 800, marginBottom: 16 }}>Registrieren</h1>
-      <p style={{ marginBottom: 20, color: "#555", lineHeight: 1.5 }}>
-        Anbietende erstellen hier ihren Zugang und werden danach in das bestehende
-        Profil-Onboarding weitergeleitet.
-      </p>
+    <main className="min-h-screen bg-white px-5 py-8 text-slate-950 sm:px-8 sm:py-12">
+      <div className="mx-auto max-w-5xl">
+        <section className="mx-auto max-w-[520px] pb-14">
+          <div className="mb-8">
+            <p className="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">RESER</p>
+            <h1 className="text-4xl font-semibold leading-tight sm:text-5xl">Registrieren</h1>
+            <p className="mt-4 text-base leading-7 text-slate-600">
+              Anbietende erstellen hier ihren Zugang und werden danach in das bestehende
+              Profil-Onboarding weitergeleitet.
+            </p>
+          </div>
 
-      <button
-        onClick={signInWithGoogle}
-        disabled={busy}
-        style={{
-          width: "100%",
-          padding: "14px 16px",
-          borderRadius: 14,
-          border: "1px solid #ddd",
-          fontWeight: 700,
-          marginBottom: 16,
-        }}
-      >
-        Mit Google fortfahren
-      </button>
+          <button
+            onClick={signInWithGoogle}
+            disabled={busy}
+            className="mb-4 inline-flex min-h-12 w-full items-center justify-center rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Mit Google fortfahren
+          </button>
 
-      <div style={{ marginBottom: 16, fontSize: 14, color: "#555" }}>
-        Apple-Login ist für dieses MVP bewusst noch nicht aktiviert.
+          <div className="mb-4 text-sm leading-6 text-slate-600">
+            Apple-Login ist für dieses MVP bewusst noch nicht aktiviert.
+          </div>
+
+          <div className="my-4 h-px bg-slate-200" />
+
+          <form onSubmit={signUpWithEmail} className="grid gap-3">
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="E-Mail"
+              type="email"
+              required
+              className="min-h-12 rounded-2xl border border-slate-300 px-4 text-base outline-none transition placeholder:text-slate-400 focus:border-slate-950"
+            />
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Passwort"
+              type="password"
+              minLength={8}
+              required
+              className="min-h-12 rounded-2xl border border-slate-300 px-4 text-base outline-none transition placeholder:text-slate-400 focus:border-slate-950"
+            />
+
+            <button
+              disabled={busy}
+              className="mt-1 inline-flex min-h-12 items-center justify-center rounded-full border border-slate-950 bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Mit E-Mail registrieren
+            </button>
+
+            {msg ? <p className="mt-2 text-sm leading-6 text-slate-700">{msg}</p> : null}
+          </form>
+
+          <p className="mt-5 text-sm">
+            Bereits registriert?{" "}
+            <Link href="/login" className="underline decoration-slate-300 underline-offset-4">
+              Zum Login
+            </Link>
+          </p>
+        </section>
+
+        <ProviderBenefitsSection />
       </div>
-
-      <div style={{ height: 1, background: "#eee", margin: "16px 0" }} />
-
-      <form onSubmit={signUpWithEmail} style={{ display: "grid", gap: 10 }}>
-        <input
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="E-Mail"
-          type="email"
-          required
-          style={{ padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
-        />
-        <input
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Passwort"
-          type="password"
-          minLength={8}
-          required
-          style={{ padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
-        />
-
-        <button
-          disabled={busy}
-          style={{
-            padding: "14px 16px",
-            borderRadius: 14,
-            border: "1px solid #ddd",
-            fontWeight: 800,
-            background: "#000",
-            color: "#fff",
-          }}
-        >
-          Mit E-Mail registrieren
-        </button>
-
-        {msg ? <p style={{ marginTop: 6 }}>{msg}</p> : null}
-      </form>
-
-      <p style={{ marginTop: 20, fontSize: 14 }}>
-        Bereits registriert?{" "}
-        <Link href="/login" style={{ textDecoration: "underline" }}>
-          Zum Login
-        </Link>
-      </p>
     </main>
   );
 }

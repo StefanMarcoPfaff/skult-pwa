@@ -3,34 +3,8 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import ProviderBenefitsSection from "@/components/provider/ProviderBenefitsSection";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-
-const providerBenefits = [
-  {
-    title: "Deine eigene Buchungsplattform - auch ohne Website",
-    text: "Erstelle Angebote, teile Deinen Link und nimm direkt Buchungen entgegen. RESER kann Deine bestehende Website ergänzen oder komplett ersetzen.",
-  },
-  {
-    title: "Kurse, Workshops und individuelle Angebote verkaufen",
-    text: "Von Einzelcoachings über Stadtführungen bis hin zu fortlaufenden Kursen - alles an einem Ort.",
-  },
-  {
-    title: "Weniger Verwaltung. Mehr Zeit für Dein Angebot.",
-    text: "Buchungen, Teilnehmende, Wartelisten, Anwesenheiten, Stornierungen und Kündigungen zentral verwalten.",
-  },
-  {
-    title: "Automatische Zahlungen und Auszahlungen",
-    text: "Von der Buchung bis zur Auszahlung läuft alles digital und nachvollziehbar.",
-  },
-  {
-    title: "Professioneller Auftritt für Deine Teilnehmenden",
-    text: "Buchungsbestätigungen, Tickets, QR-Codes und E-Mails erscheinen in Deinem Namen und mit Deinem Branding.",
-  },
-  {
-    title: "Volle Transparenz für Deine Finanzen",
-    text: "Steuerkonforme Belege, Einnahmen, Auszahlungen und Abrechnungen jederzeit im Blick.",
-  },
-];
 
 export default function LoginClient() {
   const [supabase] = useState(() => createSupabaseBrowserClient());
@@ -159,23 +133,7 @@ export default function LoginClient() {
           </form>
         </section>
 
-        <section className="border-t border-slate-200 pt-10 sm:pt-12">
-          <div className="mx-auto max-w-3xl text-center">
-            <h2 className="text-3xl font-semibold leading-tight sm:text-4xl">Warum RESER?</h2>
-            <p className="mt-4 text-base leading-7 text-slate-600">
-              Alles, was Du brauchst, um Angebote professionell sichtbar, buchbar und verwaltbar zu machen.
-            </p>
-          </div>
-
-          <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {providerBenefits.map((benefit) => (
-              <article key={benefit.title} className="rounded-lg border border-slate-200 bg-white p-5">
-                <h3 className="text-base font-semibold leading-6">{benefit.title}</h3>
-                <p className="mt-3 text-sm leading-6 text-slate-600">{benefit.text}</p>
-              </article>
-            ))}
-          </div>
-        </section>
+        <ProviderBenefitsSection />
       </div>
     </main>
   );
