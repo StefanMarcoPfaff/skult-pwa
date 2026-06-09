@@ -54,7 +54,7 @@ export type CourseOverviewItem = {
   freeSeats: number | null;
   workshopTiming: string | null;
   courseTiming: string | null;
-  nextDateLabel: string | null;
+  nextDateLabels: string[];
   detailHref: string;
   recipientEmails: string[];
   sortTitle: string;
@@ -688,7 +688,20 @@ export default function CourseOverviewClient(props: {
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <DetailField label="Nächster Termin" value={item.nextDateLabel ?? "-"} />
+                <DetailField
+                  label="Nächste Termine"
+                  value={
+                    item.nextDateLabels.length > 0 ? (
+                      <span className="grid gap-0.5">
+                        {item.nextDateLabels.slice(0, 3).map((label, index) => (
+                          <span key={`${label}-${index}`}>{label}</span>
+                        ))}
+                      </span>
+                    ) : (
+                      "-"
+                    )
+                  }
+                />
                 <DetailField
                   label="Ort"
                   value={

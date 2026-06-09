@@ -106,6 +106,32 @@ function formatCourseSchedule(weekday: number | null, startTime: string | null, 
   return parts.length ? parts.join(" · ") : null;
 }
 
+function formatOverviewSessionLine(startsAt: string | null, endsAt: string | null): string | null {
+  if (!startsAt) return null;
+  const startDate = new Date(startsAt);
+  if (Number.isNaN(startDate.getTime())) return null;
+
+  const dateLabel = startDate.toLocaleDateString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+  const startTimeLabel = startDate.toLocaleTimeString("de-DE", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const endDate = endsAt ? new Date(endsAt) : null;
+  const endTimeLabel =
+    endDate && !Number.isNaN(endDate.getTime())
+      ? endDate.toLocaleTimeString("de-DE", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null;
+
+  return `${dateLabel} | ${endTimeLabel ? `${startTimeLabel}–${endTimeLabel}` : startTimeLabel}`;
+}
+
 function formatOfferPrice(priceCents: number | null, currency: string | null) {
   if (priceCents === null || !Number.isFinite(priceCents)) return null;
   if (priceCents <= 0) return "Kostenlos";
@@ -209,7 +235,9 @@ export default async function DashboardCoursesPage({
   const sessionCountByCourseId = new Map<string, number>();
   const lastSessionEndByCourseId = new Map<string, string | null>();
   const firstSessionByCourseId = new Map<string, SessionRow>();
+  const sessionsByCourseId = new Map<string, SessionRow[]>();
   for (const row of sessionRows) {
+    sessionsByCourseId.set(row.course_id, [...(sessionsByCourseId.get(row.course_id) ?? []), row]);
     sessionCountByCourseId.set(row.course_id, (sessionCountByCourseId.get(row.course_id) ?? 0) + 1);
     const currentFirstSession = firstSessionByCourseId.get(row.course_id);
     if (
@@ -224,6 +252,12 @@ export default async function DashboardCoursesPage({
     if (!currentLastEnd || new Date(nextEnd).getTime() > new Date(currentLastEnd).getTime()) {
       lastSessionEndByCourseId.set(row.course_id, nextEnd);
     }
+  }
+  for (const [courseId, rows] of sessionsByCourseId) {
+    sessionsByCourseId.set(
+      courseId,
+      rows.sort((left, right) => String(left.starts_at ?? "").localeCompare(String(right.starts_at ?? "")))
+    );
   }
 
   const offerEmailsById = new Map<string, Array<string | null>>();
@@ -273,11 +307,22 @@ export default async function DashboardCoursesPage({
       throw new Error(`Display state missing for offer ${offer.id}`);
     }
 
-    const workshopHasMultipleSessions = (sessionCountByCourseId.get(offer.id) ?? 0) > 1;
     const firstSession = firstSessionByCourseId.get(offer.id);
-    const workshopTiming = workshopHasMultipleSessions
-      ? "Mehrere Termine"
-      : formatBerlinDateTimeRange(firstSession?.starts_at ?? offer.starts_at, firstSession?.ends_at ?? offer.ends_at ?? null);
+    const workshopTiming = formatBerlinDateTimeRange(
+      firstSession?.starts_at ?? offer.starts_at,
+      firstSession?.ends_at ?? offer.ends_at ?? null
+    );
+    const sortedSessions = sessionsByCourseId.get(offer.id) ?? [];
+    const upcomingSessions = sortedSessions.filter((session) => {
+      if (!session.starts_at) return false;
+      const startsAt = new Date(session.starts_at).getTime();
+      return Number.isFinite(startsAt) && startsAt >= Date.now();
+    });
+    const overviewSessions = upcomingSessions.length > 0 ? upcomingSessions : sortedSessions;
+    const workshopDateLabels = overviewSessions
+      .slice(0, 3)
+      .map((session) => formatOverviewSessionLine(session.starts_at, session.ends_at))
+      .filter((label): label is string => Boolean(label));
     const courseTiming = formatCourseSchedule(offer.weekday, offer.start_time, offer.recurrence_type);
     const visibility = normalizeOfferVisibility(offer.visibility);
     const detailHref = `/dashboard/courses/${offer.id}`;
@@ -326,7 +371,11 @@ export default async function DashboardCoursesPage({
       freeSeats: offer.capacity === null ? null : Math.max(0, offer.capacity - (isOneTimeOfferKind(kind) ? activeBookingCount : activeTrialCount + activeRegistrationCount)),
       workshopTiming: isOneTimeOfferKind(kind) ? workshopTiming : null,
       courseTiming: kind === "course" ? courseTiming : null,
-      nextDateLabel: isOneTimeOfferKind(kind) ? workshopTiming : courseTiming,
+      nextDateLabels: isOneTimeOfferKind(kind)
+        ? workshopDateLabels.length > 0
+          ? workshopDateLabels
+          : [workshopTiming].filter((label): label is string => Boolean(label))
+        : [courseTiming].filter((label): label is string => Boolean(label)),
       detailHref,
       recipientEmails,
       sortTitle: offer.title,
