@@ -1,20 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
-import { ConfirmIconAction } from "@/app/dashboard/courses/ConfirmIconAction";
-import { OfferActionIcon } from "@/app/dashboard/courses/OfferActionIcon";
-import { MailActionLink } from "@/components/dashboard/MailActionLink";
+import { useMemo, useState, type ReactNode } from "react";
 import { buildMailtoHref } from "@/lib/mailto";
 import DashboardEmptyState from "../_components/DashboardEmptyState";
 import SortableTableHeader, { type SortDirection } from "../_components/SortableTableHeader";
-import { archiveParticipantAction } from "./actions";
 import { getParticipantStatusPresentation, type ParticipantStatusSource } from "./participant-status-ui";
-import {
-  RegisteredParticipantLifecycleButtons,
-  TrialParticipantLifecycleButtons,
-  WorkshopParticipantLifecycleButtons,
-} from "./ParticipantLifecycleButtons";
 
 type TrialLifecycleAction = {
   kind: "trial";
@@ -121,10 +112,10 @@ export type ParticipantOverviewItem = {
   sortDate: string;
 };
 
-export type ParticipantStatusFilter = "all" | "active" | "paused" | "ended";
+export type ParticipantStatusFilter = "all" | "active" | "trial" | "paused" | "ended";
 
 type CheckInFilter = "all" | "checked-in" | "not-checked-in";
-type OfferTypeFilter = "all" | "one-time" | "ongoing" | "trial";
+type OfferTypeFilter = "all" | "one-time" | "ongoing";
 type SortKey = "date" | "name" | "offer" | "status" | "checkIn";
 
 type ChipTone = "neutral" | "green" | "orange" | "red" | "emerald" | "sky" | "amber";
@@ -132,6 +123,7 @@ type ChipTone = "neutral" | "green" | "orange" | "red" | "emerald" | "sky" | "am
 const STATUS_FILTER_OPTIONS: Array<{ value: ParticipantStatusFilter; label: string; tone: ChipTone }> = [
   { value: "all", label: "Alle", tone: "neutral" },
   { value: "active", label: "Aktiv", tone: "green" },
+  { value: "trial", label: "Probestunde", tone: "amber" },
   { value: "paused", label: "Pausiert", tone: "orange" },
   { value: "ended", label: "Beendet/Gekündigt", tone: "red" },
 ];
@@ -146,7 +138,6 @@ const OFFER_TYPE_FILTER_OPTIONS: Array<{ value: OfferTypeFilter; label: string; 
   { value: "all", label: "Alle Angebotsarten", tone: "neutral" },
   { value: "one-time", label: "einmaliges Angebot", tone: "sky" },
   { value: "ongoing", label: "laufendes Angebot", tone: "green" },
-  { value: "trial", label: "Probestunde", tone: "amber" },
 ];
 
 function formatDateTime(value: string | null): string {
@@ -168,13 +159,6 @@ function getCardPresentation(item: ParticipantOverviewItem, checkedInAt: string 
       className: presentation.badgeClassName,
     },
   };
-}
-
-function getCheckInSummary(item: ParticipantOverviewItem, checkedInAt: string | null) {
-  if (!item.checkIn) return "Nicht eincheckbar";
-  if (checkedInAt) return `Eingecheckt am ${formatDateTime(checkedInAt)}`;
-  if (!item.checkIn.enabled) return item.checkIn.disabledReason ?? "Nicht eincheckbar";
-  return "Noch nicht eingecheckt";
 }
 
 function getCheckInStatusLabel(item: ParticipantOverviewItem, checkedInAt: string | null) {
@@ -270,330 +254,6 @@ function DetailField(props: { label: string; value: ReactNode }) {
   );
 }
 
-function ActionZone(props: { children: ReactNode }) {
-  return (
-    <div
-      className="flex max-w-full flex-wrap items-start gap-2"
-      onMouseDown={(event) => event.stopPropagation()}
-      onClick={(event) => event.stopPropagation()}
-      onKeyDown={(event) => event.stopPropagation()}
-    >
-      {props.children}
-    </div>
-  );
-}
-
-function ActionItem(props: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex min-w-[4.5rem] max-w-[5.5rem] flex-col items-center gap-2 text-center">
-      {props.children}
-      <span className="text-[11px] font-medium leading-4 text-muted-foreground">{props.label}</span>
-    </div>
-  );
-}
-
-function ActionGroup(props: { title: string; children: ReactNode }) {
-  return (
-    <div className="space-y-2 rounded-2xl border border-white/70 bg-white/70 p-3 backdrop-blur-sm">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{props.title}</p>
-      <ActionZone>{props.children}</ActionZone>
-    </div>
-  );
-}
-
-function EditAction(props: { href: string }) {
-  return (
-    <ActionItem label="Notizen">
-      <Link href={props.href} className="inline-flex" title="Notizen" aria-label="Notizen">
-        <OfferActionIcon title="Notizen" label="Notizen">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-            <path d="m4 20 4.5-1 9-9a2.12 2.12 0 1 0-3-3l-9 9L4 20Z" />
-            <path d="M13.5 6.5 17.5 10.5" />
-          </svg>
-        </OfferActionIcon>
-      </Link>
-    </ActionItem>
-  );
-}
-
-function ArchiveGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-      <path d="M4 7h16" />
-      <path d="M6 7h12v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7Z" />
-      <path d="M9 7V5h6v2" />
-    </svg>
-  );
-}
-
-function ArchiveAction(props: { action: ParticipantArchiveAction }) {
-  if (!props.action.allowed) {
-    return (
-      <span className="inline-flex" title={props.action.reason} aria-label={props.action.reason}>
-        <OfferActionIcon
-          title={props.action.reason}
-          label="Archivieren"
-          className="border-slate-200 bg-slate-100 text-slate-400"
-          disabled={true}
-        >
-          <ArchiveGlyph />
-        </OfferActionIcon>
-      </span>
-    );
-  }
-
-  return (
-    <ConfirmIconAction
-      action={archiveParticipantAction}
-      fields={{
-        participant_id: props.action.participantId,
-        source: props.action.source,
-        redirect_to: props.action.redirectTo,
-      }}
-      title={props.action.title}
-      text={props.action.text}
-      cancelLabel="Nein, abbrechen"
-      confirmLabel="Ja, archivieren"
-      triggerLabel="archivieren"
-      trigger={
-        <OfferActionIcon title="Archivieren" label="Archivieren">
-          <ArchiveGlyph />
-        </OfferActionIcon>
-      }
-    />
-  );
-}
-
-function CheckInGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-      <rect x="4" y="6" width="16" height="12" rx="2" />
-      <path d="M8 10h4" />
-      <path d="m10 14 2 2 4-4" />
-    </svg>
-  );
-}
-
-function CalendarGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-      <path d="M4 7h16" />
-      <path d="M7 4v6" />
-      <path d="M17 4v6" />
-      <rect x="4" y="6" width="16" height="14" rx="2" />
-      <path d="M8 11h8" />
-      <path d="M8 15h5" />
-    </svg>
-  );
-}
-
-function CheckInAction(props: {
-  item: ParticipantOverviewItem;
-  checkedInAt: string | null;
-  onCheckedIn: (id: string, checkedInAt: string) => void;
-}) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
-  const [pending, startTransition] = useTransition();
-  const [message, setMessage] = useState<string | null>(null);
-  const checkIn = props.item.checkIn;
-
-  if (!checkIn) return null;
-  const resolvedCheckIn = checkIn;
-
-  const isDone = Boolean(props.checkedInAt);
-  const disabled = pending || isDone || !resolvedCheckIn.enabled;
-  const className = isDone
-    ? "border-green-600 bg-green-600 text-white"
-    : disabled
-      ? "border-slate-200 bg-slate-100 text-slate-400"
-      : "border-slate-900 bg-slate-900 text-white";
-
-  function handleManualCheckIn() {
-    setMessage(null);
-
-    startTransition(async () => {
-      const response = await fetch("/api/attendance/manual", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          courseId: resolvedCheckIn.courseId,
-          sessionId: resolvedCheckIn.sessionId,
-          eventDate: resolvedCheckIn.eventDate,
-          ticketId: resolvedCheckIn.ticketId,
-          present: true,
-          room: resolvedCheckIn.room,
-          instructorName: resolvedCheckIn.instructorName,
-        }),
-      });
-
-      const data = (await response.json()) as {
-        ok?: boolean;
-        error?: string;
-        checkedInAt?: string | null;
-      };
-
-      if (!response.ok || !data.ok || !data.checkedInAt) {
-        setMessage(data.error ?? "Check-in konnte nicht gespeichert werden.");
-        return;
-      }
-
-      props.onCheckedIn(props.item.id, data.checkedInAt);
-      dialogRef.current?.close();
-    });
-  }
-
-  return (
-    <>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => dialogRef.current?.showModal()}
-        className="disabled:cursor-not-allowed"
-        title={
-          isDone
-            ? "Bereits eingecheckt"
-            : !resolvedCheckIn.enabled
-              ? resolvedCheckIn.disabledReason ?? "Nicht eincheckbar"
-              : "Einchecken"
-        }
-        aria-label={
-          isDone
-            ? "Bereits eingecheckt"
-            : !resolvedCheckIn.enabled
-              ? resolvedCheckIn.disabledReason ?? "Nicht eincheckbar"
-              : "Einchecken"
-        }
-      >
-        <OfferActionIcon
-          title={
-            isDone
-              ? "Bereits eingecheckt"
-              : !resolvedCheckIn.enabled
-                ? resolvedCheckIn.disabledReason ?? "Nicht eincheckbar"
-                : "Einchecken"
-          }
-          label="Einchecken"
-          className={className}
-          disabled={disabled}
-        >
-          <CheckInGlyph />
-        </OfferActionIcon>
-      </button>
-
-      <dialog
-        ref={dialogRef}
-        aria-labelledby={titleId}
-        className="w-full max-w-lg rounded-2xl border p-0 backdrop:bg-black/30"
-      >
-        <div className="space-y-4 p-6">
-          <div className="space-y-2">
-            <h3 id={titleId} className="text-lg font-semibold">
-              Teilnehmer*in einchecken
-            </h3>
-            <p className="text-sm text-muted-foreground">{props.item.displayName}</p>
-          </div>
-
-          {message ? (
-            <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {message}
-            </p>
-          ) : null}
-
-          {isDone ? (
-            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-              Bereits eingecheckt am {formatDateTime(props.checkedInAt)}.
-            </p>
-          ) : (
-            <div className="grid gap-3">
-              <Link href={resolvedCheckIn.scanHref} className="rounded-2xl border p-4 text-sm transition hover:border-foreground/30">
-                <p className="font-semibold">Teilnehmer-QR scannen</p>
-                <p className="mt-1 text-muted-foreground">Scanner für den passenden Termin öffnen.</p>
-              </Link>
-              <Link href={resolvedCheckIn.showHref} className="rounded-2xl border p-4 text-sm transition hover:border-foreground/30">
-                <p className="font-semibold">Termin-QR anzeigen</p>
-                <p className="mt-1 text-muted-foreground">Session-QR für Selbst-Check-in anzeigen.</p>
-              </Link>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={handleManualCheckIn}
-                className="rounded-2xl border p-4 text-left text-sm transition hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <p className="font-semibold">{pending ? "Speichert..." : "Manuell einchecken"}</p>
-                <p className="mt-1 text-muted-foreground">
-                  Für diese konkrete Person direkt als anwesend markieren.
-                </p>
-              </button>
-            </div>
-          )}
-
-          <div className="flex justify-end">
-            <button
-              type="button"
-              className="rounded-xl border px-4 py-2 text-sm"
-              onClick={() => dialogRef.current?.close()}
-            >
-              Schließen
-            </button>
-          </div>
-        </div>
-      </dialog>
-    </>
-  );
-}
-
-function LifecycleActions(props: { action: ParticipantLifecycleAction }) {
-  if (props.action.kind === "trial") {
-    return (
-      <TrialParticipantLifecycleButtons
-        reservationId={props.action.reservationId}
-        redirectTo={props.action.redirectTo}
-        playClassName={props.action.playClassName}
-        pauseClassName={props.action.pauseClassName}
-        stopClassName={props.action.stopClassName}
-        playDisabled={props.action.playDisabled}
-        stopDisabled={props.action.stopDisabled}
-        showApprovalAction={props.action.showApprovalAction}
-        showCancellationAction={props.action.showCancellationAction}
-      />
-    );
-  }
-
-  if (props.action.kind === "registered") {
-    return (
-      <RegisteredParticipantLifecycleButtons
-        reservationId={props.action.reservationId}
-        redirectTo={props.action.redirectTo}
-        defaultActiveUntilDate={props.action.defaultActiveUntilDate}
-        defaultPauseEndDate={props.action.defaultPauseEndDate}
-        defaultStopDate={props.action.defaultStopDate}
-        playLabel={props.action.playLabel}
-        playClassName={props.action.playClassName}
-        pauseClassName={props.action.pauseClassName}
-        stopClassName={props.action.stopClassName}
-        pauseLabel={props.action.pauseLabel}
-        stopLabel={props.action.stopLabel}
-        pauseDisabled={props.action.pauseDisabled}
-        stopDisabled={props.action.stopDisabled}
-      />
-    );
-  }
-
-  return (
-    <WorkshopParticipantLifecycleButtons
-      bookingId={props.action.bookingId}
-      redirectTo={props.action.redirectTo}
-      paymentStatus={props.action.paymentStatus}
-      playMode={props.action.playMode}
-      stopDisabled={props.action.stopDisabled}
-      playClassName={props.action.playClassName}
-      pauseClassName={props.action.pauseClassName}
-      stopClassName={props.action.stopClassName}
-    />
-  );
-}
-
 export function ParticipantOverviewList(props: {
   items: ParticipantOverviewItem[];
   statusFilter: ParticipantStatusFilter;
@@ -605,8 +265,9 @@ export function ParticipantOverviewList(props: {
   const [offerTypeFilter, setOfferTypeFilter] = useState<OfferTypeFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [checkedInById, setCheckedInById] = useState<Record<string, string | null>>(
-    Object.fromEntries(props.items.map((item) => [item.id, item.checkIn?.checkedInAt ?? null]))
+  const checkedInById = useMemo(
+    () => Object.fromEntries(props.items.map((item) => [item.id, item.checkIn?.checkedInAt ?? null])),
+    [props.items]
   );
 
   const offerOptions = useMemo(
@@ -616,10 +277,6 @@ export function ParticipantOverviewList(props: {
       ),
     [props.items]
   );
-
-  function handleCheckedIn(id: string, checkedInAt: string) {
-    setCheckedInById((current) => ({ ...current, [id]: checkedInAt }));
-  }
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleItems = useMemo(() => {
@@ -632,11 +289,10 @@ export function ParticipantOverviewList(props: {
       if (checkInFilter === "checked-in" && !checkedInAt) return false;
       if (checkInFilter === "not-checked-in" && checkedInAt) return false;
 
-      if (offerTypeFilter === "trial" && item.sourceLabel !== "Probeteilnahme") return false;
       if (offerTypeFilter === "one-time" && item.offerKindLabel !== "einmaliges Angebot") return false;
       if (
         offerTypeFilter === "ongoing" &&
-        (item.offerKindLabel !== "laufendes Angebot" || item.sourceLabel === "Probeteilnahme")
+        item.offerKindLabel !== "laufendes Angebot"
       ) {
         return false;
       }
@@ -646,6 +302,9 @@ export function ParticipantOverviewList(props: {
         if (item.status.kind === "registered") return (item.status.subscriptionStatus ?? "active") === "active";
         if (item.status.kind === "workshop") return item.status.bookingStatus === "paid";
         return item.status.kind === "trial" && item.status.decisionStatus === "approved";
+      }
+      if (statusFilter === "trial") {
+        return item.sourceLabel === "Probeteilnahme";
       }
       if (statusFilter === "paused") {
         return (
@@ -737,7 +396,7 @@ export function ParticipantOverviewList(props: {
 
   return (
     <section className="space-y-5">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]">
+      <div className="space-y-4">
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="space-y-4">
             <div>
@@ -763,15 +422,15 @@ export function ParticipantOverviewList(props: {
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="grid gap-2 text-sm">
+            <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+              <label className="grid min-w-0 gap-2 text-sm">
                 <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Angebot
                 </span>
                 <select
                   value={offerFilter}
                   onChange={(event) => setOfferFilter(event.target.value)}
-                  className="min-h-11 rounded-2xl border border-slate-200 bg-white px-4 py-3 font-medium text-slate-900"
+                  className="min-h-11 w-full min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-3 font-medium text-slate-900"
                 >
                   <option value="all">Alle Angebote</option>
                   {offerOptions.map((offerTitle) => (
@@ -782,7 +441,7 @@ export function ParticipantOverviewList(props: {
                 </select>
               </label>
 
-              <label className="grid gap-2 text-sm">
+              <label className="grid min-w-0 gap-2 text-sm">
                 <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Suche
                 </span>
@@ -790,7 +449,7 @@ export function ParticipantOverviewList(props: {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Name, E-Mail oder Angebot"
-                  className="min-h-11 rounded-2xl border border-slate-200 px-4 py-3"
+                  className="min-h-11 w-full min-w-0 rounded-2xl border border-slate-200 px-4 py-3"
                 />
               </label>
             </div>
@@ -902,13 +561,13 @@ export function ParticipantOverviewList(props: {
       {visibleItems.map((item) => {
         const checkedInAt = checkedInById[item.id] ?? null;
         const presentation = getCardPresentation(item, checkedInAt);
-        const checkInSummary = getCheckInSummary(item, checkedInAt);
         const checkInStatusLabel = getCheckInStatusLabel(item, checkedInAt);
 
         return (
-          <article
+          <Link
             key={item.id}
-            className={`rounded-[28px] border p-5 transition hover:border-foreground/20 hover:shadow-sm ${presentation.articleClassName}`}
+            href={item.detailHref}
+            className={`block rounded-[24px] border p-4 transition hover:border-foreground/20 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20 sm:p-5 ${presentation.articleClassName}`}
           >
             <div className="space-y-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -934,91 +593,8 @@ export function ParticipantOverviewList(props: {
                 <DetailField label="Letzter Check-in" value={checkedInAt ? formatDateTime(checkedInAt) : "-"} />
               </div>
 
-              {!checkedInAt ? (
-                <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  {checkInSummary === "Noch nicht eingecheckt"
-                    ? "Noch kein Check-in erfasst."
-                    : `Noch kein Check-in erfasst: ${checkInSummary}`}
-                </p>
-              ) : null}
-
-              <details className="group/details rounded-2xl border border-slate-200 bg-white/70">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-950">
-                  <span>Details und Aktionen</span>
-                  <span className="text-xs text-muted-foreground group-open/details:hidden">anzeigen</span>
-                  <span className="hidden text-xs text-muted-foreground group-open/details:inline">ausblenden</span>
-                </summary>
-
-                <div className="space-y-4 border-t border-slate-200 p-4">
-                  <Link href={item.detailHref} className="inline-flex text-sm font-medium text-slate-950 underline-offset-4 hover:underline">
-                    Detailseite öffnen
-                  </Link>
-
-              <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-                <ActionGroup title="Teilnahmestatus & Verwaltung">
-                  <LifecycleActions action={item.lifecycleAction} />
-                  <EditAction href={item.detailHref} />
-                  <ActionItem label="Archivieren">
-                    <ArchiveAction action={item.archiveAction} />
-                  </ActionItem>
-                </ActionGroup>
-
-                <ActionGroup title="Nutzung & Kommunikation">
-                  {item.checkIn ? (
-                    <ActionItem label="Check-in">
-                      <CheckInAction item={item} checkedInAt={checkedInAt} onCheckedIn={handleCheckedIn} />
-                    </ActionItem>
-                  ) : null}
-                  <ActionItem label="Anschreiben">
-                    <MailActionLink
-                      href={item.mailHref}
-                      title="Anschreiben"
-                      disabledHint="Keine E-Mail-Adresse für diese Person vorhanden"
-                      showLabel={false}
-                    />
-                  </ActionItem>
-                  <ActionItem label="Kalender">
-                    {item.calendarAction.href ? (
-                      <Link
-                        href={item.calendarAction.href}
-                        className="inline-flex"
-                        title="Kalenderdatei herunterladen"
-                        aria-label="Kalenderdatei herunterladen"
-                      >
-                        <OfferActionIcon title="Kalenderdatei herunterladen" label="Kalenderdatei herunterladen">
-                          <CalendarGlyph />
-                        </OfferActionIcon>
-                      </Link>
-                    ) : (
-                      <OfferActionIcon
-                        title={item.calendarAction.disabledReason ?? "Kalenderdatei erst mit Termin verfügbar"}
-                        label="Kalenderdatei"
-                        className="border-slate-200 bg-slate-100 text-slate-400"
-                        disabled={true}
-                      >
-                        <CalendarGlyph />
-                      </OfferActionIcon>
-                    )}
-                  </ActionItem>
-                </ActionGroup>
-              </div>
-
-              <div className="grid gap-3 text-sm text-muted-foreground md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-                <div className="space-y-1">
-                  {item.email ? <p className="truncate">{item.email}</p> : null}
-                  <p>{item.sourceLabel}</p>
-                  {item.metaLabel ? <p>{item.metaLabel}</p> : null}
-                </div>
-                <div className="space-y-1">
-                  <p className="font-medium text-foreground">Check-in</p>
-                  <p>{checkInSummary}</p>
-                  {item.decisionInfo ? <p>{item.decisionInfo}</p> : null}
-                </div>
-              </div>
-                </div>
-              </details>
             </div>
-          </article>
+          </Link>
         );
       })}
     </section>

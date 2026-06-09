@@ -102,7 +102,7 @@ function FlashMessages(props: { saved: string | null }) {
 
 function getParticipantStatusFilter(value: string | string[] | undefined): ParticipantStatusFilter {
   const selected = Array.isArray(value) ? value[0] : value;
-  if (selected === "active" || selected === "paused" || selected === "ended") {
+  if (selected === "active" || selected === "trial" || selected === "paused" || selected === "ended") {
     return selected;
   }
   return "all";
