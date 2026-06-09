@@ -31,6 +31,8 @@ type CourseDetailActionsProps = {
   publicUrl: string;
   embedUrl: string;
   publicOfferEnabled: boolean;
+  visitorPreviewHref: string;
+  visitorPreviewEnabled: boolean;
   visibility: "public" | "private_link";
   visibilityLabel: string;
   publishBlockedForMissingPolicy: boolean;
@@ -93,6 +95,15 @@ function ShareGlyph() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
       <path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L10.7 5.22" />
       <path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.12a5 5 0 0 0 7.07 7.07l1.41-1.41" />
+    </svg>
+  );
+}
+
+function EyeGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+      <circle cx="12" cy="12" r="3" />
     </svg>
   );
 }
@@ -356,6 +367,25 @@ export function CourseDetailActions(props: CourseDetailActionsProps) {
                 disabled={true}
               >
                 <CalendarGlyph />
+              </OfferActionIcon>
+            )}
+          </OfferActionItem>
+
+          <OfferActionItem label="Besucheransicht">
+            {props.visitorPreviewEnabled ? (
+              <Link href={props.visitorPreviewHref} className="inline-flex" target="_blank" rel="noreferrer">
+                <OfferActionIcon title="Besucheransicht öffnen" label="Besucheransicht öffnen">
+                  <EyeGlyph />
+                </OfferActionIcon>
+              </Link>
+            ) : (
+              <OfferActionIcon
+                title="Besucheransicht erst nach dem Speichern verfügbar"
+                label="Besucheransicht öffnen"
+                className="border-slate-200 bg-slate-100 text-slate-400"
+                disabled={true}
+              >
+                <EyeGlyph />
               </OfferActionIcon>
             )}
           </OfferActionItem>

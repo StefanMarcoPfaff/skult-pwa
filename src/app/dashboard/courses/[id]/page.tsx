@@ -206,6 +206,21 @@ function getDetailStatusPresentation(normalizedStatus: string) {
   };
 }
 
+function getStatusHint(normalizedStatus: string, isSinglePaymentOffer: boolean): string {
+  if (normalizedStatus === "draft") {
+    return "Dieses Angebot ist ein Entwurf. Prüfe die internen Angaben und veröffentliche es erst danach.";
+  }
+  if (normalizedStatus === "paused" || normalizedStatus === "pause_scheduled") {
+    return "Dieses laufende Angebot ist pausiert oder zur Pause vorgemerkt.";
+  }
+  if (normalizedStatus === "ended" || normalizedStatus === "stop_scheduled") {
+    return isSinglePaymentOffer
+      ? "Dieses einmalige Angebot ist beendet oder abgesagt."
+      : "Dieses laufende Angebot ist beendet oder zum Stopp vorgemerkt.";
+  }
+  return "Dieses Angebot ist aktiv. Verwaltung und Kommunikation erfolgen über die Aktionen unten.";
+}
+
 export default async function DashboardCourseDetailPage({
   params,
   searchParams,
@@ -216,6 +231,7 @@ export default async function DashboardCourseDetailPage({
   const { id } = await params;
   const sp = await searchParams;
   const savedParam = Array.isArray(sp.saved) ? sp.saved[0] : sp.saved;
+  const previewParam = Array.isArray(sp.preview) ? sp.preview[0] : sp.preview;
   const returnToParam = Array.isArray(sp.returnTo) ? sp.returnTo[0] : sp.returnTo;
   const backHref =
     typeof returnToParam === "string" && returnToParam.startsWith("/dashboard/courses")
@@ -560,13 +576,52 @@ export default async function DashboardCourseDetailPage({
     recurrenceType: data.recurrence_type ?? null,
     sessionCount: sessions?.length ?? 0,
   });
+  const visitorPreviewParams = new URLSearchParams();
+  visitorPreviewParams.set("preview", "visitor");
+  if (returnToParam) visitorPreviewParams.set("returnTo", returnToParam);
+  const draftVisitorPreviewHref = `/dashboard/courses/${data.id}?${visitorPreviewParams.toString()}`;
+  const visitorPreviewHref = publicOffer ? publicUrl : draftVisitorPreviewHref;
+  const visitorPreviewEnabled = Boolean(publicOffer) || isSinglePaymentOffer;
+
+  if (previewParam === "visitor" && isSinglePaymentOffer && !publicOffer) {
+    return (
+      <main className="mx-auto max-w-3xl space-y-5 p-6">
+        <Link href={`/dashboard/courses/${data.id}${returnToParam ? `?returnTo=${encodeURIComponent(returnToParam)}` : ""}`} className="font-semibold">
+          Zurück zur Verwaltung
+        </Link>
+        <OneTimeOfferPreview
+          title={data.title}
+          description={data.description}
+          location={data.location}
+          locationDetails={data.location_details}
+          providerType={profile?.provider_type ?? null}
+          providerName={providerLabel}
+          instructorName={data.instructor_name}
+          providerLogoUrl={profile?.company_logo_url ?? null}
+          providerPhotoUrl={profile?.photo_url ?? null}
+          offerImageUrl={data.offer_image_url}
+          priceCents={data.price_cents}
+          currency={data.currency}
+          sessions={(sessions ?? []).map((session) => ({
+            id: session.id,
+            starts_at: session.starts_at,
+            ends_at: session.ends_at,
+          }))}
+          startsAt={data.starts_at}
+          endsAt={data.ends_at}
+          previewMode={true}
+        />
+      </main>
+    );
+  }
+
   const participantOverviewItems = await loadParticipantOverviewItems({
     teacherId: user.id,
     courseIds: [id],
   });
 
   return (
-    <main className="mx-auto max-w-7xl p-6">
+    <main className="mx-auto max-w-6xl p-6">
       <Link href={backHref} style={{ fontWeight: 700 }}>
         Zurück
       </Link>
@@ -576,8 +631,8 @@ export default async function DashboardCourseDetailPage({
           <div className="min-w-0">
             <h1 className="text-3xl font-black text-slate-950">{data.title}</h1>
             <p className="mt-3 text-sm text-muted-foreground">
-        Dies ist deine interne Vorschau. Prüfe die Angaben, passe sie bei Bedarf an und aktiviere das Angebot erst danach.
-      </p>
+              {getStatusHint(normalizedStatus, isSinglePaymentOffer)}
+            </p>
           </div>
           <span
             className={`inline-flex w-fit shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${detailStatusPresentation.badgeClassName}`}
@@ -653,8 +708,6 @@ export default async function DashboardCourseDetailPage({
         </p>
       ) : null}
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)] xl:items-start">
-        <div>
       <CourseDetailActions
         courseId={data.id}
         kind={data.kind}
@@ -667,6 +720,8 @@ export default async function DashboardCourseDetailPage({
         publicUrl={publicUrl}
         embedUrl={embedUrl}
         publicOfferEnabled={Boolean(publicOffer)}
+        visitorPreviewHref={visitorPreviewHref}
+        visitorPreviewEnabled={visitorPreviewEnabled}
         visibility={normalizeOfferVisibility(data.visibility)}
         visibilityLabel={getOfferVisibilityLabel(data.visibility)}
         publishBlockedForMissingPolicy={publishBlockedForMissingPolicy}
@@ -689,10 +744,10 @@ export default async function DashboardCourseDetailPage({
         </p>
       ) : null}
 
-      <div className={`mt-4 rounded-2xl border p-4 text-sm text-slate-700 ${detailStatusPresentation.panelClassName}`}>
+      <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-950">Interne Angebotsdaten</h2>
+        <div className="mt-4 grid gap-3 text-sm text-slate-700 sm:grid-cols-2 lg:grid-cols-3">
         <div>Art: {getOfferKindLabel(data.kind)}</div>
-        <div>Status: {statusLabel}</div>
-        <div>Veröffentlicht: {data.is_published ? "Ja" : "Nein"}</div>
         <div>Sichtbarkeit: {getOfferVisibilityLabel(data.visibility)}</div>
         {data.kind === "course" ? <div>Probestunden-Regel: {formatTrialMode(data.trial_mode)}</div> : null}
         {providerLabel ? <div>Anbieter: {providerLabel}</div> : null}
@@ -716,7 +771,8 @@ export default async function DashboardCourseDetailPage({
         {isSinglePaymentOffer && freeWorkshopSeats !== null ? <div>Freie Plätze: {freeWorkshopSeats}</div> : null}
         {isSinglePaymentOffer ? <div>Reservierungen/Buchungen: {activeWorkshopBookingCount}</div> : null}
         {data.price_cents !== null ? <div>Preis: {formatOfferPrice(data.price_cents, data.currency)}</div> : null}
-      </div>
+        </div>
+      </section>
 
       <FormattedOfferDescription text={data.description} className="mt-4 space-y-4 text-sm leading-7 text-slate-700" />
 
@@ -727,29 +783,13 @@ export default async function DashboardCourseDetailPage({
         </section>
       ) : null}
 
-      {data.kind === "course" ? (
-        <section className="mt-6 rounded-2xl border p-5">
-          <h2 className="text-lg font-semibold">Status steuern</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Pausen beginnen am letzten Tag eines Monats und enden am ersten Tag eines Monats. Stopps enden am letzten Tag eines Monats.
-          </p>
-          {(pauseStartLabel || pauseEndLabel || stopDateLabel) && (
-            <p className="mt-3 text-sm font-medium text-foreground">
-              {pauseStartLabel ? `Geplanter Pausenstart: ${pauseStartLabel}. ` : ""}
-              {pauseEndLabel ? `Geplantes Pausenende: ${pauseEndLabel}. ` : ""}
-              {stopDateLabel ? `Geplantes Stopdatum: ${stopDateLabel}.` : ""}
-            </p>
-          )}
-        </section>
-      ) : null}
-
       {isSinglePaymentOffer ? (
-        <section style={{ marginTop: 24 }}>
-          <h2 style={{ fontSize: 22, fontWeight: 800 }}>Termine</h2>
-          <div style={{ marginTop: 8, borderTop: "1px solid #ddd", paddingTop: 12 }}>
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-950">Termine</h2>
+          <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 text-sm text-slate-700">
             {sessions && sessions.length > 0 ? (
               sessions.map((session) => (
-                <div key={session.id} style={{ marginBottom: 8 }}>
+                <div key={session.id}>
                   {session.starts_at ? (
                     <>
                       {formatDateTimeRange(session.starts_at, session.ends_at)}
@@ -765,36 +805,6 @@ export default async function DashboardCourseDetailPage({
           </div>
         </section>
       ) : null}
-        </div>
-
-        {isSinglePaymentOffer ? (
-          <aside className="xl:sticky xl:top-6">
-            <OneTimeOfferPreview
-              title={data.title}
-              description={data.description}
-              location={data.location}
-              locationDetails={data.location_details}
-              providerType={profile?.provider_type ?? null}
-              providerName={providerLabel}
-              instructorName={data.instructor_name}
-              providerLogoUrl={profile?.company_logo_url ?? null}
-              providerPhotoUrl={profile?.photo_url ?? null}
-              offerImageUrl={data.offer_image_url}
-              priceCents={data.price_cents}
-              currency={data.currency}
-              sessions={(sessions ?? []).map((session) => ({
-                id: session.id,
-                starts_at: session.starts_at,
-                ends_at: session.ends_at,
-              }))}
-              startsAt={data.starts_at}
-              endsAt={data.ends_at}
-              previewMode={normalizedStatus === "draft"}
-            />
-          </aside>
-        ) : null}
-      </div>
-
       {participantOverviewItems.length > 0 ? (
         <section className="mt-8 space-y-4">
           <div>
