@@ -379,6 +379,14 @@ export function ParticipantOverviewList(props: {
     offerFilter !== "all" ||
     checkInFilter !== "all" ||
     offerTypeFilter !== "all";
+  const activeFilterCount = [
+    normalizedQuery.length > 0,
+    statusFilter !== "all",
+    offerFilter !== "all",
+    checkInFilter !== "all",
+    offerTypeFilter !== "all",
+  ].filter(Boolean).length;
+  const sortingIsActive = sortKey !== "date" || sortDirection !== "desc";
   const filteredMailHref = buildMailtoHref({
     bcc: visibleItems.map((item) => item.email),
     subject: "Information für gefilterte Teilnehmende",
@@ -397,15 +405,28 @@ export function ParticipantOverviewList(props: {
   return (
     <section className="space-y-5">
       <div className="space-y-4">
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="space-y-4">
-            <div>
-              <h2 className="text-base font-semibold text-slate-950">Filtern</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Status, Angebot, Check-in und Angebotsart eingrenzen.
-              </p>
+        <details className="group rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 sm:p-5">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-base font-semibold text-slate-950">Filtern</h2>
+                {activeFilterCount > 0 ? (
+                  <span className="rounded-full bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white">
+                    {activeFilterCount} Filter aktiv
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">Status, Angebot, Check-in und Angebotsart eingrenzen.</p>
             </div>
+            <span className="shrink-0 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 group-open:hidden">
+              aufklappen
+            </span>
+            <span className="hidden shrink-0 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 group-open:inline-flex">
+              einklappen
+            </span>
+          </summary>
 
+          <div className="space-y-4 border-t border-slate-100 p-4 sm:p-5">
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Teilnahmestatus</p>
               <div className="flex flex-wrap gap-2">
@@ -486,14 +507,29 @@ export function ParticipantOverviewList(props: {
               </div>
             </div>
           </div>
-        </div>
+        </details>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="space-y-4">
-            <div>
-              <h2 className="text-base font-semibold text-slate-950">Sortieren</h2>
+        <details className="group rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 sm:p-5">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-base font-semibold text-slate-950">Sortieren</h2>
+                {sortingIsActive ? (
+                  <span className="rounded-full bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white">
+                    Sortierung aktiv
+                  </span>
+                ) : null}
+              </div>
               <p className="mt-1 text-sm text-muted-foreground">Reihenfolge der Teilnehmendenliste festlegen.</p>
             </div>
+            <span className="shrink-0 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 group-open:hidden">
+              aufklappen
+            </span>
+            <span className="hidden shrink-0 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 group-open:inline-flex">
+              einklappen
+            </span>
+          </summary>
+          <div className="space-y-4 border-t border-slate-100 p-4 sm:p-5">
             <div className="flex flex-wrap gap-2">
               <SortChip
                 label="Datum"
@@ -527,7 +563,7 @@ export function ParticipantOverviewList(props: {
               />
             </div>
           </div>
-        </div>
+        </details>
       </div>
 
       {filterIsActive ? (

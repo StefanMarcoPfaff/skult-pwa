@@ -1,14 +1,17 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
+import { ConfirmIconAction } from "@/app/dashboard/courses/ConfirmIconAction";
+import { OfferActionIcon, OfferActionItem } from "@/app/dashboard/courses/OfferActionIcon";
 import { redirect } from "next/navigation";
 import { MailActionLink } from "@/components/dashboard/MailActionLink";
-import { buildBookingCalendarPath } from "@/lib/calendar";
-import { hasOfferCalendarData } from "@/lib/calendar-resolver";
+import OfferSummaryCard from "@/components/offer/OfferSummaryCard";
 import { getCourseParticipantTicketBindingId } from "@/lib/course-participant-bindings";
 import { formatCourseLifecycleDate, getNextMonthEndDate } from "@/lib/course-lifecycle-shared";
 import { buildMailtoHref, buildParticipantMailSubject } from "@/lib/mailto";
-import { getProviderDisplayName } from "@/lib/provider-profiles";
+import { buildOfferViewModel } from "@/lib/offers/offer-view-model";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { archiveParticipantAction } from "../actions";
 import {
   RegisteredParticipantLifecycleButtons,
   TrialParticipantLifecycleButtons,
@@ -45,15 +48,21 @@ type CourseRow = {
   title: string | null;
   teacher_id: string | null;
   kind: string | null;
+  description?: string | null;
   instructor_name: string | null;
   price_cents: number | null;
   currency: string | null;
+  price_type?: string | null;
   location: string | null;
   location_details: string | null;
   starts_at: string | null;
+  ends_at?: string | null;
   start_time: string | null;
   duration_minutes: number | null;
   recurrence_type: string | null;
+  workshop_storno_policy?: string | null;
+  cancellation_model?: string | null;
+  offer_image_url?: string | null;
 };
 
 type ProfileRow = {
@@ -61,6 +70,14 @@ type ProfileRow = {
   last_name: string | null;
   provider_type: "independent_teacher" | "studio_provider" | null;
   organization_name: string | null;
+  photo_url?: string | null;
+  company_logo_url?: string | null;
+  email?: string | null;
+};
+
+type SessionRow = {
+  starts_at: string | null;
+  ends_at: string | null;
 };
 
 type RegistrationIntentRow = {
@@ -135,14 +152,6 @@ function formatDateTime(value: string | null): string {
   });
 }
 
-function formatPrice(priceCents: number | null, currency: string | null): string | null {
-  if (priceCents === null || !Number.isFinite(priceCents)) return null;
-  return new Intl.NumberFormat("de-DE", {
-    style: "currency",
-    currency: currency || "EUR",
-  }).format(priceCents / 100);
-}
-
 function participantName(firstName: string | null, lastName: string | null, fallback: string) {
   return [firstName, lastName].filter(Boolean).join(" ").trim() || fallback;
 }
@@ -178,6 +187,123 @@ function getRegisteredLifecycleLabels(status: string | null) {
           ? "Gekündigt"
           : "Kündigen",
   };
+}
+
+function ArchiveGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M4 7h16" />
+      <path d="M6 7h12v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7Z" />
+      <path d="M9 7V5h6v2" />
+    </svg>
+  );
+}
+
+function EditGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="m4 20 4.5-1 9-9a2.12 2.12 0 1 0-3-3l-9 9L4 20Z" />
+      <path d="M13.5 6.5 17.5 10.5" />
+    </svg>
+  );
+}
+
+function CheckInGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+      <path d="M4 7h16" />
+      <path d="M7 4v6" />
+      <path d="M17 4v6" />
+      <rect x="4" y="6" width="16" height="14" rx="2" />
+      <path d="m9 14 2 2 4-4" />
+    </svg>
+  );
+}
+
+function ActionGroup(props: { title: string; children: ReactNode }) {
+  return (
+    <div className="space-y-2 rounded-2xl border border-white/70 bg-white/70 p-3 backdrop-blur-sm">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{props.title}</p>
+      <div className="flex flex-wrap gap-4">{props.children}</div>
+    </div>
+  );
+}
+
+function ParticipantDetailActions(props: {
+  lifecycle: ReactNode;
+  mailHref: string | null;
+  checkInHref: string;
+  archiveParticipantId: string;
+  archiveSource: "trial" | "registered" | "workshop";
+  redirectTo: string;
+}) {
+  return (
+    <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+        <ActionGroup title="Teilnahmestatus & Verwaltung">
+          {props.lifecycle}
+          <OfferActionItem label="Notizen">
+            <Link href={props.redirectTo} className="inline-flex">
+              <OfferActionIcon title="Notizen" label="Notizen">
+                <EditGlyph />
+              </OfferActionIcon>
+            </Link>
+          </OfferActionItem>
+          <OfferActionItem label="Bearbeiten">
+            <Link href={props.redirectTo} className="inline-flex">
+              <OfferActionIcon title="Bearbeiten" label="Bearbeiten">
+                <EditGlyph />
+              </OfferActionIcon>
+            </Link>
+          </OfferActionItem>
+          <OfferActionItem label="Archivieren">
+            <ConfirmIconAction
+              action={archiveParticipantAction}
+              fields={{
+                participant_id: props.archiveParticipantId,
+                source: props.archiveSource,
+                redirect_to: "/dashboard/participants",
+              }}
+              title="Teilnahme archivieren?"
+              text="Die Teilnahme bleibt historisch erhalten und wird nur aus den aktiven Übersichten entfernt."
+              cancelLabel="Nein, abbrechen"
+              confirmLabel="Ja, archivieren"
+              triggerLabel="archivieren"
+              trigger={
+                <OfferActionIcon title="Archivieren" label="Archivieren">
+                  <ArchiveGlyph />
+                </OfferActionIcon>
+              }
+            />
+          </OfferActionItem>
+        </ActionGroup>
+
+        <ActionGroup title="Nutzung & Kommunikation">
+          <MailActionLink
+            href={props.mailHref}
+            label="E-Mail"
+            title="Teilnehmer*in per E-Mail kontaktieren"
+            disabledHint="Keine E-Mail-Adresse für diese Person vorhanden"
+          />
+          <OfferActionItem label="Check-in">
+            <Link href={props.checkInHref} className="inline-flex">
+              <OfferActionIcon title="Check-in starten" label="Check-in starten">
+                <CheckInGlyph />
+              </OfferActionIcon>
+            </Link>
+          </OfferActionItem>
+        </ActionGroup>
+      </div>
+    </section>
+  );
+}
+
+function buildParticipantOfferViewModel(course: CourseRow, profile: ProfileRow | null, sessions: SessionRow[]) {
+  return buildOfferViewModel({
+    course,
+    providerProfile: profile,
+    sessions,
+  });
 }
 
 async function requireTeacherId() {
@@ -280,7 +406,7 @@ export default async function DashboardParticipantDetailPage({
     const [{ data: course }, { data: ticket }, { data: profile }] = await Promise.all([
       admin
         .from("courses")
-        .select("id,title,teacher_id,kind,instructor_name,price_cents,currency,location,location_details,starts_at,start_time,duration_minutes,recurrence_type")
+        .select("id,title,teacher_id,kind,description,instructor_name,price_cents,currency,price_type,location,location_details,starts_at,ends_at,start_time,duration_minutes,recurrence_type,workshop_storno_policy,cancellation_model,offer_image_url")
         .eq("id", booking.course_id)
         .maybeSingle<CourseRow>(),
       admin
@@ -290,7 +416,7 @@ export default async function DashboardParticipantDetailPage({
         .maybeSingle<WorkshopTicketRow>(),
       admin
         .from("profiles")
-        .select("first_name,last_name,provider_type,organization_name")
+        .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url,email")
         .eq("id", teacherId)
         .maybeSingle<ProfileRow>(),
     ]);
@@ -299,8 +425,13 @@ export default async function DashboardParticipantDetailPage({
       redirect("/dashboard/participants");
     }
 
-    const providerName =
-      profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
+    const { data: sessions } = await admin
+      .from("course_sessions")
+      .select("starts_at,ends_at")
+      .eq("course_id", course.id)
+      .order("starts_at", { ascending: true })
+      .returns<SessionRow[]>();
+    const offerViewModel = buildParticipantOfferViewModel(course, profile, sessions ?? []);
     const workshopMailHref = buildMailtoHref({
       to: [booking.customer_email ?? ticket?.customer_email ?? null],
       subject: buildParticipantMailSubject(course.title),
@@ -311,10 +442,6 @@ export default async function DashboardParticipantDetailPage({
       checkedInAt,
       refundedAt: booking.refunded_at,
       stripeRefundId: booking.stripe_refund_id,
-    });
-    const workshopCalendarEnabled = hasOfferCalendarData({
-      kind: course.kind,
-      startsAt: course.starts_at,
     });
 
     return (
@@ -338,38 +465,8 @@ export default async function DashboardParticipantDetailPage({
               <p className="mt-2 text-sm text-muted-foreground">
                 Teilnehmerdetail für {course.title ?? "einmaliges Angebot"}.
               </p>
-              <div className="mt-4">
-                <WorkshopParticipantLifecycleButtons
-                  bookingId={booking.id}
-                  redirectTo={`/dashboard/participants/${booking.id}?source=workshop`}
-                  paymentStatus={booking.payment_status}
-                  playMode={lifecycle.playMode}
-                  stopDisabled={
-                    booking.status !== "paid" ||
-                    Boolean(booking.refunded_at) ||
-                    Boolean(booking.stripe_refund_id)
-                  }
-                  playClassName={lifecycle.playClassName}
-                  pauseClassName={lifecycle.pauseClassName}
-                  stopClassName={lifecycle.stopClassName}
-                />
-              </div>
+
             </div>
-            <MailActionLink
-              href={workshopMailHref}
-              label="E-Mail"
-              title="Teilnehmer*in per E-Mail kontaktieren"
-              disabledHint="Keine E-Mail-Adresse für diese Person vorhanden"
-            />
-            {workshopCalendarEnabled ? (
-              <Link href={buildBookingCalendarPath(booking.id, "workshop")} className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
-                Kalender
-              </Link>
-            ) : (
-              <span className="inline-flex cursor-not-allowed rounded-xl border px-4 py-2 text-sm font-semibold text-muted-foreground opacity-60">
-                Kalender
-              </span>
-            )}
           </div>
 
           <div className="mt-4 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2">
@@ -383,19 +480,27 @@ export default async function DashboardParticipantDetailPage({
           </div>
         </section>
 
-        <section className="rounded-2xl border p-6">
-          <h2 className="text-xl font-semibold">Angebotskontext</h2>
-          <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-            <p>Titel: <span className="font-medium text-foreground">{course.title ?? "einmaliges Angebot"}</span></p>
-            {providerName ? <p>Anbieter: <span className="font-medium text-foreground">{providerName}</span></p> : null}
-            {course.instructor_name ? <p>Leitung: <span className="font-medium text-foreground">{course.instructor_name}</span></p> : null}
-            {formatPrice(course.price_cents, course.currency) ? (
-              <p>Preis: <span className="font-medium text-foreground">{formatPrice(course.price_cents, course.currency)}</span></p>
-            ) : null}
-            {course.location ? <p>Ort: <span className="font-medium text-foreground">{course.location}</span></p> : null}
-            {course.location_details ? <p>Raum / Zusatzinfo: <span className="font-medium text-foreground">{course.location_details}</span></p> : null}
-          </div>
-        </section>
+        <ParticipantDetailActions
+          lifecycle={
+            <WorkshopParticipantLifecycleButtons
+              bookingId={booking.id}
+              redirectTo={`/dashboard/participants/${booking.id}?source=workshop`}
+              paymentStatus={booking.payment_status}
+              playMode={lifecycle.playMode}
+              stopDisabled={booking.status !== "paid" || Boolean(booking.refunded_at) || Boolean(booking.stripe_refund_id)}
+              playClassName={lifecycle.playClassName}
+              pauseClassName={lifecycle.pauseClassName}
+              stopClassName={lifecycle.stopClassName}
+            />
+          }
+          mailHref={workshopMailHref}
+          checkInHref={`/dashboard/courses/${course.id}/check-in`}
+          archiveParticipantId={booking.id}
+          archiveSource="workshop"
+          redirectTo={`/dashboard/participants/${booking.id}?source=workshop`}
+        />
+
+        <OfferSummaryCard viewModel={offerViewModel} compact />
       </main>
     );
   }
@@ -416,7 +521,7 @@ export default async function DashboardParticipantDetailPage({
     const [{ data: course }, { data: reservation }, { data: profile }, { data: contract }] = await Promise.all([
       admin
         .from("courses")
-        .select("id,title,teacher_id,kind,instructor_name,price_cents,currency,location,location_details,starts_at,start_time,duration_minutes,recurrence_type")
+        .select("id,title,teacher_id,kind,description,instructor_name,price_cents,currency,price_type,location,location_details,starts_at,ends_at,start_time,duration_minutes,recurrence_type,workshop_storno_policy,cancellation_model,offer_image_url")
         .eq("id", intent.course_id)
         .maybeSingle<CourseRow>(),
       intent.trial_reservation_id
@@ -430,7 +535,7 @@ export default async function DashboardParticipantDetailPage({
         : Promise.resolve({ data: null as TrialReservationRow | null }),
       admin
         .from("profiles")
-        .select("first_name,last_name,provider_type,organization_name")
+        .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url,email")
         .eq("id", teacherId)
         .maybeSingle<ProfileRow>(),
       intent.subscription_contract_id
@@ -455,8 +560,13 @@ export default async function DashboardParticipantDetailPage({
           .maybeSingle<TrialTicketRow>()
       : { data: null as TrialTicketRow | null };
 
-    const providerName =
-      profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
+    const { data: sessions } = await admin
+      .from("course_sessions")
+      .select("starts_at,ends_at")
+      .eq("course_id", course.id)
+      .order("starts_at", { ascending: true })
+      .returns<SessionRow[]>();
+    const offerViewModel = buildParticipantOfferViewModel(course, profile, sessions ?? []);
     const pauseStartLabel = formatCourseLifecycleDate(intent.subscription_pause_start_date ?? null);
     const pauseEndLabel = formatCourseLifecycleDate(intent.subscription_pause_end_date ?? null);
     const stopDateLabel = formatCourseLifecycleDate(intent.subscription_stop_date ?? null);
@@ -464,16 +574,6 @@ export default async function DashboardParticipantDetailPage({
       to: [intent.email ?? reservation?.email ?? null],
       subject: buildParticipantMailSubject(course.title),
     });
-    const registeredCalendarEnabled =
-      Boolean(intent.trial_reservation_id) &&
-      hasOfferCalendarData({
-        kind: course.kind,
-        startsAt: course.starts_at,
-        durationMinutes: course.duration_minutes,
-        startTime: course.start_time,
-        recurrenceType: course.recurrence_type,
-        sessionCount: 1,
-      });
     const lifecycle = getParticipantLifecycleDisplay({
       reservationCancelledAt: reservation?.cancelled_at ?? null,
       reservationDecisionStatus: reservation?.decision_status ?? null,
@@ -501,49 +601,8 @@ export default async function DashboardParticipantDetailPage({
               <p className="mt-2 text-sm text-muted-foreground">
                 Teilnehmerdetail fÃ¼r {course.title ?? "laufendes Angebot"}.
               </p>
-              <div className="mt-4">
-                <RegisteredParticipantLifecycleButtons
-                  reservationId={intent.trial_reservation_id ?? ""}
-                  redirectTo={`/dashboard/participants/${intent.id}?source=registered`}
-                  defaultActiveUntilDate={defaultMonthEnd}
-                  defaultPauseEndDate={intent?.subscription_pause_end_date ?? null}
-                  defaultStopDate={defaultMonthEnd}
-                  playLabel={
-                    intent.is_simulation && !intent.trial_reservation_id
-                      ? "Simulation aktiv"
-                      : lifecycleLabels.playLabel
-                  }
-                  playClassName={lifecycle.playClassName}
-                  pauseClassName={lifecycle.pauseClassName}
-                  stopClassName={lifecycle.stopClassName}
-                  pauseLabel={
-                    intent.is_simulation && !intent.trial_reservation_id ? "Pause spaeter" : lifecycleLabels.pauseLabel
-                  }
-                  stopLabel={
-                    intent.is_simulation && !intent.trial_reservation_id
-                      ? "Kuendigung spaeter"
-                      : lifecycleLabels.stopLabel
-                  }
-                  pauseDisabled={lifecycle.pauseDisabled || !hasInteractiveLifecycle}
-                  stopDisabled={lifecycle.stopDisabled || !hasInteractiveLifecycle}
-                />
-              </div>
+
             </div>
-            <MailActionLink
-              href={participantMailHref}
-              label="E-Mail"
-              title="Teilnehmer*in per E-Mail kontaktieren"
-              disabledHint="Keine E-Mail-Adresse fÃ¼r diese Person vorhanden"
-            />
-            {registeredCalendarEnabled ? (
-              <Link href={buildBookingCalendarPath(intent.trial_reservation_id as string, "registered")} className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
-                Kalender
-              </Link>
-            ) : (
-              <span className="inline-flex cursor-not-allowed rounded-xl border px-4 py-2 text-sm font-semibold text-muted-foreground opacity-60">
-                Kalender
-              </span>
-            )}
           </div>
 
           <div className="mt-4 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2">
@@ -565,25 +624,32 @@ export default async function DashboardParticipantDetailPage({
           </div>
         </section>
 
-        <section className="rounded-2xl border p-6">
-          <h2 className="text-xl font-semibold">Angebotskontext</h2>
-          <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-            <p>Titel: <span className="font-medium text-foreground">{course.title ?? "laufendes Angebot"}</span></p>
-            {providerName ? <p>Anbieter: <span className="font-medium text-foreground">{providerName}</span></p> : null}
-            {course.instructor_name ? <p>Leitung: <span className="font-medium text-foreground">{course.instructor_name}</span></p> : null}
-            {formatPrice(course.price_cents, course.currency) ? (
-              <p>Preis: <span className="font-medium text-foreground">{formatPrice(course.price_cents, course.currency)}</span></p>
-            ) : null}
-            {course.location ? <p>Ort: <span className="font-medium text-foreground">{course.location}</span></p> : null}
-            {course.location_details ? <p>Raum / Zusatzinfo: <span className="font-medium text-foreground">{course.location_details}</span></p> : null}
-            {reservation?.trial_starts_at ? (
-              <p>Probeteilnahme: <span className="font-medium text-foreground">{`${formatDateTime(reservation.trial_starts_at)} - ${formatDateTime(reservation.trial_ends_at)}`}</span></p>
-            ) : intent.is_simulation ? (
-              <p>Herkunft: <span className="font-medium text-foreground">Direkte Kurs-Testanmeldung ohne Probeteilnahme</span></p>
-            ) : null}
-          </div>
-        </section>
+        <ParticipantDetailActions
+          lifecycle={
+            <RegisteredParticipantLifecycleButtons
+              reservationId={intent.trial_reservation_id ?? ""}
+              redirectTo={`/dashboard/participants/${intent.id}?source=registered`}
+              defaultActiveUntilDate={defaultMonthEnd}
+              defaultPauseEndDate={intent?.subscription_pause_end_date ?? null}
+              defaultStopDate={defaultMonthEnd}
+              playLabel={intent.is_simulation && !intent.trial_reservation_id ? "Simulation aktiv" : lifecycleLabels.playLabel}
+              playClassName={lifecycle.playClassName}
+              pauseClassName={lifecycle.pauseClassName}
+              stopClassName={lifecycle.stopClassName}
+              pauseLabel={intent.is_simulation && !intent.trial_reservation_id ? "Pause spaeter" : lifecycleLabels.pauseLabel}
+              stopLabel={intent.is_simulation && !intent.trial_reservation_id ? "Kuendigung spaeter" : lifecycleLabels.stopLabel}
+              pauseDisabled={lifecycle.pauseDisabled || !hasInteractiveLifecycle}
+              stopDisabled={lifecycle.stopDisabled || !hasInteractiveLifecycle}
+            />
+          }
+          mailHref={participantMailHref}
+          checkInHref={`/dashboard/courses/${course.id}/check-in`}
+          archiveParticipantId={intent.trial_reservation_id ?? intent.id}
+          archiveSource="registered"
+          redirectTo={`/dashboard/participants/${intent.id}?source=registered`}
+        />
 
+        <OfferSummaryCard viewModel={offerViewModel} compact />
         <section className="rounded-2xl border p-6">
           <h2 className="text-xl font-semibold">Teilnahme steuern</h2>
           <div className="mt-4 space-y-2 text-sm text-muted-foreground">
@@ -658,7 +724,7 @@ export default async function DashboardParticipantDetailPage({
   const [{ data: course }, { data: intent }, { data: ticket }, { data: profile }] = await Promise.all([
     admin
       .from("courses")
-      .select("id,title,teacher_id,kind,instructor_name,price_cents,currency,location,location_details,starts_at,start_time,duration_minutes,recurrence_type")
+      .select("id,title,teacher_id,kind,description,instructor_name,price_cents,currency,price_type,location,location_details,starts_at,ends_at,start_time,duration_minutes,recurrence_type,workshop_storno_policy,cancellation_model,offer_image_url")
       .eq("id", reservation.course_id)
       .maybeSingle<CourseRow>(),
     admin
@@ -675,7 +741,7 @@ export default async function DashboardParticipantDetailPage({
       .maybeSingle<TrialTicketRow>(),
     admin
       .from("profiles")
-      .select("first_name,last_name,provider_type,organization_name")
+      .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url,email")
       .eq("id", teacherId)
       .maybeSingle<ProfileRow>(),
   ]);
@@ -684,8 +750,13 @@ export default async function DashboardParticipantDetailPage({
     redirect("/dashboard/participants");
   }
 
-  const providerName =
-    profile?.provider_type ? getProviderDisplayName(profile.provider_type, profile) : null;
+  const { data: sessions } = await admin
+    .from("course_sessions")
+    .select("starts_at,ends_at")
+    .eq("course_id", course.id)
+    .order("starts_at", { ascending: true })
+    .returns<SessionRow[]>();
+  const offerViewModel = buildParticipantOfferViewModel(course, profile, sessions ?? []);
   const { data: subscriptionContract } =
     intent?.subscription_contract_id
       ? await admin
@@ -704,15 +775,6 @@ export default async function DashboardParticipantDetailPage({
   const participantMailHref = buildMailtoHref({
     to: [intent?.email ?? reservation.email ?? null],
     subject: buildParticipantMailSubject(course.title),
-  });
-  const trialCalendarEnabled = Boolean(reservation.trial_starts_at);
-  const registeredCalendarEnabled = hasOfferCalendarData({
-    kind: course.kind,
-    startsAt: course.starts_at,
-    durationMinutes: course.duration_minutes,
-    startTime: course.start_time,
-    recurrenceType: course.recurrence_type,
-    sessionCount: 1,
   });
   const lifecycle = getParticipantLifecycleDisplay({
     reservationCancelledAt: reservation.cancelled_at ?? null,
@@ -733,71 +795,12 @@ export default async function DashboardParticipantDetailPage({
       <FlashMessages saved={saved} />
 
       <section className="rounded-2xl border p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">
-              {participantName(intent?.first_name ?? reservation.first_name, intent?.last_name ?? reservation.last_name, "Teilnehmer*in")}
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">Teilnehmerdetail für {course.title ?? "laufendes Angebot"}.</p>
-            <div className="mt-4">
-              {hasRegisteredParticipation ? (
-                <RegisteredParticipantLifecycleButtons
-                  reservationId={reservation.id}
-                  redirectTo={`/dashboard/participants/${reservation.id}?source=trial`}
-                  defaultActiveUntilDate={defaultMonthEnd}
-                  defaultPauseEndDate={intent?.subscription_pause_end_date ?? null}
-                  defaultStopDate={defaultMonthEnd}
-                  playLabel={lifecycleLabels.playLabel}
-                  playClassName={lifecycle.playClassName}
-                  pauseClassName={lifecycle.pauseClassName}
-                  stopClassName={lifecycle.stopClassName}
-                  pauseLabel={lifecycleLabels.pauseLabel}
-                  stopLabel={lifecycleLabels.stopLabel}
-                  pauseDisabled={lifecycle.pauseDisabled}
-                  stopDisabled={lifecycle.stopDisabled}
-                />
-              ) : (
-                <TrialParticipantLifecycleButtons
-                  reservationId={reservation.id}
-                  redirectTo={`/dashboard/participants/${reservation.id}?source=trial`}
-                  playClassName={lifecycle.playClassName}
-                  pauseClassName={lifecycle.pauseClassName}
-                  stopClassName={lifecycle.stopClassName}
-                  playDisabled={lifecycle.playDisabled}
-                  stopDisabled={lifecycle.stopDisabled}
-                  showApprovalAction={lifecycle.playMode === "trial_checked_in"}
-                  showCancellationAction={lifecycle.playMode === "trial_checked_in" || lifecycle.playMode === "trial_reserved"}
-                />
-              )}
-            </div>
-          </div>
-          <MailActionLink
-            href={participantMailHref}
-            label="E-Mail"
-            title="Teilnehmer*in per E-Mail kontaktieren"
-            disabledHint="Keine E-Mail-Adresse für diese Person vorhanden"
-          />
-          {hasRegisteredParticipation ? (
-            registeredCalendarEnabled ? (
-              <Link href={buildBookingCalendarPath(reservation.id, "registered")} className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
-                Kalender
-              </Link>
-            ) : (
-              <span className="inline-flex cursor-not-allowed rounded-xl border px-4 py-2 text-sm font-semibold text-muted-foreground opacity-60">
-                Kalender
-              </span>
-            )
-          ) : trialCalendarEnabled ? (
-            <Link href={buildBookingCalendarPath(reservation.id, "trial")} className="inline-flex rounded-xl border px-4 py-2 text-sm font-semibold">
-              Kalender
-            </Link>
-          ) : (
-            <span className="inline-flex cursor-not-allowed rounded-xl border px-4 py-2 text-sm font-semibold text-muted-foreground opacity-60">
-              Kalender
-            </span>
-          )}
+        <div>
+          <h1 className="text-2xl font-semibold">
+            {participantName(intent?.first_name ?? reservation.first_name, intent?.last_name ?? reservation.last_name, "Teilnehmer*in")}
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">Teilnehmerdetail fuer {course.title ?? "laufendes Angebot"}.</p>
         </div>
-
         <div className="mt-4 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2">
           <p>Name: <span className="font-medium text-foreground">{participantName(intent?.first_name ?? reservation.first_name, intent?.last_name ?? reservation.last_name, "Teilnehmer*in")}</span></p>
           <p>E-Mail: <span className="font-medium text-foreground">{intent?.email ?? reservation.email ?? "-"}</span></p>
@@ -815,21 +818,46 @@ export default async function DashboardParticipantDetailPage({
         </div>
       </section>
 
-      <section className="rounded-2xl border p-6">
-        <h2 className="text-xl font-semibold">Angebotskontext</h2>
-        <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-          <p>Titel: <span className="font-medium text-foreground">{course.title ?? "laufendes Angebot"}</span></p>
-          {providerName ? <p>Anbieter: <span className="font-medium text-foreground">{providerName}</span></p> : null}
-          {course.instructor_name ? <p>Leitung: <span className="font-medium text-foreground">{course.instructor_name}</span></p> : null}
-          {formatPrice(course.price_cents, course.currency) ? (
-            <p>Preis: <span className="font-medium text-foreground">{formatPrice(course.price_cents, course.currency)}</span></p>
-          ) : null}
-          {course.location ? <p>Ort: <span className="font-medium text-foreground">{course.location}</span></p> : null}
-          {course.location_details ? <p>Raum / Zusatzinfo: <span className="font-medium text-foreground">{course.location_details}</span></p> : null}
-          <p>Probeteilnahme: <span className="font-medium text-foreground">{`${formatDateTime(reservation.trial_starts_at)} - ${formatDateTime(reservation.trial_ends_at)}`}</span></p>
-        </div>
-      </section>
+      <ParticipantDetailActions
+        lifecycle={
+          hasRegisteredParticipation ? (
+            <RegisteredParticipantLifecycleButtons
+              reservationId={reservation.id}
+              redirectTo={`/dashboard/participants/${reservation.id}?source=trial`}
+              defaultActiveUntilDate={defaultMonthEnd}
+              defaultPauseEndDate={intent?.subscription_pause_end_date ?? null}
+              defaultStopDate={defaultMonthEnd}
+              playLabel={lifecycleLabels.playLabel}
+              playClassName={lifecycle.playClassName}
+              pauseClassName={lifecycle.pauseClassName}
+              stopClassName={lifecycle.stopClassName}
+              pauseLabel={lifecycleLabels.pauseLabel}
+              stopLabel={lifecycleLabels.stopLabel}
+              pauseDisabled={lifecycle.pauseDisabled}
+              stopDisabled={lifecycle.stopDisabled}
+            />
+          ) : (
+            <TrialParticipantLifecycleButtons
+              reservationId={reservation.id}
+              redirectTo={`/dashboard/participants/${reservation.id}?source=trial`}
+              playClassName={lifecycle.playClassName}
+              pauseClassName={lifecycle.pauseClassName}
+              stopClassName={lifecycle.stopClassName}
+              playDisabled={lifecycle.playDisabled}
+              stopDisabled={lifecycle.stopDisabled}
+              showApprovalAction={lifecycle.playMode === "trial_checked_in"}
+              showCancellationAction={lifecycle.playMode === "trial_checked_in" || lifecycle.playMode === "trial_reserved"}
+            />
+          )
+        }
+        mailHref={participantMailHref}
+        checkInHref={`/dashboard/courses/${course.id}/check-in`}
+        archiveParticipantId={reservation.id}
+        archiveSource={hasRegisteredParticipation ? "registered" : "trial"}
+        redirectTo={`/dashboard/participants/${reservation.id}?source=trial`}
+      />
 
+      <OfferSummaryCard viewModel={offerViewModel} compact />
       {hasRegisteredParticipation ? (
         <section className="rounded-2xl border p-6">
           <h2 className="text-xl font-semibold">Teilnahme steuern</h2>
