@@ -687,7 +687,7 @@ export default function CourseOverviewClient(props: {
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <DetailField label="Nächster Termin" value={item.nextDateLabel ?? "-"} />
                 <DetailField
                   label="Ort"
@@ -701,9 +701,14 @@ export default function CourseOverviewClient(props: {
                 />
                 <DetailField
                   label="Plätze"
-                  value={item.capacity === null ? "Unbegrenzt" : `${item.freeSeats ?? 0} frei / ${item.capacity}`}
+                  value={
+                    <span className="grid gap-0.5">
+                      <span>Gesamt: {item.capacity === null ? "Unbegrenzt" : item.capacity}</span>
+                      <span>Gebucht: {item.occupiedSeats}</span>
+                      <span>Frei: {item.freeSeats === null ? "-" : item.freeSeats}</span>
+                    </span>
+                  }
                 />
-                <DetailField label="Buchungen" value={item.occupiedSeats} />
                 <DetailField label="Sichtbarkeit" value={item.visibilityLabel} />
                 <DetailField label="Preis" value={item.priceLabel ?? "-"} />
               </div>
