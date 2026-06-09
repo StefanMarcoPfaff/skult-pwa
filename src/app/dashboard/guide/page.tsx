@@ -89,7 +89,7 @@ export default function DashboardGuidePage() {
         />
         <GuideSection
           title="7. Check-in"
-          items={["Teilnehmer-QR scannen.", "Termin-QR anzeigen.", "Manuell einchecken."]}
+          items={["Teilnehmer-QR scannen.", "Manuell einchecken.", "Status auf Anwesend, Entschuldigt oder Offen setzen."]}
         />
         <GuideSection
           title="8. Zahlungen"

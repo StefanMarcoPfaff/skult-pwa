@@ -34,7 +34,7 @@ export function TeacherMagicCheckInClient(props: {
   const [entries, setEntries] = useState(props.entries);
   const [message, setMessage] = useState<string | null>(null);
 
-  function markAttendance(ticketId: string, attendanceStatus: "present" | "excused") {
+  function markAttendance(ticketId: string, attendanceStatus: "present" | "excused" | "open") {
     setMessage(null);
     startTransition(async () => {
       const response = await fetch("/api/attendance/teacher-magic-link", {
@@ -55,7 +55,7 @@ export function TeacherMagicCheckInClient(props: {
         ok?: boolean;
         error?: string;
         checkedInAt?: string | null;
-        attendanceStatus?: "present" | "excused" | "absent";
+        attendanceStatus?: "present" | "excused" | "absent" | "open";
       };
       if (!response.ok || !data.ok) {
         setMessage(data.error ?? "Check-in konnte nicht gespeichert werden.");
@@ -68,7 +68,7 @@ export function TeacherMagicCheckInClient(props: {
             ? {
                 ...entry,
                 attendanceStatus: data.attendanceStatus ?? attendanceStatus,
-                markedAt: data.checkedInAt ?? new Date().toISOString(),
+                markedAt: data.attendanceStatus === "open" ? null : data.checkedInAt ?? new Date().toISOString(),
               }
             : entry
         )
@@ -128,6 +128,14 @@ export function TeacherMagicCheckInClient(props: {
                     className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Entschuldigt
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending || !props.checkInEnabled || entry.attendanceStatus === "open"}
+                    onClick={() => markAttendance(entry.ticketId, "open")}
+                    className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Offen
                   </button>
                 </div>
               </div>

@@ -9,7 +9,7 @@ type TeacherMagicLinkAttendanceRequest = {
   accessToken?: string;
   ticketId?: string;
   ticketToken?: string;
-  attendanceStatus?: "present" | "excused";
+  attendanceStatus?: "present" | "excused" | "open";
   sessionId?: string | null;
   eventDate?: string | null;
   room?: string | null;
@@ -42,7 +42,8 @@ export async function POST(req: Request) {
   const accessToken = String(body.accessToken ?? "").trim();
   const ticketId = String(body.ticketId ?? "").trim();
   const ticketToken = String(body.ticketToken ?? "").trim();
-  const attendanceStatus: AttendanceStatus = body.attendanceStatus === "excused" ? "excused" : "present";
+  const requestedStatus = body.attendanceStatus === "excused" || body.attendanceStatus === "open" ? body.attendanceStatus : "present";
+  const attendanceStatus: AttendanceStatus = requestedStatus === "excused" ? "excused" : "present";
   const sessionId = body.sessionId ? String(body.sessionId).trim() : null;
   const eventDate = body.eventDate ? String(body.eventDate).trim() : null;
 
@@ -70,6 +71,57 @@ export async function POST(req: Request) {
     if (!session || session.course_id !== verified.link.course_id || getDateKey(session.starts_at) !== eventDate.slice(0, 10)) {
       return NextResponse.json({ error: "Heute ist kein Check-in für dieses Angebot möglich." }, { status: 400 });
     }
+  }
+
+  if (requestedStatus === "open") {
+    if (!ticketId) {
+      return NextResponse.json({ error: "Missing attendance context." }, { status: 400 });
+    }
+
+    const admin = createSupabaseAdmin();
+    let deleteQuery = admin
+      .from("attendance_records")
+      .delete()
+      .eq("course_id", verified.link.course_id)
+      .eq("ticket_id", ticketId);
+
+    if (sessionId) {
+      deleteQuery = deleteQuery.eq("session_id", sessionId);
+    } else {
+      deleteQuery = deleteQuery.is("session_id", null);
+    }
+
+    if (eventDate) {
+      deleteQuery = deleteQuery.eq("event_date", eventDate.slice(0, 10));
+    } else {
+      deleteQuery = deleteQuery.is("event_date", null);
+    }
+
+    const { error } = await deleteQuery;
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    await admin
+      .from("checkin_access_links")
+      .update({
+        last_used_at: new Date().toISOString(),
+        metadata: {
+          ...(verified.link.metadata ?? {}),
+          last_checkin_source: "teacher_magic_link",
+          last_checked_in_ticket_id: ticketId,
+          last_attendance_status: "open",
+          last_checked_in_by_label: "Check-in-Link",
+        },
+      })
+      .eq("id", verified.link.id);
+
+    return NextResponse.json({
+      ok: true,
+      checkedInAt: null,
+      attendanceStatus: "open",
+      ticketId,
+    });
   }
 
   try {

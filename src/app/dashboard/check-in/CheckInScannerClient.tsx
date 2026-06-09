@@ -155,9 +155,9 @@ export default function CheckInScannerClient({
     <section className="rounded-2xl border p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold">Kamera-Scanner</h2>
+          <h2 className="text-xl font-semibold">Teilnehmer-QR scannen</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Öffne die Kamera und scanne den QR-Code des Tickets direkt vor Ort.
+            Öffne die Kamera und scanne das persönliche Ticket direkt vor Ort.
           </p>
         </div>
         <button

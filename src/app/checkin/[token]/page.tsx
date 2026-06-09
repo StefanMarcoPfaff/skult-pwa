@@ -193,21 +193,21 @@ export default async function TeacherMagicCheckInPage({
         (!selectedSessionId && selectedEventDate && option.eventDate === selectedEventDate)
     ) ?? null;
   const todayEvent = eventOptions.find((option) => option.isToday) ?? null;
-  const selectedEvent = todayEvent ?? selectedEventFromParams ?? eventOptions[0];
-  const checkInEnabled = Boolean(todayEvent);
+  const selectedEvent = selectedEventFromParams ?? todayEvent ?? eventOptions[0];
+  const checkInEnabled = Boolean(selectedEvent?.isToday);
 
   const scannedTicketToken = getParam(sp, "token");
   let scanMessage: { ok: boolean; text: string } | null = null;
   if (scannedTicketToken) {
-    if (!todayEvent) {
+    if (!checkInEnabled) {
       scanMessage = { ok: false, text: "Heute ist kein Check-in für dieses Angebot möglich." };
     } else {
       try {
       const result = await recordAttendanceForTicketToken({
         qrToken: scannedTicketToken,
         courseId: course.id,
-        sessionId: todayEvent.sessionId,
-        eventDate: todayEvent.eventDate,
+        sessionId: selectedEvent.sessionId,
+        eventDate: selectedEvent.eventDate,
         checkedInBy: null,
         method: "qr_scan",
         attendanceStatus: "present",
@@ -284,12 +284,12 @@ export default async function TeacherMagicCheckInPage({
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold">{course.title ?? "Check-in"}</h1>
         <p className="text-sm text-muted-foreground">
-          {todayEvent ? `Heute: ${todayEvent.label}` : "Check-in ist nur am jeweiligen Angebotstag möglich."}
+          Wähle den Termin aus und checke Teilnehmende per Ticket-Scan oder manuell ein.
         </p>
       </header>
 
       <section className="rounded-2xl border p-5">
-          <h2 className="text-lg font-semibold">Termine</h2>
+          <h2 className="text-lg font-semibold">Termin wählen</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {eventOptions.map((option) => {
               const params = new URLSearchParams();
@@ -323,18 +323,18 @@ export default async function TeacherMagicCheckInPage({
         </section>
       ) : null}
 
-      {todayEvent ? (
+      {checkInEnabled ? (
         <CheckInScannerClient
           redirectPath={`/checkin/${token}`}
           redirectParams={{
-            sessionId: todayEvent.sessionId ?? undefined,
-            eventDate: todayEvent.eventDate,
+            sessionId: selectedEvent.sessionId ?? undefined,
+            eventDate: selectedEvent.eventDate,
           }}
         />
       ) : null}
 
       <section className="space-y-3">
-        <h2 className="text-xl font-semibold">Teilnehmende</h2>
+        <h2 className="text-xl font-semibold">Manuell einchecken</h2>
         <TeacherMagicCheckInClient
           accessToken={token}
           sessionId={selectedEvent.sessionId}
