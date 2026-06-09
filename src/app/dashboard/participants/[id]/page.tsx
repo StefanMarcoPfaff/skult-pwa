@@ -61,7 +61,6 @@ type CourseRow = {
   instructor_name: string | null;
   price_cents: number | null;
   currency: string | null;
-  price_type?: string | null;
   location: string | null;
   location_details: string | null;
   starts_at: string | null;
@@ -81,7 +80,6 @@ type ProfileRow = {
   organization_name: string | null;
   photo_url?: string | null;
   company_logo_url?: string | null;
-  email?: string | null;
 };
 
 type SessionRow = {
@@ -510,7 +508,7 @@ export default async function DashboardParticipantDetailPage({
     const [{ data: course }, { data: ticket }, { data: profile }] = await Promise.all([
       admin
         .from("courses")
-        .select("id,title,teacher_id,kind,description,instructor_name,price_cents,currency,price_type,location,location_details,starts_at,ends_at,start_time,duration_minutes,recurrence_type,workshop_storno_policy,cancellation_model,offer_image_url")
+        .select("id,title,teacher_id,kind,description,instructor_name,price_cents,currency,location,location_details,starts_at,ends_at,start_time,duration_minutes,recurrence_type,workshop_storno_policy,cancellation_model,offer_image_url")
         .eq("id", booking.course_id)
         .maybeSingle<CourseRow>(),
       admin
@@ -520,7 +518,7 @@ export default async function DashboardParticipantDetailPage({
         .maybeSingle<WorkshopTicketRow>(),
       admin
         .from("profiles")
-        .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url,email")
+        .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url")
         .eq("id", teacherId)
         .maybeSingle<ProfileRow>(),
     ]);
@@ -625,7 +623,7 @@ export default async function DashboardParticipantDetailPage({
     const [{ data: course }, { data: reservation }, { data: profile }, { data: contract }] = await Promise.all([
       admin
         .from("courses")
-        .select("id,title,teacher_id,kind,description,instructor_name,price_cents,currency,price_type,location,location_details,starts_at,ends_at,start_time,duration_minutes,recurrence_type,workshop_storno_policy,cancellation_model,offer_image_url")
+        .select("id,title,teacher_id,kind,description,instructor_name,price_cents,currency,location,location_details,starts_at,ends_at,start_time,duration_minutes,recurrence_type,workshop_storno_policy,cancellation_model,offer_image_url")
         .eq("id", intent.course_id)
         .maybeSingle<CourseRow>(),
       intent.trial_reservation_id
@@ -639,7 +637,7 @@ export default async function DashboardParticipantDetailPage({
         : Promise.resolve({ data: null as TrialReservationRow | null }),
       admin
         .from("profiles")
-        .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url,email")
+        .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url")
         .eq("id", teacherId)
         .maybeSingle<ProfileRow>(),
       intent.subscription_contract_id
@@ -828,7 +826,7 @@ export default async function DashboardParticipantDetailPage({
   const [{ data: course }, { data: intent }, { data: ticket }, { data: profile }] = await Promise.all([
     admin
       .from("courses")
-      .select("id,title,teacher_id,kind,description,instructor_name,price_cents,currency,price_type,location,location_details,starts_at,ends_at,start_time,duration_minutes,recurrence_type,workshop_storno_policy,cancellation_model,offer_image_url")
+      .select("id,title,teacher_id,kind,description,instructor_name,price_cents,currency,location,location_details,starts_at,ends_at,start_time,duration_minutes,recurrence_type,workshop_storno_policy,cancellation_model,offer_image_url")
       .eq("id", reservation.course_id)
       .maybeSingle<CourseRow>(),
     admin
@@ -845,7 +843,7 @@ export default async function DashboardParticipantDetailPage({
       .maybeSingle<TrialTicketRow>(),
     admin
       .from("profiles")
-      .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url,email")
+      .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url")
       .eq("id", teacherId)
       .maybeSingle<ProfileRow>(),
   ]);
