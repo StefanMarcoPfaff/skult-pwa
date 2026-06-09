@@ -1,9 +1,7 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import DashboardEmptyState from "../_components/DashboardEmptyState";
-import DashboardFilterPanel from "../_components/DashboardFilterPanel";
 import DashboardPageHeader from "../_components/DashboardPageHeader";
-import StatusFilterChips from "../_components/StatusFilterChips";
 import { ParticipantOverviewList, type ParticipantStatusFilter } from "./ParticipantOverviewList";
 import { loadParticipantOverviewItems } from "./participant-overview-data";
 
@@ -110,10 +108,6 @@ function getParticipantStatusFilter(value: string | string[] | undefined): Parti
   return "all";
 }
 
-function buildParticipantStatusHref(status: ParticipantStatusFilter) {
-  return status === "all" ? "/dashboard/participants" : `/dashboard/participants?status=${status}`;
-}
-
 export default async function DashboardParticipantsPage({
   searchParams,
 }: {
@@ -138,23 +132,6 @@ export default async function DashboardParticipantsPage({
         title="Teilnehmende"
         description="Hier siehst du Probeteilnahmen, verbindliche Anmeldungen, Buchungen und Check-ins für deine Angebote."
       />
-      <DashboardFilterPanel>
-        <StatusFilterChips
-          ariaLabel="Teilnahmestatus"
-          items={[
-            { href: buildParticipantStatusHref("all"), active: statusFilter === "all", label: "Alle", tone: "neutral" },
-            { href: buildParticipantStatusHref("active"), active: statusFilter === "active", label: "Aktiv", tone: "green" },
-            { href: buildParticipantStatusHref("paused"), active: statusFilter === "paused", label: "Pausiert", tone: "orange" },
-            {
-              href: buildParticipantStatusHref("ended"),
-              active: statusFilter === "ended",
-              label: "Beendet/Gekündigt",
-              tone: "red",
-            },
-          ]}
-        />
-      </DashboardFilterPanel>
-
       <FlashMessages saved={saved} />
 
       {items.length === 0 ? (

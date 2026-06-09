@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useId, useMemo, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { ConfirmIconAction } from "@/app/dashboard/courses/ConfirmIconAction";
 import { OfferActionIcon } from "@/app/dashboard/courses/OfferActionIcon";
 import { MailActionLink } from "@/components/dashboard/MailActionLink";
+import { buildMailtoHref } from "@/lib/mailto";
 import DashboardEmptyState from "../_components/DashboardEmptyState";
 import SortableTableHeader, { type SortDirection } from "../_components/SortableTableHeader";
 import { archiveParticipantAction } from "./actions";
@@ -123,7 +123,31 @@ export type ParticipantOverviewItem = {
 
 export type ParticipantStatusFilter = "all" | "active" | "paused" | "ended";
 
-type SortKey = "date" | "name" | "offer" | "status";
+type CheckInFilter = "all" | "checked-in" | "not-checked-in";
+type OfferTypeFilter = "all" | "one-time" | "ongoing" | "trial";
+type SortKey = "date" | "name" | "offer" | "status" | "checkIn";
+
+type ChipTone = "neutral" | "green" | "orange" | "red" | "emerald" | "sky" | "amber";
+
+const STATUS_FILTER_OPTIONS: Array<{ value: ParticipantStatusFilter; label: string; tone: ChipTone }> = [
+  { value: "all", label: "Alle", tone: "neutral" },
+  { value: "active", label: "Aktiv", tone: "green" },
+  { value: "paused", label: "Pausiert", tone: "orange" },
+  { value: "ended", label: "Beendet/Gekündigt", tone: "red" },
+];
+
+const CHECK_IN_FILTER_OPTIONS: Array<{ value: CheckInFilter; label: string; tone: ChipTone }> = [
+  { value: "all", label: "Alle Check-ins", tone: "neutral" },
+  { value: "checked-in", label: "Eingecheckt", tone: "emerald" },
+  { value: "not-checked-in", label: "Nicht eingecheckt", tone: "amber" },
+];
+
+const OFFER_TYPE_FILTER_OPTIONS: Array<{ value: OfferTypeFilter; label: string; tone: ChipTone }> = [
+  { value: "all", label: "Alle Angebotsarten", tone: "neutral" },
+  { value: "one-time", label: "einmaliges Angebot", tone: "sky" },
+  { value: "ongoing", label: "laufendes Angebot", tone: "green" },
+  { value: "trial", label: "Probestunde", tone: "amber" },
+];
 
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
@@ -151,6 +175,99 @@ function getCheckInSummary(item: ParticipantOverviewItem, checkedInAt: string | 
   if (checkedInAt) return `Eingecheckt am ${formatDateTime(checkedInAt)}`;
   if (!item.checkIn.enabled) return item.checkIn.disabledReason ?? "Nicht eincheckbar";
   return "Noch nicht eingecheckt";
+}
+
+function getCheckInStatusLabel(item: ParticipantOverviewItem, checkedInAt: string | null) {
+  if (checkedInAt) return "Eingecheckt";
+  if (!item.checkIn) return "Nicht eincheckbar";
+  return "Nicht eingecheckt";
+}
+
+function getFilterChipClasses(tone: ChipTone, active: boolean) {
+  if (tone === "green") {
+    return active
+      ? "border-green-600 bg-green-600 text-white"
+      : "border-green-200 bg-green-50 text-green-800 hover:border-green-300";
+  }
+  if (tone === "orange") {
+    return active
+      ? "border-orange-500 bg-orange-500 text-white"
+      : "border-orange-200 bg-orange-50 text-orange-800 hover:border-orange-300";
+  }
+  if (tone === "red") {
+    return active
+      ? "border-red-600 bg-red-600 text-white"
+      : "border-red-200 bg-red-50 text-red-800 hover:border-red-300";
+  }
+  if (tone === "emerald") {
+    return active
+      ? "border-emerald-600 bg-emerald-600 text-white"
+      : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300";
+  }
+  if (tone === "sky") {
+    return active
+      ? "border-sky-600 bg-sky-600 text-white"
+      : "border-sky-200 bg-sky-50 text-sky-800 hover:border-sky-300";
+  }
+  if (tone === "amber") {
+    return active
+      ? "border-amber-500 bg-amber-500 text-white"
+      : "border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300";
+  }
+
+  return active
+    ? "border-slate-900 bg-slate-900 text-white"
+    : "border-slate-200 bg-white text-slate-800 hover:border-slate-300";
+}
+
+function FilterChip<T extends string>(props: {
+  label: string;
+  value: T;
+  activeValue: T;
+  tone: ChipTone;
+  onSelect: (value: T) => void;
+}) {
+  const active = props.value === props.activeValue;
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={() => props.onSelect(props.value)}
+      className={`inline-flex min-h-10 items-center justify-center rounded-full border px-4 py-2 text-sm font-medium whitespace-nowrap transition ${getFilterChipClasses(props.tone, active)}`}
+    >
+      {props.label}
+    </button>
+  );
+}
+
+function SortChip(props: {
+  label: string;
+  active: boolean;
+  direction: SortDirection;
+  onToggle: () => void;
+}) {
+  return (
+    <SortableTableHeader
+      label={props.label}
+      active={props.active}
+      direction={props.direction}
+      onToggle={props.onToggle}
+      className={`min-h-10 justify-center rounded-full border px-4 py-2 text-sm normal-case tracking-normal ${
+        props.active
+          ? "border-slate-900 bg-slate-900 text-white"
+          : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
+      }`}
+    />
+  );
+}
+
+function DetailField(props: { label: string; value: ReactNode }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{props.label}</p>
+      <div className="mt-1 min-w-0 text-sm font-medium text-slate-950">{props.value}</div>
+    </div>
+  );
 }
 
 function ActionZone(props: { children: ReactNode }) {
@@ -481,23 +598,24 @@ export function ParticipantOverviewList(props: {
   items: ParticipantOverviewItem[];
   statusFilter: ParticipantStatusFilter;
 }) {
-  const router = useRouter();
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ParticipantStatusFilter>(props.statusFilter);
+  const [offerFilter, setOfferFilter] = useState("all");
+  const [checkInFilter, setCheckInFilter] = useState<CheckInFilter>("all");
+  const [offerTypeFilter, setOfferTypeFilter] = useState<OfferTypeFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [checkedInById, setCheckedInById] = useState<Record<string, string | null>>(
     Object.fromEntries(props.items.map((item) => [item.id, item.checkIn?.checkedInAt ?? null]))
   );
 
-  function handleNavigate(href: string) {
-    router.push(href);
-  }
-
-  function handleKeyDown(event: KeyboardEvent<HTMLElement>, href: string) {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    handleNavigate(href);
-  }
+  const offerOptions = useMemo(
+    () =>
+      Array.from(new Set(props.items.map((item) => item.offerTitle).filter(Boolean))).sort((left, right) =>
+        left.localeCompare(right, "de", { sensitivity: "base" })
+      ),
+    [props.items]
+  );
 
   function handleCheckedIn(id: string, checkedInAt: string) {
     setCheckedInById((current) => ({ ...current, [id]: checkedInAt }));
@@ -508,20 +626,34 @@ export function ParticipantOverviewList(props: {
     const items = props.items.filter((item) => {
       const haystack = [item.displayName, item.email ?? "", item.offerTitle].join(" ").toLowerCase();
       if (normalizedQuery && !haystack.includes(normalizedQuery)) return false;
+      if (offerFilter !== "all" && item.offerTitle !== offerFilter) return false;
 
-      if (props.statusFilter === "all") return true;
-      if (props.statusFilter === "active") {
+      const checkedInAt = checkedInById[item.id] ?? null;
+      if (checkInFilter === "checked-in" && !checkedInAt) return false;
+      if (checkInFilter === "not-checked-in" && checkedInAt) return false;
+
+      if (offerTypeFilter === "trial" && item.sourceLabel !== "Probeteilnahme") return false;
+      if (offerTypeFilter === "one-time" && item.offerKindLabel !== "einmaliges Angebot") return false;
+      if (
+        offerTypeFilter === "ongoing" &&
+        (item.offerKindLabel !== "laufendes Angebot" || item.sourceLabel === "Probeteilnahme")
+      ) {
+        return false;
+      }
+
+      if (statusFilter === "all") return true;
+      if (statusFilter === "active") {
         if (item.status.kind === "registered") return (item.status.subscriptionStatus ?? "active") === "active";
         if (item.status.kind === "workshop") return item.status.bookingStatus === "paid";
         return item.status.kind === "trial" && item.status.decisionStatus === "approved";
       }
-      if (props.statusFilter === "paused") {
+      if (statusFilter === "paused") {
         return (
           item.status.kind === "registered" &&
           ["paused", "pause_scheduled"].includes(item.status.subscriptionStatus ?? "")
         );
       }
-      if (props.statusFilter === "ended") {
+      if (statusFilter === "ended") {
         if (item.status.kind === "trial") {
           return Boolean(item.status.cancelledAt) || item.status.decisionStatus === "rejected";
         }
@@ -547,6 +679,15 @@ export function ParticipantOverviewList(props: {
         );
       }
 
+      if (sortKey === "checkIn") {
+        const leftCheckedInAt = checkedInById[left.id] ?? "";
+        const rightCheckedInAt = checkedInById[right.id] ?? "";
+        const leftRank = leftCheckedInAt ? 0 : 1;
+        const rightRank = rightCheckedInAt ? 0 : 1;
+        if (leftRank !== rightRank) return (leftRank - rightRank) * directionFactor;
+        return rightCheckedInAt.localeCompare(leftCheckedInAt) * directionFactor;
+      }
+
       if (sortKey === "offer") {
         return (
           left.offerTitle.localeCompare(right.offerTitle, "de", { sensitivity: "base" }) * directionFactor ||
@@ -561,7 +702,28 @@ export function ParticipantOverviewList(props: {
     });
 
     return items;
-  }, [normalizedQuery, props.items, props.statusFilter, sortDirection, sortKey]);
+  }, [
+    checkInFilter,
+    checkedInById,
+    normalizedQuery,
+    offerFilter,
+    offerTypeFilter,
+    props.items,
+    sortDirection,
+    sortKey,
+    statusFilter,
+  ]);
+
+  const filterIsActive =
+    normalizedQuery.length > 0 ||
+    statusFilter !== "all" ||
+    offerFilter !== "all" ||
+    checkInFilter !== "all" ||
+    offerTypeFilter !== "all";
+  const filteredMailHref = buildMailtoHref({
+    bcc: visibleItems.map((item) => item.email),
+    subject: "Information für gefilterte Teilnehmende",
+  });
 
   function toggleSort(nextKey: SortKey) {
     if (nextKey === sortKey) {
@@ -575,47 +737,164 @@ export function ParticipantOverviewList(props: {
 
   return (
     <section className="space-y-5">
-      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-          <label className="grid gap-2 text-sm">
-            <span className="font-medium text-slate-900">Suche</span>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Name, E-Mail oder Angebot"
-              className="min-h-11 rounded-2xl border border-slate-200 px-4 py-3"
-            />
-          </label>
-          <div className="grid gap-2 text-sm">
-            <span className="font-medium text-slate-900">Sortierung</span>
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              <SortableTableHeader
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-base font-semibold text-slate-950">Filtern</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Status, Angebot, Check-in und Angebotsart eingrenzen.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Teilnahmestatus</p>
+              <div className="flex flex-wrap gap-2">
+                {STATUS_FILTER_OPTIONS.map((option) => (
+                  <FilterChip
+                    key={option.value}
+                    label={option.label}
+                    value={option.value}
+                    activeValue={statusFilter}
+                    tone={option.tone}
+                    onSelect={setStatusFilter}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="grid gap-2 text-sm">
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Angebot
+                </span>
+                <select
+                  value={offerFilter}
+                  onChange={(event) => setOfferFilter(event.target.value)}
+                  className="min-h-11 rounded-2xl border border-slate-200 bg-white px-4 py-3 font-medium text-slate-900"
+                >
+                  <option value="all">Alle Angebote</option>
+                  {offerOptions.map((offerTitle) => (
+                    <option key={offerTitle} value={offerTitle}>
+                      {offerTitle}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="grid gap-2 text-sm">
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Suche
+                </span>
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Name, E-Mail oder Angebot"
+                  className="min-h-11 rounded-2xl border border-slate-200 px-4 py-3"
+                />
+              </label>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Check-in-Status</p>
+              <div className="flex flex-wrap gap-2">
+                {CHECK_IN_FILTER_OPTIONS.map((option) => (
+                  <FilterChip
+                    key={option.value}
+                    label={option.label}
+                    value={option.value}
+                    activeValue={checkInFilter}
+                    tone={option.tone}
+                    onSelect={setCheckInFilter}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Angebotsart</p>
+              <div className="flex flex-wrap gap-2">
+                {OFFER_TYPE_FILTER_OPTIONS.map((option) => (
+                  <FilterChip
+                    key={option.value}
+                    label={option.label}
+                    value={option.value}
+                    activeValue={offerTypeFilter}
+                    tone={option.tone}
+                    onSelect={setOfferTypeFilter}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-base font-semibold text-slate-950">Sortieren</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Reihenfolge der Teilnehmendenliste festlegen.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <SortChip
                 label="Datum"
                 active={sortKey === "date"}
                 direction={sortDirection}
                 onToggle={() => toggleSort("date")}
               />
-              <SortableTableHeader
+              <SortChip
                 label="Teilnehmer*in"
                 active={sortKey === "name"}
                 direction={sortDirection}
                 onToggle={() => toggleSort("name")}
               />
-              <SortableTableHeader
+              <SortChip
                 label="Angebot"
                 active={sortKey === "offer"}
                 direction={sortDirection}
                 onToggle={() => toggleSort("offer")}
               />
-              <SortableTableHeader
+              <SortChip
                 label="Status"
                 active={sortKey === "status"}
                 direction={sortDirection}
                 onToggle={() => toggleSort("status")}
               />
+              <SortChip
+                label="Check-in"
+                active={sortKey === "checkIn"}
+                direction={sortDirection}
+                onToggle={() => toggleSort("checkIn")}
+              />
             </div>
           </div>
         </div>
+      </div>
+
+      {filterIsActive ? (
+        <div className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            {visibleItems.length} gefilterte Teilnehmende, davon{" "}
+            {visibleItems.filter((item) => item.email).length} mit E-Mail-Adresse.
+          </p>
+          {filteredMailHref ? (
+            <a
+              href={filteredMailHref}
+              className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+            >
+              Gefilterte Teilnehmende anschreiben
+            </a>
+          ) : (
+            <span className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-500">
+              Keine E-Mail-Adressen in der Auswahl
+            </span>
+          )}
+        </div>
+      ) : null}
+
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-slate-950">Teilnehmendenliste</h2>
+        <span className="text-sm text-muted-foreground">{visibleItems.length} Einträge</span>
       </div>
 
       {visibleItems.length === 0 ? <DashboardEmptyState title="Keine passenden Teilnehmenden gefunden." /> : null}
@@ -624,21 +903,18 @@ export function ParticipantOverviewList(props: {
         const checkedInAt = checkedInById[item.id] ?? null;
         const presentation = getCardPresentation(item, checkedInAt);
         const checkInSummary = getCheckInSummary(item, checkedInAt);
+        const checkInStatusLabel = getCheckInStatusLabel(item, checkedInAt);
 
         return (
           <article
             key={item.id}
-            className={`group cursor-pointer rounded-[28px] border p-5 transition hover:border-foreground/20 hover:shadow-sm focus-within:ring-2 focus-within:ring-foreground/20 ${presentation.articleClassName}`}
-            tabIndex={0}
-            role="link"
-            aria-label={`${item.displayName} ansehen`}
-            onClick={() => handleNavigate(item.detailHref)}
-            onKeyDown={(event) => handleKeyDown(event, item.detailHref)}
+            className={`rounded-[28px] border p-5 transition hover:border-foreground/20 hover:shadow-sm ${presentation.articleClassName}`}
           >
             <div className="space-y-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 space-y-1">
                   <h2 className="truncate text-lg font-semibold text-slate-950">{item.displayName}</h2>
+                  {item.email ? <p className="truncate text-sm text-muted-foreground">{item.email}</p> : null}
                   <p className="text-sm text-muted-foreground">
                     {item.offerKindLabel} · {item.offerTitle}
                   </p>
@@ -649,6 +925,34 @@ export function ParticipantOverviewList(props: {
                   {presentation.badge.label}
                 </span>
               </div>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <DetailField label="Angebot" value={<span className="line-clamp-2">{item.offerTitle}</span>} />
+                <DetailField label="Angebotsart" value={item.offerKindLabel} />
+                <DetailField label="Angebotsstatus" value={item.statusLabel} />
+                <DetailField label="Check-in-Status" value={checkInStatusLabel} />
+                <DetailField label="Letzter Check-in" value={checkedInAt ? formatDateTime(checkedInAt) : "-"} />
+              </div>
+
+              {!checkedInAt ? (
+                <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  {checkInSummary === "Noch nicht eingecheckt"
+                    ? "Noch kein Check-in erfasst."
+                    : `Noch kein Check-in erfasst: ${checkInSummary}`}
+                </p>
+              ) : null}
+
+              <details className="group/details rounded-2xl border border-slate-200 bg-white/70">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-950">
+                  <span>Details und Aktionen</span>
+                  <span className="text-xs text-muted-foreground group-open/details:hidden">anzeigen</span>
+                  <span className="hidden text-xs text-muted-foreground group-open/details:inline">ausblenden</span>
+                </summary>
+
+                <div className="space-y-4 border-t border-slate-200 p-4">
+                  <Link href={item.detailHref} className="inline-flex text-sm font-medium text-slate-950 underline-offset-4 hover:underline">
+                    Detailseite öffnen
+                  </Link>
 
               <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
                 <ActionGroup title="Teilnahmestatus & Verwaltung">
@@ -711,6 +1015,8 @@ export function ParticipantOverviewList(props: {
                   {item.decisionInfo ? <p>{item.decisionInfo}</p> : null}
                 </div>
               </div>
+                </div>
+              </details>
             </div>
           </article>
         );
