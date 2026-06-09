@@ -161,6 +161,13 @@ function buildTeacherScanHref(courseId: string, event: EventContext) {
   return `/dashboard/check-in?${params.toString()}`;
 }
 
+function buildParticipantDetailHref(id: string, source: "trial" | "registered" | "workshop") {
+  const params = new URLSearchParams();
+  params.set("source", source);
+  params.set("from", "participants");
+  return `/dashboard/participants/${id}?${params.toString()}`;
+}
+
 function getDefaultCourseEvent(course: CourseRow, sessions: SessionRow[]): EventContext | null {
   const now = Date.now();
   const sortedSessions = [...sessions].sort((left, right) =>
@@ -419,7 +426,7 @@ export async function loadParticipantOverviewItems(input: {
 
     items.push({
       id: `trial-${reservation.id}`,
-      detailHref: `/dashboard/participants/${reservation.id}?source=trial`,
+      detailHref: buildParticipantDetailHref(reservation.id, "trial"),
       displayName: participantName(reservation.first_name, reservation.last_name, "Probeteilnahme"),
       email: reservation.email,
       offerTitle: course.title,
@@ -570,7 +577,7 @@ export async function loadParticipantOverviewItems(input: {
 
     items.push({
       id: `registered-${intent.id}`,
-      detailHref: `/dashboard/participants/${intent.id}?source=registered`,
+      detailHref: buildParticipantDetailHref(intent.id, "registered"),
       displayName: participantName(intent.first_name, intent.last_name, "Teilnehmer*in"),
       email: intent.email,
       offerTitle: course.title,
@@ -698,7 +705,7 @@ export async function loadParticipantOverviewItems(input: {
 
     items.push({
       id: `workshop-${booking.id}`,
-      detailHref: `/dashboard/participants/${booking.id}?source=workshop`,
+      detailHref: buildParticipantDetailHref(booking.id, "workshop"),
       displayName: participantName(booking.customer_first_name, booking.customer_last_name, "Teilnehmer*in"),
       email: booking.customer_email,
       offerTitle: course.title,

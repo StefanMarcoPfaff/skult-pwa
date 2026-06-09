@@ -24,10 +24,13 @@ import {
 
 type SearchParams = {
   source?: string | string[];
+  from?: string | string[];
+  courseId?: string | string[];
   saved?: string | string[];
 };
 
 type ParticipantDetailSource = "trial" | "registered" | "workshop";
+type ParticipantDetailOrigin = "participants" | "course";
 
 type ParticipantLookupResult = {
   source: ParticipantDetailSource | null;
@@ -185,6 +188,52 @@ function getParticipantDetailSource(value: string | string[] | undefined): Parti
   const selected = getFirstSearchParamValue(value);
   if (selected === "trial" || selected === "registered" || selected === "workshop") return selected;
   return null;
+}
+
+function getParticipantDetailOrigin(value: string | string[] | undefined): ParticipantDetailOrigin | null {
+  const selected = getFirstSearchParamValue(value);
+  if (selected === "participants" || selected === "course") return selected;
+  return null;
+}
+
+function getParticipantBackLink({
+  origin,
+  courseId,
+  fallbackCourseId,
+}: {
+  origin: ParticipantDetailOrigin | null;
+  courseId?: string;
+  fallbackCourseId: string;
+}) {
+  if (origin === "participants") {
+    return {
+      href: "/dashboard/participants",
+      label: "Zurück zur Teilnehmendenübersicht",
+    };
+  }
+
+  return {
+    href: `/dashboard/courses/${courseId ?? fallbackCourseId}`,
+    label: "Zurück zum Angebot",
+  };
+}
+
+function buildParticipantDetailRedirectTo({
+  id,
+  source,
+  origin,
+  courseId,
+}: {
+  id: string;
+  source: ParticipantDetailSource;
+  origin: ParticipantDetailOrigin | null;
+  courseId?: string;
+}) {
+  const params = new URLSearchParams();
+  params.set("source", source);
+  if (origin) params.set("from", origin);
+  if (origin === "course" && courseId) params.set("courseId", courseId);
+  return `/dashboard/participants/${id}?${params.toString()}`;
 }
 
 async function resolveParticipantLookup(
@@ -473,9 +522,13 @@ export default async function DashboardParticipantDetailPage({
   const teacherId = await requireTeacherId();
   const admin = createSupabaseAdmin();
   const requestedSource = getParticipantDetailSource(sp.source);
+  const origin = getParticipantDetailOrigin(sp.from);
+  const returnCourseId = getFirstSearchParamValue(sp.courseId);
   console.log("[participants-detail] request", {
     id,
     rawSource: sp.source,
+    rawFrom: sp.from,
+    origin,
     requestedSource,
   });
   const lookup = await resolveParticipantLookup(admin, id, requestedSource);
@@ -546,10 +599,22 @@ export default async function DashboardParticipantDetailPage({
       stripeRefundId: booking.stripe_refund_id,
     });
 
+    const backLink = getParticipantBackLink({
+      origin,
+      courseId: returnCourseId,
+      fallbackCourseId: course.id,
+    });
+    const detailRedirectTo = buildParticipantDetailRedirectTo({
+      id: booking.id,
+      source: "workshop",
+      origin,
+      courseId: returnCourseId,
+    });
+
     return (
       <main className="mx-auto max-w-3xl space-y-6 p-6">
-        <Link href={`/dashboard/courses/${course.id}`} className="inline-flex text-sm font-semibold">
-          Zurück zum Angebot
+        <Link href={backLink.href} className="inline-flex text-sm font-semibold">
+          {backLink.label}
         </Link>
 
         <FlashMessages saved={saved} />
@@ -586,7 +651,7 @@ export default async function DashboardParticipantDetailPage({
           lifecycle={
             <WorkshopParticipantLifecycleButtons
               bookingId={booking.id}
-              redirectTo={`/dashboard/participants/${booking.id}?source=workshop`}
+              redirectTo={detailRedirectTo}
               paymentStatus={booking.payment_status}
               playMode={lifecycle.playMode}
               stopDisabled={booking.status !== "paid" || Boolean(booking.refunded_at) || Boolean(booking.stripe_refund_id)}
@@ -599,7 +664,7 @@ export default async function DashboardParticipantDetailPage({
           checkInHref={`/dashboard/courses/${course.id}/check-in`}
           archiveParticipantId={booking.id}
           archiveSource="workshop"
-          redirectTo={`/dashboard/participants/${booking.id}?source=workshop`}
+          redirectTo={detailRedirectTo}
         />
 
         <OfferSummaryCard viewModel={offerViewModel} compact />
@@ -685,11 +750,22 @@ export default async function DashboardParticipantDetailPage({
     const lifecycleLabels = getRegisteredLifecycleLabels(intent.subscription_status ?? null);
     const defaultMonthEnd = getNextMonthEndDate();
     const hasInteractiveLifecycle = Boolean(intent.trial_reservation_id) && !intent.is_simulation;
+    const backLink = getParticipantBackLink({
+      origin,
+      courseId: returnCourseId,
+      fallbackCourseId: course.id,
+    });
+    const detailRedirectTo = buildParticipantDetailRedirectTo({
+      id: intent.id,
+      source: "registered",
+      origin,
+      courseId: returnCourseId,
+    });
 
     return (
       <main className="mx-auto max-w-3xl space-y-6 p-6">
-        <Link href={`/dashboard/courses/${course.id}`} className="inline-flex text-sm font-semibold">
-          ZurÃ¼ck zum Angebot
+        <Link href={backLink.href} className="inline-flex text-sm font-semibold">
+          {backLink.label}
         </Link>
 
         <FlashMessages saved={saved} />
@@ -730,7 +806,7 @@ export default async function DashboardParticipantDetailPage({
           lifecycle={
             <RegisteredParticipantLifecycleButtons
               reservationId={intent.trial_reservation_id ?? ""}
-              redirectTo={`/dashboard/participants/${intent.id}?source=registered`}
+              redirectTo={detailRedirectTo}
               defaultActiveUntilDate={defaultMonthEnd}
               defaultPauseEndDate={intent?.subscription_pause_end_date ?? null}
               defaultStopDate={defaultMonthEnd}
@@ -748,7 +824,7 @@ export default async function DashboardParticipantDetailPage({
           checkInHref={`/dashboard/courses/${course.id}/check-in`}
           archiveParticipantId={intent.trial_reservation_id ?? intent.id}
           archiveSource="registered"
-          redirectTo={`/dashboard/participants/${intent.id}?source=registered`}
+          redirectTo={detailRedirectTo}
         />
 
         <OfferSummaryCard viewModel={offerViewModel} compact />
@@ -887,11 +963,22 @@ export default async function DashboardParticipantDetailPage({
   });
   const lifecycleLabels = getRegisteredLifecycleLabels(intent?.subscription_status ?? null);
   const defaultMonthEnd = getNextMonthEndDate();
+  const backLink = getParticipantBackLink({
+    origin,
+    courseId: returnCourseId,
+    fallbackCourseId: course.id,
+  });
+  const detailRedirectTo = buildParticipantDetailRedirectTo({
+    id: reservation.id,
+    source: "trial",
+    origin,
+    courseId: returnCourseId,
+  });
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
-      <Link href={`/dashboard/courses/${course.id}`} className="inline-flex text-sm font-semibold">
-        Zurück zum Angebot
+      <Link href={backLink.href} className="inline-flex text-sm font-semibold">
+        {backLink.label}
       </Link>
 
       <FlashMessages saved={saved} />
@@ -925,7 +1012,7 @@ export default async function DashboardParticipantDetailPage({
           hasRegisteredParticipation ? (
             <RegisteredParticipantLifecycleButtons
               reservationId={reservation.id}
-              redirectTo={`/dashboard/participants/${reservation.id}?source=trial`}
+              redirectTo={detailRedirectTo}
               defaultActiveUntilDate={defaultMonthEnd}
               defaultPauseEndDate={intent?.subscription_pause_end_date ?? null}
               defaultStopDate={defaultMonthEnd}
@@ -941,7 +1028,7 @@ export default async function DashboardParticipantDetailPage({
           ) : (
             <TrialParticipantLifecycleButtons
               reservationId={reservation.id}
-              redirectTo={`/dashboard/participants/${reservation.id}?source=trial`}
+              redirectTo={detailRedirectTo}
               playClassName={lifecycle.playClassName}
               pauseClassName={lifecycle.pauseClassName}
               stopClassName={lifecycle.stopClassName}
@@ -956,7 +1043,7 @@ export default async function DashboardParticipantDetailPage({
         checkInHref={`/dashboard/courses/${course.id}/check-in`}
         archiveParticipantId={reservation.id}
         archiveSource={hasRegisteredParticipation ? "registered" : "trial"}
-        redirectTo={`/dashboard/participants/${reservation.id}?source=trial`}
+        redirectTo={detailRedirectTo}
       />
 
       <OfferSummaryCard viewModel={offerViewModel} compact />
