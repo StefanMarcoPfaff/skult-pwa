@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { buildMailtoHref } from "@/lib/mailto";
 import DashboardEmptyState from "../_components/DashboardEmptyState";
 import SortableTableHeader, { type SortDirection } from "../_components/SortableTableHeader";
@@ -96,6 +97,7 @@ export type ParticipantOverviewItem = {
   detailHref: string;
   displayName: string;
   email: string | null;
+  offerId: string;
   offerTitle: string;
   offerKindLabel: string;
   sourceLabel: string;
@@ -120,6 +122,16 @@ type SortKey = "date" | "name" | "offer" | "status" | "checkIn";
 
 type ChipTone = "neutral" | "green" | "orange" | "red" | "emerald" | "sky" | "amber";
 
+type ParticipantListState = {
+  query: string;
+  statusFilter: ParticipantStatusFilter;
+  offerFilter: string;
+  checkInFilter: CheckInFilter;
+  offerTypeFilter: OfferTypeFilter;
+  sortKey: SortKey;
+  sortDirection: SortDirection;
+};
+
 const STATUS_FILTER_OPTIONS: Array<{ value: ParticipantStatusFilter; label: string; tone: ChipTone }> = [
   { value: "all", label: "Alle", tone: "neutral" },
   { value: "active", label: "Aktiv", tone: "green" },
@@ -139,6 +151,83 @@ const OFFER_TYPE_FILTER_OPTIONS: Array<{ value: OfferTypeFilter; label: string; 
   { value: "one-time", label: "einmaliges Angebot", tone: "sky" },
   { value: "ongoing", label: "laufendes Angebot", tone: "green" },
 ];
+
+function parseStatusFilter(value: string | null): ParticipantStatusFilter {
+  if (value === "active" || value === "trial" || value === "paused" || value === "ended") return value;
+  return "all";
+}
+
+function parseCheckInFilter(value: string | null): CheckInFilter {
+  if (value === "checked_in" || value === "checked-in") return "checked-in";
+  if (value === "not_checked_in" || value === "not-checked-in") return "not-checked-in";
+  return "all";
+}
+
+function parseOfferTypeFilter(value: string | null): OfferTypeFilter {
+  if (value === "one_time" || value === "one-time") return "one-time";
+  if (value === "ongoing") return "ongoing";
+  return "all";
+}
+
+function parseSortKey(value: string | null): SortKey {
+  if (value === "name" || value === "offer" || value === "status" || value === "date") return value;
+  if (value === "checkin" || value === "checkIn") return "checkIn";
+  return "date";
+}
+
+function parseSortDirection(value: string | null): SortDirection {
+  return value === "asc" ? "asc" : "desc";
+}
+
+function getUrlState(searchParams: URLSearchParams, fallbackStatusFilter: ParticipantStatusFilter): ParticipantListState {
+  return {
+    query: searchParams.get("q") ?? "",
+    statusFilter: searchParams.has("status") ? parseStatusFilter(searchParams.get("status")) : fallbackStatusFilter,
+    offerFilter: searchParams.get("offerId") ?? "all",
+    checkInFilter: parseCheckInFilter(searchParams.get("checkin")),
+    offerTypeFilter: parseOfferTypeFilter(searchParams.get("offerType")),
+    sortKey: parseSortKey(searchParams.get("sort")),
+    sortDirection: parseSortDirection(searchParams.get("direction")),
+  };
+}
+
+function writeUrlState(searchParams: URLSearchParams, state: ParticipantListState) {
+  const params = new URLSearchParams(searchParams.toString());
+
+  if (state.query.trim()) params.set("q", state.query.trim());
+  else params.delete("q");
+
+  if (state.statusFilter !== "all") params.set("status", state.statusFilter);
+  else params.delete("status");
+
+  if (state.offerFilter !== "all") params.set("offerId", state.offerFilter);
+  else params.delete("offerId");
+  params.delete("offer");
+
+  if (state.checkInFilter === "checked-in") params.set("checkin", "checked_in");
+  else if (state.checkInFilter === "not-checked-in") params.set("checkin", "not_checked_in");
+  else params.delete("checkin");
+
+  if (state.offerTypeFilter === "one-time") params.set("offerType", "one_time");
+  else if (state.offerTypeFilter === "ongoing") params.set("offerType", "ongoing");
+  else params.delete("offerType");
+
+  if (state.sortKey !== "date") params.set("sort", state.sortKey === "checkIn" ? "checkin" : state.sortKey);
+  else params.delete("sort");
+
+  if (state.sortDirection !== "desc") params.set("direction", state.sortDirection);
+  else params.delete("direction");
+
+  return params;
+}
+
+function buildHrefWithParam(href: string, key: string, value: string) {
+  const [path, rawQuery = ""] = href.split("?");
+  const params = new URLSearchParams(rawQuery);
+  params.set(key, value);
+  const query = params.toString();
+  return query ? `${path}?${query}` : path;
+}
 
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
@@ -252,32 +341,79 @@ export function ParticipantOverviewList(props: {
   items: ParticipantOverviewItem[];
   statusFilter: ParticipantStatusFilter;
 }) {
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<ParticipantStatusFilter>(props.statusFilter);
-  const [offerFilter, setOfferFilter] = useState("all");
-  const [checkInFilter, setCheckInFilter] = useState<CheckInFilter>("all");
-  const [offerTypeFilter, setOfferTypeFilter] = useState<OfferTypeFilter>("all");
-  const [sortKey, setSortKey] = useState<SortKey>("date");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const searchParamString = searchParams.toString();
+  const initialState = useMemo(
+    () => getUrlState(new URLSearchParams(searchParamString), props.statusFilter),
+    [props.statusFilter, searchParamString]
+  );
+  const [query, setQuery] = useState(initialState.query);
+  const [statusFilter, setStatusFilter] = useState<ParticipantStatusFilter>(initialState.statusFilter);
+  const [offerFilter, setOfferFilter] = useState(initialState.offerFilter);
+  const [checkInFilter, setCheckInFilter] = useState<CheckInFilter>(initialState.checkInFilter);
+  const [offerTypeFilter, setOfferTypeFilter] = useState<OfferTypeFilter>(initialState.offerTypeFilter);
+  const [sortKey, setSortKey] = useState<SortKey>(initialState.sortKey);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(initialState.sortDirection);
   const checkedInById = useMemo(
     () => Object.fromEntries(props.items.map((item) => [item.id, item.checkIn?.checkedInAt ?? null])),
     [props.items]
   );
 
+  useEffect(() => {
+    setQuery(initialState.query);
+    setStatusFilter(initialState.statusFilter);
+    setOfferFilter(initialState.offerFilter);
+    setCheckInFilter(initialState.checkInFilter);
+    setOfferTypeFilter(initialState.offerTypeFilter);
+    setSortKey(initialState.sortKey);
+    setSortDirection(initialState.sortDirection);
+  }, [initialState]);
+
   const offerOptions = useMemo(
     () =>
-      Array.from(new Set(props.items.map((item) => item.offerTitle).filter(Boolean))).sort((left, right) =>
-        left.localeCompare(right, "de", { sensitivity: "base" })
-      ),
+      Array.from(
+        new Map(props.items.map((item) => [item.offerId, { id: item.offerId, title: item.offerTitle }])).values()
+      ).sort((left, right) => left.title.localeCompare(right.title, "de", { sensitivity: "base" })),
     [props.items]
   );
+
+  function updateUrl(nextState: ParticipantListState) {
+    const params = writeUrlState(new URLSearchParams(searchParamString), nextState);
+    const queryString = params.toString();
+    router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+  }
+
+  function updateListState(next: Partial<ParticipantListState>) {
+    const nextState: ParticipantListState = {
+      query,
+      statusFilter,
+      offerFilter,
+      checkInFilter,
+      offerTypeFilter,
+      sortKey,
+      sortDirection,
+      ...next,
+    };
+
+    if (next.query !== undefined) setQuery(next.query);
+    if (next.statusFilter !== undefined) setStatusFilter(next.statusFilter);
+    if (next.offerFilter !== undefined) setOfferFilter(next.offerFilter);
+    if (next.checkInFilter !== undefined) setCheckInFilter(next.checkInFilter);
+    if (next.offerTypeFilter !== undefined) setOfferTypeFilter(next.offerTypeFilter);
+    if (next.sortKey !== undefined) setSortKey(next.sortKey);
+    if (next.sortDirection !== undefined) setSortDirection(next.sortDirection);
+
+    updateUrl(nextState);
+  }
 
   const normalizedQuery = query.trim().toLowerCase();
   const visibleItems = useMemo(() => {
     const items = props.items.filter((item) => {
       const haystack = [item.displayName, item.email ?? "", item.offerTitle].join(" ").toLowerCase();
       if (normalizedQuery && !haystack.includes(normalizedQuery)) return false;
-      if (offerFilter !== "all" && item.offerTitle !== offerFilter) return false;
+      if (offerFilter !== "all" && item.offerId !== offerFilter) return false;
 
       const checkedInAt = checkedInById[item.id] ?? null;
       if (checkInFilter === "checked-in" && !checkedInAt) return false;
@@ -386,14 +522,28 @@ export function ParticipantOverviewList(props: {
     subject: "Information für gefilterte Teilnehmende",
   });
 
+  const currentUrlState: ParticipantListState = {
+    query,
+    statusFilter,
+    offerFilter,
+    checkInFilter,
+    offerTypeFilter,
+    sortKey,
+    sortDirection,
+  };
+  const currentListParams = writeUrlState(new URLSearchParams(searchParamString), currentUrlState).toString();
+  const returnTo = currentListParams ? `${pathname}?${currentListParams}` : pathname;
+
   function toggleSort(nextKey: SortKey) {
     if (nextKey === sortKey) {
-      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      updateListState({ sortDirection: sortDirection === "asc" ? "desc" : "asc" });
       return;
     }
 
-    setSortKey(nextKey);
-    setSortDirection(nextKey === "date" ? "desc" : "asc");
+    updateListState({
+      sortKey: nextKey,
+      sortDirection: nextKey === "date" ? "desc" : "asc",
+    });
   }
 
   return (
@@ -431,7 +581,7 @@ export function ParticipantOverviewList(props: {
                     value={option.value}
                     activeValue={statusFilter}
                     tone={option.tone}
-                    onSelect={setStatusFilter}
+                    onSelect={(value) => updateListState({ statusFilter: value })}
                   />
                 ))}
               </div>
@@ -444,13 +594,13 @@ export function ParticipantOverviewList(props: {
                 </span>
                 <select
                   value={offerFilter}
-                  onChange={(event) => setOfferFilter(event.target.value)}
+                  onChange={(event) => updateListState({ offerFilter: event.target.value })}
                   className="min-h-11 w-full min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-3 font-medium text-slate-900"
                 >
                   <option value="all">Alle Angebote</option>
-                  {offerOptions.map((offerTitle) => (
-                    <option key={offerTitle} value={offerTitle}>
-                      {offerTitle}
+                  {offerOptions.map((offer) => (
+                    <option key={offer.id} value={offer.id}>
+                      {offer.title}
                     </option>
                   ))}
                 </select>
@@ -462,7 +612,7 @@ export function ParticipantOverviewList(props: {
                 </span>
                 <input
                   value={query}
-                  onChange={(event) => setQuery(event.target.value)}
+                  onChange={(event) => updateListState({ query: event.target.value })}
                   placeholder="Name, E-Mail oder Angebot"
                   className="min-h-11 w-full min-w-0 rounded-2xl border border-slate-200 px-4 py-3"
                 />
@@ -479,7 +629,7 @@ export function ParticipantOverviewList(props: {
                     value={option.value}
                     activeValue={checkInFilter}
                     tone={option.tone}
-                    onSelect={setCheckInFilter}
+                    onSelect={(value) => updateListState({ checkInFilter: value })}
                   />
                 ))}
               </div>
@@ -495,7 +645,7 @@ export function ParticipantOverviewList(props: {
                     value={option.value}
                     activeValue={offerTypeFilter}
                     tone={option.tone}
-                    onSelect={setOfferTypeFilter}
+                    onSelect={(value) => updateListState({ offerTypeFilter: value })}
                   />
                 ))}
               </div>
@@ -595,7 +745,7 @@ export function ParticipantOverviewList(props: {
         return (
           <Link
             key={item.id}
-            href={item.detailHref}
+            href={buildHrefWithParam(item.detailHref, "returnTo", returnTo)}
             className={`block rounded-[24px] border p-4 transition hover:border-foreground/20 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20 sm:p-5 ${presentation.articleClassName}`}
           >
             <div className="space-y-4">

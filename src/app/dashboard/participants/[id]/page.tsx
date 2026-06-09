@@ -26,6 +26,7 @@ type SearchParams = {
   source?: string | string[];
   from?: string | string[];
   courseId?: string | string[];
+  returnTo?: string | string[];
   saved?: string | string[];
 };
 
@@ -198,13 +199,22 @@ function getParticipantDetailOrigin(value: string | string[] | undefined): Parti
 
 function getParticipantBackLink({
   origin,
+  returnTo,
   courseId,
   fallbackCourseId,
 }: {
   origin: ParticipantDetailOrigin | null;
+  returnTo?: string;
   courseId?: string;
   fallbackCourseId: string;
 }) {
+  if (returnTo?.startsWith("/dashboard/participants")) {
+    return {
+      href: returnTo,
+      label: "Zurück zur Teilnehmendenübersicht",
+    };
+  }
+
   if (origin === "participants") {
     return {
       href: "/dashboard/participants",
@@ -222,16 +232,19 @@ function buildParticipantDetailRedirectTo({
   id,
   source,
   origin,
+  returnTo,
   courseId,
 }: {
   id: string;
   source: ParticipantDetailSource;
   origin: ParticipantDetailOrigin | null;
+  returnTo?: string;
   courseId?: string;
 }) {
   const params = new URLSearchParams();
   params.set("source", source);
   if (origin) params.set("from", origin);
+  if (returnTo?.startsWith("/dashboard/participants")) params.set("returnTo", returnTo);
   if (origin === "course" && courseId) params.set("courseId", courseId);
   return `/dashboard/participants/${id}?${params.toString()}`;
 }
@@ -524,10 +537,12 @@ export default async function DashboardParticipantDetailPage({
   const requestedSource = getParticipantDetailSource(sp.source);
   const origin = getParticipantDetailOrigin(sp.from);
   const returnCourseId = getFirstSearchParamValue(sp.courseId);
+  const returnTo = getFirstSearchParamValue(sp.returnTo);
   console.log("[participants-detail] request", {
     id,
     rawSource: sp.source,
     rawFrom: sp.from,
+    returnTo,
     origin,
     requestedSource,
   });
@@ -601,6 +616,7 @@ export default async function DashboardParticipantDetailPage({
 
     const backLink = getParticipantBackLink({
       origin,
+      returnTo,
       courseId: returnCourseId,
       fallbackCourseId: course.id,
     });
@@ -608,6 +624,7 @@ export default async function DashboardParticipantDetailPage({
       id: booking.id,
       source: "workshop",
       origin,
+      returnTo,
       courseId: returnCourseId,
     });
 
@@ -752,6 +769,7 @@ export default async function DashboardParticipantDetailPage({
     const hasInteractiveLifecycle = Boolean(intent.trial_reservation_id) && !intent.is_simulation;
     const backLink = getParticipantBackLink({
       origin,
+      returnTo,
       courseId: returnCourseId,
       fallbackCourseId: course.id,
     });
@@ -759,6 +777,7 @@ export default async function DashboardParticipantDetailPage({
       id: intent.id,
       source: "registered",
       origin,
+      returnTo,
       courseId: returnCourseId,
     });
 
@@ -965,6 +984,7 @@ export default async function DashboardParticipantDetailPage({
   const defaultMonthEnd = getNextMonthEndDate();
   const backLink = getParticipantBackLink({
     origin,
+    returnTo,
     courseId: returnCourseId,
     fallbackCourseId: course.id,
   });
@@ -972,6 +992,7 @@ export default async function DashboardParticipantDetailPage({
     id: reservation.id,
     source: "trial",
     origin,
+    returnTo,
     courseId: returnCourseId,
   });
 
