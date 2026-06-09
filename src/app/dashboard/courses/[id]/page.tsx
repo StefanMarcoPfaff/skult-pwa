@@ -216,6 +216,11 @@ export default async function DashboardCourseDetailPage({
   const { id } = await params;
   const sp = await searchParams;
   const savedParam = Array.isArray(sp.saved) ? sp.saved[0] : sp.saved;
+  const returnToParam = Array.isArray(sp.returnTo) ? sp.returnTo[0] : sp.returnTo;
+  const backHref =
+    typeof returnToParam === "string" && returnToParam.startsWith("/dashboard/courses")
+      ? returnToParam
+      : "/dashboard/courses";
 
   const supabase = await createSupabaseServerClient();
   const admin = createSupabaseAdmin();
@@ -317,7 +322,7 @@ export default async function DashboardCourseDetailPage({
   if (error || !data) {
     return (
       <main style={{ padding: 24 }}>
-        <Link href="/dashboard/courses" style={{ fontWeight: 700 }}>
+        <Link href={backHref} style={{ fontWeight: 700 }}>
           Zurück
         </Link>
         <p style={{ marginTop: 16, fontSize: 18, fontWeight: 800 }}>Nicht gefunden</p>
@@ -562,7 +567,7 @@ export default async function DashboardCourseDetailPage({
 
   return (
     <main className="mx-auto max-w-7xl p-6">
-      <Link href="/dashboard/courses" style={{ fontWeight: 700 }}>
+      <Link href={backHref} style={{ fontWeight: 700 }}>
         Zurück
       </Link>
 
