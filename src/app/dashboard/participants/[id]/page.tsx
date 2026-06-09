@@ -29,6 +29,13 @@ type SearchParams = {
 
 type ParticipantDetailSource = "trial" | "registered" | "workshop";
 
+type ParticipantLookupResult = {
+  source: ParticipantDetailSource | null;
+  trialFound: boolean;
+  registeredFound: boolean;
+  workshopFound: boolean;
+};
+
 type TrialReservationRow = {
   id: string;
   course_id: string;
@@ -182,15 +189,41 @@ function getParticipantDetailSource(value: string | string[] | undefined): Parti
   return null;
 }
 
-async function inferParticipantDetailSource(admin: ReturnType<typeof createSupabaseAdmin>, id: string): Promise<ParticipantDetailSource> {
-  const [{ data: intent }, { data: booking }] = await Promise.all([
-    admin.from("course_registration_intents").select("id").eq("id", id).maybeSingle<{ id: string }>(),
+async function resolveParticipantLookup(
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  id: string,
+  requestedSource: ParticipantDetailSource | null
+): Promise<ParticipantLookupResult> {
+  const [{ data: booking }, { data: reservation }, { data: intent }] = await Promise.all([
     admin.from("bookings").select("id").eq("id", id).maybeSingle<{ id: string }>(),
+    admin.from("trial_reservations").select("id").eq("id", id).maybeSingle<{ id: string }>(),
+    admin.from("course_registration_intents").select("id").eq("id", id).maybeSingle<{ id: string }>(),
   ]);
 
-  if (intent) return "registered";
-  if (booking) return "workshop";
-  return "trial";
+  const foundBySource: Record<ParticipantDetailSource, boolean> = {
+    workshop: Boolean(booking),
+    trial: Boolean(reservation),
+    registered: Boolean(intent),
+  };
+  const fallbackSource: ParticipantDetailSource | null =
+    foundBySource.workshop ? "workshop" : foundBySource.trial ? "trial" : foundBySource.registered ? "registered" : null;
+  const source = requestedSource && foundBySource[requestedSource] ? requestedSource : fallbackSource;
+
+  console.log("[participants-detail] lookup", {
+    id,
+    requestedSource,
+    resolvedSource: source,
+    workshopFound: foundBySource.workshop,
+    trialFound: foundBySource.trial,
+    registeredFound: foundBySource.registered,
+  });
+
+  return {
+    source,
+    workshopFound: foundBySource.workshop,
+    trialFound: foundBySource.trial,
+    registeredFound: foundBySource.registered,
+  };
 }
 
 function getRegisteredLifecycleLabels(status: string | null) {
@@ -401,6 +434,34 @@ function FlashMessages(props: { saved?: string }) {
   );
 }
 
+function ParticipantNotFoundMessage(props: {
+  id: string;
+  rawSource: string | string[] | undefined;
+  resolvedSource: ParticipantDetailSource | null;
+  reason: string;
+}) {
+  console.log("[participants-detail] not-found", {
+    id: props.id,
+    rawSource: props.rawSource,
+    resolvedSource: props.resolvedSource,
+    reason: props.reason,
+  });
+
+  return (
+    <main className="mx-auto max-w-3xl space-y-6 p-6">
+      <Link href="/dashboard/participants" className="inline-flex text-sm font-semibold">
+        Zurück zur Teilnehmendenübersicht
+      </Link>
+      <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-900">
+        <h1 className="text-2xl font-semibold">Teilnahme nicht gefunden oder nicht mehr verfügbar.</h1>
+        <p className="mt-2 text-sm">
+          Die angeforderte Teilnahme konnte nicht eindeutig einer Detailseite zugeordnet werden.
+        </p>
+      </section>
+    </main>
+  );
+}
+
 export default async function DashboardParticipantDetailPage({
   params,
   searchParams,
@@ -413,7 +474,25 @@ export default async function DashboardParticipantDetailPage({
   const saved = getFirstSearchParamValue(sp.saved);
   const teacherId = await requireTeacherId();
   const admin = createSupabaseAdmin();
-  const resolvedSource = getParticipantDetailSource(sp.source) ?? (await inferParticipantDetailSource(admin, id));
+  const requestedSource = getParticipantDetailSource(sp.source);
+  console.log("[participants-detail] request", {
+    id,
+    rawSource: sp.source,
+    requestedSource,
+  });
+  const lookup = await resolveParticipantLookup(admin, id, requestedSource);
+  const resolvedSource = lookup.source;
+
+  if (!resolvedSource) {
+    return (
+      <ParticipantNotFoundMessage
+        id={id}
+        rawSource={sp.source}
+        resolvedSource={resolvedSource}
+        reason="no_matching_participant_record"
+      />
+    );
+  }
 
   if (resolvedSource === "workshop") {
     const { data: booking } = await admin
@@ -425,7 +504,7 @@ export default async function DashboardParticipantDetailPage({
       .maybeSingle<WorkshopBookingRow>();
 
     if (!booking?.course_id) {
-      redirect("/dashboard/participants");
+      return <ParticipantNotFoundMessage id={id} rawSource={sp.source} resolvedSource={resolvedSource} reason="workshop_booking_not_found" />;
     }
 
     const [{ data: course }, { data: ticket }, { data: profile }] = await Promise.all([
@@ -447,7 +526,7 @@ export default async function DashboardParticipantDetailPage({
     ]);
 
     if (!course || course.teacher_id !== teacherId) {
-      redirect("/dashboard/participants");
+      return <ParticipantNotFoundMessage id={id} rawSource={sp.source} resolvedSource={resolvedSource} reason="workshop_course_not_found_or_forbidden" />;
     }
 
     const { data: sessions } = await admin
@@ -540,7 +619,7 @@ export default async function DashboardParticipantDetailPage({
       .maybeSingle<RegistrationIntentRow>();
 
     if (!intent?.course_id) {
-      redirect("/dashboard/participants");
+      return <ParticipantNotFoundMessage id={id} rawSource={sp.source} resolvedSource={resolvedSource} reason="registered_intent_not_found" />;
     }
 
     const [{ data: course }, { data: reservation }, { data: profile }, { data: contract }] = await Promise.all([
@@ -573,7 +652,7 @@ export default async function DashboardParticipantDetailPage({
     ]);
 
     if (!course || course.teacher_id !== teacherId) {
-      redirect("/dashboard/participants");
+      return <ParticipantNotFoundMessage id={id} rawSource={sp.source} resolvedSource={resolvedSource} reason="registered_course_not_found_or_forbidden" />;
     }
 
     const participantBindingId = getCourseParticipantTicketBindingId(intent, contract?.status ?? null);
@@ -743,7 +822,7 @@ export default async function DashboardParticipantDetailPage({
     .maybeSingle<TrialReservationRow>();
 
   if (!reservation) {
-    redirect("/dashboard/participants");
+    return <ParticipantNotFoundMessage id={id} rawSource={sp.source} resolvedSource={resolvedSource} reason="trial_reservation_not_found" />;
   }
 
   const [{ data: course }, { data: intent }, { data: ticket }, { data: profile }] = await Promise.all([
@@ -772,7 +851,7 @@ export default async function DashboardParticipantDetailPage({
   ]);
 
   if (!course || course.teacher_id !== teacherId) {
-    redirect("/dashboard/participants");
+    return <ParticipantNotFoundMessage id={id} rawSource={sp.source} resolvedSource={resolvedSource} reason="trial_course_not_found_or_forbidden" />;
   }
 
   const { data: sessions } = await admin
