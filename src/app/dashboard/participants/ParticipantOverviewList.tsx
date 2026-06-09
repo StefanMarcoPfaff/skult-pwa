@@ -161,12 +161,6 @@ function getCardPresentation(item: ParticipantOverviewItem, checkedInAt: string 
   };
 }
 
-function getCheckInStatusLabel(item: ParticipantOverviewItem, checkedInAt: string | null) {
-  if (checkedInAt) return "Eingecheckt";
-  if (!item.checkIn) return "Nicht eincheckbar";
-  return "Nicht eingecheckt";
-}
-
 function getFilterChipClasses(tone: ChipTone, active: boolean) {
   if (tone === "green") {
     return active
@@ -597,7 +591,6 @@ export function ParticipantOverviewList(props: {
       {visibleItems.map((item) => {
         const checkedInAt = checkedInById[item.id] ?? null;
         const presentation = getCardPresentation(item, checkedInAt);
-        const checkInStatusLabel = getCheckInStatusLabel(item, checkedInAt);
 
         return (
           <Link
@@ -610,9 +603,6 @@ export function ParticipantOverviewList(props: {
                 <div className="min-w-0 space-y-1">
                   <h2 className="truncate text-lg font-semibold text-slate-950">{item.displayName}</h2>
                   {item.email ? <p className="truncate text-sm text-muted-foreground">{item.email}</p> : null}
-                  <p className="text-sm text-muted-foreground">
-                    {item.offerKindLabel} · {item.offerTitle}
-                  </p>
                 </div>
                 <span
                   className={`inline-flex w-fit shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${presentation.badge.className}`}
@@ -621,12 +611,17 @@ export function ParticipantOverviewList(props: {
                 </span>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                <DetailField label="Angebot" value={<span className="line-clamp-2">{item.offerTitle}</span>} />
-                <DetailField label="Angebotsart" value={item.offerKindLabel} />
-                <DetailField label="Angebotsstatus" value={item.statusLabel} />
-                <DetailField label="Check-in-Status" value={checkInStatusLabel} />
-                <DetailField label="Letzter Check-in" value={checkedInAt ? formatDateTime(checkedInAt) : "-"} />
+              <div className="grid gap-3 md:grid-cols-2">
+                <DetailField
+                  label="Angebot"
+                  value={
+                    <span className="space-y-0.5">
+                      <span className="line-clamp-2">{item.offerTitle}</span>
+                      <span className="block text-xs font-normal text-muted-foreground">{item.offerKindLabel}</span>
+                    </span>
+                  }
+                />
+                <DetailField label="Letzter Check-in" value={checkedInAt ? formatDateTime(checkedInAt) : "Nicht eingecheckt"} />
               </div>
 
             </div>
