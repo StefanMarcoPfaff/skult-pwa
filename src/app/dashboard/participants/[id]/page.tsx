@@ -23,9 +23,11 @@ import {
 } from "../participant-lifecycle";
 
 type SearchParams = {
-  source?: string;
-  saved?: string;
+  source?: string | string[];
+  saved?: string | string[];
 };
+
+type ParticipantDetailSource = "trial" | "registered" | "workshop";
 
 type TrialReservationRow = {
   id: string;
@@ -168,6 +170,27 @@ function formatParticipantSubscriptionStatus(status: string | null): string {
   if (status === "active") return "Aktiv";
   if (status === "inactive") return "Inaktiv";
   return status ?? "-";
+}
+
+function getFirstSearchParamValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getParticipantDetailSource(value: string | string[] | undefined): ParticipantDetailSource | null {
+  const selected = getFirstSearchParamValue(value);
+  if (selected === "trial" || selected === "registered" || selected === "workshop") return selected;
+  return null;
+}
+
+async function inferParticipantDetailSource(admin: ReturnType<typeof createSupabaseAdmin>, id: string): Promise<ParticipantDetailSource> {
+  const [{ data: intent }, { data: booking }] = await Promise.all([
+    admin.from("course_registration_intents").select("id").eq("id", id).maybeSingle<{ id: string }>(),
+    admin.from("bookings").select("id").eq("id", id).maybeSingle<{ id: string }>(),
+  ]);
+
+  if (intent) return "registered";
+  if (booking) return "workshop";
+  return "trial";
 }
 
 function getRegisteredLifecycleLabels(status: string | null) {
@@ -386,11 +409,13 @@ export default async function DashboardParticipantDetailPage({
   searchParams: Promise<SearchParams>;
 }) {
   const { id } = await params;
-  const { source, saved } = await searchParams;
+  const sp = await searchParams;
+  const saved = getFirstSearchParamValue(sp.saved);
   const teacherId = await requireTeacherId();
   const admin = createSupabaseAdmin();
+  const resolvedSource = getParticipantDetailSource(sp.source) ?? (await inferParticipantDetailSource(admin, id));
 
-  if (source === "workshop") {
+  if (resolvedSource === "workshop") {
     const { data: booking } = await admin
       .from("bookings")
       .select(
@@ -505,7 +530,7 @@ export default async function DashboardParticipantDetailPage({
     );
   }
 
-  if (source === "registered") {
+  if (resolvedSource === "registered") {
     const { data: intent } = await admin
       .from("course_registration_intents")
       .select(
