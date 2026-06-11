@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import {
   PROVIDER_BILLING_VAT_STATUSES,
   type ProviderBillingVatStatus,
@@ -15,8 +16,14 @@ import { savePayoutProfileAction, type SavePayoutProfileState } from "./actions"
 
 type PayoutProfileFormProps = {
   initialValues: {
-    account_holder_name: string;
-    address: string;
+    first_name: string;
+    last_name: string;
+    organization_name: string;
+    address_line_1: string;
+    address_line_2: string;
+    postal_code: string;
+    city: string;
+    country: string;
     payout_method: ProviderPayoutMethod;
     iban_last4: string;
     paypal_email: string;
@@ -25,22 +32,12 @@ type PayoutProfileFormProps = {
     vat_status: ProviderBillingVatStatus | "";
     legal_entity_type: ProviderLegalEntityType | "";
     business_type: string;
-    representative_first_name: string;
-    representative_last_name: string;
     representative_birth_date: string;
-    representative_email: string;
     representative_phone: string;
-    legal_address_line1: string;
-    legal_address_line2: string;
-    legal_postal_code: string;
-    legal_city: string;
-    legal_country: string;
-    stripeTermsAccepted: boolean;
     business_profile_url: string;
     business_profile_mcc: string;
     business_profile_product_description: string;
     consentAccepted: boolean;
-    verification_status: string;
   };
 };
 
@@ -69,30 +66,139 @@ export default function PayoutProfileForm({ initialValues }: PayoutProfileFormPr
 
   return (
     <form action={submitAction} className="space-y-5">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="space-y-1 sm:col-span-2">
-          <span className="text-sm font-medium">Name / Firma *</span>
-          <input
-            name="account_holder_name"
-            required
-            defaultValue={initialValues.account_holder_name}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-            placeholder="z. B. Max Mustermann oder Studio Nord"
-          />
-        </label>
+      <section className="space-y-4 rounded-2xl border p-4">
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold">Anbieterprofil / Rechnungsdaten</h2>
+          <p className="text-sm text-muted-foreground">
+            Diese Angaben werden fuer Belege, Auszahlungen und die spaetere automatische Zahlungsabwicklung verwendet.
+          </p>
+        </div>
 
-        <label className="space-y-1 sm:col-span-2">
-          <span className="text-sm font-medium">Adresse *</span>
-          <textarea
-            name="address"
-            required
-            rows={4}
-            defaultValue={initialValues.address}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-            placeholder={"Strasse 1\n12345 Musterstadt\nDeutschland"}
-          />
-        </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Vorname *</span>
+            <input
+              name="first_name"
+              required
+              defaultValue={initialValues.first_name}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
 
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Nachname *</span>
+            <input
+              name="last_name"
+              required
+              defaultValue={initialValues.last_name}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Unternehmensname / Organisation</span>
+            <input
+              name="organization_name"
+              defaultValue={initialValues.organization_name}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Optional"
+            />
+          </label>
+
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Strasse + Hausnummer *</span>
+            <input
+              name="address_line_1"
+              required
+              defaultValue={initialValues.address_line_1}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Adresszusatz</span>
+            <input
+              name="address_line_2"
+              defaultValue={initialValues.address_line_2}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Optional"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">PLZ *</span>
+            <input
+              name="postal_code"
+              required
+              defaultValue={initialValues.postal_code}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Ort *</span>
+            <input
+              name="city"
+              required
+              defaultValue={initialValues.city}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Land *</span>
+            <input
+              name="country"
+              required
+              defaultValue={initialValues.country}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Deutschland"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Steuernummer</span>
+            <input
+              name="tax_number"
+              defaultValue={initialValues.tax_number}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">USt-ID</span>
+            <input
+              name="vat_id"
+              defaultValue={initialValues.vat_id}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Umsatzsteuerstatus</span>
+            <select
+              name="vat_status"
+              defaultValue={initialValues.vat_status}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            >
+              <option value="">Keine Angabe</option>
+              <option value={PROVIDER_BILLING_VAT_STATUSES[0]}>Kleinunternehmer*in</option>
+              <option value={PROVIDER_BILLING_VAT_STATUSES[1]}>Umsatzsteuerpflichtig</option>
+              <option value={PROVIDER_BILLING_VAT_STATUSES[2]}>Steuerbefreit/Gemeinnuetzig</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-2xl border p-4">
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold">Zahlungsinformationen</h2>
+          <p className="text-sm text-muted-foreground">
+            Waehle aus, wohin spaetere Auszahlungen gesendet werden sollen.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-1 sm:col-span-2">
           <span className="text-sm font-medium">Auszahlungsmethode *</span>
           <select
@@ -101,7 +207,7 @@ export default function PayoutProfileForm({ initialValues }: PayoutProfileFormPr
             onChange={(event) => setPayoutMethod(event.target.value as ProviderPayoutMethod)}
             className="w-full rounded-xl border px-3 py-2 text-sm"
           >
-            <option value="iban">IBAN</option>
+            <option value="iban">Bankkonto / SEPA</option>
             <option value="paypal">PayPal</option>
           </select>
         </label>
@@ -141,45 +247,14 @@ export default function PayoutProfileForm({ initialValues }: PayoutProfileFormPr
             ) : null}
           </label>
         )}
-
-        <label className="space-y-1">
-          <span className="text-sm font-medium">Steuernummer</span>
-          <input
-            name="tax_number"
-            defaultValue={initialValues.tax_number}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-          />
-        </label>
-
-        <label className="space-y-1">
-          <span className="text-sm font-medium">USt-ID</span>
-          <input
-            name="vat_id"
-            defaultValue={initialValues.vat_id}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-          />
-        </label>
-
-        <label className="space-y-1 sm:col-span-2">
-          <span className="text-sm font-medium">Umsatzsteuerstatus</span>
-          <select
-            name="vat_status"
-            defaultValue={initialValues.vat_status}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-          >
-            <option value="">Keine Angabe</option>
-            <option value={PROVIDER_BILLING_VAT_STATUSES[0]}>Kleinunternehmer*in</option>
-            <option value={PROVIDER_BILLING_VAT_STATUSES[1]}>Umsatzsteuerpflichtig</option>
-            <option value={PROVIDER_BILLING_VAT_STATUSES[2]}>Steuerbefreit/Gemeinnuetzig</option>
-          </select>
-        </label>
       </div>
+      </section>
 
       <section className="space-y-4 rounded-2xl border p-4">
         <div className="space-y-1">
           <h2 className="text-base font-semibold">Angaben fuer spaetere automatische Auszahlungen</h2>
           <p className="text-sm text-muted-foreground">
-            Diese Angaben werden spaeter fuer die automatische Auszahlungsabwicklung benoetigt.
+            Zusaetzliche Angaben, die nicht bereits oben abgefragt wurden.
           </p>
         </div>
 
@@ -199,39 +274,11 @@ export default function PayoutProfileForm({ initialValues }: PayoutProfileFormPr
           </label>
 
           <label className="space-y-1">
-            <span className="text-sm font-medium">Vertreter*in Vorname</span>
-            <input
-              name="representative_first_name"
-              defaultValue={initialValues.representative_first_name}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-            />
-          </label>
-
-          <label className="space-y-1">
-            <span className="text-sm font-medium">Vertreter*in Nachname</span>
-            <input
-              name="representative_last_name"
-              defaultValue={initialValues.representative_last_name}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-            />
-          </label>
-
-          <label className="space-y-1">
             <span className="text-sm font-medium">Geburtsdatum</span>
             <input
               type="date"
               name="representative_birth_date"
               defaultValue={initialValues.representative_birth_date}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-            />
-          </label>
-
-          <label className="space-y-1">
-            <span className="text-sm font-medium">E-Mail der Vertreter*in</span>
-            <input
-              type="email"
-              name="representative_email"
-              defaultValue={initialValues.representative_email}
               className="w-full rounded-xl border px-3 py-2 text-sm"
             />
           </label>
@@ -252,53 +299,6 @@ export default function PayoutProfileForm({ initialValues }: PayoutProfileFormPr
               defaultValue={initialValues.business_type}
               className="w-full rounded-xl border px-3 py-2 text-sm"
               placeholder="Optional"
-            />
-          </label>
-
-          <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm font-medium">Rechtliche Adresse</span>
-            <input
-              name="legal_address_line1"
-              defaultValue={initialValues.legal_address_line1}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-              placeholder="Strasse und Hausnummer"
-            />
-          </label>
-
-          <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm font-medium">Adresszusatz</span>
-            <input
-              name="legal_address_line2"
-              defaultValue={initialValues.legal_address_line2}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-            />
-          </label>
-
-          <label className="space-y-1">
-            <span className="text-sm font-medium">PLZ</span>
-            <input
-              name="legal_postal_code"
-              defaultValue={initialValues.legal_postal_code}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-            />
-          </label>
-
-          <label className="space-y-1">
-            <span className="text-sm font-medium">Ort</span>
-            <input
-              name="legal_city"
-              defaultValue={initialValues.legal_city}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-            />
-          </label>
-
-          <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm font-medium">Land</span>
-            <input
-              name="legal_country"
-              defaultValue={initialValues.legal_country}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-              placeholder="Deutschland"
             />
           </label>
 
@@ -332,19 +332,6 @@ export default function PayoutProfileForm({ initialValues }: PayoutProfileFormPr
             />
           </label>
         </div>
-
-        <label className="flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm">
-          <input
-            type="checkbox"
-            name="stripe_terms_accepted"
-            defaultChecked={initialValues.stripeTermsAccepted}
-            className="mt-1 h-4 w-4 rounded border"
-          />
-          <span>
-            Ich bestaetige, dass diese Angaben spaeter fuer die automatische Zahlungs- und Auszahlungsabwicklung
-            verwendet werden duerfen.
-          </span>
-        </label>
       </section>
 
       <label className="flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm">
@@ -356,18 +343,17 @@ export default function PayoutProfileForm({ initialValues }: PayoutProfileFormPr
           className="mt-1 h-4 w-4 rounded border"
         />
         <span>
-          Ich stimme zu, dass RESER meine fuer die Zahlungsabwicklung erforderlichen Daten an den jeweiligen
-          Zahlungsdienstleister weitergeben darf.
+          Ich stimme zu, dass RESER die fuer Buchungen, Zahlungen, Auszahlungen und Belege notwendigen Informationen
+          an die jeweils eingebundenen Zahlungsdienstleister weitergeben darf.{" "}
+          <Link href="/zahlungsdienstleister" className="font-medium underline underline-offset-4">
+            Mehr Informationen
+          </Link>
         </span>
       </label>
 
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        Keine echten Auszahlungen. Keine PayPal-API. Keine Bank-API. Keine Mollie-Integration. Dieses Profil speichert
-        nur die bevorzugte Auszahlungsmethode fuer spaetere Payment-V2-Payouts.
-      </div>
-
       <div className="rounded-2xl border bg-slate-50 px-4 py-3 text-sm text-slate-700">
-        Verifizierungsstatus: <span className="font-medium">{initialValues.verification_status}</span>
+        Die automatische Zahlungsabwicklung wird schrittweise aktiviert. Deine Angaben werden gespeichert und spaeter
+        fuer Auszahlungen und Belege verwendet.
       </div>
 
       {state.error ? (

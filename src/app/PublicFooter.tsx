@@ -34,6 +34,9 @@ export default function PublicFooter() {
           <Link href={LEGAL_LINKS.privacy} className="transition hover:text-slate-900">
             Datenschutz
           </Link>
+          <Link href={LEGAL_LINKS.paymentProviders} className="transition hover:text-slate-900">
+            Zahlungsdienstleister
+          </Link>
           <Link href={LEGAL_LINKS.imprint} className="transition hover:text-slate-900">
             Impressum
           </Link>

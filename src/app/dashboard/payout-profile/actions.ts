@@ -38,6 +38,24 @@ function normalizeDateInput(value: FormDataEntryValue | null): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
 }
 
+function buildFullName(firstName: string | null, lastName: string | null): string | null {
+  return [firstName, lastName].filter(Boolean).join(" ").trim() || null;
+}
+
+function buildAddress(input: {
+  addressLine1: string | null;
+  addressLine2: string | null;
+  postalCode: string | null;
+  city: string | null;
+  country: string | null;
+}): string | null {
+  const cityLine = [input.postalCode, input.city].filter(Boolean).join(" ").trim() || null;
+  const lines = [input.addressLine1, input.addressLine2, cityLine, input.country].filter(
+    (value): value is string => Boolean(value)
+  );
+  return lines.length > 0 ? lines.join("\n") : null;
+}
+
 function logPayoutProfileEvent(kind: "validation_error" | "save_error", payload: Record<string, unknown>) {
   console.error("[provider-payout-profile]", {
     kind,
@@ -56,38 +74,50 @@ export async function savePayoutProfileAction(formData: FormData): Promise<SaveP
       return { error: "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an." };
     }
 
-    const account_holder_name = normalizeOptionalText(formData.get("account_holder_name"));
-    const address = normalizeOptionalText(formData.get("address"));
+    const first_name = normalizeOptionalText(formData.get("first_name"));
+    const last_name = normalizeOptionalText(formData.get("last_name"));
+    const organization_name = normalizeOptionalText(formData.get("organization_name"));
+    const address_line_1 = normalizeOptionalText(formData.get("address_line_1"));
+    const address_line_2 = normalizeOptionalText(formData.get("address_line_2"));
+    const postal_code = normalizeOptionalText(formData.get("postal_code"));
+    const city = normalizeOptionalText(formData.get("city"));
+    const country = normalizeOptionalText(formData.get("country"));
     const payout_method_raw = normalizeOptionalText(formData.get("payout_method"));
     const tax_number = normalizeOptionalText(formData.get("tax_number"));
     const vat_id = normalizeOptionalText(formData.get("vat_id"));
     const vat_status_raw = normalizeOptionalText(formData.get("vat_status"));
     const legal_entity_type_raw = normalizeOptionalText(formData.get("legal_entity_type"));
     const business_type = normalizeOptionalText(formData.get("business_type"));
-    const representative_first_name = normalizeOptionalText(formData.get("representative_first_name"));
-    const representative_last_name = normalizeOptionalText(formData.get("representative_last_name"));
     const representative_birth_date = normalizeDateInput(formData.get("representative_birth_date"));
-    const representative_email = normalizePaypalEmail(normalizeOptionalText(formData.get("representative_email")));
+    const representative_email = normalizePaypalEmail(user.email ?? null);
     const representative_phone = normalizeOptionalText(formData.get("representative_phone"));
-    const legal_address_line1 = normalizeOptionalText(formData.get("legal_address_line1"));
-    const legal_address_line2 = normalizeOptionalText(formData.get("legal_address_line2"));
-    const legal_postal_code = normalizeOptionalText(formData.get("legal_postal_code"));
-    const legal_city = normalizeOptionalText(formData.get("legal_city"));
-    const legal_country = normalizeOptionalText(formData.get("legal_country"));
     const business_profile_url = normalizeOptionalText(formData.get("business_profile_url"));
     const business_profile_mcc = normalizeOptionalText(formData.get("business_profile_mcc"));
     const business_profile_product_description = normalizeOptionalText(
       formData.get("business_profile_product_description")
     );
     const consentAccepted = formData.get("data_transfer_consent") === "on";
-    const stripeTermsAccepted = formData.get("stripe_terms_accepted") === "on";
+    const stripeTermsAccepted = consentAccepted;
+    const billingName = buildFullName(first_name, last_name);
+    const account_holder_name = organization_name || billingName;
+    const address = buildAddress({
+      addressLine1: address_line_1,
+      addressLine2: address_line_2,
+      postalCode: postal_code,
+      city,
+      country,
+    });
 
-    if (!account_holder_name) {
-      return { error: "Bitte gib den Namen oder die Firma an." };
+    if (!first_name) {
+      return { error: "Bitte gib deinen Vornamen an." };
     }
 
-    if (!address) {
-      return { error: "Bitte gib die Adresse an." };
+    if (!last_name) {
+      return { error: "Bitte gib deinen Nachnamen an." };
+    }
+
+    if (!address_line_1 || !postal_code || !city || !country || !address) {
+      return { error: "Bitte gib deine vollstaendige Adresse an." };
     }
 
     if (!isProviderPayoutMethod(payout_method_raw)) {
@@ -115,10 +145,6 @@ export async function savePayoutProfileAction(formData: FormData): Promise<SaveP
         legalEntityType: legal_entity_type_raw,
       });
       return { error: "Bitte waehle eine gueltige Rechtsform." };
-    }
-
-    if (representative_email && !isValidEmail(representative_email)) {
-      return { error: "Bitte gib eine gueltige E-Mail fuer die Vertreter*in an." };
     }
 
     if (!consentAccepted) {
@@ -191,18 +217,25 @@ export async function savePayoutProfileAction(formData: FormData): Promise<SaveP
       tax_number,
       vat_id,
       vat_status: vat_status_raw,
+      billing_name: billingName,
+      billing_company_name: organization_name,
+      billing_address_line_1: address_line_1,
+      billing_address_line_2: address_line_2,
+      billing_postal_code: postal_code,
+      billing_city: city,
+      billing_country: country,
       legal_entity_type: legal_entity_type_raw,
       business_type,
-      representative_first_name,
-      representative_last_name,
+      representative_first_name: first_name,
+      representative_last_name: last_name,
       representative_birth_date,
       representative_email,
       representative_phone,
-      legal_address_line1,
-      legal_address_line2,
-      legal_postal_code,
-      legal_city,
-      legal_country,
+      legal_address_line1: address_line_1,
+      legal_address_line2: address_line_2,
+      legal_postal_code: postal_code,
+      legal_city: city,
+      legal_country: country,
       stripe_terms_accepted_at: nextTermsAcceptedAt,
       stripe_terms_accepted_ip: termsWereNewlyAccepted
         ? requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() || null
