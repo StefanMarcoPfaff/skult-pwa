@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   isProviderBillingPayoutMethod,
@@ -73,6 +74,12 @@ function buildAccountHolderName(input: {
   );
 }
 
+function getClientIp(requestHeaders: Headers): string | null {
+  const forwardedFor = optionalText(requestHeaders.get("x-forwarded-for"));
+  if (forwardedFor) return forwardedFor.split(",")[0]?.trim() || null;
+  return optionalText(requestHeaders.get("x-real-ip"));
+}
+
 export async function saveProfileAction(formData: FormData): Promise<SaveProfileState> {
   const PROFILE_IMAGES_BUCKET = "profile-images";
 
@@ -119,9 +126,21 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     const business_profile_mcc = optionalText(formData.get("business_profile_mcc"));
     const business_profile_product_description = optionalText(formData.get("business_profile_product_description"));
     const consentAccepted = formData.get("data_transfer_consent") === "on";
+    const requestHeaders = await headers();
+    const clientIp = getClientIp(requestHeaders);
+    const userAgent = optionalText(requestHeaders.get("user-agent"));
     const payout_iban = payout_method_raw === "iban" ? normalizeIban(payout_iban_input) : null;
     const payout_paypal_email =
       payout_method_raw === "paypal" ? normalizePaypalEmail(payout_paypal_email_input) : null;
+    const representative_first_name = first_name;
+    const representative_last_name = last_name;
+    const representative_email = user.email ?? null;
+    const representative_phone = phone;
+    const legal_address_line1 = billing_address_line_1;
+    const legal_address_line2 = billing_address_line_2;
+    const legal_postal_code = billing_postal_code;
+    const legal_city = billing_city;
+    const legal_country = billing_country;
 
     if (!isProviderType(provider_type_raw)) {
       logProfileSaveEvent("validation_error", {
@@ -327,7 +346,19 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
 
     const { data: existingPayoutProfile, error: existingPayoutProfileError } = await supabase
       .from("provider_payout_profiles")
-      .select("id,payout_method,iban_last4,paypal_email,address,data_transfer_consent_accepted_at,stripe_terms_accepted_at")
+      .select(
+        [
+          "id",
+          "payout_method",
+          "iban_last4",
+          "paypal_email",
+          "address",
+          "data_transfer_consent_accepted_at",
+          "stripe_terms_accepted_at",
+          "stripe_terms_accepted_ip",
+          "stripe_terms_accepted_user_agent",
+        ].join(",")
+      )
       .eq("teacher_id", user.id)
       .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
       .maybeSingle<{
@@ -338,6 +369,8 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
         address: string | null;
         data_transfer_consent_accepted_at: string | null;
         stripe_terms_accepted_at: string | null;
+        stripe_terms_accepted_ip: string | null;
+        stripe_terms_accepted_user_agent: string | null;
       }>();
 
     if (existingPayoutProfileError) {
@@ -348,6 +381,8 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       });
       return { error: "Das Auszahlungsprofil konnte nicht geladen werden." };
     }
+
+    const acceptedAt = existingPayoutProfile?.stripe_terms_accepted_at ?? new Date().toISOString();
 
     const payoutProfilePayload = {
       teacher_id: user.id,
@@ -387,17 +422,20 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       billing_city,
       billing_country,
       legal_entity_type,
-      representative_first_name: first_name,
-      representative_last_name: last_name,
+      business_type: legal_entity_type,
+      representative_first_name,
+      representative_last_name,
       representative_birth_date,
-      representative_email: user.email ?? null,
-      representative_phone: phone,
-      legal_address_line1: billing_address_line_1,
-      legal_address_line2: billing_address_line_2,
-      legal_postal_code: billing_postal_code,
-      legal_city: billing_city,
-      legal_country: billing_country,
-      stripe_terms_accepted_at: existingPayoutProfile?.stripe_terms_accepted_at ?? new Date().toISOString(),
+      representative_email,
+      representative_phone,
+      legal_address_line1,
+      legal_address_line2,
+      legal_postal_code,
+      legal_city,
+      legal_country,
+      stripe_terms_accepted_at: acceptedAt,
+      stripe_terms_accepted_ip: existingPayoutProfile?.stripe_terms_accepted_ip ?? clientIp,
+      stripe_terms_accepted_user_agent: existingPayoutProfile?.stripe_terms_accepted_user_agent ?? userAgent,
       business_profile_url,
       business_profile_mcc,
       business_profile_product_description,

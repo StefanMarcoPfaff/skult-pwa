@@ -125,6 +125,7 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
 
       if (result.redirectTo) {
         router.push(result.redirectTo);
+      } else if (result.success) {
         router.refresh();
       }
     } catch {
