@@ -22,12 +22,15 @@ export type SaveProfileState = {
   warning?: string;
   error?: string;
   redirectTo?: string;
+  debug?: UnifiedProfileSaveDebug;
 };
 
 type SavedPayoutProfileDebug = {
   id: string;
   teacher_id: string | null;
   provider: string | null;
+  created_at: string | null;
+  updated_at: string | null;
   payout_method: string | null;
   legal_entity_type: string | null;
   business_type: string | null;
@@ -53,6 +56,8 @@ type ExistingPayoutProfile = {
   id: string;
   teacher_id: string | null;
   provider: string | null;
+  created_at: string | null;
+  updated_at: string | null;
   payout_method: string | null;
   iban_last4: string | null;
   paypal_email: string | null;
@@ -61,6 +66,45 @@ type ExistingPayoutProfile = {
   stripe_terms_accepted_at: string | null;
   stripe_terms_accepted_ip: string | null;
   stripe_terms_accepted_user_agent: string | null;
+};
+
+export type UnifiedProfileSaveDebug = {
+  formDataKeys: string[];
+  received: {
+    userId: string;
+    first_name: string | null;
+    last_name: string | null;
+    phone: string | null;
+    representative_birth_date: string | null;
+    organization_name: string | null;
+    business_profile_url: string | null;
+    business_profile_product_description: string | null;
+    legal_entity_type: string | null;
+    data_transfer_consent: string | null;
+    stripe_terms_accepted: string | null;
+    consentAccepted: boolean;
+    payout_method: string;
+    billing_address_line_1: string | null;
+    billing_postal_code: string | null;
+    billing_city: string | null;
+    billing_country: string | null;
+  };
+  existingRows: Array<{
+    id: string;
+    teacher_id: string | null;
+    provider: string | null;
+    created_at: string | null;
+    updated_at: string | null;
+  }>;
+  savedRows: Array<{
+    id: string;
+    teacher_id: string | null;
+    provider: string | null;
+    created_at: string | null;
+    updated_at: string | null;
+  }>;
+  verifyRow: SavedPayoutProfileDebug | null;
+  verifyFailures: string[];
 };
 
 function optionalText(value: FormDataEntryValue | null): string | null {
@@ -202,6 +246,70 @@ function verifySavedPayoutProfile(input: {
   }
 
   return failures;
+}
+
+function buildSaveDebug(input: {
+  formDataKeys: string[];
+  userId: string;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  representative_birth_date: string | null;
+  organization_name: string | null;
+  business_profile_url: string | null;
+  business_profile_product_description: string | null;
+  legal_entity_type: string | null;
+  data_transfer_consent: FormDataEntryValue | null;
+  stripe_terms_accepted: FormDataEntryValue | null;
+  consentAccepted: boolean;
+  payout_method: string;
+  billing_address_line_1: string | null;
+  billing_postal_code: string | null;
+  billing_city: string | null;
+  billing_country: string | null;
+  existingRows: ExistingPayoutProfile[] | null | undefined;
+  savedRows: SavedPayoutProfileDebug[] | null | undefined;
+  verifyRow: SavedPayoutProfileDebug | null;
+  verifyFailures: string[];
+}): UnifiedProfileSaveDebug {
+  return {
+    formDataKeys: input.formDataKeys,
+    received: {
+      userId: input.userId,
+      first_name: input.first_name,
+      last_name: input.last_name,
+      phone: input.phone,
+      representative_birth_date: input.representative_birth_date,
+      organization_name: input.organization_name,
+      business_profile_url: input.business_profile_url,
+      business_profile_product_description: input.business_profile_product_description,
+      legal_entity_type: input.legal_entity_type,
+      data_transfer_consent: input.data_transfer_consent ? String(input.data_transfer_consent) : null,
+      stripe_terms_accepted: input.stripe_terms_accepted ? String(input.stripe_terms_accepted) : null,
+      consentAccepted: input.consentAccepted,
+      payout_method: input.payout_method,
+      billing_address_line_1: input.billing_address_line_1,
+      billing_postal_code: input.billing_postal_code,
+      billing_city: input.billing_city,
+      billing_country: input.billing_country,
+    },
+    existingRows: (input.existingRows ?? []).map((row) => ({
+      id: row.id,
+      teacher_id: row.teacher_id,
+      provider: row.provider,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    })),
+    savedRows: (input.savedRows ?? []).map((row) => ({
+      id: row.id,
+      teacher_id: row.teacher_id,
+      provider: row.provider,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    })),
+    verifyRow: input.verifyRow,
+    verifyFailures: input.verifyFailures,
+  };
 }
 
 export async function saveUnifiedProviderProfile(formData: FormData): Promise<SaveProfileState> {
@@ -532,6 +640,8 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       "id",
       "teacher_id",
       "provider",
+      "created_at",
+      "updated_at",
       "payout_method",
       "legal_entity_type",
       "business_type",
@@ -558,6 +668,10 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       .select(
         [
           "id",
+          "teacher_id",
+          "provider",
+          "created_at",
+          "updated_at",
           "payout_method",
           "iban_last4",
           "paypal_email",
@@ -747,6 +861,30 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       business_profile_product_description,
       consentAccepted,
     });
+    const saveDebug = buildSaveDebug({
+      formDataKeys,
+      userId: user.id,
+      first_name,
+      last_name,
+      phone,
+      representative_birth_date,
+      organization_name,
+      business_profile_url,
+      business_profile_product_description,
+      legal_entity_type,
+      data_transfer_consent: formData.get("data_transfer_consent"),
+      stripe_terms_accepted: formData.get("stripe_terms_accepted"),
+      consentAccepted,
+      payout_method: payout_method_raw,
+      billing_address_line_1,
+      billing_postal_code,
+      billing_city,
+      billing_country,
+      existingRows: existingPayoutProfiles,
+      savedRows: savedPayoutProfiles,
+      verifyRow: reloadedPayoutProfile,
+      verifyFailures,
+    });
 
     if (verifyFailures.length > 0) {
       logProfileSaveEvent("save_error", {
@@ -760,6 +898,7 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       });
       return {
         error: `Das Finanzprofil wurde nicht korrekt gespeichert: ${verifyFailures.join(", ")}.`,
+        debug: saveDebug,
       };
     }
 
@@ -771,11 +910,13 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       return {
         success: "Profil gespeichert.",
         warning,
+        debug: saveDebug,
       };
     }
 
     return {
       success: "Profil gespeichert.",
+      debug: saveDebug,
     };
   } catch (error: unknown) {
     logProfileSaveEvent("save_error", {
