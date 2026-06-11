@@ -98,6 +98,9 @@ type ProviderBillingProfileFallbackRow = {
   first_name: string | null;
   last_name: string | null;
   organization_name: string | null;
+};
+
+type ProviderPayoutMethodFallbackRow = {
   payout_method: string | null;
 };
 
@@ -325,20 +328,22 @@ async function loadLedgerProviderContext(entry: {
       : null;
 
   const providerId = subscriptionContract?.teacher_id ?? course?.teacher_id ?? null;
-  const billingProfile =
+  const payoutProfile =
     providerId
       ? (
           await admin
-            .from("profiles")
-            .select("id,first_name,last_name,organization_name,payout_method")
-            .eq("id", providerId)
-            .maybeSingle<ProviderBillingProfileFallbackRow>()
+            .from("provider_payout_profiles")
+            .select("payout_method")
+            .eq("teacher_id", providerId)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle<ProviderPayoutMethodFallbackRow>()
         ).data ?? null
       : null;
 
   return {
     providerId,
-    payoutMethod: normalizePayoutMethod(billingProfile?.payout_method),
+    payoutMethod: normalizePayoutMethod(payoutProfile?.payout_method),
   };
 }
 
@@ -369,7 +374,7 @@ async function ensureSimulationProviderPayoutProfile(input: {
 
   const { data: billingProfile } = await admin
     .from("profiles")
-    .select("id,first_name,last_name,organization_name,payout_method")
+    .select("id,first_name,last_name,organization_name")
     .eq("id", input.providerId)
     .maybeSingle<ProviderBillingProfileFallbackRow>();
 

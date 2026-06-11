@@ -5,6 +5,12 @@ import {
   isProviderBillingPayoutMethod,
   isProviderBillingVatStatus,
 } from "@/lib/provider-billing-profile";
+import {
+  getIbanLast4,
+  normalizeIban,
+  normalizePaypalEmail,
+  PROVIDER_PAYOUT_PROFILE_PROVIDER,
+} from "@/lib/payout-profile";
 import { validateProfileImageFile } from "@/lib/profile-image-upload";
 import { isProviderType } from "@/lib/provider-profiles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -30,6 +36,40 @@ function logProfileSaveEvent(
     kind,
     ...payload,
   });
+}
+
+function buildBillingAddress(input: {
+  billing_address_line_1: string | null;
+  billing_address_line_2: string | null;
+  billing_postal_code: string | null;
+  billing_city: string | null;
+  billing_country: string | null;
+}): string | null {
+  const cityLine = [input.billing_postal_code, input.billing_city].filter(Boolean).join(" ").trim() || null;
+  const lines = [
+    input.billing_address_line_1,
+    input.billing_address_line_2,
+    cityLine,
+    input.billing_country,
+  ].filter((value): value is string => Boolean(value));
+
+  return lines.length > 0 ? lines.join("\n") : null;
+}
+
+function buildAccountHolderName(input: {
+  billing_company_name: string | null;
+  billing_name: string | null;
+  organization_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+}): string {
+  return (
+    input.billing_company_name ||
+    input.billing_name ||
+    input.organization_name ||
+    [input.first_name, input.last_name].filter(Boolean).join(" ").trim() ||
+    "Anbieter*in"
+  );
 }
 
 export async function saveProfileAction(formData: FormData): Promise<SaveProfileState> {
@@ -71,9 +111,9 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     const vat_status_raw = optionalText(formData.get("vat_status"));
     const payout_iban_input = optionalText(formData.get("payout_iban"));
     const payout_paypal_email_input = optionalText(formData.get("payout_paypal_email"));
-    const payout_iban = payout_method_raw === "iban" ? payout_iban_input?.replace(/\s+/g, "").toUpperCase() ?? null : null;
+    const payout_iban = payout_method_raw === "iban" ? normalizeIban(payout_iban_input) : null;
     const payout_paypal_email =
-      payout_method_raw === "paypal" ? payout_paypal_email_input?.toLowerCase() ?? null : null;
+      payout_method_raw === "paypal" ? normalizePaypalEmail(payout_paypal_email_input) : null;
 
     if (!isProviderType(provider_type_raw)) {
       logProfileSaveEvent("validation_error", {
@@ -258,19 +298,6 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
         intro_video_url,
         provider_type: provider_type_raw,
         organization_name: provider_type_raw === "studio_provider" ? organization_name : null,
-        payout_method: payout_method_raw,
-        billing_name,
-        billing_company_name,
-        billing_address_line_1,
-        billing_address_line_2,
-        billing_postal_code,
-        billing_city,
-        billing_country,
-        tax_number,
-        vat_id,
-        vat_status: vat_status_raw,
-        payout_iban,
-        payout_paypal_email,
       },
       { onConflict: "id" }
     );
@@ -282,6 +309,89 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
         message: error.message,
       });
       return { error: error.message || "Profil konnte nicht gespeichert werden." };
+    }
+
+    const { data: existingPayoutProfile, error: existingPayoutProfileError } = await supabase
+      .from("provider_payout_profiles")
+      .select("id,payout_method,iban_last4,paypal_email,address,data_transfer_consent_accepted_at")
+      .eq("teacher_id", user.id)
+      .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
+      .maybeSingle<{
+        id: string;
+        payout_method: string | null;
+        iban_last4: string | null;
+        paypal_email: string | null;
+        address: string | null;
+        data_transfer_consent_accepted_at: string | null;
+      }>();
+
+    if (existingPayoutProfileError) {
+      logProfileSaveEvent("save_error", {
+        context: "provider_payout_profiles.select",
+        userId: user.id,
+        message: existingPayoutProfileError.message,
+      });
+      return { error: "Das Auszahlungsprofil konnte nicht geladen werden." };
+    }
+
+    const payoutProfilePayload = {
+      teacher_id: user.id,
+      payout_method: payout_method_raw,
+      iban_encrypted: null,
+      iban_last4:
+        payout_method_raw === "iban"
+          ? getIbanLast4(payout_iban) ?? (existingPayoutProfile?.payout_method === "iban" ? existingPayoutProfile.iban_last4 : null)
+          : null,
+      paypal_email:
+        payout_method_raw === "paypal"
+          ? payout_paypal_email ?? (existingPayoutProfile?.payout_method === "paypal" ? existingPayoutProfile.paypal_email : null)
+          : null,
+      account_holder_name: buildAccountHolderName({
+        billing_company_name,
+        billing_name,
+        organization_name: provider_type_raw === "studio_provider" ? organization_name : null,
+        first_name,
+        last_name,
+      }),
+      address:
+        buildBillingAddress({
+          billing_address_line_1,
+          billing_address_line_2,
+          billing_postal_code,
+          billing_city,
+          billing_country,
+        }) ?? existingPayoutProfile?.address ?? null,
+      tax_number,
+      vat_id,
+      vat_status: vat_status_raw,
+      billing_name,
+      billing_company_name,
+      billing_address_line_1,
+      billing_address_line_2,
+      billing_postal_code,
+      billing_city,
+      billing_country,
+      verification_status: "pending",
+      provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+      provider_account_id: null,
+      data_transfer_consent_accepted_at: existingPayoutProfile?.data_transfer_consent_accepted_at ?? null,
+    };
+
+    const payoutProfileQuery = existingPayoutProfile?.id
+      ? supabase.from("provider_payout_profiles").update(payoutProfilePayload).eq("id", existingPayoutProfile.id)
+      : supabase.from("provider_payout_profiles").insert(payoutProfilePayload);
+
+    const { error: payoutProfileError } = await payoutProfileQuery;
+
+    if (payoutProfileError) {
+      logProfileSaveEvent("save_error", {
+        context: existingPayoutProfile?.id
+          ? "provider_payout_profiles.update"
+          : "provider_payout_profiles.insert",
+        userId: user.id,
+        message: payoutProfileError.message,
+      });
+      return { error: "Das Finanzprofil konnte nicht gespeichert werden." };
     }
 
     if (warning) {

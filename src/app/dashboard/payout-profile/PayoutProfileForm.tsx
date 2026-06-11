@@ -2,6 +2,10 @@
 
 import { useState, useTransition } from "react";
 import {
+  PROVIDER_BILLING_VAT_STATUSES,
+  type ProviderBillingVatStatus,
+} from "@/lib/provider-billing-profile";
+import {
   maskEmail,
   maskIbanLast4,
   type ProviderPayoutMethod,
@@ -17,6 +21,7 @@ type PayoutProfileFormProps = {
     paypal_email: string;
     tax_number: string;
     vat_id: string;
+    vat_status: ProviderBillingVatStatus | "";
     consentAccepted: boolean;
     verification_status: string;
   };
@@ -136,6 +141,20 @@ export default function PayoutProfileForm({ initialValues }: PayoutProfileFormPr
             defaultValue={initialValues.vat_id}
             className="w-full rounded-xl border px-3 py-2 text-sm"
           />
+        </label>
+
+        <label className="space-y-1 sm:col-span-2">
+          <span className="text-sm font-medium">Umsatzsteuerstatus</span>
+          <select
+            name="vat_status"
+            defaultValue={initialValues.vat_status}
+            className="w-full rounded-xl border px-3 py-2 text-sm"
+          >
+            <option value="">Keine Angabe</option>
+            <option value={PROVIDER_BILLING_VAT_STATUSES[0]}>Kleinunternehmer*in</option>
+            <option value={PROVIDER_BILLING_VAT_STATUSES[1]}>Umsatzsteuerpflichtig</option>
+            <option value={PROVIDER_BILLING_VAT_STATUSES[2]}>Steuerbefreit/Gemeinnuetzig</option>
+          </select>
         </label>
       </div>
 

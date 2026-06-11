@@ -5,6 +5,7 @@ import {
   getProviderDisplayName,
   type ProviderType,
 } from "@/lib/provider-profiles";
+import { PROVIDER_PAYOUT_PROFILE_PROVIDER } from "@/lib/payout-profile";
 
 export const PROVIDER_BILLING_PAYOUT_METHODS = ["iban", "paypal"] as const;
 export type ProviderBillingPayoutMethod = (typeof PROVIDER_BILLING_PAYOUT_METHODS)[number];
@@ -37,6 +38,29 @@ export type ProviderBillingProfileRow = {
   payout_paypal_email: string | null;
 };
 
+type ProviderFinancialPayoutProfileRow = {
+  id: string;
+  teacher_id: string | null;
+  payout_method: string | null;
+  iban_last4: string | null;
+  paypal_email: string | null;
+  account_holder_name: string | null;
+  address: string | null;
+  tax_number: string | null;
+  vat_id: string | null;
+  vat_status: string | null;
+  billing_name: string | null;
+  billing_company_name: string | null;
+  billing_address_line_1: string | null;
+  billing_address_line_2: string | null;
+  billing_postal_code: string | null;
+  billing_city: string | null;
+  billing_country: string | null;
+  provider_account_id: string | null;
+  verification_status: string | null;
+  platform_fee_percent_override: number | string | null;
+};
+
 export type ProviderBillingProfile = {
   providerId: string;
   providerType: ProviderType | null;
@@ -58,6 +82,11 @@ export type ProviderBillingProfile = {
   payoutIban: string | null;
   payoutPaypalEmail: string | null;
   payoutDestination: string | null;
+  providerPayoutProfileId: string | null;
+  providerAccountId: string | null;
+  verificationStatus: string | null;
+  platformFeePercentOverride: number | string | null;
+  usedLegacyProfileFallback: boolean;
 };
 
 function normalizeOptionalText(value: string | null | undefined): string | null {
@@ -82,30 +111,62 @@ export function isProviderBillingVatStatus(
 }
 
 export function getProviderBillingProfileFromRow(
-  row: ProviderBillingProfileRow
+  row: ProviderBillingProfileRow,
+  payoutProfile?: ProviderFinancialPayoutProfileRow | null
 ): ProviderBillingProfile {
   const providerType = row.provider_type ?? null;
   const providerDisplayName = providerType
     ? getProviderDisplayName(providerType, row)
     : getProfileAccountName(row) || normalizeOptionalText(row.organization_name) || "Anbietende";
-  const billingName = normalizeOptionalText(row.billing_name);
-  const billingCompanyName = normalizeOptionalText(row.billing_company_name);
-  const billingAddressLine1 = normalizeOptionalText(row.billing_address_line_1);
-  const billingAddressLine2 = normalizeOptionalText(row.billing_address_line_2);
-  const billingPostalCode = normalizeOptionalText(row.billing_postal_code);
-  const billingCity = normalizeOptionalText(row.billing_city);
-  const billingCountry = normalizeOptionalText(row.billing_country);
+  const billingName = normalizeOptionalText(payoutProfile?.billing_name) ?? normalizeOptionalText(row.billing_name);
+  const billingCompanyName =
+    normalizeOptionalText(payoutProfile?.billing_company_name) ?? normalizeOptionalText(row.billing_company_name);
+  const billingAddressLine1 =
+    normalizeOptionalText(payoutProfile?.billing_address_line_1) ?? normalizeOptionalText(row.billing_address_line_1);
+  const billingAddressLine2 =
+    normalizeOptionalText(payoutProfile?.billing_address_line_2) ?? normalizeOptionalText(row.billing_address_line_2);
+  const billingPostalCode =
+    normalizeOptionalText(payoutProfile?.billing_postal_code) ?? normalizeOptionalText(row.billing_postal_code);
+  const billingCity = normalizeOptionalText(payoutProfile?.billing_city) ?? normalizeOptionalText(row.billing_city);
+  const billingCountry =
+    normalizeOptionalText(payoutProfile?.billing_country) ?? normalizeOptionalText(row.billing_country);
+  const fallbackAddressLines = normalizeOptionalText(payoutProfile?.address)
+    ?.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean) ?? [];
   const cityLine = [billingPostalCode, billingCity].filter(Boolean).join(" ").trim() || null;
-  const billingAddressLines = [
+  const structuredBillingAddressLines = [
     billingAddressLine1,
     billingAddressLine2,
     cityLine,
     billingCountry,
   ].filter((value): value is string => Boolean(value));
-  const payoutMethod = isProviderBillingPayoutMethod(row.payout_method) ? row.payout_method : "iban";
-  const payoutIban = normalizeOptionalText(row.payout_iban);
-  const payoutPaypalEmail = normalizeOptionalText(row.payout_paypal_email)?.toLowerCase() ?? null;
+  const billingAddressLines =
+    structuredBillingAddressLines.length > 0 ? structuredBillingAddressLines : fallbackAddressLines;
+  const payoutMethod = isProviderBillingPayoutMethod(payoutProfile?.payout_method)
+    ? payoutProfile.payout_method
+    : isProviderBillingPayoutMethod(row.payout_method)
+      ? row.payout_method
+      : "iban";
+  const payoutIbanLast4 = normalizeOptionalText(payoutProfile?.iban_last4);
+  const payoutIban = payoutIbanLast4 ? `IBAN ****${payoutIbanLast4}` : normalizeOptionalText(row.payout_iban);
+  const payoutPaypalEmail =
+    normalizeOptionalText(payoutProfile?.paypal_email)?.toLowerCase() ??
+    normalizeOptionalText(row.payout_paypal_email)?.toLowerCase() ??
+    null;
   const payoutDestination = payoutMethod === "paypal" ? payoutPaypalEmail : payoutIban;
+  const taxNumber = normalizeOptionalText(payoutProfile?.tax_number) ?? normalizeOptionalText(row.tax_number);
+  const vatId = normalizeOptionalText(payoutProfile?.vat_id) ?? normalizeOptionalText(row.vat_id);
+  const vatStatusRaw = normalizeOptionalText(payoutProfile?.vat_status) ?? normalizeOptionalText(row.vat_status);
+  const usedLegacyProfileFallback =
+    !payoutProfile?.id ||
+    !normalizeOptionalText(payoutProfile.billing_name) ||
+    !normalizeOptionalText(payoutProfile.billing_company_name) ||
+    structuredBillingAddressLines.length === 0 ||
+    !normalizeOptionalText(payoutProfile.tax_number) ||
+    !normalizeOptionalText(payoutProfile.vat_id) ||
+    !normalizeOptionalText(payoutProfile.vat_status) ||
+    !payoutDestination;
 
   return {
     providerId: row.id,
@@ -124,13 +185,18 @@ export function getProviderBillingProfileFromRow(
     billingCountry,
     billingAddressLines,
     billingAddressFormatted: billingAddressLines.length > 0 ? billingAddressLines.join("\n") : null,
-    taxNumber: normalizeOptionalText(row.tax_number),
-    vatId: normalizeOptionalText(row.vat_id),
-    vatStatus: isProviderBillingVatStatus(row.vat_status) ? row.vat_status : null,
+    taxNumber,
+    vatId,
+    vatStatus: isProviderBillingVatStatus(vatStatusRaw) ? vatStatusRaw : null,
     payoutMethod,
     payoutIban,
     payoutPaypalEmail,
     payoutDestination,
+    providerPayoutProfileId: payoutProfile?.id ?? null,
+    providerAccountId: normalizeOptionalText(payoutProfile?.provider_account_id),
+    verificationStatus: normalizeOptionalText(payoutProfile?.verification_status),
+    platformFeePercentOverride: payoutProfile?.platform_fee_percent_override ?? null,
+    usedLegacyProfileFallback,
   };
 }
 
@@ -138,7 +204,8 @@ export async function getProviderBillingProfile(
   supabase: SupabaseClient<Database>,
   providerId: string
 ): Promise<ProviderBillingProfile | null> {
-  const { data, error } = await supabase
+  const [{ data, error }, { data: payoutProfile }] = await Promise.all([
+    supabase
     .from("profiles")
     .select(
       [
@@ -163,11 +230,43 @@ export async function getProviderBillingProfile(
       ].join(",")
     )
     .eq("id", providerId)
-    .maybeSingle<ProviderBillingProfileRow>();
+      .maybeSingle<ProviderBillingProfileRow>(),
+    supabase
+      .from("provider_payout_profiles")
+      .select(
+        [
+          "id",
+          "teacher_id",
+          "payout_method",
+          "iban_last4",
+          "paypal_email",
+          "account_holder_name",
+          "address",
+          "tax_number",
+          "vat_id",
+          "vat_status",
+          "billing_name",
+          "billing_company_name",
+          "billing_address_line_1",
+          "billing_address_line_2",
+          "billing_postal_code",
+          "billing_city",
+          "billing_country",
+          "provider_account_id",
+          "verification_status",
+          "platform_fee_percent_override",
+        ].join(",")
+      )
+      .eq("teacher_id", providerId)
+      .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
+      .maybeSingle<ProviderFinancialPayoutProfileRow>(),
+  ]);
 
   if (error || !data) {
     return null;
   }
 
-  return getProviderBillingProfileFromRow(data);
+  return getProviderBillingProfileFromRow(data, payoutProfile ?? null);
 }
+
+export const getProviderFinancialProfile = getProviderBillingProfile;

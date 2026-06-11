@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type {
+  ProviderBillingProfile,
   ProviderBillingPayoutMethod,
   ProviderBillingVatStatus,
 } from "@/lib/provider-billing-profile";
+import { getProviderBillingProfile } from "@/lib/provider-billing-profile";
 import type { ProviderType } from "@/lib/provider-profiles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import ProfileForm from "./ProfileForm";
@@ -18,19 +20,6 @@ type ProfileRow = {
   intro_video_url: string | null;
   provider_type: ProviderType | null;
   organization_name: string | null;
-  payout_method: ProviderBillingPayoutMethod | null;
-  billing_name: string | null;
-  billing_company_name: string | null;
-  billing_address_line_1: string | null;
-  billing_address_line_2: string | null;
-  billing_postal_code: string | null;
-  billing_city: string | null;
-  billing_country: string | null;
-  tax_number: string | null;
-  vat_id: string | null;
-  vat_status: ProviderBillingVatStatus | null;
-  payout_iban: string | null;
-  payout_paypal_email: string | null;
 };
 
 export default async function DashboardProfilePage({
@@ -51,13 +40,14 @@ export default async function DashboardProfilePage({
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select(
-      "id,first_name,last_name,bio,photo_url,company_logo_url,intro_video_url,provider_type,organization_name,payout_method,billing_name,billing_company_name,billing_address_line_1,billing_address_line_2,billing_postal_code,billing_city,billing_country,tax_number,vat_id,vat_status,payout_iban,payout_paypal_email"
-    )
-    .eq("id", user.id)
-    .maybeSingle<ProfileRow>();
+  const [{ data: profile }, financialProfile] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id,first_name,last_name,bio,photo_url,company_logo_url,intro_video_url,provider_type,organization_name")
+      .eq("id", user.id)
+      .maybeSingle<ProfileRow>(),
+    getProviderBillingProfile(supabase, user.id) as Promise<ProviderBillingProfile | null>,
+  ]);
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
@@ -89,19 +79,19 @@ export default async function DashboardProfilePage({
             intro_video_url: profile?.intro_video_url ?? "",
             provider_type: profile?.provider_type ?? "independent_teacher",
             organization_name: profile?.organization_name ?? "",
-            payout_method: profile?.payout_method ?? "iban",
-            billing_name: profile?.billing_name ?? "",
-            billing_company_name: profile?.billing_company_name ?? "",
-            billing_address_line_1: profile?.billing_address_line_1 ?? "",
-            billing_address_line_2: profile?.billing_address_line_2 ?? "",
-            billing_postal_code: profile?.billing_postal_code ?? "",
-            billing_city: profile?.billing_city ?? "",
-            billing_country: profile?.billing_country ?? "",
-            tax_number: profile?.tax_number ?? "",
-            vat_id: profile?.vat_id ?? "",
-            vat_status: profile?.vat_status ?? "",
-            payout_iban: profile?.payout_iban ?? "",
-            payout_paypal_email: profile?.payout_paypal_email ?? "",
+            payout_method: (financialProfile?.payoutMethod ?? "iban") as ProviderBillingPayoutMethod,
+            billing_name: financialProfile?.billingName ?? "",
+            billing_company_name: financialProfile?.billingCompanyName ?? "",
+            billing_address_line_1: financialProfile?.billingAddressLine1 ?? "",
+            billing_address_line_2: financialProfile?.billingAddressLine2 ?? "",
+            billing_postal_code: financialProfile?.billingPostalCode ?? "",
+            billing_city: financialProfile?.billingCity ?? "",
+            billing_country: financialProfile?.billingCountry ?? "",
+            tax_number: financialProfile?.taxNumber ?? "",
+            vat_id: financialProfile?.vatId ?? "",
+            vat_status: (financialProfile?.vatStatus ?? "") as ProviderBillingVatStatus | "",
+            payout_iban: financialProfile?.payoutIban ?? "",
+            payout_paypal_email: financialProfile?.payoutPaypalEmail ?? "",
           }}
         />
       </div>

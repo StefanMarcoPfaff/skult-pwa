@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isProviderBillingVatStatus } from "@/lib/provider-billing-profile";
 import {
   getIbanLast4,
   isProviderPayoutMethod,
@@ -48,6 +49,7 @@ export async function savePayoutProfileAction(formData: FormData): Promise<SaveP
     const payout_method_raw = normalizeOptionalText(formData.get("payout_method"));
     const tax_number = normalizeOptionalText(formData.get("tax_number"));
     const vat_id = normalizeOptionalText(formData.get("vat_id"));
+    const vat_status_raw = normalizeOptionalText(formData.get("vat_status"));
     const consentAccepted = formData.get("data_transfer_consent") === "on";
 
     if (!account_holder_name) {
@@ -65,6 +67,15 @@ export async function savePayoutProfileAction(formData: FormData): Promise<SaveP
         payoutMethod: payout_method_raw,
       });
       return { error: "Bitte waehle eine gueltige Auszahlungsmethode." };
+    }
+
+    if (vat_status_raw && !isProviderBillingVatStatus(vat_status_raw)) {
+      logPayoutProfileEvent("validation_error", {
+        context: "vat_status",
+        userId: user.id,
+        vatStatus: vat_status_raw,
+      });
+      return { error: "Bitte waehle einen gueltigen Umsatzsteuerstatus." };
     }
 
     if (!consentAccepted) {
@@ -129,6 +140,7 @@ export async function savePayoutProfileAction(formData: FormData): Promise<SaveP
       address,
       tax_number,
       vat_id,
+      vat_status: vat_status_raw,
       verification_status: "pending",
       provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
       provider_account_id: null,

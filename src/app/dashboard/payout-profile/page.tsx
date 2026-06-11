@@ -7,6 +7,7 @@ import {
   PROVIDER_PAYOUT_PROFILE_PROVIDER,
   type ProviderPayoutMethod,
 } from "@/lib/payout-profile";
+import type { ProviderBillingVatStatus } from "@/lib/provider-billing-profile";
 import { getProfileAccountName } from "@/lib/provider-profiles";
 import PayoutProfileForm from "./PayoutProfileForm";
 
@@ -24,6 +25,7 @@ type ProviderPayoutProfileRow = {
   paypal_email: string | null;
   tax_number: string | null;
   vat_id: string | null;
+  vat_status: ProviderBillingVatStatus | null;
   verification_status: string | null;
   data_transfer_consent_accepted_at: string | null;
 };
@@ -54,7 +56,7 @@ export default async function DashboardPayoutProfilePage() {
     supabase
       .from("provider_payout_profiles")
       .select(
-        "account_holder_name,address,payout_method,iban_last4,paypal_email,tax_number,vat_id,verification_status,data_transfer_consent_accepted_at"
+        "account_holder_name,address,payout_method,iban_last4,paypal_email,tax_number,vat_id,vat_status,verification_status,data_transfer_consent_accepted_at"
       )
       .eq("teacher_id", user.id)
       .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
@@ -102,6 +104,7 @@ export default async function DashboardPayoutProfilePage() {
             paypal_email: payoutProfile?.paypal_email ?? "",
             tax_number: payoutProfile?.tax_number ?? "",
             vat_id: payoutProfile?.vat_id ?? "",
+            vat_status: payoutProfile?.vat_status ?? "",
             consentAccepted: Boolean(payoutProfile?.data_transfer_consent_accepted_at),
             verification_status: status,
           }}

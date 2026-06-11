@@ -1,6 +1,7 @@
 import Link from "next/link";
 import DashboardBackLink from "@/app/dashboard/_components/DashboardBackLink";
 import { DEFAULT_PLATFORM_FEE_PERCENT } from "@/lib/platform-fees";
+import { PROVIDER_PAYOUT_PROFILE_PROVIDER } from "@/lib/payout-profile";
 import { getProfileAccountName, getProviderDisplayName, type ProviderType } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { requirePaymentsV2AdminAccess } from "../payments-v2/access";
@@ -17,18 +18,6 @@ type ProfileRow = {
   last_name: string | null;
   provider_type: ProviderType | null;
   organization_name: string | null;
-  payout_method: string | null;
-  billing_name: string | null;
-  billing_company_name: string | null;
-  billing_address_line_1: string | null;
-  billing_postal_code: string | null;
-  billing_city: string | null;
-  billing_country: string | null;
-  tax_number: string | null;
-  vat_id: string | null;
-  vat_status: string | null;
-  payout_iban: string | null;
-  payout_paypal_email: string | null;
   created_at: string | null;
 };
 
@@ -69,6 +58,14 @@ type PayoutProfileRow = {
   teacher_id: string | null;
   provider: string;
   payout_method: string;
+  iban_last4: string | null;
+  paypal_email: string | null;
+  address: string | null;
+  billing_address_line_1: string | null;
+  billing_postal_code: string | null;
+  billing_city: string | null;
+  billing_country: string | null;
+  vat_status: string | null;
   platform_fee_percent_override: number | string | null;
   platform_fee_override_note: string | null;
   platform_fee_override_updated_at: string | null;
@@ -127,10 +124,10 @@ function formatPercentInputValue(value: number): string {
   }).format(value * 100);
 }
 
-function formatPayoutMethod(profile: ProfileRow): string {
-  const method = normalizeOptionalText(profile.payout_method);
-  if (method === "paypal") return normalizeOptionalText(profile.payout_paypal_email) ? "PayPal" : "offen";
-  if (method === "iban") return normalizeOptionalText(profile.payout_iban) ? "IBAN" : "offen";
+function formatPayoutMethod(profile: PayoutProfileRow | undefined): string {
+  const method = normalizeOptionalText(profile?.payout_method);
+  if (method === "paypal") return normalizeOptionalText(profile?.paypal_email) ? "PayPal" : "offen";
+  if (method === "iban") return normalizeOptionalText(profile?.iban_last4) ? "IBAN" : "offen";
   return "offen";
 }
 
@@ -158,19 +155,20 @@ function formatOfferKind(value: string | null): string {
   }
 }
 
-function isProfileComplete(profile: ProfileRow): boolean {
+function isProfileComplete(profile: ProfileRow, payoutProfile: PayoutProfileRow | undefined): boolean {
   const hasProviderName =
     profile.provider_type === "studio_provider"
       ? Boolean(normalizeOptionalText(profile.organization_name))
       : Boolean(normalizeOptionalText(profile.first_name) && normalizeOptionalText(profile.last_name));
   const hasBillingAddress = Boolean(
-    normalizeOptionalText(profile.billing_address_line_1) &&
-      normalizeOptionalText(profile.billing_postal_code) &&
-      normalizeOptionalText(profile.billing_city) &&
-      normalizeOptionalText(profile.billing_country)
+    normalizeOptionalText(payoutProfile?.address) ||
+      (normalizeOptionalText(payoutProfile?.billing_address_line_1) &&
+        normalizeOptionalText(payoutProfile?.billing_postal_code) &&
+        normalizeOptionalText(payoutProfile?.billing_city) &&
+        normalizeOptionalText(payoutProfile?.billing_country))
   );
-  const hasVatStatus = Boolean(normalizeOptionalText(profile.vat_status));
-  const hasPayoutDestination = formatPayoutMethod(profile) !== "offen";
+  const hasVatStatus = Boolean(normalizeOptionalText(payoutProfile?.vat_status));
+  const hasPayoutDestination = formatPayoutMethod(payoutProfile) !== "offen";
 
   return hasProviderName && hasBillingAddress && hasVatStatus && hasPayoutDestination;
 }
@@ -244,9 +242,7 @@ export default async function AdminProvidersPage({ searchParams }: { searchParam
     loadAuthUserSummaries(),
     admin
       .from("profiles")
-      .select(
-        "id,first_name,last_name,provider_type,organization_name,payout_method,billing_name,billing_company_name,billing_address_line_1,billing_postal_code,billing_city,billing_country,tax_number,vat_id,vat_status,payout_iban,payout_paypal_email,created_at"
-      )
+      .select("id,first_name,last_name,provider_type,organization_name,created_at")
       .not("provider_type", "is", null)
       .order("created_at", { ascending: false })
       .returns<ProfileRow[]>(),
@@ -260,7 +256,7 @@ export default async function AdminProvidersPage({ searchParams }: { searchParam
     admin
       .from("provider_payout_profiles")
       .select(
-        "id,teacher_id,provider,payout_method,platform_fee_percent_override,platform_fee_override_note,platform_fee_override_updated_at,updated_at"
+        "id,teacher_id,provider,payout_method,iban_last4,paypal_email,address,billing_address_line_1,billing_postal_code,billing_city,billing_country,vat_status,platform_fee_percent_override,platform_fee_override_note,platform_fee_override_updated_at,updated_at"
       )
       .order("updated_at", { ascending: false })
       .returns<PayoutProfileRow[]>(),
@@ -311,7 +307,9 @@ export default async function AdminProvidersPage({ searchParams }: { searchParam
 
   const payoutProfileByProviderId = new Map<string, PayoutProfileRow>();
   for (const payoutProfile of payoutProfiles ?? []) {
-    if (payoutProfile.teacher_id && !payoutProfileByProviderId.has(payoutProfile.teacher_id)) {
+    if (!payoutProfile.teacher_id) continue;
+    const current = payoutProfileByProviderId.get(payoutProfile.teacher_id);
+    if (!current || payoutProfile.provider === PROVIDER_PAYOUT_PROFILE_PROVIDER) {
       payoutProfileByProviderId.set(payoutProfile.teacher_id, payoutProfile);
     }
   }
@@ -339,9 +337,9 @@ export default async function AdminProvidersPage({ searchParams }: { searchParam
       name: getProviderName(profile),
       email: authUser?.email ?? "-",
       registeredAt: authUser?.createdAt ?? profile.created_at,
-      profileComplete: isProfileComplete(profile),
-      payoutMethodLabel: formatPayoutMethod(profile),
-      vatStatusLabel: formatVatStatus(profile.vat_status),
+      profileComplete: isProfileComplete(profile, payoutProfile),
+      payoutMethodLabel: formatPayoutMethod(payoutProfile),
+      vatStatusLabel: formatVatStatus(payoutProfile?.vat_status ?? null),
       platformFeePercent: overridePercent ?? DEFAULT_PLATFORM_FEE_PERCENT,
       platformFeeIsOverride: overridePercent !== null,
       platformFeeNote: payoutProfile?.platform_fee_override_note ?? null,
