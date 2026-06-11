@@ -98,9 +98,10 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     const company_logo_file = formData.get("company_logo_file");
     const provider_type_raw = optionalText(formData.get("provider_type")) ?? "independent_teacher";
     const organization_name = optionalText(formData.get("organization_name"));
+    const phone = optionalText(formData.get("phone"));
     const payout_method_raw = optionalText(formData.get("payout_method")) ?? "iban";
-    const billing_name = optionalText(formData.get("billing_name"));
-    const billing_company_name = optionalText(formData.get("billing_company_name"));
+    const billing_name = [first_name, last_name].filter(Boolean).join(" ").trim() || null;
+    const billing_company_name = organization_name;
     const billing_address_line_1 = optionalText(formData.get("billing_address_line_1"));
     const billing_address_line_2 = optionalText(formData.get("billing_address_line_2"));
     const billing_postal_code = optionalText(formData.get("billing_postal_code"));
@@ -111,6 +112,12 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     const vat_status_raw = optionalText(formData.get("vat_status"));
     const payout_iban_input = optionalText(formData.get("payout_iban"));
     const payout_paypal_email_input = optionalText(formData.get("payout_paypal_email"));
+    const legal_entity_type = optionalText(formData.get("legal_entity_type"));
+    const representative_birth_date = optionalText(formData.get("representative_birth_date"));
+    const business_profile_url = optionalText(formData.get("business_profile_url"));
+    const business_profile_mcc = optionalText(formData.get("business_profile_mcc"));
+    const business_profile_product_description = optionalText(formData.get("business_profile_product_description"));
+    const consentAccepted = formData.get("data_transfer_consent") === "on";
     const payout_iban = payout_method_raw === "iban" ? normalizeIban(payout_iban_input) : null;
     const payout_paypal_email =
       payout_method_raw === "paypal" ? normalizePaypalEmail(payout_paypal_email_input) : null;
@@ -125,9 +132,6 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
 
     if (!first_name) return { error: "Vorname ist erforderlich." };
     if (!last_name) return { error: "Nachname ist erforderlich." };
-    if (provider_type_raw === "studio_provider" && !organization_name) {
-      return { error: "Ein Organisationsname ist fuer Organisationen erforderlich." };
-    }
     if (!isProviderBillingPayoutMethod(payout_method_raw)) {
       logProfileSaveEvent("validation_error", {
         context: "payout_method",
@@ -144,8 +148,17 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       });
       return { error: "Bitte waehle einen gueltigen Umsatzsteuerstatus." };
     }
+    if (legal_entity_type && !["individual", "company", "nonprofit"].includes(legal_entity_type)) {
+      return { error: "Bitte waehle eine gueltige Rechtsform." };
+    }
     if (intro_video_url && !/^https?:\/\//i.test(intro_video_url)) {
       return { error: "Bitte gib einen gueltigen Video-Link mit http:// oder https:// an." };
+    }
+    if (!billing_address_line_1 || !billing_postal_code || !billing_city || !billing_country) {
+      return { error: "Bitte gib deine vollstaendige Adresse an." };
+    }
+    if (!consentAccepted) {
+      return { error: "Bitte bestaetige die Datenweitergabe fuer die Zahlungsabwicklung." };
     }
 
     let photo_url = existing_photo_url;
@@ -220,7 +233,7 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       }
     }
 
-    if (provider_type_raw === "studio_provider" && company_logo_file instanceof File && company_logo_file.size > 0) {
+    if (company_logo_file instanceof File && company_logo_file.size > 0) {
       const validation = validateProfileImageFile({
         size: company_logo_file.size,
         type: company_logo_file.type,
@@ -294,10 +307,10 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
         last_name,
         bio,
         photo_url,
-        company_logo_url: provider_type_raw === "studio_provider" ? company_logo_url : existing_company_logo_url,
+        company_logo_url,
         intro_video_url,
         provider_type: provider_type_raw,
-        organization_name: provider_type_raw === "studio_provider" ? organization_name : null,
+        organization_name,
       },
       { onConflict: "id" }
     );
@@ -313,7 +326,7 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
 
     const { data: existingPayoutProfile, error: existingPayoutProfileError } = await supabase
       .from("provider_payout_profiles")
-      .select("id,payout_method,iban_last4,paypal_email,address,data_transfer_consent_accepted_at")
+      .select("id,payout_method,iban_last4,paypal_email,address,data_transfer_consent_accepted_at,stripe_terms_accepted_at")
       .eq("teacher_id", user.id)
       .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
       .maybeSingle<{
@@ -323,6 +336,7 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
         paypal_email: string | null;
         address: string | null;
         data_transfer_consent_accepted_at: string | null;
+        stripe_terms_accepted_at: string | null;
       }>();
 
     if (existingPayoutProfileError) {
@@ -371,10 +385,24 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       billing_postal_code,
       billing_city,
       billing_country,
+      legal_entity_type,
+      representative_first_name: first_name,
+      representative_last_name: last_name,
+      representative_birth_date,
+      representative_email: user.email ?? null,
+      representative_phone: phone,
+      legal_address_line1: billing_address_line_1,
+      legal_address_line2: billing_address_line_2,
+      legal_postal_code: billing_postal_code,
+      legal_city: billing_city,
+      legal_country: billing_country,
+      stripe_terms_accepted_at: existingPayoutProfile?.stripe_terms_accepted_at ?? new Date().toISOString(),
+      business_profile_url,
+      business_profile_mcc,
+      business_profile_product_description,
       verification_status: "pending",
       provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
-      provider_account_id: null,
-      data_transfer_consent_accepted_at: existingPayoutProfile?.data_transfer_consent_accepted_at ?? null,
+      data_transfer_consent_accepted_at: existingPayoutProfile?.data_transfer_consent_accepted_at ?? new Date().toISOString(),
     };
 
     const payoutProfileQuery = existingPayoutProfile?.id

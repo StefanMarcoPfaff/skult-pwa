@@ -1,46 +1,61 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   PROVIDER_BILLING_VAT_STATUSES,
   type ProviderBillingPayoutMethod,
   type ProviderBillingVatStatus,
+  type ProviderLegalEntityType,
 } from "@/lib/provider-billing-profile";
 import {
   getProfileImageMaxSizeLabel,
   validateProfileImageFile,
 } from "@/lib/profile-image-upload";
-import { saveProfileAction, type SaveProfileState } from "./actions";
+import { maskEmail, maskIbanLast4 } from "@/lib/payout-profile";
 import type { ProviderType } from "@/lib/provider-profiles";
+import { saveProfileAction, type SaveProfileState } from "./actions";
 
 type ProfileFormProps = {
+  initialSection: string;
   initialValues: {
+    auth_email: string;
     first_name: string;
     last_name: string;
+    phone: string;
     bio: string;
     photo_url: string;
     company_logo_url: string;
     intro_video_url: string;
     provider_type: ProviderType;
     organization_name: string;
-    payout_method: ProviderBillingPayoutMethod;
-    billing_name: string;
-    billing_company_name: string;
-    billing_address_line_1: string;
-    billing_address_line_2: string;
-    billing_postal_code: string;
-    billing_city: string;
-    billing_country: string;
+    address_line_1: string;
+    address_line_2: string;
+    postal_code: string;
+    city: string;
+    country: string;
     tax_number: string;
     vat_id: string;
     vat_status: ProviderBillingVatStatus | "";
-    payout_iban: string;
-    payout_paypal_email: string;
+    payout_method: ProviderBillingPayoutMethod;
+    iban_last4: string;
+    paypal_email: string;
+    legal_entity_type: ProviderLegalEntityType | "";
+    representative_birth_date: string;
+    business_profile_url: string;
+    business_profile_mcc: string;
+    business_profile_product_description: string;
+    consentAccepted: boolean;
+    payoutComplete: boolean;
   };
 };
 
-export default function ProfileForm({ initialValues }: ProfileFormProps) {
+function sectionIsOpen(initialSection: string, section: string, fallback = false): boolean {
+  return initialSection === section || (!initialSection && fallback);
+}
+
+export default function ProfileForm({ initialSection, initialValues }: ProfileFormProps) {
   const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
   const [state, setState] = useState<SaveProfileState>({});
@@ -56,12 +71,8 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
 
   useEffect(() => {
     return () => {
-      if (photoObjectUrl) {
-        URL.revokeObjectURL(photoObjectUrl);
-      }
-      if (companyLogoObjectUrl) {
-        URL.revokeObjectURL(companyLogoObjectUrl);
-      }
+      if (photoObjectUrl) URL.revokeObjectURL(photoObjectUrl);
+      if (companyLogoObjectUrl) URL.revokeObjectURL(companyLogoObjectUrl);
     };
   }, [companyLogoObjectUrl, photoObjectUrl]);
 
@@ -93,374 +104,167 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
     }
   };
 
+  const maskedIban = maskIbanLast4(initialValues.iban_last4);
+  const maskedPaypalEmail = maskEmail(initialValues.paypal_email);
+
   return (
-    <form action={submitAction} className="space-y-5">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="space-y-1 sm:col-span-2">
-          <span className="text-sm font-medium">Anbietertyp *</span>
-          <select
-            name="provider_type"
-            value={providerType}
-            onChange={(event) => setProviderType(event.target.value as ProviderType)}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-          >
-            <option value="independent_teacher">Einzelanbieter*in</option>
-            <option value="studio_provider">Organisation</option>
-          </select>
-        </label>
-
-        <label className="space-y-1">
-          <span className="text-sm font-medium">Vorname *</span>
-          <input
-            name="first_name"
-            required
-            defaultValue={initialValues.first_name}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-          />
-        </label>
-
-        <label className="space-y-1">
-          <span className="text-sm font-medium">Nachname *</span>
-          <input
-            name="last_name"
-            required
-            defaultValue={initialValues.last_name}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-          />
-        </label>
-      </div>
-
-      {providerType === "studio_provider" ? (
-        <label className="block space-y-1">
-          <span className="text-sm font-medium">Organisationsname *</span>
-          <input
-            name="organization_name"
-            required
-            defaultValue={initialValues.organization_name}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-            placeholder="z. B. Keramik Nord"
-          />
-        </label>
-      ) : (
-        <input type="hidden" name="organization_name" value={initialValues.organization_name} />
-      )}
-
-      <label className="block space-y-1">
-        <span className="text-sm font-medium">Selbstbeschreibung</span>
-        <textarea
-          name="bio"
-          rows={5}
-          defaultValue={initialValues.bio}
-          className="w-full rounded-xl border px-3 py-2 text-sm"
-        />
-      </label>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="space-y-1 sm:col-span-2">
-          <span className="text-sm font-medium">Profilfoto</span>
-          <input
-            type="file"
-            name="photo_file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={(event) => {
-              const nextFile = event.target.files?.[0];
-              if (!nextFile) {
-                setFileError(null);
-                if (photoObjectUrl) {
-                  URL.revokeObjectURL(photoObjectUrl);
-                  setPhotoObjectUrl(null);
-                }
-                setPhotoPreviewUrl(initialValues.photo_url);
-                return;
-              }
-
-              const validation = validateProfileImageFile({
-                size: nextFile.size,
-                type: nextFile.type,
-                name: nextFile.name,
-              });
-
-              if (!validation.ok) {
-                setFileError(validation.error);
-                event.target.value = "";
-                if (photoObjectUrl) {
-                  URL.revokeObjectURL(photoObjectUrl);
-                  setPhotoObjectUrl(null);
-                }
-                setPhotoPreviewUrl(initialValues.photo_url);
-                return;
-              }
-
-              setFileError(null);
-              if (photoObjectUrl) {
-                URL.revokeObjectURL(photoObjectUrl);
-              }
-              const objectUrl = URL.createObjectURL(nextFile);
-              setPhotoObjectUrl(objectUrl);
-              setPhotoPreviewUrl(objectUrl);
-            }}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-          />
-          <span className="block text-xs text-muted-foreground">
-            Optional: JPG, PNG oder WebP, maximal {getProfileImageMaxSizeLabel()}
-          </span>
-          <input type="hidden" name="existing_photo_url" value={initialValues.photo_url} />
-          {photoPreviewUrl.trim() ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={photoPreviewUrl}
-              alt="Profilfoto Vorschau"
-              className="mt-2 h-24 w-24 rounded-lg border object-cover"
-            />
+    <form action={submitAction} className="space-y-4">
+      <details open={sectionIsOpen(initialSection, "persoenlich", true)} className="rounded-2xl border p-5">
+        <summary className="cursor-pointer text-base font-semibold">Persoenliche Daten</summary>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Vorname *</span>
+            <input name="first_name" required defaultValue={initialValues.first_name} className="w-full rounded-xl border px-3 py-2 text-sm" />
+          </label>
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Nachname *</span>
+            <input name="last_name" required defaultValue={initialValues.last_name} className="w-full rounded-xl border px-3 py-2 text-sm" />
+          </label>
+          {initialValues.auth_email ? (
+            <div className="space-y-1">
+              <span className="text-sm font-medium">E-Mail</span>
+              <p className="rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700">{initialValues.auth_email}</p>
+            </div>
           ) : null}
-        </label>
-      </div>
-
-      {providerType === "studio_provider" ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm font-medium">Firmenlogo (optional)</span>
-            <input
-              type="file"
-              name="company_logo_file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={(event) => {
-                const nextFile = event.target.files?.[0];
-                if (!nextFile) {
-                  setFileError(null);
-                  if (companyLogoObjectUrl) {
-                    URL.revokeObjectURL(companyLogoObjectUrl);
-                    setCompanyLogoObjectUrl(null);
-                  }
-                  setCompanyLogoPreviewUrl(initialValues.company_logo_url);
-                  return;
-                }
-
-                const validation = validateProfileImageFile({
-                  size: nextFile.size,
-                  type: nextFile.type,
-                  name: nextFile.name,
-                });
-
-                if (!validation.ok) {
-                  setFileError(validation.error);
-                  event.target.value = "";
-                  if (companyLogoObjectUrl) {
-                    URL.revokeObjectURL(companyLogoObjectUrl);
-                    setCompanyLogoObjectUrl(null);
-                  }
-                  setCompanyLogoPreviewUrl(initialValues.company_logo_url);
-                  return;
-                }
-
-                setFileError(null);
-                if (companyLogoObjectUrl) {
-                  URL.revokeObjectURL(companyLogoObjectUrl);
-                }
-                const objectUrl = URL.createObjectURL(nextFile);
-                setCompanyLogoObjectUrl(objectUrl);
-                setCompanyLogoPreviewUrl(objectUrl);
-              }}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-            />
-            <span className="block text-xs text-muted-foreground">
-              Für Studios, Vereine oder Organisationen. Wird später auf E-Mails, Belegen und öffentlichen Profilen
-              verwendet.
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              JPG, PNG oder WebP, maximal {getProfileImageMaxSizeLabel()}
-            </span>
-            <input type="hidden" name="existing_company_logo_url" value={initialValues.company_logo_url} />
-            {companyLogoPreviewUrl.trim() ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={companyLogoPreviewUrl}
-                alt="Firmenlogo Vorschau"
-                className="mt-2 h-24 w-24 rounded-lg border bg-white object-contain p-2"
-              />
-            ) : null}
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Telefon</span>
+            <input name="phone" defaultValue={initialValues.phone} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
         </div>
-      ) : (
-        <input type="hidden" name="existing_company_logo_url" value={initialValues.company_logo_url} />
-      )}
+      </details>
 
-      <label className="block space-y-1">
-        <span className="text-sm font-medium">Vorstellungsvideo</span>
-        <input
-          name="intro_video_url"
-          value={videoUrl}
-          onChange={(event) => {
-            setVideoUrl(event.target.value);
-            if (videoUrlError) setVideoUrlError(null);
-          }}
-          className="w-full rounded-xl border px-3 py-2 text-sm"
-        />
-        <span className="block text-xs text-muted-foreground">
-          Optional: Link zu einem YouTube- oder Vimeo-Video
-        </span>
-        {videoUrl.trim() && /^https?:\/\//i.test(videoUrl.trim()) ? (
-          <a
-            href={videoUrl.trim()}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex text-sm font-medium underline underline-offset-4"
-          >
-            Video-Link oeffnen
-          </a>
-        ) : null}
-      </label>
-
-      <section className="space-y-4 rounded-2xl border p-4 sm:p-5">
-        <div className="space-y-1">
-          <h2 className="text-base font-semibold">Abrechnung &amp; Auszahlungen</h2>
-          <p className="text-sm text-muted-foreground">
-            Diese Angaben helfen uns, spaetere Abrechnungen und Belege fuer dich vorzubereiten.
-          </p>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm font-medium">Wie moechtest du Auszahlungen erhalten? *</span>
-            <select
-              name="payout_method"
-              value={payoutMethod}
-              onChange={(event) => setPayoutMethod(event.target.value as ProviderBillingPayoutMethod)}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-            >
-              <option value="iban">Auf mein Bankkonto (IBAN)</option>
-              <option value="paypal">Auf mein PayPal-Konto</option>
+      <details open={sectionIsOpen(initialSection, "anbieterprofil")} className="rounded-2xl border p-5">
+        <summary className="cursor-pointer text-base font-semibold">Anbieterprofil</summary>
+        <div className="mt-4 space-y-4">
+          <label className="block space-y-1">
+            <span className="text-sm font-medium">Anbietertyp *</span>
+            <select name="provider_type" value={providerType} onChange={(event) => setProviderType(event.target.value as ProviderType)} className="w-full rounded-xl border px-3 py-2 text-sm">
+              <option value="independent_teacher">Einzelanbieter*in</option>
+              <option value="studio_provider">Organisation</option>
             </select>
           </label>
-
-          {payoutMethod === "iban" ? (
-            <label className="space-y-1 sm:col-span-2">
-              <span className="text-sm font-medium">IBAN</span>
-              <input
-                name="payout_iban"
-                defaultValue={initialValues.payout_iban}
-                className="w-full rounded-xl border px-3 py-2 text-sm"
-                placeholder="Optional fuer spaetere Auszahlungen"
-              />
-            </label>
-          ) : (
-            <label className="space-y-1 sm:col-span-2">
-              <span className="text-sm font-medium">PayPal-E-Mail</span>
-              <input
-                type="email"
-                name="payout_paypal_email"
-                defaultValue={initialValues.payout_paypal_email}
-                className="w-full rounded-xl border px-3 py-2 text-sm"
-                placeholder="Optional fuer spaetere Auszahlungen"
-              />
-            </label>
-          )}
-        </div>
-
-        <div className="space-y-1">
-          <p className="text-sm font-medium">Optionale Angaben fuer spaetere Abrechnungen und Belege</p>
-          <p className="text-xs text-muted-foreground">
-            Diese Angaben dienen der Vorbereitung automatischer Belege und Abrechnungen.
-          </p>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="space-y-1">
-            <span className="text-sm font-medium">Name auf Abrechnungen</span>
-            <input
-              name="billing_name"
-              defaultValue={initialValues.billing_name}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-              placeholder="z. B. Max Mustermann"
-            />
+          <label className="block space-y-1">
+            <span className="text-sm font-medium">Organisation / Firma / Anbietername</span>
+            <input name="organization_name" defaultValue={initialValues.organization_name} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
-
-          <label className="space-y-1">
-            <span className="text-sm font-medium">Firma oder Organisation</span>
-            <input
-              name="billing_company_name"
-              defaultValue={initialValues.billing_company_name}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-              placeholder="Optional"
-            />
+          <label className="block space-y-1">
+            <span className="text-sm font-medium">Beschreibung / Bio</span>
+            <textarea name="bio" rows={5} defaultValue={initialValues.bio} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-1">
+              <span className="text-sm font-medium">Profilbild</span>
+              <input
+                type="file"
+                name="photo_file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) => {
+                  const nextFile = event.target.files?.[0];
+                  if (!nextFile) {
+                    setFileError(null);
+                    if (photoObjectUrl) URL.revokeObjectURL(photoObjectUrl);
+                    setPhotoObjectUrl(null);
+                    setPhotoPreviewUrl(initialValues.photo_url);
+                    return;
+                  }
+                  const validation = validateProfileImageFile({ size: nextFile.size, type: nextFile.type, name: nextFile.name });
+                  if (!validation.ok) {
+                    setFileError(validation.error);
+                    event.target.value = "";
+                    return;
+                  }
+                  if (photoObjectUrl) URL.revokeObjectURL(photoObjectUrl);
+                  const objectUrl = URL.createObjectURL(nextFile);
+                  setPhotoObjectUrl(objectUrl);
+                  setPhotoPreviewUrl(objectUrl);
+                  setFileError(null);
+                }}
+                className="w-full rounded-xl border px-3 py-2 text-sm"
+              />
+              <span className="block text-xs text-muted-foreground">JPG, PNG oder WebP, maximal {getProfileImageMaxSizeLabel()}</span>
+              <input type="hidden" name="existing_photo_url" value={initialValues.photo_url} />
+              {photoPreviewUrl.trim() ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={photoPreviewUrl} alt="Profilbild Vorschau" className="mt-2 h-24 w-24 rounded-lg border object-cover" />
+              ) : null}
+            </label>
+            <label className="space-y-1">
+              <span className="text-sm font-medium">Logo</span>
+              <input
+                type="file"
+                name="company_logo_file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) => {
+                  const nextFile = event.target.files?.[0];
+                  if (!nextFile) {
+                    setFileError(null);
+                    if (companyLogoObjectUrl) URL.revokeObjectURL(companyLogoObjectUrl);
+                    setCompanyLogoObjectUrl(null);
+                    setCompanyLogoPreviewUrl(initialValues.company_logo_url);
+                    return;
+                  }
+                  const validation = validateProfileImageFile({ size: nextFile.size, type: nextFile.type, name: nextFile.name });
+                  if (!validation.ok) {
+                    setFileError(validation.error);
+                    event.target.value = "";
+                    return;
+                  }
+                  if (companyLogoObjectUrl) URL.revokeObjectURL(companyLogoObjectUrl);
+                  const objectUrl = URL.createObjectURL(nextFile);
+                  setCompanyLogoObjectUrl(objectUrl);
+                  setCompanyLogoPreviewUrl(objectUrl);
+                  setFileError(null);
+                }}
+                className="w-full rounded-xl border px-3 py-2 text-sm"
+              />
+              <input type="hidden" name="existing_company_logo_url" value={initialValues.company_logo_url} />
+              {companyLogoPreviewUrl.trim() ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={companyLogoPreviewUrl} alt="Logo Vorschau" className="mt-2 h-24 w-24 rounded-lg border bg-white object-contain p-2" />
+              ) : null}
+            </label>
+          </div>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium">Vorstellungsvideo</span>
+            <input name="intro_video_url" value={videoUrl} onChange={(event) => setVideoUrl(event.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm" />
+          </label>
+        </div>
+      </details>
 
+      <details open={sectionIsOpen(initialSection, "rechnung")} className="rounded-2xl border p-5">
+        <summary className="cursor-pointer text-base font-semibold">Adresse &amp; Rechnungsdaten</summary>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm font-medium">Strasse und Hausnummer</span>
-            <input
-              name="billing_address_line_1"
-              defaultValue={initialValues.billing_address_line_1}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-              placeholder="Optional"
-            />
+            <span className="text-sm font-medium">Strasse + Hausnummer *</span>
+            <input name="billing_address_line_1" required defaultValue={initialValues.address_line_1} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
-
           <label className="space-y-1 sm:col-span-2">
             <span className="text-sm font-medium">Adresszusatz</span>
-            <input
-              name="billing_address_line_2"
-              defaultValue={initialValues.billing_address_line_2}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-              placeholder="Optional"
-            />
+            <input name="billing_address_line_2" defaultValue={initialValues.address_line_2} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
-
           <label className="space-y-1">
-            <span className="text-sm font-medium">PLZ</span>
-            <input
-              name="billing_postal_code"
-              defaultValue={initialValues.billing_postal_code}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-              placeholder="Optional"
-            />
+            <span className="text-sm font-medium">PLZ *</span>
+            <input name="billing_postal_code" required defaultValue={initialValues.postal_code} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
-
           <label className="space-y-1">
-            <span className="text-sm font-medium">Ort</span>
-            <input
-              name="billing_city"
-              defaultValue={initialValues.billing_city}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-              placeholder="Optional"
-            />
+            <span className="text-sm font-medium">Ort *</span>
+            <input name="billing_city" required defaultValue={initialValues.city} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
-
           <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm font-medium">Land</span>
-            <input
-              name="billing_country"
-              defaultValue={initialValues.billing_country}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-              placeholder="z. B. Deutschland"
-            />
+            <span className="text-sm font-medium">Land *</span>
+            <input name="billing_country" required defaultValue={initialValues.country} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
-
           <label className="space-y-1">
             <span className="text-sm font-medium">Steuernummer</span>
-            <input
-              name="tax_number"
-              defaultValue={initialValues.tax_number}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-              placeholder="Optional"
-            />
+            <input name="tax_number" defaultValue={initialValues.tax_number} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
-
           <label className="space-y-1">
-            <span className="text-sm font-medium">USt-IdNr.</span>
-            <input
-              name="vat_id"
-              defaultValue={initialValues.vat_id}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-              placeholder="Optional"
-            />
+            <span className="text-sm font-medium">USt-ID</span>
+            <input name="vat_id" defaultValue={initialValues.vat_id} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
-
           <label className="space-y-1 sm:col-span-2">
             <span className="text-sm font-medium">Umsatzsteuerstatus</span>
-            <select
-              name="vat_status"
-              defaultValue={initialValues.vat_status}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
-            >
+            <select name="vat_status" defaultValue={initialValues.vat_status} className="w-full rounded-xl border px-3 py-2 text-sm">
               <option value="">Keine Angabe</option>
               <option value={PROVIDER_BILLING_VAT_STATUSES[0]}>Kleinunternehmer*in</option>
               <option value={PROVIDER_BILLING_VAT_STATUSES[1]}>Umsatzsteuerpflichtig</option>
@@ -468,44 +272,86 @@ export default function ProfileForm({ initialValues }: ProfileFormProps) {
             </select>
           </label>
         </div>
-      </section>
+      </details>
 
-      {fileError ? (
-        <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {fileError}
-        </p>
-      ) : null}
+      <details open={sectionIsOpen(initialSection, "auszahlungen")} className="rounded-2xl border p-5">
+        <summary className="cursor-pointer text-base font-semibold">Auszahlungen</summary>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <p className="sm:col-span-2 rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            Status: {initialValues.payoutComplete ? "Angaben vollstaendig" : "Angaben fehlen"}
+          </p>
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Auszahlungsmethode *</span>
+            <select name="payout_method" value={payoutMethod} onChange={(event) => setPayoutMethod(event.target.value as ProviderBillingPayoutMethod)} className="w-full rounded-xl border px-3 py-2 text-sm">
+              <option value="iban">Bankkonto / SEPA</option>
+              <option value="paypal">PayPal</option>
+            </select>
+          </label>
+          {payoutMethod === "iban" ? (
+            <label className="space-y-1 sm:col-span-2">
+              <span className="text-sm font-medium">IBAN</span>
+              <input name="payout_iban" required={!initialValues.iban_last4} className="w-full rounded-xl border px-3 py-2 text-sm" />
+              {maskedIban ? <span className="block text-xs text-muted-foreground">Bereits hinterlegt: {maskedIban}</span> : null}
+            </label>
+          ) : (
+            <label className="space-y-1 sm:col-span-2">
+              <span className="text-sm font-medium">PayPal-E-Mail</span>
+              <input type="email" name="payout_paypal_email" required defaultValue={initialValues.paypal_email} className="w-full rounded-xl border px-3 py-2 text-sm" />
+              {maskedPaypalEmail ? <span className="block text-xs text-muted-foreground">Bereits hinterlegt: {maskedPaypalEmail}</span> : null}
+            </label>
+          )}
+        </div>
+      </details>
 
-      {videoUrlError ? (
-        <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {videoUrlError}
-        </p>
-      ) : null}
+      <details open={sectionIsOpen(initialSection, "zahlungsabwicklung")} className="rounded-2xl border p-5">
+        <summary className="cursor-pointer text-base font-semibold">Automatische Zahlungsabwicklung</summary>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Rechtsform</span>
+            <select name="legal_entity_type" defaultValue={initialValues.legal_entity_type} className="w-full rounded-xl border px-3 py-2 text-sm">
+              <option value="">Keine Angabe</option>
+              <option value="individual">Einzelperson</option>
+              <option value="company">Unternehmen</option>
+              <option value="nonprofit">Gemeinnuetzig / Non-Profit</option>
+            </select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Geburtsdatum</span>
+            <input type="date" name="representative_birth_date" defaultValue={initialValues.representative_birth_date} className="w-full rounded-xl border px-3 py-2 text-sm" />
+          </label>
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Business MCC</span>
+            <input name="business_profile_mcc" defaultValue={initialValues.business_profile_mcc} className="w-full rounded-xl border px-3 py-2 text-sm" />
+          </label>
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Website / Profil-URL</span>
+            <input name="business_profile_url" defaultValue={initialValues.business_profile_url} className="w-full rounded-xl border px-3 py-2 text-sm" />
+          </label>
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Produktbeschreibung</span>
+            <input name="business_profile_product_description" defaultValue={initialValues.business_profile_product_description} className="w-full rounded-xl border px-3 py-2 text-sm" />
+          </label>
+          <label className="sm:col-span-2 flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm">
+            <input type="checkbox" name="data_transfer_consent" required defaultChecked={initialValues.consentAccepted} className="mt-1 h-4 w-4 rounded border" />
+            <span>
+              Ich stimme zu, dass RESER die fuer Buchungen, Zahlungen, Auszahlungen und Belege notwendigen Informationen
+              an die jeweils eingebundenen Zahlungsdienstleister weitergeben darf.{" "}
+              <Link href="/zahlungsdienstleister" className="font-medium underline underline-offset-4">
+                Mehr Informationen
+              </Link>
+            </span>
+          </label>
+        </div>
+      </details>
 
-      {state.error ? (
-        <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {state.error}
-        </p>
-      ) : null}
+      {fileError ? <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{fileError}</p> : null}
+      {videoUrlError ? <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{videoUrlError}</p> : null}
+      {state.error ? <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p> : null}
+      {state.warning ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{state.warning}</p> : null}
+      {state.success && !state.redirectTo ? <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{state.success}</p> : null}
 
-      {state.warning ? (
-        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {state.warning}
-        </p>
-      ) : null}
-
-      {state.success && !state.redirectTo ? (
-        <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-          {state.success}
-        </p>
-      ) : null}
-
-      <button
-        type="submit"
-        disabled={isSaving || Boolean(fileError) || Boolean(videoUrlError)}
-        className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-      >
-        {isSaving ? "Speichert..." : "Speichern"}
+      <button type="submit" disabled={isSaving || Boolean(fileError) || Boolean(videoUrlError)} className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+        {isSaving ? "Speichert..." : "Profil speichern"}
       </button>
     </form>
   );

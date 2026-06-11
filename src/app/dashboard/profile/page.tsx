@@ -4,6 +4,7 @@ import type {
   ProviderBillingProfile,
   ProviderBillingPayoutMethod,
   ProviderBillingVatStatus,
+  ProviderLegalEntityType,
 } from "@/lib/provider-billing-profile";
 import { getProviderBillingProfile } from "@/lib/provider-billing-profile";
 import type { ProviderType } from "@/lib/provider-profiles";
@@ -30,6 +31,8 @@ export default async function DashboardProfilePage({
   const sp = await searchParams;
   const onboardingParam = Array.isArray(sp.onboarding) ? sp.onboarding[0] : sp.onboarding;
   const onboarding = onboardingParam === "1";
+  const sectionParam = Array.isArray(sp.section) ? sp.section[0] : sp.section;
+  const section = sectionParam ?? "";
 
   const supabase = await createSupabaseServerClient();
   const {
@@ -73,26 +76,34 @@ export default async function DashboardProfilePage({
           initialValues={{
             first_name: profile?.first_name ?? "",
             last_name: profile?.last_name ?? "",
+            auth_email: user.email ?? "",
+            phone: financialProfile?.representativePhone ?? "",
             bio: profile?.bio ?? "",
             photo_url: profile?.photo_url ?? "",
             company_logo_url: profile?.company_logo_url ?? "",
             intro_video_url: profile?.intro_video_url ?? "",
             provider_type: profile?.provider_type ?? "independent_teacher",
             organization_name: profile?.organization_name ?? "",
+            address_line_1: financialProfile?.billingAddressLine1 ?? financialProfile?.legalAddressLine1 ?? "",
+            address_line_2: financialProfile?.billingAddressLine2 ?? financialProfile?.legalAddressLine2 ?? "",
+            postal_code: financialProfile?.billingPostalCode ?? financialProfile?.legalPostalCode ?? "",
+            city: financialProfile?.billingCity ?? financialProfile?.legalCity ?? "",
+            country: financialProfile?.billingCountry ?? financialProfile?.legalCountry ?? "",
             payout_method: (financialProfile?.payoutMethod ?? "iban") as ProviderBillingPayoutMethod,
-            billing_name: financialProfile?.billingName ?? "",
-            billing_company_name: financialProfile?.billingCompanyName ?? "",
-            billing_address_line_1: financialProfile?.billingAddressLine1 ?? "",
-            billing_address_line_2: financialProfile?.billingAddressLine2 ?? "",
-            billing_postal_code: financialProfile?.billingPostalCode ?? "",
-            billing_city: financialProfile?.billingCity ?? "",
-            billing_country: financialProfile?.billingCountry ?? "",
             tax_number: financialProfile?.taxNumber ?? "",
             vat_id: financialProfile?.vatId ?? "",
             vat_status: (financialProfile?.vatStatus ?? "") as ProviderBillingVatStatus | "",
-            payout_iban: financialProfile?.payoutIban ?? "",
-            payout_paypal_email: financialProfile?.payoutPaypalEmail ?? "",
+            iban_last4: financialProfile?.payoutIban?.replace(/^.*(\d{4})$/, "$1") ?? "",
+            paypal_email: financialProfile?.payoutPaypalEmail ?? "",
+            legal_entity_type: (financialProfile?.legalEntityType ?? "") as ProviderLegalEntityType | "",
+            representative_birth_date: financialProfile?.representativeBirthDate ?? "",
+            business_profile_url: financialProfile?.businessProfileUrl ?? "",
+            business_profile_mcc: financialProfile?.businessProfileMcc ?? "",
+            business_profile_product_description: financialProfile?.businessProfileProductDescription ?? "",
+            consentAccepted: Boolean(financialProfile?.stripeTermsAcceptedAt),
+            payoutComplete: Boolean(financialProfile?.payoutDestination),
           }}
+          initialSection={section}
         />
       </div>
     </main>
