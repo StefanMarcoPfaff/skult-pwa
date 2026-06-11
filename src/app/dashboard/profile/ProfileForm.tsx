@@ -24,6 +24,8 @@ import {
 type ProfileFormProps = {
   initialSection: string;
   pageDebug: {
+    pageUserId: string;
+    directPayoutRows: unknown[];
     loadedProviderPayoutProfileId: string | null;
     providerAccountId: string | null;
     legal_entity_type: string;
