@@ -24,10 +24,44 @@ export type SaveProfileState = {
   redirectTo?: string;
 };
 
+type SavedPayoutProfileDebug = {
+  id: string;
+  teacher_id: string | null;
+  provider: string | null;
+  payout_method: string | null;
+  legal_entity_type: string | null;
+  business_type: string | null;
+  representative_first_name: string | null;
+  representative_last_name: string | null;
+  representative_birth_date: string | null;
+  representative_email: string | null;
+  representative_phone: string | null;
+  legal_address_line1: string | null;
+  legal_address_line2: string | null;
+  legal_postal_code: string | null;
+  legal_city: string | null;
+  legal_country: string | null;
+  stripe_terms_accepted_at: string | null;
+  stripe_terms_accepted_ip: string | null;
+  stripe_terms_accepted_user_agent: string | null;
+  business_profile_url: string | null;
+  business_profile_mcc: string | null;
+  business_profile_product_description: string | null;
+};
+
 function optionalText(value: FormDataEntryValue | null): string | null {
   if (value === null) return null;
   const trimmed = String(value).trim();
   return trimmed ? trimmed : null;
+}
+
+function optionalFormText(formData: FormData, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = optionalText(formData.get(key));
+    if (value) return value;
+  }
+
+  return null;
 }
 
 function logProfileSaveEvent(
@@ -80,6 +114,16 @@ function getClientIp(requestHeaders: Headers): string | null {
   return optionalText(requestHeaders.get("x-real-ip"));
 }
 
+function logProfilePayoutDebug(
+  kind: string,
+  payload: Record<string, unknown>
+) {
+  console.info("[profile-payout-debug]", {
+    kind,
+    ...payload,
+  });
+}
+
 export async function saveProfileAction(formData: FormData): Promise<SaveProfileState> {
   const PROFILE_IMAGES_BUCKET = "profile-images";
 
@@ -110,8 +154,9 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     const payout_method_raw = optionalText(formData.get("payout_method")) ?? "iban";
     const billing_name = [first_name, last_name].filter(Boolean).join(" ").trim() || null;
     const billing_company_name = organization_name;
-    const billing_address_line_1 = optionalText(formData.get("billing_address_line_1"));
-    const billing_address_line_2 = optionalText(formData.get("billing_address_line_2"));
+    const formDataKeys = Array.from(new Set(Array.from(formData.keys()))).sort();
+    const billing_address_line_1 = optionalFormText(formData, "billing_address_line_1", "billing_address_line1");
+    const billing_address_line_2 = optionalFormText(formData, "billing_address_line_2", "billing_address_line2");
     const billing_postal_code = optionalText(formData.get("billing_postal_code"));
     const billing_city = optionalText(formData.get("billing_city"));
     const billing_country = optionalText(formData.get("billing_country"));
@@ -125,7 +170,9 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     const business_profile_url = optionalText(formData.get("business_profile_url"));
     const business_profile_mcc = optionalText(formData.get("business_profile_mcc"));
     const business_profile_product_description = optionalText(formData.get("business_profile_product_description"));
-    const consentAccepted = formData.get("data_transfer_consent") === "on";
+    const consentAccepted =
+      formData.get("data_transfer_consent") === "on" ||
+      formData.get("stripe_terms_accepted") === "on";
     const requestHeaders = await headers();
     const clientIp = getClientIp(requestHeaders);
     const userAgent = optionalText(requestHeaders.get("user-agent"));
@@ -141,6 +188,22 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     const legal_postal_code = billing_postal_code;
     const legal_city = billing_city;
     const legal_country = billing_country;
+
+    logProfilePayoutDebug("form_received", {
+      userId: user.id,
+      formDataKeys,
+      legal_entity_type,
+      representative_birth_date,
+      consentAccepted,
+      payout_method: payout_method_raw,
+      payout_paypal_email_present: Boolean(payout_paypal_email_input),
+      payout_iban_present: Boolean(payout_iban_input),
+      billing_address_line_1_present: Boolean(billing_address_line_1),
+      billing_postal_code,
+      billing_city,
+      billing_country,
+      phone_present: Boolean(phone),
+    });
 
     if (!isProviderType(provider_type_raw)) {
       logProfileSaveEvent("validation_error", {
@@ -344,7 +407,33 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       return { error: error.message || "Profil konnte nicht gespeichert werden." };
     }
 
-    const { data: existingPayoutProfile, error: existingPayoutProfileError } = await supabase
+    const payoutProfileAdmin = createSupabaseAdmin();
+    const payoutProfileDebugSelect = [
+      "id",
+      "teacher_id",
+      "provider",
+      "payout_method",
+      "legal_entity_type",
+      "business_type",
+      "representative_first_name",
+      "representative_last_name",
+      "representative_birth_date",
+      "representative_email",
+      "representative_phone",
+      "legal_address_line1",
+      "legal_address_line2",
+      "legal_postal_code",
+      "legal_city",
+      "legal_country",
+      "stripe_terms_accepted_at",
+      "stripe_terms_accepted_ip",
+      "stripe_terms_accepted_user_agent",
+      "business_profile_url",
+      "business_profile_mcc",
+      "business_profile_product_description",
+    ].join(",");
+
+    const { data: existingPayoutProfile, error: existingPayoutProfileError } = await payoutProfileAdmin
       .from("provider_payout_profiles")
       .select(
         [
@@ -363,6 +452,7 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
       .maybeSingle<{
         id: string;
+        teacher_id: string | null;
         payout_method: string | null;
         iban_last4: string | null;
         paypal_email: string | null;
@@ -372,6 +462,14 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
         stripe_terms_accepted_ip: string | null;
         stripe_terms_accepted_user_agent: string | null;
       }>();
+
+    logProfilePayoutDebug("existing_profile_lookup", {
+      userId: user.id,
+      provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+      existingProfileId: existingPayoutProfile?.id ?? null,
+      existingTeacherId: existingPayoutProfile?.teacher_id ?? null,
+      error: existingPayoutProfileError?.message ?? null,
+    });
 
     if (existingPayoutProfileError) {
       logProfileSaveEvent("save_error", {
@@ -445,10 +543,22 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     };
 
     const payoutProfileQuery = existingPayoutProfile?.id
-      ? supabase.from("provider_payout_profiles").update(payoutProfilePayload).eq("id", existingPayoutProfile.id)
-      : supabase.from("provider_payout_profiles").insert(payoutProfilePayload);
+      ? payoutProfileAdmin
+          .from("provider_payout_profiles")
+          .update(payoutProfilePayload)
+          .eq("id", existingPayoutProfile.id)
+          .eq("teacher_id", user.id)
+          .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
+          .select(payoutProfileDebugSelect)
+          .single()
+      : payoutProfileAdmin
+          .from("provider_payout_profiles")
+          .insert(payoutProfilePayload)
+          .select(payoutProfileDebugSelect)
+          .single();
 
-    const { error: payoutProfileError } = await payoutProfileQuery;
+    const { data: savedPayoutProfileRaw, error: payoutProfileError } = await payoutProfileQuery;
+    const savedPayoutProfile = savedPayoutProfileRaw as SavedPayoutProfileDebug | null;
 
     if (payoutProfileError) {
       logProfileSaveEvent("save_error", {
@@ -457,8 +567,50 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
           : "provider_payout_profiles.insert",
         userId: user.id,
         message: payoutProfileError.message,
+        details: payoutProfileError.details,
+        hint: payoutProfileError.hint,
+        code: payoutProfileError.code,
       });
-      return { error: "Das Finanzprofil konnte nicht gespeichert werden." };
+      return {
+        error: `Das Finanzprofil konnte nicht gespeichert werden: ${payoutProfileError.message}`,
+      };
+    }
+
+    const { data: reloadedPayoutProfileRaw, error: reloadedPayoutProfileError } = await payoutProfileAdmin
+      .from("provider_payout_profiles")
+      .select(payoutProfileDebugSelect)
+      .eq("teacher_id", user.id)
+      .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
+      .maybeSingle();
+    const reloadedPayoutProfile = reloadedPayoutProfileRaw as SavedPayoutProfileDebug | null;
+
+    logProfilePayoutDebug("profile_saved_and_reloaded", {
+      userId: user.id,
+      provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+      savedProfileId: savedPayoutProfile?.id ?? null,
+      savedTeacherId: savedPayoutProfile?.teacher_id ?? null,
+      savedLegalEntityType: savedPayoutProfile?.legal_entity_type ?? null,
+      savedRepresentativeBirthDate: savedPayoutProfile?.representative_birth_date ?? null,
+      savedRepresentativeEmail: savedPayoutProfile?.representative_email ?? null,
+      savedLegalAddressLine1: savedPayoutProfile?.legal_address_line1 ?? null,
+      savedStripeTermsAcceptedAt: savedPayoutProfile?.stripe_terms_accepted_at ?? null,
+      savedPayoutMethod: savedPayoutProfile?.payout_method ?? null,
+      reloadedProfileId: reloadedPayoutProfile?.id ?? null,
+      reloadedLegalEntityType: reloadedPayoutProfile?.legal_entity_type ?? null,
+      reloadedRepresentativeBirthDate: reloadedPayoutProfile?.representative_birth_date ?? null,
+      reloadedRepresentativeEmail: reloadedPayoutProfile?.representative_email ?? null,
+      reloadedLegalAddressLine1: reloadedPayoutProfile?.legal_address_line1 ?? null,
+      reloadedStripeTermsAcceptedAt: reloadedPayoutProfile?.stripe_terms_accepted_at ?? null,
+      reloadedPayoutMethod: reloadedPayoutProfile?.payout_method ?? null,
+      reloadError: reloadedPayoutProfileError?.message ?? null,
+    });
+
+    if (reloadedPayoutProfileError || !reloadedPayoutProfile) {
+      return {
+        error:
+          reloadedPayoutProfileError?.message ??
+          "Das Finanzprofil wurde gespeichert, konnte aber nicht erneut geladen werden.",
+      };
     }
 
     if (warning) {

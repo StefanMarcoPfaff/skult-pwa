@@ -11,6 +11,7 @@ import {
   getProviderCustomConnectReadiness,
 } from "@/lib/provider-billing-profile";
 import type { ProviderType } from "@/lib/provider-profiles";
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import ProfileForm from "./ProfileForm";
 
@@ -56,13 +57,14 @@ export default async function DashboardProfilePage({
     redirect("/login");
   }
 
+  const supabaseAdmin = createSupabaseAdmin();
   const [{ data: profile }, financialProfile] = await Promise.all([
     supabase
       .from("profiles")
       .select("id,first_name,last_name,bio,photo_url,company_logo_url,intro_video_url,provider_type,organization_name")
       .eq("id", user.id)
       .maybeSingle<ProfileRow>(),
-    getProviderBillingProfile(supabase, user.id) as Promise<ProviderBillingProfile | null>,
+    getProviderBillingProfile(supabaseAdmin, user.id) as Promise<ProviderBillingProfile | null>,
   ]);
   const customConnectReadiness = getProviderCustomConnectReadiness(financialProfile);
   const customConnectAccountExists = Boolean(financialProfile?.providerAccountId);
