@@ -13,6 +13,7 @@ import {
 } from "@/lib/payout-profile";
 import { validateProfileImageFile } from "@/lib/profile-image-upload";
 import { isProviderType } from "@/lib/provider-profiles";
+import { createOrUpdateCustomAccountForProvider } from "@/lib/stripe/custom-connect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type SaveProfileState = {
@@ -442,5 +443,37 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       message: error instanceof Error ? error.message : String(error),
     });
     return { error: "Beim Speichern des Profils ist ein Fehler aufgetreten. Bitte versuche es erneut." };
+  }
+}
+
+export async function prepareCustomConnectAction(): Promise<SaveProfileState> {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return {
+        error: "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
+        redirectTo: "/login",
+      };
+    }
+
+    await createOrUpdateCustomAccountForProvider(user.id);
+
+    return {
+      success: "Auszahlungsabwicklung vorbereitet. Die Angaben werden jetzt geprueft.",
+    };
+  } catch (error: unknown) {
+    console.error("[custom-connect]", {
+      kind: "prepare_custom_connect_error",
+      message: error instanceof Error ? error.message : String(error),
+    });
+
+    return {
+      error:
+        "Die Auszahlungsabwicklung konnte gerade nicht vorbereitet werden. Dein Profil bleibt gespeichert. Bitte versuche es spaeter erneut.",
+    };
   }
 }

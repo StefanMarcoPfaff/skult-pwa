@@ -6,7 +6,10 @@ import type {
   ProviderBillingVatStatus,
   ProviderLegalEntityType,
 } from "@/lib/provider-billing-profile";
-import { getProviderBillingProfile } from "@/lib/provider-billing-profile";
+import {
+  getProviderBillingProfile,
+  getProviderCustomConnectReadiness,
+} from "@/lib/provider-billing-profile";
 import type { ProviderType } from "@/lib/provider-profiles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import ProfileForm from "./ProfileForm";
@@ -22,6 +25,16 @@ type ProfileRow = {
   provider_type: ProviderType | null;
   organization_name: string | null;
 };
+
+function getCustomConnectStatusLabel(profile: ProviderBillingProfile | null): string {
+  if (!profile?.providerAccountId) return "Noch nicht vorbereitet";
+  if (profile.stripePayoutsEnabled) return "Auszahlungen moeglich";
+  if (profile.stripeRequirementsCurrentlyDue.length > 0 || profile.stripeRequirementsPastDue.length > 0) {
+    return "Weitere Angaben erforderlich";
+  }
+  if (profile.stripeDetailsSubmitted) return "Angaben werden geprueft";
+  return "Auszahlungsabwicklung vorbereitet";
+}
 
 export default async function DashboardProfilePage({
   searchParams,
@@ -51,6 +64,8 @@ export default async function DashboardProfilePage({
       .maybeSingle<ProfileRow>(),
     getProviderBillingProfile(supabase, user.id) as Promise<ProviderBillingProfile | null>,
   ]);
+  const customConnectReadiness = getProviderCustomConnectReadiness(financialProfile);
+  const customConnectAccountExists = Boolean(financialProfile?.providerAccountId);
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
@@ -102,6 +117,14 @@ export default async function DashboardProfilePage({
             business_profile_product_description: financialProfile?.businessProfileProductDescription ?? "",
             consentAccepted: Boolean(financialProfile?.stripeTermsAcceptedAt),
             payoutComplete: Boolean(financialProfile?.payoutDestination),
+            customConnectAccountExists,
+            customConnectReady: customConnectReadiness.isReadyForCustomAccountCreation,
+            customConnectStatusLabel: getCustomConnectStatusLabel(financialProfile),
+            customConnectMissingFields: customConnectReadiness.missingFields,
+            customConnectWarnings: customConnectReadiness.warnings,
+            stripeRequirementsCurrentlyDue: financialProfile?.stripeRequirementsCurrentlyDue ?? [],
+            stripeRequirementsPastDue: financialProfile?.stripeRequirementsPastDue ?? [],
+            stripePayoutsEnabled: Boolean(financialProfile?.stripePayoutsEnabled),
           }}
           initialSection={section}
         />

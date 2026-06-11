@@ -15,7 +15,11 @@ import {
 } from "@/lib/profile-image-upload";
 import { maskEmail, maskIbanLast4 } from "@/lib/payout-profile";
 import type { ProviderType } from "@/lib/provider-profiles";
-import { saveProfileAction, type SaveProfileState } from "./actions";
+import {
+  prepareCustomConnectAction,
+  saveProfileAction,
+  type SaveProfileState,
+} from "./actions";
 
 type ProfileFormProps = {
   initialSection: string;
@@ -48,6 +52,14 @@ type ProfileFormProps = {
     business_profile_product_description: string;
     consentAccepted: boolean;
     payoutComplete: boolean;
+    customConnectAccountExists: boolean;
+    customConnectReady: boolean;
+    customConnectStatusLabel: string;
+    customConnectMissingFields: string[];
+    customConnectWarnings: string[];
+    stripeRequirementsCurrentlyDue: string[];
+    stripeRequirementsPastDue: string[];
+    stripePayoutsEnabled: boolean;
   };
 };
 
@@ -55,10 +67,30 @@ function sectionIsOpen(initialSection: string, section: string, fallback = false
   return initialSection === section || (!initialSection && fallback);
 }
 
+function getFriendlyRequirementLabel(requirement: string): string {
+  if (requirement.includes("dob")) return "Geburtsdatum";
+  if (requirement.includes("address")) return "Adresse";
+  if (requirement.includes("email")) return "E-Mail-Adresse";
+  if (requirement.includes("phone")) return "Telefonnummer";
+  if (requirement.includes("business_profile")) return "Business-Informationen";
+  if (requirement.includes("external_account")) return "Auszahlungskonto";
+  if (requirement.includes("tos_acceptance")) return "Zustimmung zur Zahlungsabwicklung";
+  if (requirement.includes("verification.document")) return "Identitaetsnachweis";
+  if (requirement.includes("company.tax_id") || requirement.includes("vat_id")) return "Steuerangaben";
+  if (requirement.includes("relationship.representative")) return "Vertretungsberechtigte Person";
+  return "Weitere Angabe erforderlich";
+}
+
+function uniqueLabels(values: string[]): string[] {
+  return Array.from(new Set(values.map(getFriendlyRequirementLabel)));
+}
+
 export default function ProfileForm({ initialSection, initialValues }: ProfileFormProps) {
   const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
+  const [isPreparingCustomConnect, setIsPreparingCustomConnect] = useState(false);
   const [state, setState] = useState<SaveProfileState>({});
+  const [customConnectState, setCustomConnectState] = useState<SaveProfileState>({});
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState(initialValues.photo_url);
   const [photoObjectUrl, setPhotoObjectUrl] = useState<string | null>(null);
   const [companyLogoPreviewUrl, setCompanyLogoPreviewUrl] = useState(initialValues.company_logo_url);
@@ -106,6 +138,32 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
 
   const maskedIban = maskIbanLast4(initialValues.iban_last4);
   const maskedPaypalEmail = maskEmail(initialValues.paypal_email);
+  const friendlyRequirements = uniqueLabels([
+    ...initialValues.stripeRequirementsCurrentlyDue,
+    ...initialValues.stripeRequirementsPastDue,
+  ]);
+
+  const prepareCustomConnect = async () => {
+    setCustomConnectState({});
+    setIsPreparingCustomConnect(true);
+
+    try {
+      const result = await prepareCustomConnectAction();
+      setCustomConnectState(result);
+
+      if (result.redirectTo) {
+        router.push(result.redirectTo);
+      }
+
+      router.refresh();
+    } catch {
+      setCustomConnectState({
+        error: "Die Auszahlungsabwicklung konnte gerade nicht vorbereitet werden. Bitte versuche es erneut.",
+      });
+    } finally {
+      setIsPreparingCustomConnect(false);
+    }
+  };
 
   return (
     <form action={submitAction} className="space-y-4">
@@ -306,6 +364,65 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
       <details open={sectionIsOpen(initialSection, "zahlungsabwicklung")} className="rounded-2xl border p-5">
         <summary className="cursor-pointer text-base font-semibold">Automatische Zahlungsabwicklung</summary>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2 rounded-xl border bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            <p className="font-medium">
+              {initialValues.stripePayoutsEnabled
+                ? "Auszahlungen moeglich"
+                : initialValues.customConnectAccountExists
+                  ? initialValues.customConnectStatusLabel
+                  : initialValues.customConnectReady
+                    ? "Bereit zur Vorbereitung"
+                    : "Auszahlungsabwicklung noch nicht vollstaendig"}
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              Diese Angaben werden fuer die automatische Auszahlungsabwicklung vorbereitet. Es wird kein Stripe-Dashboard
+              geoeffnet.
+            </p>
+            {initialValues.customConnectMissingFields.length > 0 ? (
+              <ul className="mt-3 list-disc space-y-1 pl-5">
+                {initialValues.customConnectMissingFields.map((field) => (
+                  <li key={field}>{field}</li>
+                ))}
+              </ul>
+            ) : null}
+            {friendlyRequirements.length > 0 ? (
+              <div className="mt-3">
+                <p className="font-medium">Weitere Angaben erforderlich:</p>
+                <ul className="mt-1 list-disc space-y-1 pl-5">
+                  {friendlyRequirements.map((requirement) => (
+                    <li key={requirement}>{requirement}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {initialValues.customConnectWarnings.length > 0 ? (
+              <ul className="mt-3 list-disc space-y-1 pl-5 text-amber-800">
+                {initialValues.customConnectWarnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            ) : null}
+            {initialValues.customConnectReady && !initialValues.customConnectAccountExists ? (
+              <button
+                type="button"
+                onClick={prepareCustomConnect}
+                disabled={isPreparingCustomConnect}
+                className="mt-4 rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {isPreparingCustomConnect ? "Wird vorbereitet..." : "Auszahlungsabwicklung vorbereiten"}
+              </button>
+            ) : null}
+            {customConnectState.error ? (
+              <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {customConnectState.error}
+              </p>
+            ) : null}
+            {customConnectState.success ? (
+              <p className="mt-3 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                {customConnectState.success}
+              </p>
+            ) : null}
+          </div>
           <label className="space-y-1 sm:col-span-2">
             <span className="text-sm font-medium">Rechtsform</span>
             <select name="legal_entity_type" defaultValue={initialValues.legal_entity_type} className="w-full rounded-xl border px-3 py-2 text-sm">
