@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { isProviderBillingVatStatus } from "@/lib/provider-billing-profile";
+import { isProviderBillingVatStatus, type ProviderLegalEntityType } from "@/lib/provider-billing-profile";
 import {
   getIbanLast4,
   isProviderPayoutMethod,
@@ -24,7 +25,18 @@ type ExistingPayoutProfileRow = {
   payout_method: string | null;
   iban_last4: string | null;
   paypal_email: string | null;
+  stripe_terms_accepted_at: string | null;
 };
+
+function isProviderLegalEntityType(value: string | null): value is ProviderLegalEntityType {
+  return value === "individual" || value === "company" || value === "nonprofit";
+}
+
+function normalizeDateInput(value: FormDataEntryValue | null): string | null {
+  const normalized = normalizeOptionalText(value);
+  if (!normalized) return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
+}
 
 function logPayoutProfileEvent(kind: "validation_error" | "save_error", payload: Record<string, unknown>) {
   console.error("[provider-payout-profile]", {
@@ -50,7 +62,25 @@ export async function savePayoutProfileAction(formData: FormData): Promise<SaveP
     const tax_number = normalizeOptionalText(formData.get("tax_number"));
     const vat_id = normalizeOptionalText(formData.get("vat_id"));
     const vat_status_raw = normalizeOptionalText(formData.get("vat_status"));
+    const legal_entity_type_raw = normalizeOptionalText(formData.get("legal_entity_type"));
+    const business_type = normalizeOptionalText(formData.get("business_type"));
+    const representative_first_name = normalizeOptionalText(formData.get("representative_first_name"));
+    const representative_last_name = normalizeOptionalText(formData.get("representative_last_name"));
+    const representative_birth_date = normalizeDateInput(formData.get("representative_birth_date"));
+    const representative_email = normalizePaypalEmail(normalizeOptionalText(formData.get("representative_email")));
+    const representative_phone = normalizeOptionalText(formData.get("representative_phone"));
+    const legal_address_line1 = normalizeOptionalText(formData.get("legal_address_line1"));
+    const legal_address_line2 = normalizeOptionalText(formData.get("legal_address_line2"));
+    const legal_postal_code = normalizeOptionalText(formData.get("legal_postal_code"));
+    const legal_city = normalizeOptionalText(formData.get("legal_city"));
+    const legal_country = normalizeOptionalText(formData.get("legal_country"));
+    const business_profile_url = normalizeOptionalText(formData.get("business_profile_url"));
+    const business_profile_mcc = normalizeOptionalText(formData.get("business_profile_mcc"));
+    const business_profile_product_description = normalizeOptionalText(
+      formData.get("business_profile_product_description")
+    );
     const consentAccepted = formData.get("data_transfer_consent") === "on";
+    const stripeTermsAccepted = formData.get("stripe_terms_accepted") === "on";
 
     if (!account_holder_name) {
       return { error: "Bitte gib den Namen oder die Firma an." };
@@ -78,6 +108,19 @@ export async function savePayoutProfileAction(formData: FormData): Promise<SaveP
       return { error: "Bitte waehle einen gueltigen Umsatzsteuerstatus." };
     }
 
+    if (legal_entity_type_raw && !isProviderLegalEntityType(legal_entity_type_raw)) {
+      logPayoutProfileEvent("validation_error", {
+        context: "legal_entity_type",
+        userId: user.id,
+        legalEntityType: legal_entity_type_raw,
+      });
+      return { error: "Bitte waehle eine gueltige Rechtsform." };
+    }
+
+    if (representative_email && !isValidEmail(representative_email)) {
+      return { error: "Bitte gib eine gueltige E-Mail fuer die Vertreter*in an." };
+    }
+
     if (!consentAccepted) {
       return {
         error: "Bitte bestaetige die Datenweitergabe fuer die spaetere Zahlungsabwicklung.",
@@ -86,7 +129,7 @@ export async function savePayoutProfileAction(formData: FormData): Promise<SaveP
 
     const { data: existingProfile, error: existingProfileError } = await supabase
       .from("provider_payout_profiles")
-      .select("id,payout_method,iban_last4,paypal_email")
+      .select("id,payout_method,iban_last4,paypal_email,stripe_terms_accepted_at")
       .eq("teacher_id", user.id)
       .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
       .maybeSingle<ExistingPayoutProfileRow>();
@@ -99,6 +142,13 @@ export async function savePayoutProfileAction(formData: FormData): Promise<SaveP
       });
       return { error: "Das bestehende Auszahlungsprofil konnte nicht geladen werden." };
     }
+
+    const requestHeaders = await headers();
+    const existingTermsAcceptedAt = existingProfile?.stripe_terms_accepted_at ?? null;
+    const termsWereNewlyAccepted = Boolean(stripeTermsAccepted && !existingTermsAcceptedAt);
+    const nextTermsAcceptedAt = stripeTermsAccepted
+      ? existingTermsAcceptedAt ?? new Date().toISOString()
+      : existingTermsAcceptedAt;
 
     let iban_last4: string | null = null;
     let paypal_email: string | null = null;
@@ -141,9 +191,28 @@ export async function savePayoutProfileAction(formData: FormData): Promise<SaveP
       tax_number,
       vat_id,
       vat_status: vat_status_raw,
+      legal_entity_type: legal_entity_type_raw,
+      business_type,
+      representative_first_name,
+      representative_last_name,
+      representative_birth_date,
+      representative_email,
+      representative_phone,
+      legal_address_line1,
+      legal_address_line2,
+      legal_postal_code,
+      legal_city,
+      legal_country,
+      stripe_terms_accepted_at: nextTermsAcceptedAt,
+      stripe_terms_accepted_ip: termsWereNewlyAccepted
+        ? requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() || null
+        : undefined,
+      stripe_terms_accepted_user_agent: termsWereNewlyAccepted ? requestHeaders.get("user-agent") : undefined,
+      business_profile_url,
+      business_profile_mcc,
+      business_profile_product_description,
       verification_status: "pending",
       provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
-      provider_account_id: null,
       data_transfer_consent_accepted_at: new Date().toISOString(),
     };
 

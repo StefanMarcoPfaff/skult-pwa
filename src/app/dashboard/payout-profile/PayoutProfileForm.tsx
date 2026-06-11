@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import {
   PROVIDER_BILLING_VAT_STATUSES,
   type ProviderBillingVatStatus,
+  type ProviderLegalEntityType,
 } from "@/lib/provider-billing-profile";
 import {
   maskEmail,
@@ -22,6 +23,22 @@ type PayoutProfileFormProps = {
     tax_number: string;
     vat_id: string;
     vat_status: ProviderBillingVatStatus | "";
+    legal_entity_type: ProviderLegalEntityType | "";
+    business_type: string;
+    representative_first_name: string;
+    representative_last_name: string;
+    representative_birth_date: string;
+    representative_email: string;
+    representative_phone: string;
+    legal_address_line1: string;
+    legal_address_line2: string;
+    legal_postal_code: string;
+    legal_city: string;
+    legal_country: string;
+    stripeTermsAccepted: boolean;
+    business_profile_url: string;
+    business_profile_mcc: string;
+    business_profile_product_description: string;
     consentAccepted: boolean;
     verification_status: string;
   };
@@ -157,6 +174,178 @@ export default function PayoutProfileForm({ initialValues }: PayoutProfileFormPr
           </select>
         </label>
       </div>
+
+      <section className="space-y-4 rounded-2xl border p-4">
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold">Angaben fuer spaetere automatische Auszahlungen</h2>
+          <p className="text-sm text-muted-foreground">
+            Diese Angaben werden spaeter fuer die automatische Auszahlungsabwicklung benoetigt.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Rechtsform</span>
+            <select
+              name="legal_entity_type"
+              defaultValue={initialValues.legal_entity_type}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            >
+              <option value="">Keine Angabe</option>
+              <option value="individual">Einzelperson</option>
+              <option value="company">Unternehmen</option>
+              <option value="nonprofit">Gemeinnuetzig / Non-Profit</option>
+            </select>
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Vertreter*in Vorname</span>
+            <input
+              name="representative_first_name"
+              defaultValue={initialValues.representative_first_name}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Vertreter*in Nachname</span>
+            <input
+              name="representative_last_name"
+              defaultValue={initialValues.representative_last_name}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Geburtsdatum</span>
+            <input
+              type="date"
+              name="representative_birth_date"
+              defaultValue={initialValues.representative_birth_date}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">E-Mail der Vertreter*in</span>
+            <input
+              type="email"
+              name="representative_email"
+              defaultValue={initialValues.representative_email}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Telefon</span>
+            <input
+              name="representative_phone"
+              defaultValue={initialValues.representative_phone}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Business Type</span>
+            <input
+              name="business_type"
+              defaultValue={initialValues.business_type}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Optional"
+            />
+          </label>
+
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Rechtliche Adresse</span>
+            <input
+              name="legal_address_line1"
+              defaultValue={initialValues.legal_address_line1}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Strasse und Hausnummer"
+            />
+          </label>
+
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Adresszusatz</span>
+            <input
+              name="legal_address_line2"
+              defaultValue={initialValues.legal_address_line2}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">PLZ</span>
+            <input
+              name="legal_postal_code"
+              defaultValue={initialValues.legal_postal_code}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Ort</span>
+            <input
+              name="legal_city"
+              defaultValue={initialValues.legal_city}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Land</span>
+            <input
+              name="legal_country"
+              defaultValue={initialValues.legal_country}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Deutschland"
+            />
+          </label>
+
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Website / Profil-URL</span>
+            <input
+              name="business_profile_url"
+              defaultValue={initialValues.business_profile_url}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Optional"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">MCC</span>
+            <input
+              name="business_profile_mcc"
+              defaultValue={initialValues.business_profile_mcc}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Optional"
+            />
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Produktbeschreibung</span>
+            <input
+              name="business_profile_product_description"
+              defaultValue={initialValues.business_profile_product_description}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="Optional"
+            />
+          </label>
+        </div>
+
+        <label className="flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm">
+          <input
+            type="checkbox"
+            name="stripe_terms_accepted"
+            defaultChecked={initialValues.stripeTermsAccepted}
+            className="mt-1 h-4 w-4 rounded border"
+          />
+          <span>
+            Ich bestaetige, dass diese Angaben spaeter fuer die automatische Zahlungs- und Auszahlungsabwicklung
+            verwendet werden duerfen.
+          </span>
+        </label>
+      </section>
 
       <label className="flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm">
         <input

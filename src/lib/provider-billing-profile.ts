@@ -38,7 +38,9 @@ export type ProviderBillingProfileRow = {
   payout_paypal_email: string | null;
 };
 
-type ProviderFinancialPayoutProfileRow = {
+export type ProviderLegalEntityType = "individual" | "company" | "nonprofit";
+
+export type ProviderFinancialPayoutProfileRow = {
   id: string;
   teacher_id: string | null;
   payout_method: string | null;
@@ -59,6 +61,34 @@ type ProviderFinancialPayoutProfileRow = {
   provider_account_id: string | null;
   verification_status: string | null;
   platform_fee_percent_override: number | string | null;
+  stripe_account_type: string | null;
+  stripe_verification_status: string | null;
+  stripe_charges_enabled: boolean | null;
+  stripe_payouts_enabled: boolean | null;
+  stripe_details_submitted: boolean | null;
+  stripe_requirements_currently_due: string[] | null;
+  stripe_requirements_eventually_due: string[] | null;
+  stripe_requirements_past_due: string[] | null;
+  stripe_requirements_disabled_reason: string | null;
+  stripe_last_sync_at: string | null;
+  legal_entity_type: string | null;
+  business_type: string | null;
+  representative_first_name: string | null;
+  representative_last_name: string | null;
+  representative_birth_date: string | null;
+  representative_email: string | null;
+  representative_phone: string | null;
+  legal_address_line1: string | null;
+  legal_address_line2: string | null;
+  legal_postal_code: string | null;
+  legal_city: string | null;
+  legal_country: string | null;
+  stripe_terms_accepted_at: string | null;
+  stripe_terms_accepted_ip: string | null;
+  stripe_terms_accepted_user_agent: string | null;
+  business_profile_url: string | null;
+  business_profile_mcc: string | null;
+  business_profile_product_description: string | null;
 };
 
 export type ProviderBillingProfile = {
@@ -86,7 +116,42 @@ export type ProviderBillingProfile = {
   providerAccountId: string | null;
   verificationStatus: string | null;
   platformFeePercentOverride: number | string | null;
+  stripeAccountType: string | null;
+  stripeVerificationStatus: string | null;
+  stripeChargesEnabled: boolean | null;
+  stripePayoutsEnabled: boolean | null;
+  stripeDetailsSubmitted: boolean | null;
+  stripeRequirementsCurrentlyDue: string[];
+  stripeRequirementsEventuallyDue: string[];
+  stripeRequirementsPastDue: string[];
+  stripeRequirementsDisabledReason: string | null;
+  stripeLastSyncAt: string | null;
+  legalEntityType: ProviderLegalEntityType | null;
+  businessType: string | null;
+  representativeFirstName: string | null;
+  representativeLastName: string | null;
+  representativeBirthDate: string | null;
+  representativeEmail: string | null;
+  representativePhone: string | null;
+  legalAddressLine1: string | null;
+  legalAddressLine2: string | null;
+  legalPostalCode: string | null;
+  legalCity: string | null;
+  legalCountry: string | null;
+  stripeTermsAcceptedAt: string | null;
+  stripeTermsAcceptedIp: string | null;
+  stripeTermsAcceptedUserAgent: string | null;
+  businessProfileUrl: string | null;
+  businessProfileMcc: string | null;
+  businessProfileProductDescription: string | null;
   usedLegacyProfileFallback: boolean;
+};
+
+export type ProviderCustomConnectReadiness = {
+  isReadyForCustomAccountCreation: boolean;
+  missingFields: string[];
+  warnings: string[];
+  statusLabel: string;
 };
 
 function normalizeOptionalText(value: string | null | undefined): string | null {
@@ -108,6 +173,16 @@ export function isProviderBillingVatStatus(
     value === "vat_registered" ||
     value === "tax_exempt"
   );
+}
+
+function isProviderLegalEntityType(
+  value: string | null | undefined
+): value is ProviderLegalEntityType {
+  return value === "individual" || value === "company" || value === "nonprofit";
+}
+
+function normalizeStringArray(value: string[] | null | undefined): string[] {
+  return Array.isArray(value) ? value.filter((item) => Boolean(normalizeOptionalText(item))) : [];
 }
 
 export function getProviderBillingProfileFromRow(
@@ -196,7 +271,122 @@ export function getProviderBillingProfileFromRow(
     providerAccountId: normalizeOptionalText(payoutProfile?.provider_account_id),
     verificationStatus: normalizeOptionalText(payoutProfile?.verification_status),
     platformFeePercentOverride: payoutProfile?.platform_fee_percent_override ?? null,
+    stripeAccountType: normalizeOptionalText(payoutProfile?.stripe_account_type),
+    stripeVerificationStatus: normalizeOptionalText(payoutProfile?.stripe_verification_status),
+    stripeChargesEnabled: payoutProfile?.stripe_charges_enabled ?? null,
+    stripePayoutsEnabled: payoutProfile?.stripe_payouts_enabled ?? null,
+    stripeDetailsSubmitted: payoutProfile?.stripe_details_submitted ?? null,
+    stripeRequirementsCurrentlyDue: normalizeStringArray(payoutProfile?.stripe_requirements_currently_due),
+    stripeRequirementsEventuallyDue: normalizeStringArray(payoutProfile?.stripe_requirements_eventually_due),
+    stripeRequirementsPastDue: normalizeStringArray(payoutProfile?.stripe_requirements_past_due),
+    stripeRequirementsDisabledReason: normalizeOptionalText(payoutProfile?.stripe_requirements_disabled_reason),
+    stripeLastSyncAt: payoutProfile?.stripe_last_sync_at ?? null,
+    legalEntityType: isProviderLegalEntityType(payoutProfile?.legal_entity_type)
+      ? payoutProfile.legal_entity_type
+      : null,
+    businessType: normalizeOptionalText(payoutProfile?.business_type),
+    representativeFirstName: normalizeOptionalText(payoutProfile?.representative_first_name),
+    representativeLastName: normalizeOptionalText(payoutProfile?.representative_last_name),
+    representativeBirthDate: payoutProfile?.representative_birth_date ?? null,
+    representativeEmail: normalizeOptionalText(payoutProfile?.representative_email),
+    representativePhone: normalizeOptionalText(payoutProfile?.representative_phone),
+    legalAddressLine1: normalizeOptionalText(payoutProfile?.legal_address_line1),
+    legalAddressLine2: normalizeOptionalText(payoutProfile?.legal_address_line2),
+    legalPostalCode: normalizeOptionalText(payoutProfile?.legal_postal_code),
+    legalCity: normalizeOptionalText(payoutProfile?.legal_city),
+    legalCountry: normalizeOptionalText(payoutProfile?.legal_country),
+    stripeTermsAcceptedAt: payoutProfile?.stripe_terms_accepted_at ?? null,
+    stripeTermsAcceptedIp: normalizeOptionalText(payoutProfile?.stripe_terms_accepted_ip),
+    stripeTermsAcceptedUserAgent: normalizeOptionalText(payoutProfile?.stripe_terms_accepted_user_agent),
+    businessProfileUrl: normalizeOptionalText(payoutProfile?.business_profile_url),
+    businessProfileMcc: normalizeOptionalText(payoutProfile?.business_profile_mcc),
+    businessProfileProductDescription: normalizeOptionalText(payoutProfile?.business_profile_product_description),
     usedLegacyProfileFallback,
+  };
+}
+
+export function getProviderCustomConnectReadiness(
+  profile: ProviderBillingProfile | null
+): ProviderCustomConnectReadiness {
+  const missingFields: string[] = [];
+  const warnings: string[] = [];
+
+  if (!profile?.providerPayoutProfileId) {
+    missingFields.push("Auszahlungsprofil fehlt");
+  }
+
+  if (!profile?.payoutDestination) {
+    missingFields.push("Auszahlungsmethode fehlt");
+  }
+
+  if (!profile?.legalEntityType) {
+    missingFields.push("Rechtsform fehlt");
+  }
+
+  if (!profile?.representativeFirstName || !profile.representativeLastName) {
+    missingFields.push("Vertreter*in fehlt");
+  }
+
+  if (!profile?.representativeBirthDate) {
+    missingFields.push("Geburtsdatum fehlt");
+  }
+
+  if (!profile?.representativeEmail) {
+    missingFields.push("E-Mail der Vertreter*in fehlt");
+  }
+
+  if (
+    !profile?.legalAddressLine1 ||
+    !profile.legalPostalCode ||
+    !profile.legalCity ||
+    !profile.legalCountry
+  ) {
+    missingFields.push("Rechtliche Adresse fehlt");
+  }
+
+  if (!profile?.stripeTermsAcceptedAt) {
+    missingFields.push("Terms noch nicht akzeptiert");
+  }
+
+  if (profile?.usedLegacyProfileFallback) {
+    warnings.push("Einige Finanzdaten stammen noch aus Legacy-Profilfeldern.");
+  }
+
+  if (profile?.stripeRequirementsCurrentlyDue.length) {
+    warnings.push("Stripe meldet aktuell offene Anforderungen.");
+  }
+
+  if (profile?.stripeRequirementsPastDue.length) {
+    warnings.push("Stripe meldet ueberfaellige Anforderungen.");
+  }
+
+  if (profile?.stripeRequirementsDisabledReason) {
+    warnings.push("Stripe-Auszahlungen sind pausiert oder deaktiviert.");
+  }
+
+  const hasCustomAccount = Boolean(profile?.providerAccountId || profile?.stripeAccountType === "custom");
+  const isReadyForCustomAccountCreation = missingFields.length === 0 && !hasCustomAccount;
+  let statusLabel = "Angaben fehlen noch";
+
+  if (profile?.stripePayoutsEnabled && profile.stripeChargesEnabled) {
+    statusLabel = "Auszahlungen moeglich";
+  } else if (profile?.stripeRequirementsDisabledReason) {
+    statusLabel = "Auszahlungen pausiert";
+  } else if (hasCustomAccount && profile?.stripeVerificationStatus !== "verified") {
+    statusLabel = "Verifizierung erforderlich";
+  } else if (hasCustomAccount) {
+    statusLabel = "Custom Account vorbereitet";
+  } else if (isReadyForCustomAccountCreation) {
+    statusLabel = "Bereit fuer Custom-Account-Erstellung";
+  } else if (!profile?.providerPayoutProfileId) {
+    statusLabel = "Auszahlungsprofil fehlt";
+  }
+
+  return {
+    isReadyForCustomAccountCreation,
+    missingFields,
+    warnings,
+    statusLabel,
   };
 }
 
@@ -255,6 +445,34 @@ export async function getProviderBillingProfile(
           "provider_account_id",
           "verification_status",
           "platform_fee_percent_override",
+          "stripe_account_type",
+          "stripe_verification_status",
+          "stripe_charges_enabled",
+          "stripe_payouts_enabled",
+          "stripe_details_submitted",
+          "stripe_requirements_currently_due",
+          "stripe_requirements_eventually_due",
+          "stripe_requirements_past_due",
+          "stripe_requirements_disabled_reason",
+          "stripe_last_sync_at",
+          "legal_entity_type",
+          "business_type",
+          "representative_first_name",
+          "representative_last_name",
+          "representative_birth_date",
+          "representative_email",
+          "representative_phone",
+          "legal_address_line1",
+          "legal_address_line2",
+          "legal_postal_code",
+          "legal_city",
+          "legal_country",
+          "stripe_terms_accepted_at",
+          "stripe_terms_accepted_ip",
+          "stripe_terms_accepted_user_agent",
+          "business_profile_url",
+          "business_profile_mcc",
+          "business_profile_product_description",
         ].join(",")
       )
       .eq("teacher_id", providerId)
