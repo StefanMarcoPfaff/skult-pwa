@@ -46,6 +46,7 @@ type DirectPayoutProfileRow = {
   provider_account_id: string | null;
   legal_entity_type: ProviderLegalEntityType | string | null;
   representative_birth_date: string | null;
+  representative_email: string | null;
   representative_phone: string | null;
   stripe_terms_accepted_at: string | null;
   business_profile_url: string | null;
@@ -130,6 +131,7 @@ export default async function DashboardProfilePage({
                 : financialProfile.payoutDestination,
           legalEntityType: (directPayoutProfile.legal_entity_type ?? financialProfile.legalEntityType) as ProviderLegalEntityType | null,
           representativeBirthDate: directPayoutProfile.representative_birth_date ?? financialProfile.representativeBirthDate,
+          representativeEmail: directPayoutProfile.representative_email ?? financialProfile.representativeEmail,
           representativePhone: directPayoutProfile.representative_phone ?? financialProfile.representativePhone,
           legalAddressLine1: directPayoutProfile.billing_address_line_1 ?? financialProfile.legalAddressLine1,
           legalAddressLine2: directPayoutProfile.billing_address_line_2 ?? financialProfile.legalAddressLine2,
@@ -239,21 +241,6 @@ export default async function DashboardProfilePage({
       <div className="rounded-2xl border p-6">
         <ProfileForm
           initialValues={profileFormInitialValues}
-          pageDebug={{
-            pageUserId: user.id,
-            directPayoutRows,
-            loadedProviderPayoutProfileId:
-              directPayoutProfile?.id ?? financialProfile?.providerPayoutProfileId ?? null,
-            providerAccountId: directPayoutProfile?.provider_account_id ?? financialProfile?.providerAccountId ?? null,
-            legal_entity_type: profileFormInitialValues.legal_entity_type,
-            representative_birth_date: profileFormInitialValues.representative_birth_date,
-            business_profile_url: profileFormInitialValues.business_profile_url,
-            business_profile_product_description: profileFormInitialValues.business_profile_product_description,
-            consentAccepted: profileFormInitialValues.consentAccepted,
-            payout_method: profileFormInitialValues.payout_method,
-            customConnectMissingFields: customConnectReadiness.missingFields,
-            customConnectReady: customConnectReadiness.isReadyForCustomAccountCreation,
-          }}
           initialSection={section}
         />
       </div>

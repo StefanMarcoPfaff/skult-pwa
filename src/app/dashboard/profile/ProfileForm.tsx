@@ -23,20 +23,6 @@ import {
 
 type ProfileFormProps = {
   initialSection: string;
-  pageDebug: {
-    pageUserId: string;
-    directPayoutRows: unknown[];
-    loadedProviderPayoutProfileId: string | null;
-    providerAccountId: string | null;
-    legal_entity_type: string;
-    representative_birth_date: string;
-    business_profile_url: string;
-    business_profile_product_description: string;
-    consentAccepted: boolean;
-    payout_method: ProviderBillingPayoutMethod;
-    customConnectMissingFields: string[];
-    customConnectReady: boolean;
-  };
   initialValues: {
     auth_email: string;
     first_name: string;
@@ -77,23 +63,6 @@ type ProfileFormProps = {
   };
 };
 
-function DebugBox({
-  title,
-  value,
-}: {
-  title: string;
-  value: unknown;
-}) {
-  return (
-    <details open className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-950">
-      <summary className="cursor-pointer text-sm font-semibold">{title}</summary>
-      <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap break-words">
-        {JSON.stringify(value, null, 2)}
-      </pre>
-    </details>
-  );
-}
-
 function sectionIsOpen(initialSection: string, section: string, fallback = false): boolean {
   return initialSection === section || (!initialSection && fallback);
 }
@@ -116,7 +85,7 @@ function uniqueLabels(values: string[]): string[] {
   return Array.from(new Set(values.map(getFriendlyRequirementLabel)));
 }
 
-export default function ProfileForm({ initialSection, initialValues, pageDebug }: ProfileFormProps) {
+export default function ProfileForm({ initialSection, initialValues }: ProfileFormProps) {
   const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
   const [isPreparingCustomConnect, setIsPreparingCustomConnect] = useState(false);
@@ -516,8 +485,6 @@ export default function ProfileForm({ initialSection, initialValues, pageDebug }
       {state.error ? <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p> : null}
       {state.warning ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{state.warning}</p> : null}
       {state.success && !state.redirectTo ? <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{state.success}</p> : null}
-      {state.debug ? <DebugBox title="Debug: letzter Save / Verify-Read" value={state.debug} /> : null}
-      <DebugBox title="Debug: page.tsx -> ProfileForm initial values" value={pageDebug} />
 
       <button type="submit" disabled={isSaving || Boolean(fileError) || Boolean(videoUrlError)} className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
         {isSaving ? "Speichert..." : "Profil speichern"}
