@@ -114,6 +114,17 @@ function getClientIp(requestHeaders: Headers): string | null {
   return optionalText(requestHeaders.get("x-real-ip"));
 }
 
+function normalizeDateInput(value: string | null): string | null {
+  if (!value) return null;
+  const isoDate = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoDate) return `${isoDate[1]}-${isoDate[2]}-${isoDate[3]}`;
+
+  const germanDate = value.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (germanDate) return `${germanDate[3]}-${germanDate[2]}-${germanDate[1]}`;
+
+  return value;
+}
+
 function logProfilePayoutDebug(
   kind: string,
   payload: Record<string, unknown>
@@ -166,7 +177,7 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     const payout_iban_input = optionalText(formData.get("payout_iban"));
     const payout_paypal_email_input = optionalText(formData.get("payout_paypal_email"));
     const legal_entity_type = optionalText(formData.get("legal_entity_type"));
-    const representative_birth_date = optionalText(formData.get("representative_birth_date"));
+    const representative_birth_date = normalizeDateInput(optionalText(formData.get("representative_birth_date")));
     const business_profile_url = optionalText(formData.get("business_profile_url"));
     const business_profile_mcc = optionalText(formData.get("business_profile_mcc"));
     const business_profile_product_description = optionalText(formData.get("business_profile_product_description"));
@@ -192,12 +203,25 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     logProfilePayoutDebug("form_received", {
       userId: user.id,
       formDataKeys,
+      first_name,
+      last_name,
+      phone,
+      organization_name,
       legal_entity_type,
       representative_birth_date,
+      birth_date: representative_birth_date,
+      business_profile_url,
+      profile_url: business_profile_url,
+      business_profile_product_description,
+      product_description: business_profile_product_description,
+      data_transfer_consent: formData.get("data_transfer_consent"),
+      stripe_terms_accepted: formData.get("stripe_terms_accepted"),
       consentAccepted,
       payout_method: payout_method_raw,
       payout_paypal_email_present: Boolean(payout_paypal_email_input),
       payout_iban_present: Boolean(payout_iban_input),
+      billing_address_line_1,
+      billing_address_line1: optionalText(formData.get("billing_address_line1")),
       billing_address_line_1_present: Boolean(billing_address_line_1),
       billing_postal_code,
       billing_city,

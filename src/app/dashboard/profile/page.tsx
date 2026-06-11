@@ -37,6 +37,12 @@ function getCustomConnectStatusLabel(profile: ProviderBillingProfile | null): st
   return "Auszahlungsabwicklung vorbereitet";
 }
 
+function toDateInputValue(value: string | null | undefined): string {
+  if (!value) return "";
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : "";
+}
+
 export default async function DashboardProfilePage({
   searchParams,
 }: {
@@ -113,7 +119,7 @@ export default async function DashboardProfilePage({
             iban_last4: financialProfile?.payoutIban?.replace(/^.*(\d{4})$/, "$1") ?? "",
             paypal_email: financialProfile?.payoutPaypalEmail ?? "",
             legal_entity_type: (financialProfile?.legalEntityType ?? "") as ProviderLegalEntityType | "",
-            representative_birth_date: financialProfile?.representativeBirthDate ?? "",
+            representative_birth_date: toDateInputValue(financialProfile?.representativeBirthDate),
             business_profile_url: financialProfile?.businessProfileUrl ?? "",
             business_profile_mcc: financialProfile?.businessProfileMcc ?? "",
             business_profile_product_description: financialProfile?.businessProfileProductDescription ?? "",

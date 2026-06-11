@@ -143,6 +143,24 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
     ...initialValues.stripeRequirementsCurrentlyDue,
     ...initialValues.stripeRequirementsPastDue,
   ]);
+  const formVersion = [
+    initialValues.first_name,
+    initialValues.last_name,
+    initialValues.phone,
+    initialValues.representative_birth_date,
+    initialValues.organization_name,
+    initialValues.business_profile_url,
+    initialValues.business_profile_product_description,
+    initialValues.legal_entity_type,
+    initialValues.consentAccepted ? "terms-accepted" : "terms-open",
+    initialValues.address_line_1,
+    initialValues.postal_code,
+    initialValues.city,
+    initialValues.country,
+    initialValues.payout_method,
+    initialValues.iban_last4,
+    initialValues.paypal_email,
+  ].join("|");
 
   const prepareCustomConnect = async () => {
     setCustomConnectState({});
@@ -167,7 +185,7 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
   };
 
   return (
-    <form action={submitAction} className="space-y-4">
+    <form key={formVersion} action={submitAction} className="space-y-4">
       <details open={sectionIsOpen(initialSection, "persoenlich", true)} className="rounded-2xl border p-5">
         <summary className="cursor-pointer text-base font-semibold">Persoenliche Daten</summary>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -189,6 +207,10 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
             <span className="text-sm font-medium">Telefon</span>
             <input name="phone" defaultValue={initialValues.phone} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Geburtsdatum</span>
+            <input type="date" name="representative_birth_date" defaultValue={initialValues.representative_birth_date} className="w-full rounded-xl border px-3 py-2 text-sm" />
+          </label>
         </div>
       </details>
 
@@ -205,6 +227,18 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
           <label className="block space-y-1">
             <span className="text-sm font-medium">Organisation / Firma / Anbietername</span>
             <input name="organization_name" defaultValue={initialValues.organization_name} className="w-full rounded-xl border px-3 py-2 text-sm" />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium">Website / Profil-URL</span>
+            <input name="business_profile_url" defaultValue={initialValues.business_profile_url} className="w-full rounded-xl border px-3 py-2 text-sm" />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium">Produktbeschreibung</span>
+            <input name="business_profile_product_description" defaultValue={initialValues.business_profile_product_description} className="w-full rounded-xl border px-3 py-2 text-sm" />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium">Business MCC</span>
+            <input name="business_profile_mcc" defaultValue={initialValues.business_profile_mcc} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
           <label className="block space-y-1">
             <span className="text-sm font-medium">Beschreibung / Bio</span>
@@ -432,22 +466,6 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
               <option value="company">Unternehmen</option>
               <option value="nonprofit">Gemeinnuetzig / Non-Profit</option>
             </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium">Geburtsdatum</span>
-            <input type="date" name="representative_birth_date" defaultValue={initialValues.representative_birth_date} className="w-full rounded-xl border px-3 py-2 text-sm" />
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm font-medium">Business MCC</span>
-            <input name="business_profile_mcc" defaultValue={initialValues.business_profile_mcc} className="w-full rounded-xl border px-3 py-2 text-sm" />
-          </label>
-          <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm font-medium">Website / Profil-URL</span>
-            <input name="business_profile_url" defaultValue={initialValues.business_profile_url} className="w-full rounded-xl border px-3 py-2 text-sm" />
-          </label>
-          <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm font-medium">Produktbeschreibung</span>
-            <input name="business_profile_product_description" defaultValue={initialValues.business_profile_product_description} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
           <label className="sm:col-span-2 flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm">
             <input type="checkbox" name="data_transfer_consent" required defaultChecked={initialValues.consentAccepted} className="mt-1 h-4 w-4 rounded border" />

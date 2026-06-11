@@ -233,6 +233,18 @@ export function getProviderBillingProfileFromRow(
   const taxNumber = normalizeOptionalText(payoutProfile?.tax_number) ?? normalizeOptionalText(row.tax_number);
   const vatId = normalizeOptionalText(payoutProfile?.vat_id) ?? normalizeOptionalText(row.vat_id);
   const vatStatusRaw = normalizeOptionalText(payoutProfile?.vat_status) ?? normalizeOptionalText(row.vat_status);
+  const representativeFirstName =
+    normalizeOptionalText(payoutProfile?.representative_first_name) ?? normalizeOptionalText(row.first_name);
+  const representativeLastName =
+    normalizeOptionalText(payoutProfile?.representative_last_name) ?? normalizeOptionalText(row.last_name);
+  const legalAddressLine1 =
+    normalizeOptionalText(payoutProfile?.legal_address_line1) ?? billingAddressLine1;
+  const legalAddressLine2 =
+    normalizeOptionalText(payoutProfile?.legal_address_line2) ?? billingAddressLine2;
+  const legalPostalCode =
+    normalizeOptionalText(payoutProfile?.legal_postal_code) ?? billingPostalCode;
+  const legalCity = normalizeOptionalText(payoutProfile?.legal_city) ?? billingCity;
+  const legalCountry = normalizeOptionalText(payoutProfile?.legal_country) ?? billingCountry;
   const usedLegacyProfileFallback =
     !payoutProfile?.id ||
     !normalizeOptionalText(payoutProfile.billing_name) ||
@@ -285,16 +297,16 @@ export function getProviderBillingProfileFromRow(
       ? payoutProfile.legal_entity_type
       : null,
     businessType: normalizeOptionalText(payoutProfile?.business_type),
-    representativeFirstName: normalizeOptionalText(payoutProfile?.representative_first_name),
-    representativeLastName: normalizeOptionalText(payoutProfile?.representative_last_name),
+    representativeFirstName,
+    representativeLastName,
     representativeBirthDate: payoutProfile?.representative_birth_date ?? null,
     representativeEmail: normalizeOptionalText(payoutProfile?.representative_email),
     representativePhone: normalizeOptionalText(payoutProfile?.representative_phone),
-    legalAddressLine1: normalizeOptionalText(payoutProfile?.legal_address_line1),
-    legalAddressLine2: normalizeOptionalText(payoutProfile?.legal_address_line2),
-    legalPostalCode: normalizeOptionalText(payoutProfile?.legal_postal_code),
-    legalCity: normalizeOptionalText(payoutProfile?.legal_city),
-    legalCountry: normalizeOptionalText(payoutProfile?.legal_country),
+    legalAddressLine1,
+    legalAddressLine2,
+    legalPostalCode,
+    legalCity,
+    legalCountry,
     stripeTermsAcceptedAt: payoutProfile?.stripe_terms_accepted_at ?? null,
     stripeTermsAcceptedIp: normalizeOptionalText(payoutProfile?.stripe_terms_accepted_ip),
     stripeTermsAcceptedUserAgent: normalizeOptionalText(payoutProfile?.stripe_terms_accepted_user_agent),
