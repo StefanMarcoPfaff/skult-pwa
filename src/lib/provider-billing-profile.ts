@@ -406,32 +406,32 @@ export async function getProviderBillingProfile(
   supabase: SupabaseClient<Database>,
   providerId: string
 ): Promise<ProviderBillingProfile | null> {
-  const [{ data, error }, { data: payoutProfile }] = await Promise.all([
+  const [{ data, error }, payoutProfileResult] = await Promise.all([
     supabase
-    .from("profiles")
-    .select(
-      [
-        "id",
-        "first_name",
-        "last_name",
-        "provider_type",
-        "organization_name",
-        "payout_method",
-        "billing_name",
-        "billing_company_name",
-        "billing_address_line_1",
-        "billing_address_line_2",
-        "billing_postal_code",
-        "billing_city",
-        "billing_country",
-        "tax_number",
-        "vat_id",
-        "vat_status",
-        "payout_iban",
-        "payout_paypal_email",
-      ].join(",")
-    )
-    .eq("id", providerId)
+      .from("profiles")
+      .select(
+        [
+          "id",
+          "first_name",
+          "last_name",
+          "provider_type",
+          "organization_name",
+          "payout_method",
+          "billing_name",
+          "billing_company_name",
+          "billing_address_line_1",
+          "billing_address_line_2",
+          "billing_postal_code",
+          "billing_city",
+          "billing_country",
+          "tax_number",
+          "vat_id",
+          "vat_status",
+          "payout_iban",
+          "payout_paypal_email",
+        ].join(",")
+      )
+      .eq("id", providerId)
       .maybeSingle<ProviderBillingProfileRow>(),
     supabase
       .from("provider_payout_profiles")
@@ -491,12 +491,26 @@ export async function getProviderBillingProfile(
       .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
       .order("updated_at", { ascending: false })
       .limit(1)
-      .maybeSingle<ProviderFinancialPayoutProfileRow>(),
+      .returns<ProviderFinancialPayoutProfileRow[]>(),
   ]);
 
   if (error || !data) {
     return null;
   }
+
+  if (payoutProfileResult.error) {
+    console.error("[provider-billing-profile]", {
+      kind: "provider_payout_profile_load_error",
+      providerId,
+      provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+      message: payoutProfileResult.error.message,
+      details: payoutProfileResult.error.details,
+      hint: payoutProfileResult.error.hint,
+      code: payoutProfileResult.error.code,
+    });
+  }
+
+  const payoutProfile = payoutProfileResult.data?.[0] ?? null;
 
   return getProviderBillingProfileFromRow(data, payoutProfile ?? null);
 }
