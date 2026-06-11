@@ -17,7 +17,7 @@ import { maskEmail, maskIbanLast4 } from "@/lib/payout-profile";
 import type { ProviderType } from "@/lib/provider-profiles";
 import {
   prepareCustomConnectAction,
-  saveProfileAction,
+  saveUnifiedProviderProfile,
   type SaveProfileState,
 } from "./actions";
 
@@ -120,7 +120,7 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
     setIsSaving(true);
 
     try {
-      const result = await saveProfileAction(formData);
+      const result = await saveUnifiedProviderProfile(formData);
       setState(result);
 
       if (result.redirectTo) {

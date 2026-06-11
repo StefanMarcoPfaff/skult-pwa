@@ -49,6 +49,20 @@ type SavedPayoutProfileDebug = {
   business_profile_product_description: string | null;
 };
 
+type ExistingPayoutProfile = {
+  id: string;
+  teacher_id: string | null;
+  provider: string | null;
+  payout_method: string | null;
+  iban_last4: string | null;
+  paypal_email: string | null;
+  address: string | null;
+  data_transfer_consent_accepted_at: string | null;
+  stripe_terms_accepted_at: string | null;
+  stripe_terms_accepted_ip: string | null;
+  stripe_terms_accepted_user_agent: string | null;
+};
+
 function optionalText(value: FormDataEntryValue | null): string | null {
   if (value === null) return null;
   const trimmed = String(value).trim();
@@ -135,7 +149,62 @@ function logProfilePayoutDebug(
   });
 }
 
-export async function saveProfileAction(formData: FormData): Promise<SaveProfileState> {
+function datesMatch(actual: string | null | undefined, expected: string | null): boolean {
+  if (!expected) return true;
+  return Boolean(actual?.startsWith(expected));
+}
+
+function verifySavedPayoutProfile(input: {
+  row: SavedPayoutProfileDebug | null;
+  userId: string;
+  payout_method: string;
+  legal_entity_type: string | null;
+  representative_birth_date: string | null;
+  representative_email: string | null;
+  legal_address_line1: string | null;
+  legal_postal_code: string | null;
+  legal_city: string | null;
+  legal_country: string | null;
+  business_profile_url: string | null;
+  business_profile_product_description: string | null;
+  consentAccepted: boolean;
+}): string[] {
+  const row = input.row;
+  const failures: string[] = [];
+
+  if (!row) return ["provider_payout_profiles row wurde nach dem Speichern nicht gefunden"];
+  if (row.teacher_id !== input.userId) failures.push("teacher_id stimmt nicht");
+  if (row.provider !== PROVIDER_PAYOUT_PROFILE_PROVIDER) failures.push("provider stimmt nicht");
+  if (row.payout_method !== input.payout_method) failures.push("payout_method wurde nicht gespeichert");
+  if (row.legal_entity_type !== input.legal_entity_type) failures.push("legal_entity_type wurde nicht gespeichert");
+  if (!datesMatch(row.representative_birth_date, input.representative_birth_date)) {
+    failures.push("representative_birth_date wurde nicht gespeichert");
+  }
+  if (row.representative_email !== input.representative_email) {
+    failures.push("representative_email wurde nicht gespeichert");
+  }
+  if (row.legal_address_line1 !== input.legal_address_line1) {
+    failures.push("legal_address_line1 wurde nicht gespeichert");
+  }
+  if (row.legal_postal_code !== input.legal_postal_code) {
+    failures.push("legal_postal_code wurde nicht gespeichert");
+  }
+  if (row.legal_city !== input.legal_city) failures.push("legal_city wurde nicht gespeichert");
+  if (row.legal_country !== input.legal_country) failures.push("legal_country wurde nicht gespeichert");
+  if (row.business_profile_url !== input.business_profile_url) {
+    failures.push("business_profile_url wurde nicht gespeichert");
+  }
+  if (row.business_profile_product_description !== input.business_profile_product_description) {
+    failures.push("business_profile_product_description wurde nicht gespeichert");
+  }
+  if (input.consentAccepted && !row.stripe_terms_accepted_at) {
+    failures.push("stripe_terms_accepted_at wurde nicht gespeichert");
+  }
+
+  return failures;
+}
+
+export async function saveUnifiedProviderProfile(formData: FormData): Promise<SaveProfileState> {
   const PROFILE_IMAGES_BUCKET = "profile-images";
 
   try {
@@ -407,7 +476,8 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       }
     }
 
-    const { error } = await supabase.from("profiles").upsert(
+    const profileAdmin = createSupabaseAdmin();
+    const { error } = await profileAdmin.from("profiles").upsert(
       {
         id: user.id,
         first_name,
@@ -431,7 +501,33 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       return { error: error.message || "Profil konnte nicht gespeichert werden." };
     }
 
-    const payoutProfileAdmin = createSupabaseAdmin();
+    const { data: verifiedProfile, error: verifiedProfileError } = await profileAdmin
+      .from("profiles")
+      .select("id,first_name,last_name,organization_name")
+      .eq("id", user.id)
+      .single<{
+        id: string;
+        first_name: string | null;
+        last_name: string | null;
+        organization_name: string | null;
+      }>();
+
+    if (
+      verifiedProfileError ||
+      !verifiedProfile ||
+      verifiedProfile.first_name !== first_name ||
+      verifiedProfile.last_name !== last_name
+    ) {
+      logProfileSaveEvent("save_error", {
+        context: "profiles.verify",
+        userId: user.id,
+        message: verifiedProfileError?.message ?? "profiles verify mismatch",
+        verifiedProfile,
+      });
+      return { error: "Das Profil wurde nicht korrekt gespeichert." };
+    }
+
+    const payoutProfileAdmin = profileAdmin;
     const payoutProfileDebugSelect = [
       "id",
       "teacher_id",
@@ -457,7 +553,7 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       "business_profile_product_description",
     ].join(",");
 
-    const { data: existingPayoutProfile, error: existingPayoutProfileError } = await payoutProfileAdmin
+    const { data: existingPayoutProfiles, error: existingPayoutProfileError } = await payoutProfileAdmin
       .from("provider_payout_profiles")
       .select(
         [
@@ -474,22 +570,15 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       )
       .eq("teacher_id", user.id)
       .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
-      .maybeSingle<{
-        id: string;
-        teacher_id: string | null;
-        payout_method: string | null;
-        iban_last4: string | null;
-        paypal_email: string | null;
-        address: string | null;
-        data_transfer_consent_accepted_at: string | null;
-        stripe_terms_accepted_at: string | null;
-        stripe_terms_accepted_ip: string | null;
-        stripe_terms_accepted_user_agent: string | null;
-      }>();
+      .order("updated_at", { ascending: false })
+      .returns<ExistingPayoutProfile[]>();
+    const existingPayoutProfile = existingPayoutProfiles?.[0] ?? null;
 
     logProfilePayoutDebug("existing_profile_lookup", {
       userId: user.id,
       provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+      existingProfileCount: existingPayoutProfiles?.length ?? 0,
+      existingProfileIds: existingPayoutProfiles?.map((profile) => profile.id) ?? [],
       existingProfileId: existingPayoutProfile?.id ?? null,
       existingTeacherId: existingPayoutProfile?.teacher_id ?? null,
       error: existingPayoutProfileError?.message ?? null,
@@ -570,19 +659,19 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       ? payoutProfileAdmin
           .from("provider_payout_profiles")
           .update(payoutProfilePayload)
-          .eq("id", existingPayoutProfile.id)
           .eq("teacher_id", user.id)
           .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
           .select(payoutProfileDebugSelect)
-          .single()
+          .returns<SavedPayoutProfileDebug[]>()
       : payoutProfileAdmin
           .from("provider_payout_profiles")
           .insert(payoutProfilePayload)
           .select(payoutProfileDebugSelect)
-          .single();
+          .returns<SavedPayoutProfileDebug[]>();
 
     const { data: savedPayoutProfileRaw, error: payoutProfileError } = await payoutProfileQuery;
-    const savedPayoutProfile = savedPayoutProfileRaw as SavedPayoutProfileDebug | null;
+    const savedPayoutProfiles = savedPayoutProfileRaw as SavedPayoutProfileDebug[] | null;
+    const savedPayoutProfile = savedPayoutProfiles?.[0] ?? null;
 
     if (payoutProfileError) {
       logProfileSaveEvent("save_error", {
@@ -600,17 +689,21 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       };
     }
 
-    const { data: reloadedPayoutProfileRaw, error: reloadedPayoutProfileError } = await payoutProfileAdmin
+    const { data: reloadedPayoutProfilesRaw, error: reloadedPayoutProfileError } = await payoutProfileAdmin
       .from("provider_payout_profiles")
       .select(payoutProfileDebugSelect)
       .eq("teacher_id", user.id)
       .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
-      .maybeSingle();
-    const reloadedPayoutProfile = reloadedPayoutProfileRaw as SavedPayoutProfileDebug | null;
+      .order("updated_at", { ascending: false })
+      .returns<SavedPayoutProfileDebug[]>();
+    const reloadedPayoutProfiles = reloadedPayoutProfilesRaw as SavedPayoutProfileDebug[] | null;
+    const reloadedPayoutProfile = reloadedPayoutProfiles?.[0] ?? null;
 
     logProfilePayoutDebug("profile_saved_and_reloaded", {
       userId: user.id,
       provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+      savedProfileCount: savedPayoutProfiles?.length ?? 0,
+      savedProfileIds: savedPayoutProfiles?.map((profile) => profile.id) ?? [],
       savedProfileId: savedPayoutProfile?.id ?? null,
       savedTeacherId: savedPayoutProfile?.teacher_id ?? null,
       savedLegalEntityType: savedPayoutProfile?.legal_entity_type ?? null,
@@ -619,6 +712,8 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
       savedLegalAddressLine1: savedPayoutProfile?.legal_address_line1 ?? null,
       savedStripeTermsAcceptedAt: savedPayoutProfile?.stripe_terms_accepted_at ?? null,
       savedPayoutMethod: savedPayoutProfile?.payout_method ?? null,
+      reloadedProfileCount: reloadedPayoutProfiles?.length ?? 0,
+      reloadedProfileIds: reloadedPayoutProfiles?.map((profile) => profile.id) ?? [],
       reloadedProfileId: reloadedPayoutProfile?.id ?? null,
       reloadedLegalEntityType: reloadedPayoutProfile?.legal_entity_type ?? null,
       reloadedRepresentativeBirthDate: reloadedPayoutProfile?.representative_birth_date ?? null,
@@ -634,6 +729,37 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
         error:
           reloadedPayoutProfileError?.message ??
           "Das Finanzprofil wurde gespeichert, konnte aber nicht erneut geladen werden.",
+      };
+    }
+
+    const verifyFailures = verifySavedPayoutProfile({
+      row: reloadedPayoutProfile,
+      userId: user.id,
+      payout_method: payout_method_raw,
+      legal_entity_type,
+      representative_birth_date,
+      representative_email,
+      legal_address_line1,
+      legal_postal_code,
+      legal_city,
+      legal_country,
+      business_profile_url,
+      business_profile_product_description,
+      consentAccepted,
+    });
+
+    if (verifyFailures.length > 0) {
+      logProfileSaveEvent("save_error", {
+        context: "provider_payout_profiles.verify",
+        userId: user.id,
+        rowId: reloadedPayoutProfile.id,
+        teacherId: reloadedPayoutProfile.teacher_id,
+        provider: reloadedPayoutProfile.provider,
+        failures: verifyFailures,
+        reloadedPayoutProfile,
+      });
+      return {
+        error: `Das Finanzprofil wurde nicht korrekt gespeichert: ${verifyFailures.join(", ")}.`,
       };
     }
 
@@ -658,6 +784,10 @@ export async function saveProfileAction(formData: FormData): Promise<SaveProfile
     });
     return { error: "Beim Speichern des Profils ist ein Fehler aufgetreten. Bitte versuche es erneut." };
   }
+}
+
+export async function saveProfileAction(formData: FormData): Promise<SaveProfileState> {
+  return saveUnifiedProviderProfile(formData);
 }
 
 export async function prepareCustomConnectAction(): Promise<SaveProfileState> {

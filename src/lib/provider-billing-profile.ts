@@ -489,6 +489,8 @@ export async function getProviderBillingProfile(
       )
       .eq("teacher_id", providerId)
       .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
+      .order("updated_at", { ascending: false })
+      .limit(1)
       .maybeSingle<ProviderFinancialPayoutProfileRow>(),
   ]);
 
