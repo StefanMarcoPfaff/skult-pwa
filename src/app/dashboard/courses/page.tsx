@@ -9,6 +9,7 @@ import { buildOfferLocationDisplay } from "@/lib/offers/offer-view-model";
 import { normalizeOfferVisibility } from "@/lib/public-offer-visibility";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { formatWorkshopSessionLine } from "@/lib/workshop-offer-display";
 import DashboardEmptyState from "../_components/DashboardEmptyState";
 import DashboardPageHeader from "../_components/DashboardPageHeader";
 import CourseOverviewClient, { type CourseOverviewItem } from "./CourseOverviewClient";
@@ -104,32 +105,6 @@ function formatCourseSchedule(weekday: number | null, startTime: string | null, 
 
   const parts = [weekdayLabel, startTime, recurrenceLabel].filter(Boolean);
   return parts.length ? parts.join(" · ") : null;
-}
-
-function formatOverviewSessionLine(startsAt: string | null, endsAt: string | null): string | null {
-  if (!startsAt) return null;
-  const startDate = new Date(startsAt);
-  if (Number.isNaN(startDate.getTime())) return null;
-
-  const dateLabel = startDate.toLocaleDateString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-  const startTimeLabel = startDate.toLocaleTimeString("de-DE", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const endDate = endsAt ? new Date(endsAt) : null;
-  const endTimeLabel =
-    endDate && !Number.isNaN(endDate.getTime())
-      ? endDate.toLocaleTimeString("de-DE", {
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : null;
-
-  return `${dateLabel} | ${endTimeLabel ? `${startTimeLabel}–${endTimeLabel}` : startTimeLabel}`;
 }
 
 function formatOfferPrice(priceCents: number | null, currency: string | null) {
@@ -321,7 +296,7 @@ export default async function DashboardCoursesPage({
     const overviewSessions = upcomingSessions.length > 0 ? upcomingSessions : sortedSessions;
     const workshopDateLabels = overviewSessions
       .slice(0, 3)
-      .map((session) => formatOverviewSessionLine(session.starts_at, session.ends_at))
+      .map((session) => formatWorkshopSessionLine(session.starts_at, session.ends_at))
       .filter((label): label is string => Boolean(label));
     const courseTiming = formatCourseSchedule(offer.weekday, offer.start_time, offer.recurrence_type);
     const visibility = normalizeOfferVisibility(offer.visibility);
