@@ -52,7 +52,11 @@ type DirectPayoutProfileRow = {
   business_profile_url: string | null;
   business_profile_mcc: string | null;
   business_profile_product_description: string | null;
+  stripe_charges_enabled: boolean | null;
   stripe_payouts_enabled: boolean | null;
+  stripe_requirements_currently_due: string[] | null;
+  stripe_requirements_past_due: string[] | null;
+  stripe_requirements_disabled_reason: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -137,6 +141,14 @@ export default async function DashboardProfilePage({
             directPayoutProfile.stripe_terms_accepted_at ?? financialProfile.stripeTermsAcceptedAt,
           stripePayoutsEnabled:
             directPayoutProfile.stripe_payouts_enabled ?? financialProfile.stripePayoutsEnabled,
+          stripeChargesEnabled:
+            directPayoutProfile.stripe_charges_enabled ?? financialProfile.stripeChargesEnabled,
+          stripeRequirementsCurrentlyDue:
+            directPayoutProfile.stripe_requirements_currently_due ?? financialProfile.stripeRequirementsCurrentlyDue,
+          stripeRequirementsPastDue:
+            directPayoutProfile.stripe_requirements_past_due ?? financialProfile.stripeRequirementsPastDue,
+          stripeRequirementsDisabledReason:
+            directPayoutProfile.stripe_requirements_disabled_reason ?? financialProfile.stripeRequirementsDisabledReason,
         }
       : financialProfile;
   const customConnectReadiness = getProviderCustomConnectReadiness(effectiveFinancialProfile);
@@ -205,6 +217,8 @@ export default async function DashboardProfilePage({
     customConnectWarnings: customConnectReadiness.warnings,
     stripeRequirementsCurrentlyDue: effectiveFinancialProfile?.stripeRequirementsCurrentlyDue ?? [],
     stripeRequirementsPastDue: effectiveFinancialProfile?.stripeRequirementsPastDue ?? [],
+    stripeRequirementsDisabledReason: effectiveFinancialProfile?.stripeRequirementsDisabledReason ?? "",
+    stripeChargesEnabled: Boolean(effectiveFinancialProfile?.stripeChargesEnabled),
     stripePayoutsEnabled: Boolean(directPayoutProfile?.stripe_payouts_enabled ?? effectiveFinancialProfile?.stripePayoutsEnabled),
   };
 

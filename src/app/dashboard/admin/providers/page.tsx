@@ -69,6 +69,12 @@ type PayoutProfileRow = {
   platform_fee_percent_override: number | string | null;
   platform_fee_override_note: string | null;
   platform_fee_override_updated_at: string | null;
+  provider_account_id: string | null;
+  stripe_charges_enabled: boolean | null;
+  stripe_payouts_enabled: boolean | null;
+  stripe_requirements_currently_due: string[] | null;
+  stripe_requirements_past_due: string[] | null;
+  stripe_last_sync_at: string | null;
   updated_at: string | null;
 };
 
@@ -96,6 +102,11 @@ type ProviderDisplayRow = {
   lastActivityAt: string | null;
   testStatus: "Simulation" | "Pilot" | "aktiv";
   payoutProfileId: string | null;
+  providerAccountId: string | null;
+  stripeChargesEnabled: boolean | null;
+  stripePayoutsEnabled: boolean | null;
+  stripeOpenRequirementsCount: number;
+  stripeLastSyncAt: string | null;
 };
 
 const percentFormatter = new Intl.NumberFormat("de-DE", {
@@ -256,7 +267,7 @@ export default async function AdminProvidersPage({ searchParams }: { searchParam
     admin
       .from("provider_payout_profiles")
       .select(
-        "id,teacher_id,provider,payout_method,iban_last4,paypal_email,address,billing_address_line_1,billing_postal_code,billing_city,billing_country,vat_status,platform_fee_percent_override,platform_fee_override_note,platform_fee_override_updated_at,updated_at"
+        "id,teacher_id,provider,payout_method,iban_last4,paypal_email,address,billing_address_line_1,billing_postal_code,billing_city,billing_country,vat_status,platform_fee_percent_override,platform_fee_override_note,platform_fee_override_updated_at,provider_account_id,stripe_charges_enabled,stripe_payouts_enabled,stripe_requirements_currently_due,stripe_requirements_past_due,stripe_last_sync_at,updated_at"
       )
       .order("updated_at", { ascending: false })
       .returns<PayoutProfileRow[]>(),
@@ -350,6 +361,13 @@ export default async function AdminProvidersPage({ searchParams }: { searchParam
       lastActivityAt: latestDate(authUser?.lastSignInAt, payoutProfile?.updated_at, profile.created_at),
       testStatus: hasNonSimulationActivity ? "aktiv" : hasPublishedOffer ? "Pilot" : hasSimulationActivity ? "Simulation" : "Simulation",
       payoutProfileId: payoutProfile?.id ?? null,
+      providerAccountId: payoutProfile?.provider_account_id ?? null,
+      stripeChargesEnabled: payoutProfile?.stripe_charges_enabled ?? null,
+      stripePayoutsEnabled: payoutProfile?.stripe_payouts_enabled ?? null,
+      stripeOpenRequirementsCount:
+        (payoutProfile?.stripe_requirements_currently_due?.length ?? 0) +
+        (payoutProfile?.stripe_requirements_past_due?.length ?? 0),
+      stripeLastSyncAt: payoutProfile?.stripe_last_sync_at ?? null,
     };
   });
   const selectedRow = selectedProviderId ? rows.find((row) => row.id === selectedProviderId) ?? null : null;
@@ -389,6 +407,7 @@ export default async function AdminProvidersPage({ searchParams }: { searchParam
                 <th className="px-3 py-2">Registriert</th>
                 <th className="px-3 py-2">Profil</th>
                 <th className="px-3 py-2">Auszahlung</th>
+                <th className="px-3 py-2">Stripe Sync</th>
                 <th className="px-3 py-2">USt.</th>
                 <th className="px-3 py-2">Plattformgebuehr</th>
                 <th className="px-3 py-2">Angebote</th>
@@ -411,6 +430,11 @@ export default async function AdminProvidersPage({ searchParams }: { searchParam
                     <StatusBadge value={row.profileComplete ? "ja" : "nein"} />
                   </td>
                   <td className="px-3 py-3 text-slate-700">{row.payoutMethodLabel}</td>
+                  <td className="px-3 py-3 text-xs text-slate-600">
+                    <div>{row.providerAccountId ? shortenId(row.providerAccountId) : "-"}</div>
+                    <div>charges: {row.stripeChargesEnabled ? "ja" : "nein"} · payouts: {row.stripePayoutsEnabled ? "ja" : "nein"}</div>
+                    <div>offen: {row.stripeOpenRequirementsCount} · {formatDateTime(row.stripeLastSyncAt)}</div>
+                  </td>
                   <td className="px-3 py-3 text-slate-700">{row.vatStatusLabel}</td>
                   <td className="px-3 py-3">
                     <div className="font-medium text-slate-900">{formatPercentValue(row.platformFeePercent)}</div>

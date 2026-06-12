@@ -66,6 +66,8 @@ export type ProviderFinancialPayoutProfileRow = {
   stripe_charges_enabled: boolean | null;
   stripe_payouts_enabled: boolean | null;
   stripe_details_submitted: boolean | null;
+  stripe_capability_card_payments: string | null;
+  stripe_capability_transfers: string | null;
   stripe_requirements_currently_due: string[] | null;
   stripe_requirements_eventually_due: string[] | null;
   stripe_requirements_past_due: string[] | null;
@@ -121,6 +123,8 @@ export type ProviderBillingProfile = {
   stripeChargesEnabled: boolean | null;
   stripePayoutsEnabled: boolean | null;
   stripeDetailsSubmitted: boolean | null;
+  stripeCapabilityCardPayments: string | null;
+  stripeCapabilityTransfers: string | null;
   stripeRequirementsCurrentlyDue: string[];
   stripeRequirementsEventuallyDue: string[];
   stripeRequirementsPastDue: string[];
@@ -288,6 +292,8 @@ export function getProviderBillingProfileFromRow(
     stripeChargesEnabled: payoutProfile?.stripe_charges_enabled ?? null,
     stripePayoutsEnabled: payoutProfile?.stripe_payouts_enabled ?? null,
     stripeDetailsSubmitted: payoutProfile?.stripe_details_submitted ?? null,
+    stripeCapabilityCardPayments: normalizeOptionalText(payoutProfile?.stripe_capability_card_payments),
+    stripeCapabilityTransfers: normalizeOptionalText(payoutProfile?.stripe_capability_transfers),
     stripeRequirementsCurrentlyDue: normalizeStringArray(payoutProfile?.stripe_requirements_currently_due),
     stripeRequirementsEventuallyDue: normalizeStringArray(payoutProfile?.stripe_requirements_eventually_due),
     stripeRequirementsPastDue: normalizeStringArray(payoutProfile?.stripe_requirements_past_due),
@@ -462,6 +468,8 @@ export async function getProviderBillingProfile(
           "stripe_charges_enabled",
           "stripe_payouts_enabled",
           "stripe_details_submitted",
+          "stripe_capability_card_payments",
+          "stripe_capability_transfers",
           "stripe_requirements_currently_due",
           "stripe_requirements_eventually_due",
           "stripe_requirements_past_due",

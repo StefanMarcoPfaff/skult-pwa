@@ -69,11 +69,19 @@ function mapTosAcceptance(
 
 function deriveStripeVerificationStatus(account: Stripe.Account): StripeVerificationStatus {
   const requirements = account.requirements;
+  const cardPayments = account.capabilities?.card_payments ?? null;
+  const transfers = account.capabilities?.transfers ?? null;
 
   if (requirements?.disabled_reason) return "disabled";
   if (requirements?.past_due?.length) return "past_due";
   if (requirements?.currently_due?.length) return "requires_action";
-  if (account.details_submitted && account.charges_enabled && account.payouts_enabled) {
+  if (
+    account.details_submitted &&
+    account.charges_enabled &&
+    account.payouts_enabled &&
+    cardPayments === "active" &&
+    transfers === "active"
+  ) {
     return "verified";
   }
 
@@ -82,6 +90,7 @@ function deriveStripeVerificationStatus(account: Stripe.Account): StripeVerifica
 
 function mapStatusPayload(account: Stripe.Account) {
   const requirements = account.requirements;
+  const capabilities = account.capabilities;
 
   return {
     provider_account_id: account.id,
@@ -90,6 +99,8 @@ function mapStatusPayload(account: Stripe.Account) {
     stripe_charges_enabled: account.charges_enabled,
     stripe_payouts_enabled: account.payouts_enabled,
     stripe_details_submitted: account.details_submitted,
+    stripe_capability_card_payments: capabilities?.card_payments ?? null,
+    stripe_capability_transfers: capabilities?.transfers ?? null,
     stripe_requirements_currently_due: requirements?.currently_due ?? [],
     stripe_requirements_eventually_due: requirements?.eventually_due ?? [],
     stripe_requirements_past_due: requirements?.past_due ?? [],
@@ -108,16 +119,50 @@ function toUpdateParams(
   return updateParams as Stripe.AccountUpdateParams;
 }
 
-async function persistStripeCustomAccountStatus(providerId: string, account: Stripe.Account) {
+function logStripeCustomAccountSync(input: {
+  kind: "create" | "update" | "retrieve";
+  providerId: string;
+  payoutProfileId: string;
+  account: Stripe.Account;
+}) {
+  console.info("[stripe-custom-connect]", {
+    kind: input.kind,
+    providerId: input.providerId,
+    providerPayoutProfileId: input.payoutProfileId,
+    providerAccountId: input.account.id,
+    chargesEnabled: input.account.charges_enabled,
+    payoutsEnabled: input.account.payouts_enabled,
+    detailsSubmitted: input.account.details_submitted,
+    capabilityCardPayments: input.account.capabilities?.card_payments ?? null,
+    capabilityTransfers: input.account.capabilities?.transfers ?? null,
+    requirementsCurrentlyDue: input.account.requirements?.currently_due ?? [],
+    requirementsEventuallyDue: input.account.requirements?.eventually_due ?? [],
+    requirementsPastDue: input.account.requirements?.past_due ?? [],
+    requirementsDisabledReason: input.account.requirements?.disabled_reason ?? null,
+  });
+}
+
+async function persistStripeCustomAccountStatus(
+  providerId: string,
+  payoutProfileId: string,
+  account: Stripe.Account
+) {
   const supabase = createSupabaseAdmin();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("provider_payout_profiles")
     .update(mapStatusPayload(account))
+    .eq("id", payoutProfileId)
     .eq("teacher_id", providerId)
-    .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER);
+    .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
+    .select("id")
+    .maybeSingle<{ id: string }>();
 
   if (error) {
     throw new Error(`Stripe Custom Account Status konnte nicht gespeichert werden: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new Error("Stripe Custom Account Status konnte keiner Anbieter-Zeile zugeordnet werden.");
   }
 }
 
@@ -198,11 +243,36 @@ export async function createOrUpdateCustomAccountForProvider(providerId: string)
 
   const stripe = getStripe();
   const params = mapProviderPayoutProfileToStripeAccountParams(profile);
-  const account = profile.providerAccountId
-    ? await stripe.accounts.update(profile.providerAccountId, toUpdateParams(params))
-    : await stripe.accounts.create(params);
+  const writeKind = profile.providerAccountId ? "update" : "create";
+  let account: Stripe.Account;
 
-  await persistStripeCustomAccountStatus(providerId, account);
+  try {
+    const writtenAccount = profile.providerAccountId
+      ? await stripe.accounts.update(profile.providerAccountId, toUpdateParams(params))
+      : await stripe.accounts.create(params);
+    account = await stripe.accounts.retrieve(writtenAccount.id);
+  } catch (error: unknown) {
+    console.error("[stripe-custom-connect]", {
+      kind: `${writeKind}_error`,
+      providerId,
+      providerPayoutProfileId: profile.providerPayoutProfileId,
+      providerAccountId: profile.providerAccountId,
+      message: error instanceof Error ? error.message : String(error),
+      type: typeof error === "object" && error !== null && "type" in error ? error.type : null,
+      code: typeof error === "object" && error !== null && "code" in error ? error.code : null,
+      requestId: typeof error === "object" && error !== null && "requestId" in error ? error.requestId : null,
+      statusCode: typeof error === "object" && error !== null && "statusCode" in error ? error.statusCode : null,
+    });
+    throw error;
+  }
+
+  logStripeCustomAccountSync({
+    kind: writeKind,
+    providerId,
+    payoutProfileId: profile.providerPayoutProfileId,
+    account,
+  });
+  await persistStripeCustomAccountStatus(providerId, profile.providerPayoutProfileId, account);
   return account;
 }
 
@@ -210,12 +280,35 @@ export async function syncCustomAccountStatus(providerId: string): Promise<Strip
   const supabase = createSupabaseAdmin();
   const profile = await getProviderBillingProfile(supabase, providerId);
 
-  if (!profile?.providerAccountId) {
+  if (!profile?.providerAccountId || !profile.providerPayoutProfileId) {
     throw new Error("Noch kein Stripe Custom Account vorhanden.");
   }
 
   const stripe = getStripe();
-  const account = await stripe.accounts.retrieve(profile.providerAccountId);
-  await persistStripeCustomAccountStatus(providerId, account);
+  let account: Stripe.Account;
+
+  try {
+    account = await stripe.accounts.retrieve(profile.providerAccountId);
+  } catch (error: unknown) {
+    console.error("[stripe-custom-connect]", {
+      kind: "retrieve_error",
+      providerId,
+      providerPayoutProfileId: profile.providerPayoutProfileId,
+      providerAccountId: profile.providerAccountId,
+      message: error instanceof Error ? error.message : String(error),
+      type: typeof error === "object" && error !== null && "type" in error ? error.type : null,
+      code: typeof error === "object" && error !== null && "code" in error ? error.code : null,
+      requestId: typeof error === "object" && error !== null && "requestId" in error ? error.requestId : null,
+      statusCode: typeof error === "object" && error !== null && "statusCode" in error ? error.statusCode : null,
+    });
+    throw error;
+  }
+  logStripeCustomAccountSync({
+    kind: "retrieve",
+    providerId,
+    payoutProfileId: profile.providerPayoutProfileId,
+    account,
+  });
+  await persistStripeCustomAccountStatus(providerId, profile.providerPayoutProfileId, account);
   return account;
 }

@@ -57,6 +57,8 @@ type ProfileFormProps = {
     customConnectWarnings: string[];
     stripeRequirementsCurrentlyDue: string[];
     stripeRequirementsPastDue: string[];
+    stripeRequirementsDisabledReason: string;
+    stripeChargesEnabled: boolean;
     stripePayoutsEnabled: boolean;
   };
 };
@@ -66,21 +68,58 @@ function sectionIsOpen(initialSection: string, section: string, fallback = false
 }
 
 function getFriendlyRequirementLabel(requirement: string): string {
-  if (requirement.includes("dob")) return "Geburtsdatum";
-  if (requirement.includes("address")) return "Adresse";
-  if (requirement.includes("email")) return "E-Mail-Adresse";
-  if (requirement.includes("phone")) return "Telefonnummer";
-  if (requirement.includes("business_profile")) return "Business-Informationen";
-  if (requirement.includes("external_account")) return "Auszahlungskonto";
-  if (requirement.includes("tos_acceptance")) return "Zustimmung zur Zahlungsabwicklung";
-  if (requirement.includes("verification.document")) return "Identitätsnachweis";
-  if (requirement.includes("company.tax_id") || requirement.includes("vat_id")) return "Steuerangaben";
-  if (requirement.includes("relationship.representative")) return "Vertretungsberechtigte Person";
+  const normalized = requirement.toLowerCase();
+
+  if (normalized.includes("verification.document")) {
+    return normalized.startsWith("company.") ? "Unternehmensnachweis" : "Identitätsnachweis";
+  }
+  if (normalized.includes("dob")) return "Geburtsdatum";
+  if (normalized.includes("address")) return "Adresse";
+  if (normalized === "external_account" || normalized.includes(".external_account")) return "Auszahlungskonto";
+  if (normalized.includes("representative") || normalized.includes("relationship.representative")) {
+    return "Vertretungsberechtigte Person";
+  }
+  if (normalized.includes("email")) return "E-Mail-Adresse";
+  if (normalized.includes("phone")) return "Telefonnummer";
+  if (normalized.includes("business_profile")) return "Business-Informationen";
+  if (normalized.includes("tos_acceptance")) return "Zustimmung zur Zahlungsabwicklung";
+  if (normalized.includes("company.tax_id") || normalized.includes("vat_id")) return "Steuerangaben";
   return "Weitere Angabe erforderlich";
 }
 
 function uniqueLabels(values: string[]): string[] {
   return Array.from(new Set(values.map(getFriendlyRequirementLabel)));
+}
+
+function getPaymentPreparationStatus(input: {
+  hasMissingProfileFields: boolean;
+  hasAccount: boolean;
+  isReadyForPreparation: boolean;
+  hasOpenRequirements: boolean;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+}): string {
+  if (input.hasMissingProfileFields) {
+    return "Für die automatische Zahlungsabwicklung fehlen noch Angaben.";
+  }
+
+  if (input.payoutsEnabled && input.chargesEnabled) {
+    return "Auszahlungen sind vorbereitet.";
+  }
+
+  if (input.hasOpenRequirements) {
+    return "Für Auszahlungen werden noch weitere Angaben benötigt.";
+  }
+
+  if (input.hasAccount) {
+    return "Die Zahlungsabwicklung wird vorbereitet. Sobald alles freigegeben ist, kannst Du kostenpflichtige Angebote nutzen.";
+  }
+
+  if (input.isReadyForPreparation) {
+    return "Deine Angaben sind vollständig. RESER bereitet die Zahlungsabwicklung automatisch vor.";
+  }
+
+  return "Für die automatische Zahlungsabwicklung fehlen noch Angaben.";
 }
 
 export default function ProfileForm({ initialSection, initialValues }: ProfileFormProps) {
@@ -139,6 +178,16 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
     ...initialValues.stripeRequirementsCurrentlyDue,
     ...initialValues.stripeRequirementsPastDue,
   ]);
+  const hasOpenStripeRequirements =
+    friendlyRequirements.length > 0 || Boolean(initialValues.stripeRequirementsDisabledReason);
+  const paymentPreparationStatus = getPaymentPreparationStatus({
+    hasMissingProfileFields: initialValues.customConnectMissingFields.length > 0,
+    hasAccount: initialValues.customConnectAccountExists,
+    isReadyForPreparation: initialValues.customConnectReady,
+    hasOpenRequirements: hasOpenStripeRequirements,
+    chargesEnabled: initialValues.stripeChargesEnabled,
+    payoutsEnabled: initialValues.stripePayoutsEnabled,
+  });
   const formVersion = [
     initialValues.first_name,
     initialValues.last_name,
@@ -383,15 +432,7 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
         <h2 className="text-base font-semibold">Automatische Zahlungsabwicklung</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2 rounded-xl border bg-slate-50 px-4 py-3 text-sm text-slate-700">
-            <p className="font-medium">
-              {initialValues.stripePayoutsEnabled
-                ? "Auszahlungen möglich"
-                : initialValues.customConnectAccountExists
-                  ? "Angaben werden automatisch geprüft"
-                  : initialValues.customConnectReady
-                    ? "Angaben vollständig"
-                    : "Angaben noch nicht vollständig"}
-            </p>
+            <p className="font-medium">{paymentPreparationStatus}</p>
             <p className="mt-1 text-muted-foreground">
               Deine Angaben werden für Buchungen, Auszahlungen und Belege verwendet. Sobald Du kostenpflichtige Angebote
               anbietest, prüft RESER automatisch, ob weitere Angaben benötigt werden.
@@ -405,7 +446,7 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
             ) : null}
             {friendlyRequirements.length > 0 ? (
               <div className="mt-3">
-                <p className="font-medium">Weitere Angaben erforderlich:</p>
+                <p className="font-medium">Noch benötigt:</p>
                 <ul className="mt-1 list-disc space-y-1 pl-5">
                   {friendlyRequirements.map((requirement) => (
                     <li key={requirement}>{requirement}</li>

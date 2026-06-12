@@ -904,14 +904,18 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       };
     }
 
+    let customConnectWarning: string | undefined;
+
     try {
       const refreshedBillingProfile = await getProviderBillingProfile(profileAdmin, user.id);
       const customConnectReadiness = getProviderCustomConnectReadiness(refreshedBillingProfile);
 
-      if (customConnectReadiness.isReadyForCustomAccountCreation) {
+      if (refreshedBillingProfile?.providerAccountId || customConnectReadiness.isReadyForCustomAccountCreation) {
         await createOrUpdateCustomAccountForProvider(user.id);
       }
     } catch (error: unknown) {
+      customConnectWarning =
+        "Dein Profil wurde gespeichert. Die automatische Zahlungsabwicklung konnte noch nicht vollständig vorbereitet werden.";
       logProfileSaveEvent("save_warning", {
         context: "custom_connect.auto_prepare",
         userId: user.id,
@@ -919,14 +923,16 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       });
     }
 
-    if (warning) {
+    const combinedWarning = [warning, customConnectWarning].filter(Boolean).join(" ");
+
+    if (combinedWarning) {
       logProfileSaveEvent("save_warning", {
         context: "profile.saved.with_upload_warning",
         userId: user.id,
       });
       return {
         success: "Profil gespeichert.",
-        warning,
+        warning: combinedWarning,
         debug: saveDebug,
       };
     }
