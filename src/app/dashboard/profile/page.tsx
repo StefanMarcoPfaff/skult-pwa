@@ -211,19 +211,19 @@ export default async function DashboardProfilePage({
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       <Link href="/dashboard" className="inline-flex text-sm font-medium underline underline-offset-4">
-        Zurueck zum Dashboard
+        Zurück zum Dashboard
       </Link>
 
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold">Mein Profil</h1>
         <p className="text-sm text-muted-foreground">
-          Diese Angaben bilden die Grundlage fuer dein Profil als Anbietende.
+          Diese Angaben bilden die Grundlage für dein Profil als Anbietende.
         </p>
       </header>
 
       {onboarding ? (
         <p className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
-          Willkommen. Bitte vervollstaendige jetzt dein Profil, damit du anschliessend Angebote anlegen kannst.
+          Willkommen. Bitte vervollständige jetzt dein Profil, damit du anschließend Angebote anlegen kannst.
         </p>
       ) : null}
 

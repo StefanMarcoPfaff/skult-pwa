@@ -73,7 +73,7 @@ function getFriendlyRequirementLabel(requirement: string): string {
   if (requirement.includes("business_profile")) return "Business-Informationen";
   if (requirement.includes("external_account")) return "Auszahlungskonto";
   if (requirement.includes("tos_acceptance")) return "Zustimmung zur Zahlungsabwicklung";
-  if (requirement.includes("verification.document")) return "Identitaetsnachweis";
+  if (requirement.includes("verification.document")) return "Identitätsnachweis";
   if (requirement.includes("company.tax_id") || requirement.includes("vat_id")) return "Steuerangaben";
   if (requirement.includes("relationship.representative")) return "Vertretungsberechtigte Person";
   return "Weitere Angabe erforderlich";
@@ -109,7 +109,7 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
     setState({});
     const introVideoUrl = String(formData.get("intro_video_url") || "").trim();
     if (introVideoUrl && !/^https?:\/\//i.test(introVideoUrl)) {
-      setVideoUrlError("Bitte gib einen gueltigen Link mit http:// oder https:// an.");
+      setVideoUrlError("Bitte gib einen gültigen Link mit http:// oder https:// an.");
       return;
     }
     setVideoUrlError(null);
@@ -161,7 +161,7 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
   return (
     <form key={formVersion} action={submitAction} className="space-y-4">
       <details open={sectionIsOpen(initialSection, "persoenlich", true)} className="rounded-2xl border p-5">
-        <summary className="cursor-pointer text-base font-semibold">Persoenliche Daten</summary>
+        <summary className="cursor-pointer text-base font-semibold">Persönliche Daten</summary>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="space-y-1">
             <span className="text-sm font-medium">Vorname *</span>
@@ -302,7 +302,7 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
         <summary className="cursor-pointer text-base font-semibold">Adresse &amp; Rechnungsdaten</summary>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm font-medium">Strasse + Hausnummer *</span>
+            <span className="text-sm font-medium">Straße + Hausnummer *</span>
             <input name="billing_address_line_1" required defaultValue={initialValues.address_line_1} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
           <label className="space-y-1 sm:col-span-2">
@@ -335,7 +335,16 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
               <option value="">Keine Angabe</option>
               <option value={PROVIDER_BILLING_VAT_STATUSES[0]}>Kleinunternehmer*in</option>
               <option value={PROVIDER_BILLING_VAT_STATUSES[1]}>Umsatzsteuerpflichtig</option>
-              <option value={PROVIDER_BILLING_VAT_STATUSES[2]}>Steuerbefreit/Gemeinnuetzig</option>
+              <option value={PROVIDER_BILLING_VAT_STATUSES[2]}>Steuerbefreit/Gemeinnützig</option>
+            </select>
+          </label>
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-medium">Rechtsform</span>
+            <select name="legal_entity_type" defaultValue={initialValues.legal_entity_type} className="w-full rounded-xl border px-3 py-2 text-sm">
+              <option value="">Keine Angabe</option>
+              <option value="individual">Einzelperson</option>
+              <option value="company">Unternehmen</option>
+              <option value="nonprofit">Gemeinnützig / Non-Profit</option>
             </select>
           </label>
         </div>
@@ -345,7 +354,7 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
         <summary className="cursor-pointer text-base font-semibold">Auszahlungen</summary>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <p className="sm:col-span-2 rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700">
-            Status: {initialValues.payoutComplete ? "Angaben vollstaendig" : "Angaben fehlen"}
+            Status: {initialValues.payoutComplete ? "Angaben vollständig" : "Angaben fehlen"}
           </p>
           <label className="space-y-1 sm:col-span-2">
             <span className="text-sm font-medium">Auszahlungsmethode *</span>
@@ -376,16 +385,16 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
           <div className="sm:col-span-2 rounded-xl border bg-slate-50 px-4 py-3 text-sm text-slate-700">
             <p className="font-medium">
               {initialValues.stripePayoutsEnabled
-                ? "Auszahlungen moeglich"
+                ? "Auszahlungen möglich"
                 : initialValues.customConnectAccountExists
-                  ? "Angaben werden automatisch geprueft"
+                  ? "Angaben werden automatisch geprüft"
                   : initialValues.customConnectReady
-                    ? "Angaben vollstaendig"
-                    : "Angaben noch nicht vollstaendig"}
+                    ? "Angaben vollständig"
+                    : "Angaben noch nicht vollständig"}
             </p>
             <p className="mt-1 text-muted-foreground">
-              Deine Angaben werden fuer Buchungen, Auszahlungen und Belege verwendet. Sobald Du kostenpflichtige Angebote
-              anbietest, prueft RESER automatisch, ob weitere Angaben benoetigt werden.
+              Deine Angaben werden für Buchungen, Auszahlungen und Belege verwendet. Sobald Du kostenpflichtige Angebote
+              anbietest, prüft RESER automatisch, ob weitere Angaben benötigt werden.
             </p>
             {initialValues.customConnectMissingFields.length > 0 ? (
               <ul className="mt-3 list-disc space-y-1 pl-5">
@@ -405,19 +414,10 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
               </div>
             ) : null}
           </div>
-          <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm font-medium">Rechtsform</span>
-            <select name="legal_entity_type" defaultValue={initialValues.legal_entity_type} className="w-full rounded-xl border px-3 py-2 text-sm">
-              <option value="">Keine Angabe</option>
-              <option value="individual">Einzelperson</option>
-              <option value="company">Unternehmen</option>
-              <option value="nonprofit">Gemeinnuetzig / Non-Profit</option>
-            </select>
-          </label>
           <label className="sm:col-span-2 flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm">
             <input type="checkbox" name="data_transfer_consent" required defaultChecked={initialValues.consentAccepted} className="mt-1 h-4 w-4 rounded border" />
             <span>
-              Ich stimme zu, dass RESER die fuer Buchungen, Zahlungen, Auszahlungen und Belege notwendigen Informationen
+              Ich stimme zu, dass RESER die für Buchungen, Zahlungen, Auszahlungen und Belege notwendigen Informationen
               an die jeweils eingebundenen Zahlungsdienstleister weitergeben darf.{" "}
               <Link href="/zahlungsdienstleister" className="font-medium underline underline-offset-4">
                 Mehr Informationen

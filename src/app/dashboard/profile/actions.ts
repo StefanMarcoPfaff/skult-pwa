@@ -413,7 +413,7 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
         context: "provider_type",
         userId: user.id,
       });
-      return { error: "Bitte waehle einen gueltigen Anbietertyp." };
+      return { error: "Bitte wähle einen gültigen Anbietertyp." };
     }
 
     if (!first_name) return { error: "Vorname ist erforderlich." };
@@ -424,7 +424,7 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
         userId: user.id,
         payoutMethod: payout_method_raw,
       });
-      return { error: "Bitte waehle aus, wie du Auszahlungen erhalten moechtest." };
+      return { error: "Bitte wähle aus, wie du Auszahlungen erhalten möchtest." };
     }
     if (vat_status_raw && !isProviderBillingVatStatus(vat_status_raw)) {
       logProfileSaveEvent("validation_error", {
@@ -432,19 +432,19 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
         userId: user.id,
         vatStatus: vat_status_raw,
       });
-      return { error: "Bitte waehle einen gueltigen Umsatzsteuerstatus." };
+      return { error: "Bitte wähle einen gültigen Umsatzsteuerstatus." };
     }
     if (legal_entity_type && !["individual", "company", "nonprofit"].includes(legal_entity_type)) {
-      return { error: "Bitte waehle eine gueltige Rechtsform." };
+      return { error: "Bitte wähle eine gültige Rechtsform." };
     }
     if (intro_video_url && !/^https?:\/\//i.test(intro_video_url)) {
-      return { error: "Bitte gib einen gueltigen Video-Link mit http:// oder https:// an." };
+      return { error: "Bitte gib einen gültigen Video-Link mit http:// oder https:// an." };
     }
     if (!billing_address_line_1 || !billing_postal_code || !billing_city || !billing_country) {
-      return { error: "Bitte gib deine vollstaendige Adresse an." };
+      return { error: "Bitte gib deine vollständige Adresse an." };
     }
     if (!consentAccepted) {
-      return { error: "Bitte bestaetige die Datenweitergabe fuer die Zahlungsabwicklung." };
+      return { error: "Bitte bestätige die Datenweitergabe für die Zahlungsabwicklung." };
     }
 
     let photo_url = existing_photo_url;
@@ -965,7 +965,7 @@ export async function prepareCustomConnectAction(): Promise<SaveProfileState> {
     await createOrUpdateCustomAccountForProvider(user.id);
 
     return {
-      success: "Auszahlungsabwicklung vorbereitet. Die Angaben werden jetzt geprueft.",
+      success: "Auszahlungsabwicklung vorbereitet. Die Angaben werden jetzt geprüft.",
     };
   } catch (error: unknown) {
     console.error("[custom-connect]", {
@@ -975,7 +975,7 @@ export async function prepareCustomConnectAction(): Promise<SaveProfileState> {
 
     return {
       error:
-        "Die Auszahlungsabwicklung konnte gerade nicht vorbereitet werden. Dein Profil bleibt gespeichert. Bitte versuche es spaeter erneut.",
+        "Die Auszahlungsabwicklung konnte gerade nicht vorbereitet werden. Dein Profil bleibt gespeichert. Bitte versuche es später erneut.",
     };
   }
 }

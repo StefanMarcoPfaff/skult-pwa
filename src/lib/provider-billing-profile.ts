@@ -365,15 +365,15 @@ export function getProviderCustomConnectReadiness(
   }
 
   if (profile?.stripeRequirementsCurrentlyDue.length) {
-    warnings.push("Der Zahlungsdienstleister benoetigt weitere Angaben.");
+    warnings.push("Der Zahlungsdienstleister benötigt weitere Angaben.");
   }
 
   if (profile?.stripeRequirementsPastDue.length) {
-    warnings.push("Der Zahlungsdienstleister benoetigt weitere Angaben.");
+    warnings.push("Der Zahlungsdienstleister benötigt weitere Angaben.");
   }
 
   if (profile?.stripeRequirementsDisabledReason) {
-    warnings.push("Auszahlungen sind voruebergehend nicht moeglich.");
+    warnings.push("Auszahlungen sind vorübergehend nicht möglich.");
   }
 
   const hasCustomAccount = Boolean(profile?.providerAccountId || profile?.stripeAccountType === "custom");
@@ -381,15 +381,15 @@ export function getProviderCustomConnectReadiness(
   let statusLabel = "Angaben fehlen noch";
 
   if (profile?.stripePayoutsEnabled && profile.stripeChargesEnabled) {
-    statusLabel = "Auszahlungen moeglich";
+    statusLabel = "Auszahlungen möglich";
   } else if (profile?.stripeRequirementsDisabledReason) {
     statusLabel = "Auszahlungen pausiert";
   } else if (hasCustomAccount && profile?.stripeVerificationStatus !== "verified") {
     statusLabel = "Weitere Angaben erforderlich";
   } else if (hasCustomAccount) {
-    statusLabel = "Angaben werden automatisch geprueft";
+    statusLabel = "Angaben werden automatisch geprüft";
   } else if (isReadyForCustomAccountCreation) {
-    statusLabel = "Angaben vollstaendig";
+    statusLabel = "Angaben vollständig";
   } else if (!profile?.providerPayoutProfileId) {
     statusLabel = "Auszahlungsangaben fehlen";
   }
