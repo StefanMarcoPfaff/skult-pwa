@@ -57,16 +57,6 @@ type DirectPayoutProfileRow = {
   updated_at: string | null;
 };
 
-function getCustomConnectStatusLabel(profile: ProviderBillingProfile | null): string {
-  if (!profile?.providerAccountId) return "Noch nicht vorbereitet";
-  if (profile.stripePayoutsEnabled) return "Auszahlungen moeglich";
-  if (profile.stripeRequirementsCurrentlyDue.length > 0 || profile.stripeRequirementsPastDue.length > 0) {
-    return "Weitere Angaben erforderlich";
-  }
-  if (profile.stripeDetailsSubmitted) return "Angaben werden geprueft";
-  return "Auszahlungsabwicklung vorbereitet";
-}
-
 function toDateInputValue(value: string | null | undefined): string {
   if (!value) return "";
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -211,7 +201,6 @@ export default async function DashboardProfilePage({
     ),
     customConnectAccountExists,
     customConnectReady: customConnectReadiness.isReadyForCustomAccountCreation,
-    customConnectStatusLabel: getCustomConnectStatusLabel(effectiveFinancialProfile),
     customConnectMissingFields: customConnectReadiness.missingFields,
     customConnectWarnings: customConnectReadiness.warnings,
     stripeRequirementsCurrentlyDue: effectiveFinancialProfile?.stripeRequirementsCurrentlyDue ?? [],

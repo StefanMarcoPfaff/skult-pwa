@@ -3,6 +3,8 @@
 import { headers } from "next/headers";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import {
+  getProviderBillingProfile,
+  getProviderCustomConnectReadiness,
   isProviderBillingPayoutMethod,
   isProviderBillingVatStatus,
 } from "@/lib/provider-billing-profile";
@@ -900,6 +902,21 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
         error: `Das Finanzprofil wurde nicht korrekt gespeichert: ${verifyFailures.join(", ")}.`,
         debug: saveDebug,
       };
+    }
+
+    try {
+      const refreshedBillingProfile = await getProviderBillingProfile(profileAdmin, user.id);
+      const customConnectReadiness = getProviderCustomConnectReadiness(refreshedBillingProfile);
+
+      if (customConnectReadiness.isReadyForCustomAccountCreation) {
+        await createOrUpdateCustomAccountForProvider(user.id);
+      }
+    } catch (error: unknown) {
+      logProfileSaveEvent("save_warning", {
+        context: "custom_connect.auto_prepare",
+        userId: user.id,
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
 
     if (warning) {

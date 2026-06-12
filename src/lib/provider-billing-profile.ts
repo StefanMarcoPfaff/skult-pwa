@@ -324,7 +324,7 @@ export function getProviderCustomConnectReadiness(
   const warnings: string[] = [];
 
   if (!profile?.providerPayoutProfileId) {
-    missingFields.push("Auszahlungsprofil fehlt");
+    missingFields.push("Auszahlungsangaben fehlen");
   }
 
   if (!profile?.payoutDestination) {
@@ -336,7 +336,7 @@ export function getProviderCustomConnectReadiness(
   }
 
   if (!profile?.representativeFirstName || !profile.representativeLastName) {
-    missingFields.push("Vertreter*in fehlt");
+    missingFields.push("Name fehlt");
   }
 
   if (!profile?.representativeBirthDate) {
@@ -344,7 +344,7 @@ export function getProviderCustomConnectReadiness(
   }
 
   if (!profile?.representativeEmail) {
-    missingFields.push("E-Mail der Vertreter*in fehlt");
+    missingFields.push("E-Mail-Adresse fehlt");
   }
 
   if (
@@ -353,11 +353,11 @@ export function getProviderCustomConnectReadiness(
     !profile.legalCity ||
     !profile.legalCountry
   ) {
-    missingFields.push("Rechtliche Adresse fehlt");
+    missingFields.push("Adresse fehlt");
   }
 
   if (!profile?.stripeTermsAcceptedAt) {
-    missingFields.push("Terms noch nicht akzeptiert");
+    missingFields.push("Zustimmung fehlt");
   }
 
   if (profile?.usedLegacyProfileFallback) {
@@ -365,15 +365,15 @@ export function getProviderCustomConnectReadiness(
   }
 
   if (profile?.stripeRequirementsCurrentlyDue.length) {
-    warnings.push("Stripe meldet aktuell offene Anforderungen.");
+    warnings.push("Der Zahlungsdienstleister benoetigt weitere Angaben.");
   }
 
   if (profile?.stripeRequirementsPastDue.length) {
-    warnings.push("Stripe meldet ueberfaellige Anforderungen.");
+    warnings.push("Der Zahlungsdienstleister benoetigt weitere Angaben.");
   }
 
   if (profile?.stripeRequirementsDisabledReason) {
-    warnings.push("Stripe-Auszahlungen sind pausiert oder deaktiviert.");
+    warnings.push("Auszahlungen sind voruebergehend nicht moeglich.");
   }
 
   const hasCustomAccount = Boolean(profile?.providerAccountId || profile?.stripeAccountType === "custom");
@@ -385,13 +385,13 @@ export function getProviderCustomConnectReadiness(
   } else if (profile?.stripeRequirementsDisabledReason) {
     statusLabel = "Auszahlungen pausiert";
   } else if (hasCustomAccount && profile?.stripeVerificationStatus !== "verified") {
-    statusLabel = "Verifizierung erforderlich";
+    statusLabel = "Weitere Angaben erforderlich";
   } else if (hasCustomAccount) {
-    statusLabel = "Custom Account vorbereitet";
+    statusLabel = "Angaben werden automatisch geprueft";
   } else if (isReadyForCustomAccountCreation) {
-    statusLabel = "Bereit fuer Custom-Account-Erstellung";
+    statusLabel = "Angaben vollstaendig";
   } else if (!profile?.providerPayoutProfileId) {
-    statusLabel = "Auszahlungsprofil fehlt";
+    statusLabel = "Auszahlungsangaben fehlen";
   }
 
   return {

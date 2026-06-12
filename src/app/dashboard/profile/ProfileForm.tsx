@@ -16,7 +16,6 @@ import {
 import { maskEmail, maskIbanLast4 } from "@/lib/payout-profile";
 import type { ProviderType } from "@/lib/provider-profiles";
 import {
-  prepareCustomConnectAction,
   saveUnifiedProviderProfile,
   type SaveProfileState,
 } from "./actions";
@@ -54,7 +53,6 @@ type ProfileFormProps = {
     payoutComplete: boolean;
     customConnectAccountExists: boolean;
     customConnectReady: boolean;
-    customConnectStatusLabel: string;
     customConnectMissingFields: string[];
     customConnectWarnings: string[];
     stripeRequirementsCurrentlyDue: string[];
@@ -88,9 +86,7 @@ function uniqueLabels(values: string[]): string[] {
 export default function ProfileForm({ initialSection, initialValues }: ProfileFormProps) {
   const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
-  const [isPreparingCustomConnect, setIsPreparingCustomConnect] = useState(false);
   const [state, setState] = useState<SaveProfileState>({});
-  const [customConnectState, setCustomConnectState] = useState<SaveProfileState>({});
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState(initialValues.photo_url);
   const [photoObjectUrl, setPhotoObjectUrl] = useState<string | null>(null);
   const [companyLogoPreviewUrl, setCompanyLogoPreviewUrl] = useState(initialValues.company_logo_url);
@@ -162,28 +158,6 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
     initialValues.paypal_email,
   ].join("|");
 
-  const prepareCustomConnect = async () => {
-    setCustomConnectState({});
-    setIsPreparingCustomConnect(true);
-
-    try {
-      const result = await prepareCustomConnectAction();
-      setCustomConnectState(result);
-
-      if (result.redirectTo) {
-        router.push(result.redirectTo);
-      }
-
-      router.refresh();
-    } catch {
-      setCustomConnectState({
-        error: "Die Auszahlungsabwicklung konnte gerade nicht vorbereitet werden. Bitte versuche es erneut.",
-      });
-    } finally {
-      setIsPreparingCustomConnect(false);
-    }
-  };
-
   return (
     <form key={formVersion} action={submitAction} className="space-y-4">
       <details open={sectionIsOpen(initialSection, "persoenlich", true)} className="rounded-2xl border p-5">
@@ -237,7 +211,7 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
             <input name="business_profile_product_description" defaultValue={initialValues.business_profile_product_description} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
           <label className="block space-y-1">
-            <span className="text-sm font-medium">Business MCC</span>
+            <span className="text-sm font-medium">Branche / Kategorie</span>
             <input name="business_profile_mcc" defaultValue={initialValues.business_profile_mcc} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
           <label className="block space-y-1">
@@ -404,14 +378,14 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
               {initialValues.stripePayoutsEnabled
                 ? "Auszahlungen moeglich"
                 : initialValues.customConnectAccountExists
-                  ? initialValues.customConnectStatusLabel
+                  ? "Angaben werden automatisch geprueft"
                   : initialValues.customConnectReady
-                    ? "Bereit zur Vorbereitung"
-                    : "Auszahlungsabwicklung noch nicht vollstaendig"}
+                    ? "Angaben vollstaendig"
+                    : "Angaben noch nicht vollstaendig"}
             </p>
             <p className="mt-1 text-muted-foreground">
-              Diese Angaben werden fuer die automatische Auszahlungsabwicklung vorbereitet. Es wird kein Stripe-Dashboard
-              geoeffnet.
+              Deine Angaben werden fuer Buchungen, Auszahlungen und Belege verwendet. Sobald Du kostenpflichtige Angebote
+              anbietest, prueft RESER automatisch, ob weitere Angaben benoetigt werden.
             </p>
             {initialValues.customConnectMissingFields.length > 0 ? (
               <ul className="mt-3 list-disc space-y-1 pl-5">
@@ -429,33 +403,6 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
                   ))}
                 </ul>
               </div>
-            ) : null}
-            {initialValues.customConnectWarnings.length > 0 ? (
-              <ul className="mt-3 list-disc space-y-1 pl-5 text-amber-800">
-                {initialValues.customConnectWarnings.map((warning) => (
-                  <li key={warning}>{warning}</li>
-                ))}
-              </ul>
-            ) : null}
-            {initialValues.customConnectReady && !initialValues.customConnectAccountExists ? (
-              <button
-                type="button"
-                onClick={prepareCustomConnect}
-                disabled={isPreparingCustomConnect}
-                className="mt-4 rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                {isPreparingCustomConnect ? "Wird vorbereitet..." : "Auszahlungsabwicklung vorbereiten"}
-              </button>
-            ) : null}
-            {customConnectState.error ? (
-              <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {customConnectState.error}
-              </p>
-            ) : null}
-            {customConnectState.success ? (
-              <p className="mt-3 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-                {customConnectState.success}
-              </p>
             ) : null}
           </div>
           <label className="space-y-1 sm:col-span-2">
