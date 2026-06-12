@@ -379,9 +379,9 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
         </div>
       </details>
 
-      <details open={sectionIsOpen(initialSection, "zahlungsabwicklung")} className="rounded-2xl border p-5">
-        <summary className="cursor-pointer text-base font-semibold">Automatische Zahlungsabwicklung</summary>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      <section className="space-y-4 border-t pt-5">
+        <h2 className="text-base font-semibold">Automatische Zahlungsabwicklung</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2 rounded-xl border bg-slate-50 px-4 py-3 text-sm text-slate-700">
             <p className="font-medium">
               {initialValues.stripePayoutsEnabled
@@ -425,7 +425,7 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
             </span>
           </label>
         </div>
-      </details>
+      </section>
 
       {fileError ? <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{fileError}</p> : null}
       {videoUrlError ? <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{videoUrlError}</p> : null}
