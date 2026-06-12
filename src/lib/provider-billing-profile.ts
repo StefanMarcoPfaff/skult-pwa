@@ -334,7 +334,7 @@ export function getProviderCustomConnectReadiness(
   }
 
   if (!profile?.payoutDestination) {
-    missingFields.push("Auszahlungsmethode fehlt");
+    warnings.push("Auszahlungskonto fehlt.");
   }
 
   if (!profile?.legalEntityType) {
@@ -382,7 +382,7 @@ export function getProviderCustomConnectReadiness(
     warnings.push("Auszahlungen sind vorübergehend nicht möglich.");
   }
 
-  const hasCustomAccount = Boolean(profile?.providerAccountId || profile?.stripeAccountType === "custom");
+  const hasCustomAccount = Boolean(profile?.providerAccountId);
   const isReadyForCustomAccountCreation = missingFields.length === 0 && !hasCustomAccount;
   let statusLabel = "Angaben fehlen noch";
 

@@ -33,6 +33,9 @@ type SavedPayoutProfileDebug = {
   provider: string | null;
   created_at: string | null;
   updated_at: string | null;
+  provider_account_id: string | null;
+  stripe_account_type: string | null;
+  stripe_last_sync_at: string | null;
   payout_method: string | null;
   legal_entity_type: string | null;
   business_type: string | null;
@@ -132,6 +135,22 @@ function logProfileSaveEvent(
     kind,
     ...payload,
   });
+}
+
+function getErrorProperty(error: unknown, key: string): unknown {
+  return typeof error === "object" && error !== null && key in error
+    ? (error as Record<string, unknown>)[key]
+    : null;
+}
+
+function getStripeErrorLogPayload(error: unknown): Record<string, unknown> {
+  return {
+    stripeErrorType: getErrorProperty(error, "type"),
+    stripeErrorCode: getErrorProperty(error, "code"),
+    stripeRequestId: getErrorProperty(error, "requestId"),
+    stripeStatusCode: getErrorProperty(error, "statusCode"),
+    message: error instanceof Error ? error.message : String(error),
+  };
 }
 
 function buildBillingAddress(input: {
@@ -644,6 +663,9 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       "provider",
       "created_at",
       "updated_at",
+      "provider_account_id",
+      "stripe_account_type",
+      "stripe_last_sync_at",
       "payout_method",
       "legal_entity_type",
       "business_type",
@@ -822,6 +844,9 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       savedProfileIds: savedPayoutProfiles?.map((profile) => profile.id) ?? [],
       savedProfileId: savedPayoutProfile?.id ?? null,
       savedTeacherId: savedPayoutProfile?.teacher_id ?? null,
+      savedProviderAccountId: savedPayoutProfile?.provider_account_id ?? null,
+      savedStripeAccountType: savedPayoutProfile?.stripe_account_type ?? null,
+      savedStripeLastSyncAt: savedPayoutProfile?.stripe_last_sync_at ?? null,
       savedLegalEntityType: savedPayoutProfile?.legal_entity_type ?? null,
       savedRepresentativeBirthDate: savedPayoutProfile?.representative_birth_date ?? null,
       savedRepresentativeEmail: savedPayoutProfile?.representative_email ?? null,
@@ -831,6 +856,9 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       reloadedProfileCount: reloadedPayoutProfiles?.length ?? 0,
       reloadedProfileIds: reloadedPayoutProfiles?.map((profile) => profile.id) ?? [],
       reloadedProfileId: reloadedPayoutProfile?.id ?? null,
+      reloadedProviderAccountId: reloadedPayoutProfile?.provider_account_id ?? null,
+      reloadedStripeAccountType: reloadedPayoutProfile?.stripe_account_type ?? null,
+      reloadedStripeLastSyncAt: reloadedPayoutProfile?.stripe_last_sync_at ?? null,
       reloadedLegalEntityType: reloadedPayoutProfile?.legal_entity_type ?? null,
       reloadedRepresentativeBirthDate: reloadedPayoutProfile?.representative_birth_date ?? null,
       reloadedRepresentativeEmail: reloadedPayoutProfile?.representative_email ?? null,
@@ -909,17 +937,60 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
     try {
       const refreshedBillingProfile = await getProviderBillingProfile(profileAdmin, user.id);
       const customConnectReadiness = getProviderCustomConnectReadiness(refreshedBillingProfile);
+      const providerPayoutProfileId =
+        refreshedBillingProfile?.providerPayoutProfileId ?? reloadedPayoutProfile.id;
+      const providerAccountIdBefore =
+        refreshedBillingProfile?.providerAccountId ?? reloadedPayoutProfile.provider_account_id;
+      const shouldPrepareCustomConnect =
+        Boolean(providerAccountIdBefore) || customConnectReadiness.isReadyForCustomAccountCreation;
 
-      if (refreshedBillingProfile?.providerAccountId || customConnectReadiness.isReadyForCustomAccountCreation) {
-        await createOrUpdateCustomAccountForProvider(user.id);
+      logProfilePayoutDebug("custom_connect_auto_prepare_gate", {
+        userId: user.id,
+        providerPayoutProfileId,
+        provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+        customConnectReady: customConnectReadiness.isReadyForCustomAccountCreation,
+        missingFields: customConnectReadiness.missingFields,
+        warnings: customConnectReadiness.warnings,
+        providerAccountIdBefore,
+        stripeAccountTypeBefore:
+          refreshedBillingProfile?.stripeAccountType ?? reloadedPayoutProfile.stripe_account_type,
+        stripeLastSyncAtBefore:
+          refreshedBillingProfile?.stripeLastSyncAt ?? reloadedPayoutProfile.stripe_last_sync_at,
+        createOrUpdateCustomAccountForProviderCalled: shouldPrepareCustomConnect,
+      });
+
+      if (shouldPrepareCustomConnect) {
+        const account = await createOrUpdateCustomAccountForProvider(user.id);
+        logProfilePayoutDebug("custom_connect_auto_prepare_result", {
+          userId: user.id,
+          providerPayoutProfileId,
+          provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+          providerAccountIdBefore,
+          providerAccountIdAfter: account.id,
+          stripeAccountTypeAfter: account.type,
+          createOrUpdateCustomAccountForProviderCalled: true,
+        });
+      } else {
+        logProfilePayoutDebug("custom_connect_auto_prepare_skipped", {
+          userId: user.id,
+          providerPayoutProfileId,
+          provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+          customConnectReady: customConnectReadiness.isReadyForCustomAccountCreation,
+          missingFields: customConnectReadiness.missingFields,
+          providerAccountIdBefore,
+          createOrUpdateCustomAccountForProviderCalled: false,
+        });
       }
     } catch (error: unknown) {
       customConnectWarning =
-        "Dein Profil wurde gespeichert. Die automatische Zahlungsabwicklung konnte noch nicht vollständig vorbereitet werden.";
+        "Profil gespeichert. Die automatische Zahlungsabwicklung konnte noch nicht vorbereitet werden.";
       logProfileSaveEvent("save_warning", {
         context: "custom_connect.auto_prepare",
         userId: user.id,
-        message: error instanceof Error ? error.message : String(error),
+        providerPayoutProfileId: reloadedPayoutProfile.id,
+        teacherId: user.id,
+        provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+        ...getStripeErrorLogPayload(error),
       });
     }
 
@@ -976,7 +1047,7 @@ export async function prepareCustomConnectAction(): Promise<SaveProfileState> {
   } catch (error: unknown) {
     console.error("[custom-connect]", {
       kind: "prepare_custom_connect_error",
-      message: error instanceof Error ? error.message : String(error),
+      ...getStripeErrorLogPayload(error),
     });
 
     return {

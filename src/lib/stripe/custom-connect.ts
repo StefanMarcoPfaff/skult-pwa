@@ -119,6 +119,22 @@ function toUpdateParams(
   return updateParams as Stripe.AccountUpdateParams;
 }
 
+function getErrorProperty(error: unknown, key: string): unknown {
+  return typeof error === "object" && error !== null && key in error
+    ? (error as Record<string, unknown>)[key]
+    : null;
+}
+
+function getStripeErrorLogPayload(error: unknown): Record<string, unknown> {
+  return {
+    message: error instanceof Error ? error.message : String(error),
+    type: getErrorProperty(error, "type"),
+    code: getErrorProperty(error, "code"),
+    requestId: getErrorProperty(error, "requestId"),
+    statusCode: getErrorProperty(error, "statusCode"),
+  };
+}
+
 function logStripeCustomAccountSync(input: {
   kind: "create" | "update" | "retrieve";
   providerId: string;
@@ -158,12 +174,38 @@ async function persistStripeCustomAccountStatus(
     .maybeSingle<{ id: string }>();
 
   if (error) {
+    console.error("[stripe-custom-connect]", {
+      kind: "persist_status_error",
+      providerId,
+      providerPayoutProfileId: payoutProfileId,
+      provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+      providerAccountId: account.id,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
     throw new Error(`Stripe Custom Account Status konnte nicht gespeichert werden: ${error.message}`);
   }
 
   if (!data) {
+    console.error("[stripe-custom-connect]", {
+      kind: "persist_status_no_row",
+      providerId,
+      providerPayoutProfileId: payoutProfileId,
+      provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+      providerAccountId: account.id,
+    });
     throw new Error("Stripe Custom Account Status konnte keiner Anbieter-Zeile zugeordnet werden.");
   }
+
+  console.info("[stripe-custom-connect]", {
+    kind: "persist_status_success",
+    providerId,
+    providerPayoutProfileId: payoutProfileId,
+    provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+    providerAccountId: account.id,
+  });
 }
 
 export function mapProviderPayoutProfileToStripeAccountParams(
@@ -237,6 +279,18 @@ export async function createOrUpdateCustomAccountForProvider(providerId: string)
     throw new Error("Auszahlungsprofil fehlt.");
   }
 
+  console.info("[stripe-custom-connect]", {
+    kind: "readiness_check",
+    providerId,
+    providerPayoutProfileId: profile.providerPayoutProfileId,
+    provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+    providerAccountId: profile.providerAccountId,
+    stripeAccountType: profile.stripeAccountType,
+    customConnectReady: readiness.isReadyForCustomAccountCreation,
+    missingFields: readiness.missingFields,
+    warnings: readiness.warnings,
+  });
+
   if (!profile.providerAccountId && !readiness.isReadyForCustomAccountCreation) {
     throw new Error(`Auszahlungsabwicklung kann noch nicht vorbereitet werden: ${readiness.missingFields.join(", ")}`);
   }
@@ -247,24 +301,44 @@ export async function createOrUpdateCustomAccountForProvider(providerId: string)
   let account: Stripe.Account;
 
   try {
+    console.info("[stripe-custom-connect]", {
+      kind: `${writeKind}_start`,
+      providerId,
+      providerPayoutProfileId: profile.providerPayoutProfileId,
+      provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+      providerAccountId: profile.providerAccountId,
+    });
     const writtenAccount = profile.providerAccountId
       ? await stripe.accounts.update(profile.providerAccountId, toUpdateParams(params))
       : await stripe.accounts.create(params);
+    console.info("[stripe-custom-connect]", {
+      kind: `${writeKind}_success`,
+      providerId,
+      providerPayoutProfileId: profile.providerPayoutProfileId,
+      provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+      providerAccountIdBefore: profile.providerAccountId,
+      providerAccountId: writtenAccount.id,
+    });
     account = await stripe.accounts.retrieve(writtenAccount.id);
   } catch (error: unknown) {
     console.error("[stripe-custom-connect]", {
       kind: `${writeKind}_error`,
       providerId,
       providerPayoutProfileId: profile.providerPayoutProfileId,
+      teacherId: providerId,
+      provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
       providerAccountId: profile.providerAccountId,
-      message: error instanceof Error ? error.message : String(error),
-      type: typeof error === "object" && error !== null && "type" in error ? error.type : null,
-      code: typeof error === "object" && error !== null && "code" in error ? error.code : null,
-      requestId: typeof error === "object" && error !== null && "requestId" in error ? error.requestId : null,
-      statusCode: typeof error === "object" && error !== null && "statusCode" in error ? error.statusCode : null,
+      ...getStripeErrorLogPayload(error),
     });
     throw error;
   }
+
+  logStripeCustomAccountSync({
+    kind: "retrieve",
+    providerId,
+    payoutProfileId: profile.providerPayoutProfileId,
+    account,
+  });
 
   logStripeCustomAccountSync({
     kind: writeKind,
@@ -294,12 +368,10 @@ export async function syncCustomAccountStatus(providerId: string): Promise<Strip
       kind: "retrieve_error",
       providerId,
       providerPayoutProfileId: profile.providerPayoutProfileId,
+      teacherId: providerId,
+      provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
       providerAccountId: profile.providerAccountId,
-      message: error instanceof Error ? error.message : String(error),
-      type: typeof error === "object" && error !== null && "type" in error ? error.type : null,
-      code: typeof error === "object" && error !== null && "code" in error ? error.code : null,
-      requestId: typeof error === "object" && error !== null && "requestId" in error ? error.requestId : null,
-      statusCode: typeof error === "object" && error !== null && "statusCode" in error ? error.statusCode : null,
+      ...getStripeErrorLogPayload(error),
     });
     throw error;
   }
