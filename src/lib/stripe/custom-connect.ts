@@ -126,12 +126,61 @@ function getErrorProperty(error: unknown, key: string): unknown {
 }
 
 function getStripeErrorLogPayload(error: unknown): Record<string, unknown> {
+  const raw = getErrorProperty(error, "raw") as Record<string, unknown> | null;
+
   return {
     message: error instanceof Error ? error.message : String(error),
     type: getErrorProperty(error, "type"),
     code: getErrorProperty(error, "code"),
+    param: getErrorProperty(error, "param"),
+    docUrl: getErrorProperty(error, "doc_url"),
     requestId: getErrorProperty(error, "requestId"),
     statusCode: getErrorProperty(error, "statusCode"),
+    rawMessage: raw?.message ?? null,
+    rawType: raw?.type ?? null,
+    rawCode: raw?.code ?? null,
+    rawParam: raw?.param ?? null,
+    rawRequestId: raw?.requestId ?? null,
+  };
+}
+
+function getStripeAccountParamDiagnostics(params: Stripe.AccountCreateParams) {
+  return {
+    hasEmail: Boolean(params.email),
+    businessType: params.business_type ?? null,
+    hasBusinessProfileMcc: Boolean(params.business_profile?.mcc),
+    hasBusinessProfileUrl: Boolean(params.business_profile?.url),
+    hasBusinessProfileProductDescription: Boolean(params.business_profile?.product_description),
+    hasTosAcceptanceDate: Boolean(params.tos_acceptance?.date),
+    hasTosAcceptanceIp: Boolean(params.tos_acceptance?.ip),
+    hasTosAcceptanceUserAgent: Boolean(params.tos_acceptance?.user_agent),
+    requestedCardPayments: Boolean(params.capabilities?.card_payments?.requested),
+    requestedTransfers: Boolean(params.capabilities?.transfers?.requested),
+    individual: params.business_type === "individual"
+      ? {
+          hasFirstName: Boolean(params.individual?.first_name),
+          hasLastName: Boolean(params.individual?.last_name),
+          hasEmail: Boolean(params.individual?.email),
+          hasPhone: Boolean(params.individual?.phone),
+          hasDob: Boolean(params.individual?.dob),
+          hasAddressLine1: Boolean(params.individual?.address?.line1),
+          hasAddressPostalCode: Boolean(params.individual?.address?.postal_code),
+          hasAddressCity: Boolean(params.individual?.address?.city),
+          addressCountry: params.individual?.address?.country ?? null,
+        }
+      : null,
+    company: params.business_type !== "individual"
+      ? {
+          hasName: Boolean(params.company?.name),
+          hasPhone: Boolean(params.company?.phone),
+          hasAddressLine1: Boolean(params.company?.address?.line1),
+          hasAddressPostalCode: Boolean(params.company?.address?.postal_code),
+          hasAddressCity: Boolean(params.company?.address?.city),
+          addressCountry: params.company?.address?.country ?? null,
+          hasTaxId: Boolean(params.company?.tax_id),
+          hasVatId: Boolean(params.company?.vat_id),
+        }
+      : null,
   };
 }
 
@@ -288,10 +337,25 @@ export async function createOrUpdateCustomAccountForProvider(providerId: string)
     stripeAccountType: profile.stripeAccountType,
     customConnectReady: readiness.isReadyForCustomAccountCreation,
     missingFields: readiness.missingFields,
+    missingFieldCount: readiness.missingFields.length,
     warnings: readiness.warnings,
+    warningCount: readiness.warnings.length,
+    willCallStripeAccountsCreate: !profile.providerAccountId && readiness.isReadyForCustomAccountCreation,
+    willCallStripeAccountsUpdate: Boolean(profile.providerAccountId),
   });
 
   if (!profile.providerAccountId && !readiness.isReadyForCustomAccountCreation) {
+    console.info("[stripe-custom-connect]", {
+      kind: "stripe_write_skipped",
+      providerId,
+      providerPayoutProfileId: profile.providerPayoutProfileId,
+      provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+      reason: "custom_connect_not_ready",
+      missingFields: readiness.missingFields,
+      warnings: readiness.warnings,
+      stripeAccountsCreateCalled: false,
+      stripeAccountsUpdateCalled: false,
+    });
     throw new Error(`Auszahlungsabwicklung kann noch nicht vorbereitet werden: ${readiness.missingFields.join(", ")}`);
   }
 
@@ -307,10 +371,35 @@ export async function createOrUpdateCustomAccountForProvider(providerId: string)
       providerPayoutProfileId: profile.providerPayoutProfileId,
       provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
       providerAccountId: profile.providerAccountId,
+      stripeAccountsCreateCalled: false,
+      stripeAccountsUpdateCalled: false,
+      stripeAccountParamDiagnostics: getStripeAccountParamDiagnostics(params),
     });
-    const writtenAccount = profile.providerAccountId
-      ? await stripe.accounts.update(profile.providerAccountId, toUpdateParams(params))
-      : await stripe.accounts.create(params);
+    let writtenAccount: Stripe.Account;
+
+    if (profile.providerAccountId) {
+      console.info("[stripe-custom-connect]", {
+        kind: "stripe_accounts_update_call",
+        providerId,
+        providerPayoutProfileId: profile.providerPayoutProfileId,
+        provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+        providerAccountId: profile.providerAccountId,
+        stripeAccountsCreateCalled: false,
+        stripeAccountsUpdateCalled: true,
+      });
+      writtenAccount = await stripe.accounts.update(profile.providerAccountId, toUpdateParams(params));
+    } else {
+      console.info("[stripe-custom-connect]", {
+        kind: "stripe_accounts_create_call",
+        providerId,
+        providerPayoutProfileId: profile.providerPayoutProfileId,
+        provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+        stripeAccountsCreateCalled: true,
+        stripeAccountsUpdateCalled: false,
+      });
+      writtenAccount = await stripe.accounts.create(params);
+    }
+
     console.info("[stripe-custom-connect]", {
       kind: `${writeKind}_success`,
       providerId,
@@ -318,6 +407,8 @@ export async function createOrUpdateCustomAccountForProvider(providerId: string)
       provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
       providerAccountIdBefore: profile.providerAccountId,
       providerAccountId: writtenAccount.id,
+      stripeAccountsCreateCalled: !profile.providerAccountId,
+      stripeAccountsUpdateCalled: Boolean(profile.providerAccountId),
     });
     account = await stripe.accounts.retrieve(writtenAccount.id);
   } catch (error: unknown) {

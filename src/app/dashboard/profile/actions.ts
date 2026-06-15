@@ -197,6 +197,29 @@ function logProfilePayoutDebug(
   });
 }
 
+function getCustomConnectAutoPrepareBlockers(input: {
+  providerPayoutProfileId: string | null;
+  providerAccountIdBefore: string | null;
+  isReadyForCustomAccountCreation: boolean;
+  missingFields: string[];
+}): string[] {
+  const blockers: string[] = [];
+
+  if (!input.providerPayoutProfileId) {
+    blockers.push("provider_payout_profile_id_missing");
+  }
+
+  if (!input.providerAccountIdBefore && !input.isReadyForCustomAccountCreation) {
+    blockers.push("custom_connect_not_ready");
+  }
+
+  if (input.missingFields.length > 0) {
+    blockers.push("missing_fields_present");
+  }
+
+  return blockers;
+}
+
 function datesMatch(actual: string | null | undefined, expected: string | null): boolean {
   if (!expected) return true;
   return Boolean(actual?.startsWith(expected));
@@ -912,19 +935,41 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
         refreshedBillingProfile?.providerAccountId ?? reloadedPayoutProfile.provider_account_id;
       const shouldPrepareCustomConnect =
         Boolean(providerAccountIdBefore) || customConnectReadiness.isReadyForCustomAccountCreation;
+      const autoPrepareBlockers = getCustomConnectAutoPrepareBlockers({
+        providerPayoutProfileId,
+        providerAccountIdBefore,
+        isReadyForCustomAccountCreation: customConnectReadiness.isReadyForCustomAccountCreation,
+        missingFields: customConnectReadiness.missingFields,
+      });
 
       logProfilePayoutDebug("custom_connect_auto_prepare_gate", {
         userId: user.id,
         providerPayoutProfileId,
         provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+        providerProfileLoaded: Boolean(refreshedBillingProfile),
         customConnectReady: customConnectReadiness.isReadyForCustomAccountCreation,
         missingFields: customConnectReadiness.missingFields,
+        missingFieldCount: customConnectReadiness.missingFields.length,
         warnings: customConnectReadiness.warnings,
+        warningCount: customConnectReadiness.warnings.length,
         providerAccountIdBefore,
         stripeAccountTypeBefore:
           refreshedBillingProfile?.stripeAccountType ?? reloadedPayoutProfile.stripe_account_type,
         stripeLastSyncAtBefore:
           refreshedBillingProfile?.stripeLastSyncAt ?? reloadedPayoutProfile.stripe_last_sync_at,
+        hasPayoutDestination: Boolean(refreshedBillingProfile?.payoutDestination),
+        hasAccountHolderName: Boolean(refreshedBillingProfile?.accountHolderName),
+        hasLegalEntityType: Boolean(refreshedBillingProfile?.legalEntityType),
+        hasRepresentativeFirstName: Boolean(refreshedBillingProfile?.representativeFirstName),
+        hasRepresentativeLastName: Boolean(refreshedBillingProfile?.representativeLastName),
+        hasRepresentativeBirthDate: Boolean(refreshedBillingProfile?.representativeBirthDate),
+        hasRepresentativeEmail: Boolean(refreshedBillingProfile?.representativeEmail),
+        hasLegalAddressLine1: Boolean(refreshedBillingProfile?.legalAddressLine1),
+        hasLegalPostalCode: Boolean(refreshedBillingProfile?.legalPostalCode),
+        hasLegalCity: Boolean(refreshedBillingProfile?.legalCity),
+        hasLegalCountry: Boolean(refreshedBillingProfile?.legalCountry),
+        hasStripeTermsAcceptedAt: Boolean(refreshedBillingProfile?.stripeTermsAcceptedAt),
+        autoPrepareBlockers,
         createOrUpdateCustomAccountForProviderCalled: shouldPrepareCustomConnect,
       });
 
@@ -946,7 +991,9 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
           provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
           customConnectReady: customConnectReadiness.isReadyForCustomAccountCreation,
           missingFields: customConnectReadiness.missingFields,
+          warnings: customConnectReadiness.warnings,
           providerAccountIdBefore,
+          autoPrepareBlockers,
           createOrUpdateCustomAccountForProviderCalled: false,
         });
       }
