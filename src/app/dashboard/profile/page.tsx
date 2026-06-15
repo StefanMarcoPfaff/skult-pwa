@@ -35,6 +35,7 @@ type DirectPayoutProfileRow = {
   payout_method: ProviderBillingPayoutMethod | string | null;
   iban_last4: string | null;
   paypal_email: string | null;
+  account_holder_name: string | null;
   billing_address_line_1: string | null;
   billing_address_line_2: string | null;
   billing_postal_code: string | null;
@@ -112,17 +113,15 @@ export default async function DashboardProfilePage({
           ...financialProfile,
           providerPayoutProfileId: directPayoutProfile.id,
           providerAccountId: directPayoutProfile.provider_account_id,
-          payoutMethod: (directPayoutProfile.payout_method ?? financialProfile.payoutMethod) as ProviderBillingPayoutMethod,
+          payoutMethod: "iban" as ProviderBillingPayoutMethod,
           payoutIban: directPayoutProfile.iban_last4
             ? `IBAN ****${directPayoutProfile.iban_last4}`
             : financialProfile.payoutIban,
-          payoutPaypalEmail: directPayoutProfile.paypal_email ?? financialProfile.payoutPaypalEmail,
-          payoutDestination:
-            directPayoutProfile.payout_method === "paypal"
-              ? directPayoutProfile.paypal_email
-              : directPayoutProfile.iban_last4
-                ? `IBAN ****${directPayoutProfile.iban_last4}`
-                : financialProfile.payoutDestination,
+          payoutPaypalEmail: null,
+          payoutDestination: directPayoutProfile.iban_last4
+            ? `IBAN ****${directPayoutProfile.iban_last4}`
+            : financialProfile.payoutDestination,
+          accountHolderName: directPayoutProfile.account_holder_name ?? financialProfile.accountHolderName,
           legalEntityType: (directPayoutProfile.legal_entity_type ?? financialProfile.legalEntityType) as ProviderLegalEntityType | null,
           representativeBirthDate: directPayoutProfile.representative_birth_date ?? financialProfile.representativeBirthDate,
           representativeEmail: directPayoutProfile.representative_email ?? financialProfile.representativeEmail,
@@ -190,12 +189,13 @@ export default async function DashboardProfilePage({
       effectiveFinancialProfile?.billingCountry ??
       effectiveFinancialProfile?.legalCountry ??
       "",
-    payout_method: (directPayoutProfile?.payout_method ?? effectiveFinancialProfile?.payoutMethod ?? "iban") as ProviderBillingPayoutMethod,
+    payout_method: "iban" as ProviderBillingPayoutMethod,
+    account_holder_name: directPayoutProfile?.account_holder_name ?? effectiveFinancialProfile?.accountHolderName ?? "",
     tax_number: directPayoutProfile?.tax_number ?? effectiveFinancialProfile?.taxNumber ?? "",
     vat_id: directPayoutProfile?.vat_id ?? effectiveFinancialProfile?.vatId ?? "",
     vat_status: (directPayoutProfile?.vat_status ?? effectiveFinancialProfile?.vatStatus ?? "") as ProviderBillingVatStatus | "",
     iban_last4: directPayoutProfile?.iban_last4 ?? effectiveFinancialProfile?.payoutIban?.replace(/^.*(\d{4})$/, "$1") ?? "",
-    paypal_email: directPayoutProfile?.paypal_email ?? effectiveFinancialProfile?.payoutPaypalEmail ?? "",
+    paypal_email: "",
     legal_entity_type: (directPayoutProfile?.legal_entity_type ?? effectiveFinancialProfile?.legalEntityType ?? "") as ProviderLegalEntityType | "",
     representative_birth_date: representativeBirthDate,
     business_profile_url: directPayoutProfile?.business_profile_url ?? effectiveFinancialProfile?.businessProfileUrl ?? "",
@@ -206,10 +206,8 @@ export default async function DashboardProfilePage({
       "",
     consentAccepted: Boolean(directPayoutProfile?.stripe_terms_accepted_at ?? effectiveFinancialProfile?.stripeTermsAcceptedAt),
     payoutComplete: Boolean(
-      directPayoutProfile?.provider_account_id ||
-      directPayoutProfile?.iban_last4 ||
-      directPayoutProfile?.paypal_email ||
-      effectiveFinancialProfile?.payoutDestination
+      (directPayoutProfile?.account_holder_name ?? effectiveFinancialProfile?.accountHolderName) &&
+      (directPayoutProfile?.iban_last4 ?? effectiveFinancialProfile?.payoutIban)
     ),
     customConnectAccountExists,
     customConnectReady: customConnectReadiness.isReadyForCustomAccountCreation,

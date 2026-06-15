@@ -7,7 +7,7 @@ import {
 } from "@/lib/provider-profiles";
 import { PROVIDER_PAYOUT_PROFILE_PROVIDER } from "@/lib/payout-profile";
 
-export const PROVIDER_BILLING_PAYOUT_METHODS = ["iban", "paypal"] as const;
+export const PROVIDER_BILLING_PAYOUT_METHODS = ["iban"] as const;
 export type ProviderBillingPayoutMethod = (typeof PROVIDER_BILLING_PAYOUT_METHODS)[number];
 
 export const PROVIDER_BILLING_VAT_STATUSES = [
@@ -114,6 +114,7 @@ export type ProviderBillingProfile = {
   payoutIban: string | null;
   payoutPaypalEmail: string | null;
   payoutDestination: string | null;
+  accountHolderName: string | null;
   providerPayoutProfileId: string | null;
   providerAccountId: string | null;
   verificationStatus: string | null;
@@ -166,7 +167,7 @@ function normalizeOptionalText(value: string | null | undefined): string | null 
 export function isProviderBillingPayoutMethod(
   value: string | null | undefined
 ): value is ProviderBillingPayoutMethod {
-  return value === "iban" || value === "paypal";
+  return value === "iban";
 }
 
 export function isProviderBillingVatStatus(
@@ -222,18 +223,12 @@ export function getProviderBillingProfileFromRow(
   ].filter((value): value is string => Boolean(value));
   const billingAddressLines =
     structuredBillingAddressLines.length > 0 ? structuredBillingAddressLines : fallbackAddressLines;
-  const payoutMethod = isProviderBillingPayoutMethod(payoutProfile?.payout_method)
-    ? payoutProfile.payout_method
-    : isProviderBillingPayoutMethod(row.payout_method)
-      ? row.payout_method
-      : "iban";
+  const payoutMethod: ProviderBillingPayoutMethod = "iban";
   const payoutIbanLast4 = normalizeOptionalText(payoutProfile?.iban_last4);
   const payoutIban = payoutIbanLast4 ? `IBAN ****${payoutIbanLast4}` : normalizeOptionalText(row.payout_iban);
-  const payoutPaypalEmail =
-    normalizeOptionalText(payoutProfile?.paypal_email)?.toLowerCase() ??
-    normalizeOptionalText(row.payout_paypal_email)?.toLowerCase() ??
-    null;
-  const payoutDestination = payoutMethod === "paypal" ? payoutPaypalEmail : payoutIban;
+  const payoutPaypalEmail = null;
+  const payoutDestination = payoutIban;
+  const accountHolderName = normalizeOptionalText(payoutProfile?.account_holder_name);
   const taxNumber = normalizeOptionalText(payoutProfile?.tax_number) ?? normalizeOptionalText(row.tax_number);
   const vatId = normalizeOptionalText(payoutProfile?.vat_id) ?? normalizeOptionalText(row.vat_id);
   const vatStatusRaw = normalizeOptionalText(payoutProfile?.vat_status) ?? normalizeOptionalText(row.vat_status);
@@ -283,6 +278,7 @@ export function getProviderBillingProfileFromRow(
     payoutIban,
     payoutPaypalEmail,
     payoutDestination,
+    accountHolderName,
     providerPayoutProfileId: payoutProfile?.id ?? null,
     providerAccountId: normalizeOptionalText(payoutProfile?.provider_account_id),
     verificationStatus: normalizeOptionalText(payoutProfile?.verification_status),
@@ -333,7 +329,8 @@ export function getProviderCustomConnectReadiness(
     missingFields.push("Auszahlungsangaben fehlen");
   }
 
-  if (!profile?.payoutDestination) {
+  if (!profile?.payoutDestination || !profile.accountHolderName) {
+    missingFields.push("Auszahlungskonto fehlt");
     warnings.push("Auszahlungskonto fehlt.");
   }
 

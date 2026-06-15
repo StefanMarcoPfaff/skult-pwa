@@ -1,10 +1,10 @@
 export const PROVIDER_PAYOUT_PROFILE_PROVIDER = "reser_payment_v2";
 
-export const PROVIDER_PAYOUT_METHODS = ["iban", "paypal"] as const;
+export const PROVIDER_PAYOUT_METHODS = ["iban"] as const;
 export type ProviderPayoutMethod = (typeof PROVIDER_PAYOUT_METHODS)[number];
 
 export function isProviderPayoutMethod(value: string | null | undefined): value is ProviderPayoutMethod {
-  return value === "iban" || value === "paypal";
+  return value === "iban";
 }
 
 export function normalizeOptionalText(value: FormDataEntryValue | string | null | undefined): string | null {
@@ -31,7 +31,7 @@ export function getIbanLast4(value: string | null | undefined): string | null {
 
 export function maskIbanLast4(last4: string | null | undefined): string | null {
   if (!last4) return null;
-  return `DE••••••••••${last4}`;
+  return `IBAN ****${last4}`;
 }
 
 export function normalizePaypalEmail(value: string | null | undefined): string | null {

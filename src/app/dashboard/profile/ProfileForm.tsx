@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   PROVIDER_BILLING_VAT_STATUSES,
-  type ProviderBillingPayoutMethod,
   type ProviderBillingVatStatus,
   type ProviderLegalEntityType,
 } from "@/lib/provider-billing-profile";
@@ -13,7 +12,7 @@ import {
   getProfileImageMaxSizeLabel,
   validateProfileImageFile,
 } from "@/lib/profile-image-upload";
-import { maskEmail, maskIbanLast4 } from "@/lib/payout-profile";
+import { maskIbanLast4 } from "@/lib/payout-profile";
 import type { ProviderType } from "@/lib/provider-profiles";
 import {
   saveUnifiedProviderProfile,
@@ -41,9 +40,9 @@ type ProfileFormProps = {
     tax_number: string;
     vat_id: string;
     vat_status: ProviderBillingVatStatus | "";
-    payout_method: ProviderBillingPayoutMethod;
+    payout_method: "iban";
+    account_holder_name: string;
     iban_last4: string;
-    paypal_email: string;
     legal_entity_type: ProviderLegalEntityType | "";
     representative_birth_date: string;
     business_profile_url: string;
@@ -134,7 +133,6 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
   const [videoUrl, setVideoUrl] = useState(initialValues.intro_video_url);
   const [videoUrlError, setVideoUrlError] = useState<string | null>(null);
   const [providerType, setProviderType] = useState<ProviderType>(initialValues.provider_type);
-  const [payoutMethod, setPayoutMethod] = useState<ProviderBillingPayoutMethod>(initialValues.payout_method);
 
   useEffect(() => {
     return () => {
@@ -173,7 +171,6 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
   };
 
   const maskedIban = maskIbanLast4(initialValues.iban_last4);
-  const maskedPaypalEmail = maskEmail(initialValues.paypal_email);
   const friendlyRequirements = uniqueLabels([
     ...initialValues.stripeRequirementsCurrentlyDue,
     ...initialValues.stripeRequirementsPastDue,
@@ -203,8 +200,8 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
     initialValues.city,
     initialValues.country,
     initialValues.payout_method,
+    initialValues.account_holder_name,
     initialValues.iban_last4,
-    initialValues.paypal_email,
   ].join("|");
 
   return (
@@ -401,30 +398,23 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
 
       <details open={sectionIsOpen(initialSection, "auszahlungen")} className="rounded-2xl border p-5">
         <summary className="cursor-pointer text-base font-semibold">Auszahlungen</summary>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <p className="sm:col-span-2 rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700">
+        <div className="mt-4 space-y-4">
+          <p className="inline-flex rounded-full border px-3 py-1 text-sm font-medium text-slate-700">
             Status: {initialValues.payoutComplete ? "Angaben vollständig" : "Angaben fehlen"}
           </p>
-          <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm font-medium">Auszahlungsmethode *</span>
-            <select name="payout_method" value={payoutMethod} onChange={(event) => setPayoutMethod(event.target.value as ProviderBillingPayoutMethod)} className="w-full rounded-xl border px-3 py-2 text-sm">
-              <option value="iban">Bankkonto / SEPA</option>
-              <option value="paypal">PayPal</option>
-            </select>
+          <p className="text-sm text-muted-foreground">
+            Auszahlungen erfolgen ausschliesslich auf ein Bankkonto per SEPA.
+          </p>
+          <input type="hidden" name="payout_method" value="iban" />
+          <label className="block space-y-1">
+            <span className="text-sm font-medium">Kontoinhaber*in *</span>
+            <input name="account_holder_name" required defaultValue={initialValues.account_holder_name} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
-          {payoutMethod === "iban" ? (
-            <label className="space-y-1 sm:col-span-2">
-              <span className="text-sm font-medium">IBAN</span>
-              <input name="payout_iban" required={!initialValues.iban_last4} className="w-full rounded-xl border px-3 py-2 text-sm" />
-              {maskedIban ? <span className="block text-xs text-muted-foreground">Bereits hinterlegt: {maskedIban}</span> : null}
-            </label>
-          ) : (
-            <label className="space-y-1 sm:col-span-2">
-              <span className="text-sm font-medium">PayPal-E-Mail</span>
-              <input type="email" name="payout_paypal_email" required defaultValue={initialValues.paypal_email} className="w-full rounded-xl border px-3 py-2 text-sm" />
-              {maskedPaypalEmail ? <span className="block text-xs text-muted-foreground">Bereits hinterlegt: {maskedPaypalEmail}</span> : null}
-            </label>
-          )}
+          <label className="block space-y-1">
+            <span className="text-sm font-medium">IBAN</span>
+            <input name="payout_iban" required={!initialValues.iban_last4} autoComplete="off" className="w-full rounded-xl border px-3 py-2 text-sm" />
+          </label>
+          {maskedIban ? <p className="text-xs text-muted-foreground">Bereits hinterlegt: {maskedIban}</p> : null}
         </div>
       </details>
 

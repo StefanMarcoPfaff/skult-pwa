@@ -5,13 +5,12 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   getProviderBillingProfile,
   getProviderCustomConnectReadiness,
-  isProviderBillingPayoutMethod,
   isProviderBillingVatStatus,
 } from "@/lib/provider-billing-profile";
 import {
   getIbanLast4,
+  isValidIban,
   normalizeIban,
-  normalizePaypalEmail,
   PROVIDER_PAYOUT_PROFILE_PROVIDER,
 } from "@/lib/payout-profile";
 import { validateProfileImageFile } from "@/lib/profile-image-upload";
@@ -169,22 +168,6 @@ function buildBillingAddress(input: {
   ].filter((value): value is string => Boolean(value));
 
   return lines.length > 0 ? lines.join("\n") : null;
-}
-
-function buildAccountHolderName(input: {
-  billing_company_name: string | null;
-  billing_name: string | null;
-  organization_name: string | null;
-  first_name: string | null;
-  last_name: string | null;
-}): string {
-  return (
-    input.billing_company_name ||
-    input.billing_name ||
-    input.organization_name ||
-    [input.first_name, input.last_name].filter(Boolean).join(" ").trim() ||
-    "Anbieter*in"
-  );
 }
 
 function getClientIp(requestHeaders: Headers): string | null {
@@ -360,7 +343,8 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
     const provider_type_raw = optionalText(formData.get("provider_type")) ?? "independent_teacher";
     const organization_name = optionalText(formData.get("organization_name"));
     const phone = optionalText(formData.get("phone"));
-    const payout_method_raw = optionalText(formData.get("payout_method")) ?? "iban";
+    const payout_method_raw = "iban";
+    const account_holder_name = optionalText(formData.get("account_holder_name"));
     const billing_name = [first_name, last_name].filter(Boolean).join(" ").trim() || null;
     const billing_company_name = organization_name;
     const formDataKeys = Array.from(new Set(Array.from(formData.keys()))).sort();
@@ -373,7 +357,6 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
     const vat_id = optionalText(formData.get("vat_id"));
     const vat_status_raw = optionalText(formData.get("vat_status"));
     const payout_iban_input = optionalText(formData.get("payout_iban"));
-    const payout_paypal_email_input = optionalText(formData.get("payout_paypal_email"));
     const legal_entity_type = optionalText(formData.get("legal_entity_type"));
     const representative_birth_date = normalizeDateInput(optionalText(formData.get("representative_birth_date")));
     const business_profile_url = optionalText(formData.get("business_profile_url"));
@@ -385,9 +368,7 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
     const requestHeaders = await headers();
     const clientIp = getClientIp(requestHeaders);
     const userAgent = optionalText(requestHeaders.get("user-agent"));
-    const payout_iban = payout_method_raw === "iban" ? normalizeIban(payout_iban_input) : null;
-    const payout_paypal_email =
-      payout_method_raw === "paypal" ? normalizePaypalEmail(payout_paypal_email_input) : null;
+    const payout_iban = normalizeIban(payout_iban_input);
     const representative_first_name = first_name;
     const representative_last_name = last_name;
     const representative_email = user.email ?? null;
@@ -416,8 +397,8 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       stripe_terms_accepted: formData.get("stripe_terms_accepted"),
       consentAccepted,
       payout_method: payout_method_raw,
-      payout_paypal_email_present: Boolean(payout_paypal_email_input),
       payout_iban_present: Boolean(payout_iban_input),
+      account_holder_name_present: Boolean(account_holder_name),
       billing_address_line_1,
       billing_address_line1: optionalText(formData.get("billing_address_line1")),
       billing_address_line_1_present: Boolean(billing_address_line_1),
@@ -437,14 +418,7 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
 
     if (!first_name) return { error: "Vorname ist erforderlich." };
     if (!last_name) return { error: "Nachname ist erforderlich." };
-    if (!isProviderBillingPayoutMethod(payout_method_raw)) {
-      logProfileSaveEvent("validation_error", {
-        context: "payout_method",
-        userId: user.id,
-        payoutMethod: payout_method_raw,
-      });
-      return { error: "Bitte wähle aus, wie du Auszahlungen erhalten möchtest." };
-    }
+    if (!account_holder_name) return { error: "Kontoinhaber*in ist erforderlich." };
     if (vat_status_raw && !isProviderBillingVatStatus(vat_status_raw)) {
       logProfileSaveEvent("validation_error", {
         context: "vat_status",
@@ -464,6 +438,10 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
     }
     if (!consentAccepted) {
       return { error: "Bitte bestätige die Datenweitergabe für die Zahlungsabwicklung." };
+    }
+
+    if (payout_iban && !isValidIban(payout_iban)) {
+      return { error: "Bitte gib eine gueltige IBAN an." };
     }
 
     let photo_url = existing_photo_url;
@@ -730,6 +708,9 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       });
       return { error: "Das Auszahlungsprofil konnte nicht geladen werden." };
     }
+    if (!payout_iban && (existingPayoutProfile?.payout_method !== "iban" || !existingPayoutProfile.iban_last4)) {
+      return { error: "Bitte gib eine IBAN an." };
+    }
 
     const acceptedAt = existingPayoutProfile?.stripe_terms_accepted_at ?? new Date().toISOString();
 
@@ -737,21 +718,9 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       teacher_id: user.id,
       payout_method: payout_method_raw,
       iban_encrypted: null,
-      iban_last4:
-        payout_method_raw === "iban"
-          ? getIbanLast4(payout_iban) ?? (existingPayoutProfile?.payout_method === "iban" ? existingPayoutProfile.iban_last4 : null)
-          : null,
-      paypal_email:
-        payout_method_raw === "paypal"
-          ? payout_paypal_email ?? (existingPayoutProfile?.payout_method === "paypal" ? existingPayoutProfile.paypal_email : null)
-          : null,
-      account_holder_name: buildAccountHolderName({
-        billing_company_name,
-        billing_name,
-        organization_name: provider_type_raw === "studio_provider" ? organization_name : null,
-        first_name,
-        last_name,
-      }),
+      iban_last4: getIbanLast4(payout_iban) ?? (existingPayoutProfile?.payout_method === "iban" ? existingPayoutProfile.iban_last4 : null),
+      paypal_email: null,
+      account_holder_name,
       address:
         buildBillingAddress({
           billing_address_line_1,
