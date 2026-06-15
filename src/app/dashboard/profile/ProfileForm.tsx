@@ -399,11 +399,8 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
       <details open={sectionIsOpen(initialSection, "auszahlungen")} className="rounded-2xl border p-5">
         <summary className="cursor-pointer text-base font-semibold">Auszahlungen</summary>
         <div className="mt-4 space-y-4">
-          <p className="inline-flex rounded-full border px-3 py-1 text-sm font-medium text-slate-700">
-            Status: {initialValues.payoutComplete ? "Angaben vollständig" : "Angaben fehlen"}
-          </p>
           <p className="text-sm text-muted-foreground">
-            Auszahlungen erfolgen ausschliesslich auf ein Bankkonto per SEPA.
+            Bitte gib hier die Kontoinhaber*in und IBAN an, auf die RESER Deine Einnahmen auszahlen kann.
           </p>
           <input type="hidden" name="payout_method" value="iban" />
           <label className="block space-y-1">
