@@ -33,6 +33,7 @@ import {
   verifySessionCheckInToken,
 } from "../src/lib/session-checkin-token";
 import { getSiteUrl } from "../src/lib/site-url";
+import { normalizeGermanPhoneForStripe } from "../src/lib/stripe/phone-normalization";
 
 type TestCase = {
   name: string;
@@ -192,7 +193,7 @@ const cases: TestCase[] = [
       assert.equal(isCourseSubscriptionCheckoutCurrencySupported("eur"), true);
       assert.equal(
         getCourseSubscriptionCheckoutCurrencyError("usd"),
-        "Dieser Kurs ist aktuell nur fuer Subscription-Checkout in EUR freigegeben. Hinterlegt ist derzeit USD."
+        "Dieses laufende Angebot ist aktuell nur fuer Subscription-Checkout in EUR freigegeben. Hinterlegt ist derzeit USD."
       );
 
       const anchor = getCourseSubscriptionBillingCycleAnchor(new Date("2026-05-20T12:00:00.000Z"));
@@ -227,7 +228,7 @@ const cases: TestCase[] = [
 
       assert.equal(
         href,
-        "mailto:?subject=Information%20zu%20deinem%20Workshop%3A%20Malen%20%26%20Musik&bcc=test%40example.com%2Czwei%40example.com"
+        "mailto:?subject=Information%20zu%20deinem%20einmaliges%20Angebot%3A%20Malen%20%26%20Musik&bcc=test%40example.com%2Czwei%40example.com"
       );
     },
   },
@@ -268,6 +269,15 @@ const cases: TestCase[] = [
       assert.equal(verified?.courseId, "course-1");
       assert.equal(verified?.sessionId, "session-1");
       assert.equal(verified?.eventDate, "2026-05-05");
+    },
+  },
+  {
+    name: "stripe custom connect normalizes German phone numbers to E.164",
+    run() {
+      assert.equal(normalizeGermanPhoneForStripe("01785462226"), "+491785462226");
+      assert.equal(normalizeGermanPhoneForStripe("0178 5462226"), "+491785462226");
+      assert.equal(normalizeGermanPhoneForStripe("+49 178 5462226"), "+491785462226");
+      assert.equal(normalizeGermanPhoneForStripe("0049 178 5462226"), "+491785462226");
     },
   },
 ];

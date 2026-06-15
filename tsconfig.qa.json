@@ -17,6 +17,7 @@
     "src/lib/course-lifecycle-shared.ts",
     "src/lib/course-subscription-checkout.ts",
     "src/lib/profile-image-upload.ts",
-    "src/lib/site-url.ts"
+    "src/lib/site-url.ts",
+    "src/lib/stripe/phone-normalization.ts"
   ]
 }

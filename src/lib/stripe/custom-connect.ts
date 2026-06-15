@@ -9,6 +9,7 @@ import {
 import { PROVIDER_PAYOUT_PROFILE_PROVIDER } from "@/lib/payout-profile";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/stripe";
+import { normalizeGermanPhoneForStripe } from "@/lib/stripe/phone-normalization";
 
 type StripeVerificationStatus =
   | "pending"
@@ -144,7 +145,12 @@ function getStripeErrorLogPayload(error: unknown): Record<string, unknown> {
   };
 }
 
-function getStripeAccountParamDiagnostics(params: Stripe.AccountCreateParams) {
+function getStripeAccountParamDiagnostics(
+  params: Stripe.AccountCreateParams,
+  profile: ProviderBillingProfile
+) {
+  const originalPhonePresent = Boolean(optionalText(profile.representativePhone));
+
   return {
     hasEmail: Boolean(params.email),
     businessType: params.business_type ?? null,
@@ -162,6 +168,8 @@ function getStripeAccountParamDiagnostics(params: Stripe.AccountCreateParams) {
           hasLastName: Boolean(params.individual?.last_name),
           hasEmail: Boolean(params.individual?.email),
           hasPhone: Boolean(params.individual?.phone),
+          originalPhonePresent,
+          normalizedPhonePresent: Boolean(params.individual?.phone),
           hasDob: Boolean(params.individual?.dob),
           hasAddressLine1: Boolean(params.individual?.address?.line1),
           hasAddressPostalCode: Boolean(params.individual?.address?.postal_code),
@@ -173,6 +181,8 @@ function getStripeAccountParamDiagnostics(params: Stripe.AccountCreateParams) {
       ? {
           hasName: Boolean(params.company?.name),
           hasPhone: Boolean(params.company?.phone),
+          originalPhonePresent,
+          normalizedPhonePresent: Boolean(params.company?.phone),
           hasAddressLine1: Boolean(params.company?.address?.line1),
           hasAddressPostalCode: Boolean(params.company?.address?.postal_code),
           hasAddressCity: Boolean(params.company?.address?.city),
@@ -262,6 +272,7 @@ export function mapProviderPayoutProfileToStripeAccountParams(
 ): Stripe.AccountCreateParams {
   const businessType = mapBusinessType(profile);
   const address = mapAddress(profile);
+  const normalizedPhone = normalizeGermanPhoneForStripe(profile.representativePhone);
   const companyName =
     optionalText(profile.billingCompanyName) ||
     optionalText(profile.providerDisplayName) ||
@@ -302,14 +313,14 @@ export function mapProviderPayoutProfileToStripeAccountParams(
       first_name: optionalText(profile.representativeFirstName),
       last_name: optionalText(profile.representativeLastName),
       email: optionalText(profile.representativeEmail),
-      phone: optionalText(profile.representativePhone),
+      phone: normalizedPhone,
       dob: parseBirthDate(profile.representativeBirthDate),
       address,
     };
   } else {
     params.company = {
       name: companyName,
-      phone: optionalText(profile.representativePhone),
+      phone: normalizedPhone,
       address,
       tax_id: optionalText(profile.taxNumber),
       vat_id: optionalText(profile.vatId),
@@ -373,7 +384,7 @@ export async function createOrUpdateCustomAccountForProvider(providerId: string)
       providerAccountId: profile.providerAccountId,
       stripeAccountsCreateCalled: false,
       stripeAccountsUpdateCalled: false,
-      stripeAccountParamDiagnostics: getStripeAccountParamDiagnostics(params),
+      stripeAccountParamDiagnostics: getStripeAccountParamDiagnostics(params, profile),
     });
     let writtenAccount: Stripe.Account;
 
