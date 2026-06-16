@@ -6,6 +6,10 @@ import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 const INTERNAL_SIMULATION_PROVIDER = "internal_simulation";
 const INTERNAL_SIMULATION_METHOD = "internal_simulation";
+// In Stripe Custom Connect, payout_batches/payout_items are settlement mirrors:
+// Stripe moves the money, RESER records the accounting state for dashboards and documents.
+// The functions in this file remain internal simulation/admin tooling and must not be
+// treated as production money movement.
 const PAYOUT_BATCH_ALLOWED_METHODS = [
   "bank_transfer",
   "paypal",

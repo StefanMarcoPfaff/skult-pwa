@@ -7,16 +7,114 @@ export type PaymentFlowType = "checkout" | "recurring";
 export type PaymentMode = "payment" | "subscription";
 export type PaymentReferenceType = "checkout_session" | "payment_intent" | "subscription" | "payout";
 
+export const STRIPE_LEDGER_REFERENCE_FIELDS = [
+  "stripe_charge_id",
+  "stripe_payment_intent_id",
+  "stripe_balance_transaction_id",
+  "stripe_application_fee_id",
+  "stripe_transfer_id",
+  "stripe_payout_id",
+  "stripe_refund_id",
+  "stripe_dispute_id",
+] as const;
+
+export type StripeLedgerReferenceField = (typeof STRIPE_LEDGER_REFERENCE_FIELDS)[number];
+
+export type StripeLedgerReferences = Partial<Record<StripeLedgerReferenceField, string | null>>;
+
 export type PaymentStatus =
   | "pending"
   | "paid"
   | "failed"
   | "cancelled"
   | "refunded"
+  | "refunded_partial"
+  | "refunded_full"
   | "requires_action"
+  | "disputed"
+  | "chargeback_lost"
+  | "chargeback_won"
   | "unknown";
 
 export type PayoutStatus = "scheduled" | "cancelled" | "pending" | "paid" | "failed" | "not_supported";
+
+export const PAYMENT_TRANSACTION_STATUSES = [
+  "pending",
+  "paid",
+  "failed",
+  "cancelled",
+  "refunded",
+  "refunded_partial",
+  "refunded_full",
+  "requires_action",
+  "disputed",
+  "chargeback_lost",
+  "chargeback_won",
+  "unknown",
+] as const;
+
+export type PaymentTransactionStatus = (typeof PAYMENT_TRANSACTION_STATUSES)[number];
+
+export const LEDGER_PAYOUT_STATUSES = [
+  "pending",
+  "reserved",
+  "pending_event_completion",
+  "payable",
+  "transfer_created",
+  "paid_by_stripe",
+  "refunded_partial",
+  "refunded_full",
+  "disputed",
+  "chargeback_lost",
+  "chargeback_won",
+  "batched",
+  "available",
+  "scheduled",
+  "paid",
+  "failed",
+  "cancelled",
+  "held",
+] as const;
+
+export type LedgerPayoutStatus = (typeof LEDGER_PAYOUT_STATUSES)[number];
+
+export const REFUND_KINDS = ["partial", "full", "unknown"] as const;
+export type RefundKind = (typeof REFUND_KINDS)[number];
+export type PaymentRefundStatus = "none" | "partial" | "full";
+
+export function classifyRefundForPayment(input: {
+  paymentAmountCents: number;
+  cumulativeRefundedAmountCents: number;
+}): {
+  refundKind: RefundKind;
+  refundStatus: PaymentRefundStatus;
+  paymentStatus: Extract<PaymentTransactionStatus, "paid" | "refunded_partial" | "refunded_full">;
+} {
+  const paymentAmountCents = Math.max(0, Math.round(input.paymentAmountCents));
+  const refundedAmountCents = Math.max(0, Math.round(input.cumulativeRefundedAmountCents));
+
+  if (paymentAmountCents <= 0 || refundedAmountCents <= 0) {
+    return {
+      refundKind: "unknown",
+      refundStatus: "none",
+      paymentStatus: "paid",
+    };
+  }
+
+  if (refundedAmountCents >= paymentAmountCents) {
+    return {
+      refundKind: "full",
+      refundStatus: "full",
+      paymentStatus: "refunded_full",
+    };
+  }
+
+  return {
+    refundKind: "partial",
+    refundStatus: "partial",
+    paymentStatus: "refunded_partial",
+  };
+}
 
 export type PaymentMetadata = Record<string, string>;
 

@@ -5,9 +5,10 @@ import {
   getPlatformFeeConfigForProvider,
 } from "@/lib/platform-fees";
 import { calculatePayoutAvailableAt } from "@/lib/payments/payout-eligibility";
+import { PROVIDER_PAYOUT_PROFILE_PROVIDER } from "@/lib/payout-profile";
 import type { ProviderType } from "@/lib/provider-profiles";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
-import type { LedgerEntry } from "@/lib/payments/types";
+import { classifyRefundForPayment, type LedgerEntry } from "@/lib/payments/types";
 
 export interface PaymentLedger {
   record(entry: Omit<LedgerEntry, "createdAt">): Promise<LedgerEntry>;
@@ -29,6 +30,7 @@ type StoredPaymentTransactionRow = {
   provider: string;
   booking_id?: string | null;
   course_registration_intent_id?: string | null;
+  provider_payout_profile_id?: string | null;
   provider_payment_id: string | null;
   provider_checkout_id: string | null;
   provider_customer_id?: string | null;
@@ -38,6 +40,8 @@ type StoredPaymentTransactionRow = {
   status: string;
   paid_at?: string | null;
   refunded_at: string | null;
+  refunded_amount_cents?: number | null;
+  refund_status?: string | null;
   failed_at?: string | null;
 };
 
@@ -139,6 +143,21 @@ function normalizeUnixTimestamp(unixTimestamp: number | null | undefined): strin
   return new Date(unixTimestamp * 1000).toISOString();
 }
 
+function getStripeChargeIdFromSession(session: Stripe.Checkout.Session): string | null {
+  const paymentIntent = session.payment_intent;
+  if (typeof paymentIntent !== "object" || !paymentIntent) return null;
+  const latestCharge = paymentIntent.latest_charge;
+  if (typeof latestCharge === "string") return latestCharge;
+  return latestCharge?.id ?? null;
+}
+
+function mapStripeRefundRecordStatus(status: Stripe.Refund["status"] | string | null | undefined): "pending" | "succeeded" | "failed" | "cancelled" {
+  if (status === "failed") return "failed";
+  if (status === "canceled") return "cancelled";
+  if (status === "pending" || status === "requires_action") return "pending";
+  return "succeeded";
+}
+
 async function loadStripeProfile(
   teacherId: string | null | undefined
 ): Promise<StripeProfileRow | null> {
@@ -175,6 +194,19 @@ async function ensureProviderPayoutProfile(input: {
   const providerAccountId = input.providerAccountId ?? profile?.stripe_account_id ?? null;
   const accountHolderName = buildAccountHolderName(profile, input.accountHolderName);
   const admin = createSupabaseAdmin();
+
+  if (teacherId) {
+    const { data: existingCustomProfile } = await admin
+      .from("provider_payout_profiles")
+      .select("id")
+      .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER)
+      .eq("teacher_id", teacherId)
+      .maybeSingle<StoredProviderPayoutProfileRow>();
+
+    if (existingCustomProfile?.id) {
+      return existingCustomProfile.id;
+    }
+  }
 
   if (providerAccountId) {
     const { data: existingByAccount } = await admin
@@ -258,7 +290,7 @@ async function findPaymentTransaction(input: {
   if (input.providerPaymentId) {
     const { data } = await admin
       .from("payment_transactions")
-      .select("id,provider,booking_id,course_registration_intent_id,provider_payment_id,provider_checkout_id,provider_customer_id,provider_subscription_id,amount_cents,currency,status,paid_at,refunded_at,failed_at")
+      .select("id,provider,booking_id,course_registration_intent_id,provider_payout_profile_id,provider_payment_id,provider_checkout_id,provider_customer_id,provider_subscription_id,amount_cents,currency,status,paid_at,refunded_at,refunded_amount_cents,refund_status,failed_at")
       .eq("provider", "stripe")
       .eq("provider_payment_id", input.providerPaymentId)
       .maybeSingle<StoredPaymentTransactionRow>();
@@ -269,7 +301,7 @@ async function findPaymentTransaction(input: {
   if (input.providerCheckoutId) {
     const { data } = await admin
       .from("payment_transactions")
-      .select("id,provider,booking_id,course_registration_intent_id,provider_payment_id,provider_checkout_id,provider_customer_id,provider_subscription_id,amount_cents,currency,status,paid_at,refunded_at,failed_at")
+      .select("id,provider,booking_id,course_registration_intent_id,provider_payout_profile_id,provider_payment_id,provider_checkout_id,provider_customer_id,provider_subscription_id,amount_cents,currency,status,paid_at,refunded_at,refunded_amount_cents,refund_status,failed_at")
       .eq("provider", "stripe")
       .eq("provider_checkout_id", input.providerCheckoutId)
       .maybeSingle<StoredPaymentTransactionRow>();
@@ -280,7 +312,7 @@ async function findPaymentTransaction(input: {
   if (input.providerSubscriptionId) {
     const { data } = await admin
       .from("payment_transactions")
-      .select("id,provider,booking_id,course_registration_intent_id,provider_payment_id,provider_checkout_id,provider_customer_id,provider_subscription_id,amount_cents,currency,status,paid_at,refunded_at,failed_at")
+      .select("id,provider,booking_id,course_registration_intent_id,provider_payout_profile_id,provider_payment_id,provider_checkout_id,provider_customer_id,provider_subscription_id,amount_cents,currency,status,paid_at,refunded_at,refunded_amount_cents,refund_status,failed_at")
       .eq("provider", "stripe")
       .eq("provider_subscription_id", input.providerSubscriptionId)
       .order("created_at", { ascending: true })
@@ -291,6 +323,18 @@ async function findPaymentTransaction(input: {
   }
 
   return null;
+}
+
+async function sumSucceededRefundAmount(paymentTransactionId: string): Promise<number> {
+  const admin = createSupabaseAdmin();
+  const { data } = await admin
+    .from("refund_records")
+    .select("amount_cents")
+    .eq("payment_transaction_id", paymentTransactionId)
+    .eq("status", "succeeded")
+    .returns<Array<{ amount_cents: number | null }>>();
+
+  return (data ?? []).reduce((sum, row) => sum + Math.max(0, row.amount_cents ?? 0), 0);
 }
 
 async function resolveStripeRecurringMirrorContext(
@@ -326,11 +370,7 @@ async function resolveStripeRecurringMirrorContext(
       .limit(1)
       .maybeSingle<{ provider_payout_profile_id: string | null; payout_status: string | null }>();
 
-    if (
-      existingLedgerEntry &&
-      !existingLedgerEntry.provider_payout_profile_id &&
-      existingLedgerEntry.payout_status === "reserved"
-    ) {
+    if (existingLedgerEntry?.payout_status === "reserved") {
       paymentModel = "platform_charge";
     }
   }
@@ -377,19 +417,28 @@ async function ensureStripePaymentLedgerMirror(input: {
   payoutStatus?: "pending" | "reserved" | "pending_event_completion";
   availableAt?: string | null;
   paymentModel?: string | null;
+  stripeChargeId?: string | null;
+  stripePaymentIntentId?: string | null;
 }): Promise<void> {
-  const providerPayoutProfileId =
-    input.paymentModel === "platform_charge"
-      ? null
-      : await ensureProviderPayoutProfile({
-          teacherId: input.teacherId,
-          providerAccountId: input.providerAccountId,
-          providerType: input.providerType,
-          accountHolderName: input.accountHolderName,
-        });
+  const providerPayoutProfileId = await ensureProviderPayoutProfile({
+    teacherId: input.teacherId,
+    providerAccountId: input.providerAccountId,
+    providerType: input.providerType,
+    accountHolderName: input.accountHolderName,
+  });
   const platformFeeConfig = await getPlatformFeeConfigForProvider(createSupabaseAdmin(), input.teacherId);
   const platformFeeCents = calculatePlatformFeeCents(input.amountCents, platformFeeConfig.platformFeePercent);
   const netAmountCents = calculateProviderPayoutCents(input.amountCents, platformFeeConfig.platformFeePercent);
+
+  if (providerPayoutProfileId) {
+    await createSupabaseAdmin()
+      .from("payment_transactions")
+      .update({
+        provider_payout_profile_id: providerPayoutProfileId,
+      })
+      .eq("id", input.paymentTransactionId)
+      .is("provider_payout_profile_id", null);
+  }
 
   await ensureLedgerEntry({
     paymentTransactionId: input.paymentTransactionId,
@@ -402,6 +451,8 @@ async function ensureStripePaymentLedgerMirror(input: {
     currency: input.currency,
     payoutStatus: input.payoutStatus ?? "pending",
     availableAt: input.availableAt ?? null,
+    stripeChargeId: input.stripeChargeId ?? null,
+    stripePaymentIntentId: input.stripePaymentIntentId ?? null,
   });
 }
 
@@ -423,21 +474,25 @@ async function upsertStripeRefundMirror(input: {
   if (!paymentTransaction?.id) {
     return null;
   }
-
-  await admin
-    .from("payment_transactions")
-    .update({
-      status: "refunded",
-      refunded_at: input.refundedAt ?? new Date().toISOString(),
-    })
-    .eq("id", paymentTransaction.id);
+  const refundRecordStatus = mapStripeRefundRecordStatus(input.status);
+  const normalizedRefundAmountCents = Math.max(0, input.amountCents ?? paymentTransaction.amount_cents);
+  const refundKind =
+    refundRecordStatus === "succeeded"
+      ? classifyRefundForPayment({
+          paymentAmountCents: paymentTransaction.amount_cents,
+          cumulativeRefundedAmountCents: normalizedRefundAmountCents,
+        }).refundKind
+      : "unknown";
 
   const payload = {
     payment_transaction_id: paymentTransaction.id,
     provider_refund_id: input.providerRefundId,
-    amount_cents: input.amountCents ?? paymentTransaction.amount_cents,
+    stripe_refund_id: input.providerRefundId,
+    stripe_payment_intent_id: input.providerPaymentId ?? paymentTransaction.provider_payment_id,
+    amount_cents: normalizedRefundAmountCents,
     reason: input.reason ?? null,
-    status: input.status === "failed" ? "failed" : input.status === "canceled" ? "cancelled" : "succeeded",
+    status: refundRecordStatus,
+    refund_kind: refundKind,
   };
 
   const { data: existingRefund } = await admin
@@ -460,23 +515,60 @@ async function upsertStripeRefundMirror(input: {
     refundRecordId = inserted?.id ?? null;
   }
 
-  await admin
-    .from("ledger_entries")
-    .update({
-      payout_status: "cancelled",
-    })
-    .eq("source_type", "payment_transaction")
-    .eq("source_id", paymentTransaction.id)
-    .eq("entry_type", "payment");
+  const succeededRefundAmountCents =
+    refundRecordStatus === "succeeded"
+      ? await sumSucceededRefundAmount(paymentTransaction.id)
+      : Math.max(0, paymentTransaction.refunded_amount_cents ?? 0);
+  const refundClassification = classifyRefundForPayment({
+    paymentAmountCents: paymentTransaction.amount_cents,
+    cumulativeRefundedAmountCents: succeededRefundAmountCents,
+  });
+  const refundLedgerStatus =
+    refundClassification.refundStatus === "full"
+      ? "refunded_full"
+      : refundClassification.refundStatus === "partial"
+        ? "refunded_partial"
+        : "cancelled";
+
+  if (refundRecordStatus === "succeeded") {
+    await admin
+      .from("payment_transactions")
+      .update({
+        status: refundClassification.paymentStatus,
+        refunded_amount_cents: succeededRefundAmountCents,
+        refund_status: refundClassification.refundStatus,
+        refunded_at:
+          refundClassification.refundStatus === "full"
+            ? input.refundedAt ?? new Date().toISOString()
+            : paymentTransaction.refunded_at ?? null,
+        stripe_refund_id: input.providerRefundId,
+        stripe_payment_intent_id: input.providerPaymentId ?? paymentTransaction.provider_payment_id,
+      })
+      .eq("id", paymentTransaction.id);
+
+    await admin
+      .from("ledger_entries")
+      .update({
+        payout_status: refundLedgerStatus,
+        stripe_refund_id: input.providerRefundId,
+        stripe_payment_intent_id: input.providerPaymentId ?? paymentTransaction.provider_payment_id,
+      })
+      .eq("source_type", "payment_transaction")
+      .eq("source_id", paymentTransaction.id)
+      .eq("entry_type", "payment");
+  }
 
   if (refundRecordId) {
     const refundLedgerPayload = {
-      gross_amount_cents: input.amountCents ?? paymentTransaction.amount_cents,
+      provider_payout_profile_id: paymentTransaction.provider_payout_profile_id ?? null,
+      gross_amount_cents: normalizedRefundAmountCents,
       platform_fee_cents: 0,
       provider_fee_cents: 0,
       net_amount_cents: 0,
       currency: paymentTransaction.currency,
-      payout_status: "cancelled" as const,
+      payout_status: refundLedgerStatus,
+      stripe_refund_id: input.providerRefundId,
+      stripe_payment_intent_id: input.providerPaymentId ?? paymentTransaction.provider_payment_id,
     };
     const { data: refundLedger } = await admin
       .from("ledger_entries")
@@ -512,6 +604,8 @@ async function ensureLedgerEntry(input: {
   currency: string;
   payoutStatus: "pending" | "reserved" | "pending_event_completion" | "payable" | "batched" | "cancelled";
   availableAt?: string | null;
+  stripeChargeId?: string | null;
+  stripePaymentIntentId?: string | null;
 }): Promise<void> {
   const admin = createSupabaseAdmin();
   const { data: existing } = await admin
@@ -534,6 +628,8 @@ async function ensureLedgerEntry(input: {
         currency: input.currency,
         payout_status: input.payoutStatus,
         available_at: input.availableAt ?? null,
+        stripe_charge_id: input.stripeChargeId ?? null,
+        stripe_payment_intent_id: input.stripePaymentIntentId ?? null,
       })
       .eq("id", existing.id);
     return;
@@ -551,6 +647,8 @@ async function ensureLedgerEntry(input: {
     currency: input.currency,
     payout_status: input.payoutStatus,
     available_at: input.availableAt ?? null,
+    stripe_charge_id: input.stripeChargeId ?? null,
+    stripe_payment_intent_id: input.stripePaymentIntentId ?? null,
   });
 }
 
@@ -565,6 +663,7 @@ export async function mirrorStripePaymentToLedger(input: MirrorStripePaymentInpu
       ? input.session.subscription
       : input.session.subscription?.id ?? null;
   const providerCheckoutId = input.session.id;
+  const stripeChargeId = getStripeChargeIdFromSession(input.session);
   const amountCents = Math.max(
     0,
     input.session.amount_total ?? input.fallbackAmountCents ?? 0
@@ -587,6 +686,8 @@ export async function mirrorStripePaymentToLedger(input: MirrorStripePaymentInpu
     provider_customer_id:
       typeof input.session.customer === "string" ? input.session.customer : input.session.customer?.id ?? null,
     provider_subscription_id: providerSubscriptionId,
+    stripe_charge_id: stripeChargeId,
+    stripe_payment_intent_id: providerPaymentId,
     amount_cents: amountCents,
     currency,
     payment_method: normalizePaymentMethod(input.session),
@@ -633,6 +734,8 @@ export async function mirrorStripePaymentToLedger(input: MirrorStripePaymentInpu
     payoutStatus: input.payoutStatus ?? (paymentModel === "platform_charge" ? "reserved" : "pending"),
     availableAt: input.availableAt ?? null,
     paymentModel,
+    stripeChargeId,
+    stripePaymentIntentId: providerPaymentId,
   });
 
   return paymentTransactionId;
@@ -681,6 +784,7 @@ export async function updateStripePaymentTransactionStatus(input: {
     .update({
       provider_customer_id: input.providerCustomerId ?? paymentTransaction.provider_customer_id ?? null,
       provider_subscription_id: input.providerSubscriptionId ?? paymentTransaction.provider_subscription_id ?? null,
+      stripe_payment_intent_id: input.providerPaymentId ?? paymentTransaction.provider_payment_id,
       amount_cents: amountCents,
       currency,
       status: input.status,
@@ -806,6 +910,7 @@ export async function mirrorStripeInvoiceEventToLedger(input: {
       payoutStatus: paymentModel === "platform_charge" ? "reserved" : "pending",
       availableAt: null,
       paymentModel,
+      stripePaymentIntentId: providerPaymentId,
     });
   }
 
