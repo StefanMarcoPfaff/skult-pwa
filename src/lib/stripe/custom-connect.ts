@@ -113,11 +113,21 @@ function mapStatusPayload(account: Stripe.Account) {
 function toUpdateParams(
   params: Stripe.AccountCreateParams
 ): Stripe.AccountUpdateParams {
-  const updateParams = { ...params };
+  const updateParams = stripBusinessProfileMcc({ ...params });
   delete updateParams.country;
   delete updateParams.controller;
   delete updateParams.type;
   return updateParams as Stripe.AccountUpdateParams;
+}
+
+function stripBusinessProfileMcc<T extends Stripe.AccountCreateParams | Stripe.AccountUpdateParams>(
+  params: T
+): T {
+  if (params.business_profile && "mcc" in params.business_profile) {
+    delete (params.business_profile as Stripe.AccountCreateParams.BusinessProfile & { mcc?: string }).mcc;
+  }
+
+  return params;
 }
 
 function getErrorProperty(error: unknown, key: string): unknown {
@@ -326,7 +336,7 @@ export function mapProviderPayoutProfileToStripeAccountParams(
     };
   }
 
-  return params;
+  return stripBusinessProfileMcc(params);
 }
 
 export async function createOrUpdateCustomAccountForProvider(providerId: string): Promise<Stripe.Account> {
@@ -370,7 +380,7 @@ export async function createOrUpdateCustomAccountForProvider(providerId: string)
   }
 
   const stripe = getStripe();
-  const params = mapProviderPayoutProfileToStripeAccountParams(profile);
+  const params = stripBusinessProfileMcc(mapProviderPayoutProfileToStripeAccountParams(profile));
   const writeKind = profile.providerAccountId ? "update" : "create";
   let account: Stripe.Account;
 

@@ -52,7 +52,6 @@ type SavedPayoutProfileDebug = {
   stripe_terms_accepted_ip: string | null;
   stripe_terms_accepted_user_agent: string | null;
   business_profile_url: string | null;
-  business_profile_mcc: string | null;
   business_profile_product_description: string | null;
 };
 
@@ -70,7 +69,6 @@ type ExistingPayoutProfile = {
   stripe_terms_accepted_at: string | null;
   stripe_terms_accepted_ip: string | null;
   stripe_terms_accepted_user_agent: string | null;
-  business_profile_mcc: string | null;
 };
 
 export type UnifiedProfileSaveDebug = {
@@ -371,6 +369,7 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
     const account_holder_name = optionalText(formData.get("account_holder_name"));
     const billing_name = [first_name, last_name].filter(Boolean).join(" ").trim() || null;
     const billing_company_name = organization_name;
+    formData.delete("business_profile_mcc");
     const formDataKeys = Array.from(new Set(Array.from(formData.keys()))).sort();
     const billing_address_line_1 = optionalFormText(formData, "billing_address_line_1", "billing_address_line1");
     const billing_address_line_2 = optionalFormText(formData, "billing_address_line_2", "billing_address_line2");
@@ -684,7 +683,6 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       "stripe_terms_accepted_ip",
       "stripe_terms_accepted_user_agent",
       "business_profile_url",
-      "business_profile_mcc",
       "business_profile_product_description",
     ].join(",");
 
@@ -705,7 +703,6 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
           "stripe_terms_accepted_at",
           "stripe_terms_accepted_ip",
           "stripe_terms_accepted_user_agent",
-          "business_profile_mcc",
         ].join(",")
       )
       .eq("teacher_id", user.id)
@@ -779,7 +776,6 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       stripe_terms_accepted_ip: existingPayoutProfile?.stripe_terms_accepted_ip ?? clientIp,
       stripe_terms_accepted_user_agent: existingPayoutProfile?.stripe_terms_accepted_user_agent ?? userAgent,
       business_profile_url,
-      business_profile_mcc: existingPayoutProfile?.business_profile_mcc ?? null,
       business_profile_product_description,
       verification_status: "pending",
       provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
