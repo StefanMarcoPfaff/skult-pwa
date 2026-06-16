@@ -18,6 +18,8 @@ import { isProviderType } from "@/lib/provider-profiles";
 import { createOrUpdateCustomAccountForProvider } from "@/lib/stripe/custom-connect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+const PROFILE_PAYOUT_DEBUG = process.env.PROFILE_PAYOUT_DEBUG === "1";
+
 export type SaveProfileState = {
   success?: string;
   warning?: string;
@@ -190,6 +192,7 @@ function logProfilePayoutDebug(
   kind: string,
   payload: Record<string, unknown>
 ) {
+  if (!PROFILE_PAYOUT_DEBUG) return;
   console.info("[profile-payout-debug]", {
     kind,
     ...payload,

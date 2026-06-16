@@ -49,11 +49,14 @@ type ProfileFormProps = {
     business_profile_product_description: string;
     consentAccepted: boolean;
     payoutComplete: boolean;
+    stripeAccountType: string;
+    stripeDetailsSubmitted: boolean;
     customConnectAccountExists: boolean;
     customConnectReady: boolean;
     customConnectMissingFields: string[];
     customConnectWarnings: string[];
     stripeRequirementsCurrentlyDue: string[];
+    stripeRequirementsEventuallyDue: string[];
     stripeRequirementsPastDue: string[];
     stripeRequirementsDisabledReason: string;
     stripeChargesEnabled: boolean;
@@ -94,9 +97,14 @@ function getPaymentPreparationStatus(input: {
   hasAccount: boolean;
   isReadyForPreparation: boolean;
   hasOpenRequirements: boolean;
+  isPaymentProcessingConfigured: boolean;
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
 }): string {
+  if (input.isPaymentProcessingConfigured) {
+    return "Zahlungsabwicklung eingerichtet";
+  }
+
   if (input.hasMissingProfileFields) {
     return "Für die automatische Zahlungsabwicklung fehlen noch Angaben.";
   }
@@ -174,16 +182,27 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
     ...initialValues.stripeRequirementsCurrentlyDue,
     ...initialValues.stripeRequirementsPastDue,
   ]);
+  const isPaymentProcessingConfigured =
+    initialValues.customConnectAccountExists &&
+    initialValues.stripeAccountType === "custom" &&
+    initialValues.stripeChargesEnabled &&
+    initialValues.stripePayoutsEnabled &&
+    initialValues.stripeDetailsSubmitted &&
+    initialValues.stripeRequirementsCurrentlyDue.length === 0;
   const hasOpenStripeRequirements =
-    friendlyRequirements.length > 0 || Boolean(initialValues.stripeRequirementsDisabledReason);
+    !isPaymentProcessingConfigured &&
+    (friendlyRequirements.length > 0 || Boolean(initialValues.stripeRequirementsDisabledReason));
   const paymentPreparationStatus = getPaymentPreparationStatus({
     hasMissingProfileFields: initialValues.customConnectMissingFields.length > 0,
     hasAccount: initialValues.customConnectAccountExists,
     isReadyForPreparation: initialValues.customConnectReady,
     hasOpenRequirements: hasOpenStripeRequirements,
+    isPaymentProcessingConfigured,
     chargesEnabled: initialValues.stripeChargesEnabled,
     payoutsEnabled: initialValues.stripePayoutsEnabled,
   });
+  const showEventuallyDueNotice =
+    initialValues.stripeRequirementsEventuallyDue.length > 0 && isPaymentProcessingConfigured;
   const formVersion = [
     initialValues.first_name,
     initialValues.last_name,
@@ -419,14 +438,14 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
               Deine Angaben werden für Buchungen, Auszahlungen und Belege verwendet. Sobald Du kostenpflichtige Angebote
               anbietest, prüft RESER automatisch, ob weitere Angaben benötigt werden.
             </p>
-            {initialValues.customConnectMissingFields.length > 0 ? (
+            {initialValues.customConnectMissingFields.length > 0 && !isPaymentProcessingConfigured ? (
               <ul className="mt-3 list-disc space-y-1 pl-5">
                 {initialValues.customConnectMissingFields.map((field) => (
                   <li key={field}>{field}</li>
                 ))}
               </ul>
             ) : null}
-            {friendlyRequirements.length > 0 ? (
+            {friendlyRequirements.length > 0 && !isPaymentProcessingConfigured ? (
               <div className="mt-3">
                 <p className="font-medium">Noch benötigt:</p>
                 <ul className="mt-1 list-disc space-y-1 pl-5">
@@ -435,6 +454,11 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
                   ))}
                 </ul>
               </div>
+            ) : null}
+            {showEventuallyDueNotice ? (
+              <p className="mt-3 text-muted-foreground">
+                Der Zahlungsdienstleister kann zu einem spÃ¤teren Zeitpunkt weitere Nachweise anfordern.
+              </p>
             ) : null}
           </div>
           <label className="sm:col-span-2 flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm">

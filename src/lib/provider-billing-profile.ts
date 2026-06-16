@@ -165,6 +165,7 @@ export type ProviderCustomConnectReadiness = {
   missingFields: string[];
   warnings: string[];
   statusLabel: string;
+  isPaymentProcessingConfigured: boolean;
 };
 
 function normalizeOptionalText(value: string | null | undefined): string | null {
@@ -336,6 +337,14 @@ export function getProviderCustomConnectReadiness(
 ): ProviderCustomConnectReadiness {
   const missingFields: string[] = [];
   const warnings: string[] = [];
+  const isPaymentProcessingConfigured = Boolean(
+    profile?.providerAccountId &&
+    profile.stripeAccountType === "custom" &&
+    profile.stripeChargesEnabled &&
+    profile.stripePayoutsEnabled &&
+    profile.stripeDetailsSubmitted &&
+    profile.stripeRequirementsCurrentlyDue.length === 0
+  );
 
   if (!profile?.providerPayoutProfileId) {
     missingFields.push("Auszahlungsangaben fehlen");
@@ -379,15 +388,15 @@ export function getProviderCustomConnectReadiness(
     warnings.push("Einige Finanzdaten stammen noch aus Legacy-Profilfeldern.");
   }
 
-  if (profile?.stripeRequirementsCurrentlyDue.length) {
+  if (!isPaymentProcessingConfigured && profile?.stripeRequirementsCurrentlyDue.length) {
     warnings.push("Der Zahlungsdienstleister benötigt weitere Angaben.");
   }
 
-  if (profile?.stripeRequirementsPastDue.length) {
+  if (!isPaymentProcessingConfigured && profile?.stripeRequirementsPastDue.length) {
     warnings.push("Der Zahlungsdienstleister benötigt weitere Angaben.");
   }
 
-  if (profile?.stripeRequirementsDisabledReason) {
+  if (!isPaymentProcessingConfigured && profile?.stripeRequirementsDisabledReason) {
     warnings.push("Auszahlungen sind vorübergehend nicht möglich.");
   }
 
@@ -395,7 +404,9 @@ export function getProviderCustomConnectReadiness(
   const isReadyForCustomAccountCreation = missingFields.length === 0 && !hasCustomAccount;
   let statusLabel = "Angaben fehlen noch";
 
-  if (profile?.stripePayoutsEnabled && profile.stripeChargesEnabled) {
+  if (isPaymentProcessingConfigured) {
+    statusLabel = "Zahlungsabwicklung eingerichtet";
+  } else if (profile?.stripePayoutsEnabled && profile.stripeChargesEnabled) {
     statusLabel = "Auszahlungen möglich";
   } else if (profile?.stripeRequirementsDisabledReason) {
     statusLabel = "Auszahlungen pausiert";
@@ -414,6 +425,7 @@ export function getProviderCustomConnectReadiness(
     missingFields,
     warnings,
     statusLabel,
+    isPaymentProcessingConfigured,
   };
 }
 

@@ -19,6 +19,7 @@ type StripeVerificationStatus =
   | "verified";
 
 const RESER_DEFAULT_STRIPE_MCC = "7999";
+const STRIPE_CUSTOM_CONNECT_DEBUG = process.env.STRIPE_CUSTOM_CONNECT_DEBUG === "1";
 
 function optionalText(value: string | null | undefined): string | undefined {
   const trimmed = String(value ?? "").trim();
@@ -165,6 +166,11 @@ function getExternalBankAccountDetails(externalAccount: Stripe.ExternalAccount):
   };
 }
 
+function logStripeCustomConnectDebug(payload: Record<string, unknown>) {
+  if (!STRIPE_CUSTOM_CONNECT_DEBUG) return;
+  console.info("[stripe-custom-connect]", payload);
+}
+
 function getErrorProperty(error: unknown, key: string): unknown {
   return typeof error === "object" && error !== null && key in error
     ? (error as Record<string, unknown>)[key]
@@ -247,7 +253,7 @@ function logStripeCustomAccountSync(input: {
   payoutProfileId: string;
   account: Stripe.Account;
 }) {
-  console.info("[stripe-custom-connect]", {
+  logStripeCustomConnectDebug({
     kind: input.kind,
     providerId: input.providerId,
     providerPayoutProfileId: input.payoutProfileId,
@@ -370,7 +376,7 @@ async function syncStripeExternalAccount(input: {
       payoutProfileId,
       externalAccount,
     });
-    console.info("[stripe-custom-connect]", {
+    logStripeCustomConnectDebug({
       kind: "external_account_status_synced",
       providerId: input.providerId,
       providerPayoutProfileId: payoutProfileId,
@@ -385,7 +391,7 @@ async function syncStripeExternalAccount(input: {
   const accountHolderName = optionalText(input.profile.accountHolderName);
 
   if (!iban || input.profile.payoutMethod !== "iban" || !accountHolderName) {
-    console.info("[stripe-custom-connect]", {
+    logStripeCustomConnectDebug({
       kind: "external_account_skipped",
       providerId: input.providerId,
       providerPayoutProfileId: payoutProfileId,
@@ -422,7 +428,7 @@ async function syncStripeExternalAccount(input: {
     externalAccount,
   });
 
-  console.info("[stripe-custom-connect]", {
+  logStripeCustomConnectDebug({
     kind: "external_account_created",
     providerId: input.providerId,
     providerPayoutProfileId: payoutProfileId,
@@ -509,7 +515,7 @@ export async function createOrUpdateCustomAccountForProvider(
     throw new Error("Auszahlungsprofil fehlt.");
   }
 
-  console.info("[stripe-custom-connect]", {
+  logStripeCustomConnectDebug({
     kind: "readiness_check",
     providerId,
     providerPayoutProfileId: profile.providerPayoutProfileId,
@@ -526,7 +532,7 @@ export async function createOrUpdateCustomAccountForProvider(
   });
 
   if (!profile.providerAccountId && !readiness.isReadyForCustomAccountCreation) {
-    console.info("[stripe-custom-connect]", {
+    logStripeCustomConnectDebug({
       kind: "stripe_write_skipped",
       providerId,
       providerPayoutProfileId: profile.providerPayoutProfileId,
@@ -546,7 +552,7 @@ export async function createOrUpdateCustomAccountForProvider(
   let account: Stripe.Account;
 
   try {
-    console.info("[stripe-custom-connect]", {
+    logStripeCustomConnectDebug({
       kind: `${writeKind}_start`,
       providerId,
       providerPayoutProfileId: profile.providerPayoutProfileId,
@@ -559,7 +565,7 @@ export async function createOrUpdateCustomAccountForProvider(
     let writtenAccount: Stripe.Account;
 
     if (profile.providerAccountId) {
-      console.info("[stripe-custom-connect]", {
+      logStripeCustomConnectDebug({
         kind: "stripe_accounts_update_call",
         providerId,
         providerPayoutProfileId: profile.providerPayoutProfileId,
@@ -570,7 +576,7 @@ export async function createOrUpdateCustomAccountForProvider(
       });
       writtenAccount = await stripe.accounts.update(profile.providerAccountId, toUpdateParams(params));
     } else {
-      console.info("[stripe-custom-connect]", {
+      logStripeCustomConnectDebug({
         kind: "stripe_accounts_create_call",
         providerId,
         providerPayoutProfileId: profile.providerPayoutProfileId,

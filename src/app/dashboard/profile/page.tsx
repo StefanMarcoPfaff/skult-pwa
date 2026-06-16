@@ -55,7 +55,9 @@ type DirectPayoutProfileRow = {
   business_profile_product_description: string | null;
   stripe_charges_enabled: boolean | null;
   stripe_payouts_enabled: boolean | null;
+  stripe_details_submitted: boolean | null;
   stripe_requirements_currently_due: string[] | null;
+  stripe_requirements_eventually_due: string[] | null;
   stripe_requirements_past_due: string[] | null;
   stripe_requirements_disabled_reason: string | null;
   created_at: string | null;
@@ -142,8 +144,12 @@ export default async function DashboardProfilePage({
             directPayoutProfile.stripe_payouts_enabled ?? financialProfile.stripePayoutsEnabled,
           stripeChargesEnabled:
             directPayoutProfile.stripe_charges_enabled ?? financialProfile.stripeChargesEnabled,
+          stripeDetailsSubmitted:
+            directPayoutProfile.stripe_details_submitted ?? financialProfile.stripeDetailsSubmitted,
           stripeRequirementsCurrentlyDue:
             directPayoutProfile.stripe_requirements_currently_due ?? financialProfile.stripeRequirementsCurrentlyDue,
+          stripeRequirementsEventuallyDue:
+            directPayoutProfile.stripe_requirements_eventually_due ?? financialProfile.stripeRequirementsEventuallyDue,
           stripeRequirementsPastDue:
             directPayoutProfile.stripe_requirements_past_due ?? financialProfile.stripeRequirementsPastDue,
           stripeRequirementsDisabledReason:
@@ -212,7 +218,10 @@ export default async function DashboardProfilePage({
     customConnectReady: customConnectReadiness.isReadyForCustomAccountCreation,
     customConnectMissingFields: customConnectReadiness.missingFields,
     customConnectWarnings: customConnectReadiness.warnings,
+    stripeAccountType: effectiveFinancialProfile?.stripeAccountType ?? "",
+    stripeDetailsSubmitted: Boolean(effectiveFinancialProfile?.stripeDetailsSubmitted),
     stripeRequirementsCurrentlyDue: effectiveFinancialProfile?.stripeRequirementsCurrentlyDue ?? [],
+    stripeRequirementsEventuallyDue: effectiveFinancialProfile?.stripeRequirementsEventuallyDue ?? [],
     stripeRequirementsPastDue: effectiveFinancialProfile?.stripeRequirementsPastDue ?? [],
     stripeRequirementsDisabledReason: effectiveFinancialProfile?.stripeRequirementsDisabledReason ?? "",
     stripeChargesEnabled: Boolean(effectiveFinancialProfile?.stripeChargesEnabled),
