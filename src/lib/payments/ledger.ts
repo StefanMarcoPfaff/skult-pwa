@@ -35,6 +35,14 @@ type StoredPaymentTransactionRow = {
   provider_checkout_id: string | null;
   provider_customer_id?: string | null;
   provider_subscription_id: string | null;
+  stripe_charge_id?: string | null;
+  stripe_payment_intent_id?: string | null;
+  stripe_balance_transaction_id?: string | null;
+  stripe_application_fee_id?: string | null;
+  stripe_transfer_id?: string | null;
+  stripe_payout_id?: string | null;
+  stripe_refund_id?: string | null;
+  stripe_dispute_id?: string | null;
   amount_cents: number;
   currency: string;
   status: string;
@@ -151,11 +159,58 @@ function getStripeChargeIdFromSession(session: Stripe.Checkout.Session): string 
   return latestCharge?.id ?? null;
 }
 
+function toStripeObjectId(
+  value:
+    | string
+    | Stripe.PaymentIntent
+    | Stripe.Charge
+    | Stripe.BalanceTransaction
+    | Stripe.ApplicationFee
+    | Stripe.Transfer
+    | Stripe.Payout
+    | Stripe.Refund
+    | null
+    | undefined
+): string | null {
+  if (typeof value === "string") return value;
+  return value?.id ?? null;
+}
+
 function mapStripeRefundRecordStatus(status: Stripe.Refund["status"] | string | null | undefined): "pending" | "succeeded" | "failed" | "cancelled" {
   if (status === "failed") return "failed";
   if (status === "canceled") return "cancelled";
   if (status === "pending" || status === "requires_action") return "pending";
   return "succeeded";
+}
+
+function getPaymentTransactionSelectFields(): string {
+  return [
+    "id",
+    "provider",
+    "booking_id",
+    "course_registration_intent_id",
+    "provider_payout_profile_id",
+    "provider_payment_id",
+    "provider_checkout_id",
+    "provider_customer_id",
+    "provider_subscription_id",
+    "stripe_charge_id",
+    "stripe_payment_intent_id",
+    "stripe_balance_transaction_id",
+    "stripe_application_fee_id",
+    "stripe_transfer_id",
+    "stripe_payout_id",
+    "stripe_refund_id",
+    "stripe_dispute_id",
+    "amount_cents",
+    "currency",
+    "status",
+    "paid_at",
+    "refunded_at",
+    "refunded_amount_cents",
+    "refund_status",
+    "failed_at",
+  ].join(",");
 }
 
 async function loadStripeProfile(
@@ -284,13 +339,29 @@ async function findPaymentTransaction(input: {
   providerPaymentId?: string | null;
   providerCheckoutId?: string | null;
   providerSubscriptionId?: string | null;
+  stripeChargeId?: string | null;
+  stripeTransferId?: string | null;
+  stripePayoutId?: string | null;
+  stripeDisputeId?: string | null;
 }): Promise<StoredPaymentTransactionRow | null> {
   const admin = createSupabaseAdmin();
+  const selectFields = getPaymentTransactionSelectFields();
+
+  if (input.stripeChargeId) {
+    const { data } = await admin
+      .from("payment_transactions")
+      .select(selectFields)
+      .eq("provider", "stripe")
+      .eq("stripe_charge_id", input.stripeChargeId)
+      .maybeSingle<StoredPaymentTransactionRow>();
+
+    if (data) return data;
+  }
 
   if (input.providerPaymentId) {
     const { data } = await admin
       .from("payment_transactions")
-      .select("id,provider,booking_id,course_registration_intent_id,provider_payout_profile_id,provider_payment_id,provider_checkout_id,provider_customer_id,provider_subscription_id,amount_cents,currency,status,paid_at,refunded_at,refunded_amount_cents,refund_status,failed_at")
+      .select(selectFields)
       .eq("provider", "stripe")
       .eq("provider_payment_id", input.providerPaymentId)
       .maybeSingle<StoredPaymentTransactionRow>();
@@ -301,7 +372,7 @@ async function findPaymentTransaction(input: {
   if (input.providerCheckoutId) {
     const { data } = await admin
       .from("payment_transactions")
-      .select("id,provider,booking_id,course_registration_intent_id,provider_payout_profile_id,provider_payment_id,provider_checkout_id,provider_customer_id,provider_subscription_id,amount_cents,currency,status,paid_at,refunded_at,refunded_amount_cents,refund_status,failed_at")
+      .select(selectFields)
       .eq("provider", "stripe")
       .eq("provider_checkout_id", input.providerCheckoutId)
       .maybeSingle<StoredPaymentTransactionRow>();
@@ -312,11 +383,44 @@ async function findPaymentTransaction(input: {
   if (input.providerSubscriptionId) {
     const { data } = await admin
       .from("payment_transactions")
-      .select("id,provider,booking_id,course_registration_intent_id,provider_payout_profile_id,provider_payment_id,provider_checkout_id,provider_customer_id,provider_subscription_id,amount_cents,currency,status,paid_at,refunded_at,refunded_amount_cents,refund_status,failed_at")
+      .select(selectFields)
       .eq("provider", "stripe")
       .eq("provider_subscription_id", input.providerSubscriptionId)
       .order("created_at", { ascending: true })
       .limit(1)
+      .maybeSingle<StoredPaymentTransactionRow>();
+
+    if (data) return data;
+  }
+
+  if (input.stripeTransferId) {
+    const { data } = await admin
+      .from("payment_transactions")
+      .select(selectFields)
+      .eq("provider", "stripe")
+      .eq("stripe_transfer_id", input.stripeTransferId)
+      .maybeSingle<StoredPaymentTransactionRow>();
+
+    if (data) return data;
+  }
+
+  if (input.stripePayoutId) {
+    const { data } = await admin
+      .from("payment_transactions")
+      .select(selectFields)
+      .eq("provider", "stripe")
+      .eq("stripe_payout_id", input.stripePayoutId)
+      .maybeSingle<StoredPaymentTransactionRow>();
+
+    if (data) return data;
+  }
+
+  if (input.stripeDisputeId) {
+    const { data } = await admin
+      .from("payment_transactions")
+      .select(selectFields)
+      .eq("provider", "stripe")
+      .eq("stripe_dispute_id", input.stripeDisputeId)
       .maybeSingle<StoredPaymentTransactionRow>();
 
     if (data) return data;
@@ -459,6 +563,7 @@ async function ensureStripePaymentLedgerMirror(input: {
 async function upsertStripeRefundMirror(input: {
   providerPaymentId?: string | null;
   checkoutSessionId?: string | null;
+  stripeChargeId?: string | null;
   providerRefundId: string;
   amountCents?: number | null;
   reason?: string | null;
@@ -469,6 +574,7 @@ async function upsertStripeRefundMirror(input: {
   const paymentTransaction = await findPaymentTransaction({
     providerPaymentId: input.providerPaymentId,
     providerCheckoutId: input.checkoutSessionId ?? null,
+    stripeChargeId: input.stripeChargeId ?? null,
   });
 
   if (!paymentTransaction?.id) {
@@ -488,6 +594,7 @@ async function upsertStripeRefundMirror(input: {
     payment_transaction_id: paymentTransaction.id,
     provider_refund_id: input.providerRefundId,
     stripe_refund_id: input.providerRefundId,
+    stripe_charge_id: input.stripeChargeId ?? paymentTransaction.stripe_charge_id ?? null,
     stripe_payment_intent_id: input.providerPaymentId ?? paymentTransaction.provider_payment_id,
     amount_cents: normalizedRefundAmountCents,
     reason: input.reason ?? null,
@@ -542,6 +649,7 @@ async function upsertStripeRefundMirror(input: {
             ? input.refundedAt ?? new Date().toISOString()
             : paymentTransaction.refunded_at ?? null,
         stripe_refund_id: input.providerRefundId,
+        stripe_charge_id: input.stripeChargeId ?? paymentTransaction.stripe_charge_id ?? null,
         stripe_payment_intent_id: input.providerPaymentId ?? paymentTransaction.provider_payment_id,
       })
       .eq("id", paymentTransaction.id);
@@ -551,6 +659,7 @@ async function upsertStripeRefundMirror(input: {
       .update({
         payout_status: refundLedgerStatus,
         stripe_refund_id: input.providerRefundId,
+        stripe_charge_id: input.stripeChargeId ?? paymentTransaction.stripe_charge_id ?? null,
         stripe_payment_intent_id: input.providerPaymentId ?? paymentTransaction.provider_payment_id,
       })
       .eq("source_type", "payment_transaction")
@@ -568,6 +677,7 @@ async function upsertStripeRefundMirror(input: {
       currency: paymentTransaction.currency,
       payout_status: refundLedgerStatus,
       stripe_refund_id: input.providerRefundId,
+      stripe_charge_id: input.stripeChargeId ?? paymentTransaction.stripe_charge_id ?? null,
       stripe_payment_intent_id: input.providerPaymentId ?? paymentTransaction.provider_payment_id,
     };
     const { data: refundLedger } = await admin
@@ -748,6 +858,7 @@ export async function mirrorStripeRefundToLedger(input: MirrorStripeRefundInput)
         ? input.refund.payment_intent
         : input.refund.payment_intent?.id ?? null,
     checkoutSessionId: input.checkoutSessionId ?? null,
+    stripeChargeId: toStripeObjectId(input.refund.charge),
     providerRefundId: input.refund.id,
     amountCents: input.refund.amount ?? null,
     reason: input.refundReason ?? input.refund.reason ?? null,
@@ -764,6 +875,8 @@ export async function updateStripePaymentTransactionStatus(input: {
   currency?: string | null;
   providerCustomerId?: string | null;
   providerSubscriptionId?: string | null;
+  stripeChargeId?: string | null;
+  stripeBalanceTransactionId?: string | null;
   paidAt?: string | null;
   failedAt?: string | null;
 }): Promise<string | null> {
@@ -784,7 +897,10 @@ export async function updateStripePaymentTransactionStatus(input: {
     .update({
       provider_customer_id: input.providerCustomerId ?? paymentTransaction.provider_customer_id ?? null,
       provider_subscription_id: input.providerSubscriptionId ?? paymentTransaction.provider_subscription_id ?? null,
+      stripe_charge_id: input.stripeChargeId ?? paymentTransaction.stripe_charge_id ?? null,
       stripe_payment_intent_id: input.providerPaymentId ?? paymentTransaction.provider_payment_id,
+      stripe_balance_transaction_id:
+        input.stripeBalanceTransactionId ?? paymentTransaction.stripe_balance_transaction_id ?? null,
       amount_cents: amountCents,
       currency,
       status: input.status,
@@ -798,6 +914,18 @@ export async function updateStripePaymentTransactionStatus(input: {
           : null,
     })
     .eq("id", paymentTransaction.id);
+
+  await admin
+    .from("ledger_entries")
+    .update({
+      stripe_charge_id: input.stripeChargeId ?? paymentTransaction.stripe_charge_id ?? null,
+      stripe_payment_intent_id: input.providerPaymentId ?? paymentTransaction.provider_payment_id,
+      stripe_balance_transaction_id:
+        input.stripeBalanceTransactionId ?? paymentTransaction.stripe_balance_transaction_id ?? null,
+    })
+    .eq("source_type", "payment_transaction")
+    .eq("source_id", paymentTransaction.id)
+    .eq("entry_type", "payment");
 
   return paymentTransaction.id;
 }
@@ -920,6 +1048,7 @@ export async function mirrorStripeInvoiceEventToLedger(input: {
 export async function mirrorStripeRefundEventToLedger(input: {
   providerPaymentId?: string | null;
   checkoutSessionId?: string | null;
+  stripeChargeId?: string | null;
   providerRefundId: string;
   amountCents?: number | null;
   reason?: string | null;
@@ -927,6 +1056,258 @@ export async function mirrorStripeRefundEventToLedger(input: {
   refundedAt?: string | null;
 }): Promise<string | null> {
   return upsertStripeRefundMirror(input);
+}
+
+async function updateStripeReferencesForPaymentTransaction(input: {
+  paymentTransactionId: string;
+  stripeChargeId?: string | null;
+  stripePaymentIntentId?: string | null;
+  stripeBalanceTransactionId?: string | null;
+  stripeApplicationFeeId?: string | null;
+  stripeTransferId?: string | null;
+  stripePayoutId?: string | null;
+  stripeDisputeId?: string | null;
+  payoutStatus?: string | null;
+  paymentStatus?: string | null;
+}): Promise<string | null> {
+  const admin = createSupabaseAdmin();
+  const paymentPatch = {
+    stripe_charge_id: input.stripeChargeId ?? undefined,
+    stripe_payment_intent_id: input.stripePaymentIntentId ?? undefined,
+    stripe_balance_transaction_id: input.stripeBalanceTransactionId ?? undefined,
+    stripe_application_fee_id: input.stripeApplicationFeeId ?? undefined,
+    stripe_transfer_id: input.stripeTransferId ?? undefined,
+    stripe_payout_id: input.stripePayoutId ?? undefined,
+    stripe_dispute_id: input.stripeDisputeId ?? undefined,
+    status: input.paymentStatus ?? undefined,
+  };
+
+  await admin.from("payment_transactions").update(paymentPatch).eq("id", input.paymentTransactionId);
+
+  const { data: ledgerEntries } = await admin
+    .from("ledger_entries")
+    .select("id,payout_status,available_at")
+    .eq("source_type", "payment_transaction")
+    .eq("source_id", input.paymentTransactionId)
+    .eq("entry_type", "payment")
+    .returns<Array<{ id: string; payout_status: string | null; available_at: string | null }>>();
+
+  const now = Date.now();
+  for (const entry of ledgerEntries ?? []) {
+    let nextPayoutStatus = input.payoutStatus ?? undefined;
+
+    if (nextPayoutStatus === "transfer_created" && entry.payout_status === "pending_event_completion") {
+      const availableAtTime = entry.available_at ? new Date(entry.available_at).getTime() : NaN;
+      if (Number.isFinite(availableAtTime) && availableAtTime > now) {
+        nextPayoutStatus = undefined;
+      }
+    }
+
+    await admin
+      .from("ledger_entries")
+      .update({
+        stripe_charge_id: input.stripeChargeId ?? undefined,
+        stripe_payment_intent_id: input.stripePaymentIntentId ?? undefined,
+        stripe_balance_transaction_id: input.stripeBalanceTransactionId ?? undefined,
+        stripe_application_fee_id: input.stripeApplicationFeeId ?? undefined,
+        stripe_transfer_id: input.stripeTransferId ?? undefined,
+        stripe_payout_id: input.stripePayoutId ?? undefined,
+        stripe_dispute_id: input.stripeDisputeId ?? undefined,
+        payout_status: nextPayoutStatus,
+      })
+      .eq("id", entry.id);
+  }
+
+  return input.paymentTransactionId;
+}
+
+export async function mirrorStripeChargeEventToLedger(input: {
+  charge: Stripe.Charge;
+}): Promise<string | null> {
+  const chargeId = input.charge.id;
+  const providerPaymentId = toStripeObjectId(input.charge.payment_intent);
+  const paymentTransaction = await findPaymentTransaction({
+    stripeChargeId: chargeId,
+    providerPaymentId,
+  });
+
+  if (!paymentTransaction?.id) {
+    return null;
+  }
+
+  return updateStripeReferencesForPaymentTransaction({
+    paymentTransactionId: paymentTransaction.id,
+    stripeChargeId: chargeId,
+    stripePaymentIntentId: providerPaymentId,
+    stripeBalanceTransactionId: toStripeObjectId(input.charge.balance_transaction),
+  });
+}
+
+export async function mirrorStripeApplicationFeeEventToLedger(input: {
+  applicationFee: Stripe.ApplicationFee;
+}): Promise<string | null> {
+  const chargeId = toStripeObjectId(input.applicationFee.charge);
+  const paymentIntentId =
+    typeof input.applicationFee.charge === "object"
+      ? toStripeObjectId(input.applicationFee.charge?.payment_intent)
+      : null;
+  const paymentTransaction = await findPaymentTransaction({
+    stripeChargeId: chargeId,
+    providerPaymentId: paymentIntentId,
+  });
+
+  if (!paymentTransaction?.id) {
+    return null;
+  }
+
+  return updateStripeReferencesForPaymentTransaction({
+    paymentTransactionId: paymentTransaction.id,
+    stripeChargeId: chargeId,
+    stripePaymentIntentId: paymentIntentId,
+    stripeBalanceTransactionId: toStripeObjectId(input.applicationFee.balance_transaction),
+    stripeApplicationFeeId: input.applicationFee.id,
+  });
+}
+
+export async function mirrorStripeTransferEventToLedger(input: {
+  transfer: Stripe.Transfer;
+  status: "created" | "paid" | "failed";
+}): Promise<string | null> {
+  const sourceChargeId = toStripeObjectId(input.transfer.source_transaction);
+  const paymentTransaction = await findPaymentTransaction({
+    stripeChargeId: sourceChargeId,
+    stripeTransferId: input.transfer.id,
+  });
+
+  if (!paymentTransaction?.id) {
+    return null;
+  }
+
+  return updateStripeReferencesForPaymentTransaction({
+    paymentTransactionId: paymentTransaction.id,
+    stripeChargeId: sourceChargeId,
+    stripeBalanceTransactionId: toStripeObjectId(input.transfer.balance_transaction),
+    stripeTransferId: input.transfer.id,
+    payoutStatus: input.status === "failed" ? "failed" : "transfer_created",
+  });
+}
+
+function getPayoutMetadataValue(payout: Stripe.Payout, key: string): string | null {
+  const value = payout.metadata?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+async function upsertStripePayoutBatchMirror(input: {
+  payout: Stripe.Payout;
+  status: "paid" | "failed";
+}): Promise<string | null> {
+  const admin = createSupabaseAdmin();
+  const payload = {
+    payout_provider: "stripe",
+    payout_method: "stripe",
+    total_amount_cents: Math.max(0, input.payout.amount ?? 0),
+    currency: normalizeCurrency(input.payout.currency),
+    status: input.status,
+    executed_at: input.status === "paid" ? normalizeUnixTimestamp(input.payout.arrival_date) ?? new Date().toISOString() : null,
+    failed_at: input.status === "failed" ? new Date().toISOString() : null,
+    stripe_payout_id: input.payout.id,
+    stripe_balance_transaction_id: toStripeObjectId(input.payout.balance_transaction),
+    settlement_reference: input.payout.id,
+  };
+  const { data: existing } = await admin
+    .from("payout_batches")
+    .select("id")
+    .eq("stripe_payout_id", input.payout.id)
+    .maybeSingle<{ id: string }>();
+
+  if (existing?.id) {
+    await admin.from("payout_batches").update(payload).eq("id", existing.id);
+    return existing.id;
+  }
+
+  const { data: inserted } = await admin
+    .from("payout_batches")
+    .insert(payload)
+    .select("id")
+    .maybeSingle<{ id: string }>();
+
+  return inserted?.id ?? null;
+}
+
+export async function mirrorStripePayoutEventToLedger(input: {
+  payout: Stripe.Payout;
+  status: "paid" | "failed";
+}): Promise<string | null> {
+  const batchId = await upsertStripePayoutBatchMirror(input);
+  const metadataPaymentTransactionId =
+    getPayoutMetadataValue(input.payout, "paymentTransactionId") ??
+    getPayoutMetadataValue(input.payout, "payment_transaction_id");
+  const metadataLedgerEntryId =
+    getPayoutMetadataValue(input.payout, "ledgerEntryId") ??
+    getPayoutMetadataValue(input.payout, "ledger_entry_id");
+  const paymentTransaction = metadataPaymentTransactionId
+    ? { id: metadataPaymentTransactionId }
+    : await findPaymentTransaction({ stripePayoutId: input.payout.id });
+
+  if (paymentTransaction?.id) {
+    await updateStripeReferencesForPaymentTransaction({
+      paymentTransactionId: paymentTransaction.id,
+      stripePayoutId: input.payout.id,
+      stripeBalanceTransactionId: toStripeObjectId(input.payout.balance_transaction),
+      payoutStatus: input.status === "paid" ? "paid_by_stripe" : "failed",
+    });
+  }
+
+  if (metadataLedgerEntryId) {
+    await createSupabaseAdmin()
+      .from("ledger_entries")
+      .update({
+        payout_batch_id: batchId ?? undefined,
+        stripe_payout_id: input.payout.id,
+        stripe_balance_transaction_id: toStripeObjectId(input.payout.balance_transaction),
+        payout_status: input.status === "paid" ? "paid_by_stripe" : "failed",
+      })
+      .eq("id", metadataLedgerEntryId);
+  }
+
+  return paymentTransaction?.id ?? batchId;
+}
+
+function mapDisputeLedgerStatus(dispute: Stripe.Dispute, eventType: "created" | "closed"): "disputed" | "chargeback_lost" | "chargeback_won" {
+  if (eventType === "created") return "disputed";
+  if (dispute.status === "won") return "chargeback_won";
+  if (dispute.status === "lost") return "chargeback_lost";
+  return "disputed";
+}
+
+export async function mirrorStripeDisputeEventToLedger(input: {
+  dispute: Stripe.Dispute;
+  eventType: "created" | "closed";
+}): Promise<string | null> {
+  const disputeWithPaymentIntent = input.dispute as Stripe.Dispute & {
+    payment_intent?: string | Stripe.PaymentIntent | null;
+  };
+  const chargeId = toStripeObjectId(input.dispute.charge);
+  const paymentIntentId = toStripeObjectId(disputeWithPaymentIntent.payment_intent);
+  const paymentTransaction = await findPaymentTransaction({
+    stripeChargeId: chargeId,
+    providerPaymentId: paymentIntentId,
+    stripeDisputeId: input.dispute.id,
+  });
+
+  if (!paymentTransaction?.id) {
+    return null;
+  }
+
+  const status = mapDisputeLedgerStatus(input.dispute, input.eventType);
+  return updateStripeReferencesForPaymentTransaction({
+    paymentTransactionId: paymentTransaction.id,
+    stripeChargeId: chargeId,
+    stripePaymentIntentId: paymentIntentId,
+    stripeDisputeId: input.dispute.id,
+    payoutStatus: status,
+    paymentStatus: status,
+  });
 }
 
 export { calculatePayoutAvailableAt };

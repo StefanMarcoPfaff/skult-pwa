@@ -61,7 +61,8 @@ payment visible as paid/partially refunded for provider dashboards and documents
 
 ## PR 5C Target
 
-PR 5C should wire Stripe events into these prepared fields:
+PR 5C wires Stripe events into these prepared fields without triggering PDFs,
+emails, transfers, or payouts:
 
 - successful charge/payment
 - application fee
@@ -71,5 +72,21 @@ PR 5C should wire Stripe events into these prepared fields:
 - partial/full refund
 - dispute/chargeback
 
-PR 5C should also move provider statement and platform-fee document creation away
-from internal payout simulation and onto Stripe settlement/ledger status events.
+Handled as ledger mirrors:
+
+- `payment_intent.succeeded` / `charge.succeeded` / `charge.updated`: payment
+  and charge references.
+- `application_fee.created` / `application_fee.refunded`: application fee and
+  balance transaction references.
+- `transfer.created` / `transfer.paid` / `transfer.failed`: transfer references
+  and `transfer_created` / `failed` ledger state. Future-dated
+  `pending_event_completion` rows keep their 24h hold status until `available_at`.
+- `payout.paid` / `payout.failed`: `payout_batches` settlement mirror rows and
+  optional metadata-linked ledger status.
+- `refund.created` / `refund.updated` / `charge.refunded`: partial/full refund
+  mirror state.
+- `charge.dispute.created` / `charge.dispute.closed`: dispute and chargeback
+  mirror state.
+
+PR 5D should move provider statement and platform-fee document creation away from
+internal payout simulation and onto Stripe settlement/ledger status events.

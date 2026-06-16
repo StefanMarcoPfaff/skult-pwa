@@ -5,8 +5,13 @@ import {
   markCourseRegistrationCheckoutFailed,
 } from "@/lib/course-registration-finalization";
 import {
+  mirrorStripeApplicationFeeEventToLedger,
+  mirrorStripeChargeEventToLedger,
+  mirrorStripeDisputeEventToLedger,
   mirrorStripeInvoiceEventToLedger,
+  mirrorStripePayoutEventToLedger,
   mirrorStripeRefundEventToLedger,
+  mirrorStripeTransferEventToLedger,
   recordStripeWebhookEvent,
   updateStripePaymentTransactionStatus,
 } from "@/lib/payments/ledger";
@@ -95,6 +100,7 @@ export async function POST(req: Request) {
 
   try {
     const processedAt = new Date().toISOString();
+    const eventType = event.type as string;
     const complete = async (processingStatus: "processed" | "failed" | "ignored") => {
       await recordStripeWebhookEvent({
         event,
@@ -104,7 +110,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ received: true });
     };
 
-    switch (event.type) {
+    switch (eventType) {
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded":
       case "checkout.session.async_payment_failed": {
@@ -121,7 +127,7 @@ export async function POST(req: Request) {
           if (!isCheckoutSessionPaymentConfirmed(event.type, session)) {
             logWebhookEvent("course registration checkout awaiting confirmed payment", {
               sessionId: session.id,
-              eventType: event.type,
+              eventType,
               paymentStatus: session.payment_status,
             });
             return complete("ignored");
@@ -159,6 +165,7 @@ export async function POST(req: Request) {
       case "payment_intent.succeeded":
       case "payment_intent.payment_failed": {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        const latestCharge = toStripeObjectId(paymentIntent.latest_charge);
         const mirrored = await updateStripePaymentTransactionStatus({
           providerPaymentId: paymentIntent.id,
           providerCheckoutId: getMetadataValue(paymentIntent.metadata, "checkoutSessionId"),
@@ -166,6 +173,7 @@ export async function POST(req: Request) {
           amountCents: paymentIntent.amount_received ?? paymentIntent.amount ?? null,
           currency: paymentIntent.currency ?? null,
           providerCustomerId: toStripeObjectId(paymentIntent.customer),
+          stripeChargeId: latestCharge,
           paidAt:
             event.type === "payment_intent.succeeded"
               ? normalizeUnixTimestamp(paymentIntent.created)
@@ -174,6 +182,42 @@ export async function POST(req: Request) {
             event.type === "payment_intent.payment_failed"
               ? normalizeUnixTimestamp(paymentIntent.created)
               : null,
+        });
+        return complete(mirrored ? "processed" : "ignored");
+      }
+      case "charge.succeeded":
+      case "charge.updated": {
+        const charge = event.data.object as Stripe.Charge;
+        const mirrored = await mirrorStripeChargeEventToLedger({ charge });
+        return complete(mirrored ? "processed" : "ignored");
+      }
+      case "application_fee.created":
+      case "application_fee.refunded": {
+        const applicationFee = event.data.object as Stripe.ApplicationFee;
+        const mirrored = await mirrorStripeApplicationFeeEventToLedger({ applicationFee });
+        return complete(mirrored ? "processed" : "ignored");
+      }
+      case "transfer.created":
+      case "transfer.paid":
+      case "transfer.failed": {
+        const transfer = event.data.object as Stripe.Transfer;
+        const mirrored = await mirrorStripeTransferEventToLedger({
+          transfer,
+          status:
+            eventType === "transfer.failed"
+              ? "failed"
+              : eventType === "transfer.paid"
+                ? "paid"
+                : "created",
+        });
+        return complete(mirrored ? "processed" : "ignored");
+      }
+      case "payout.paid":
+      case "payout.failed": {
+        const payout = event.data.object as Stripe.Payout;
+        const mirrored = await mirrorStripePayoutEventToLedger({
+          payout,
+          status: eventType === "payout.paid" ? "paid" : "failed",
         });
         return complete(mirrored ? "processed" : "ignored");
       }
@@ -191,6 +235,7 @@ export async function POST(req: Request) {
         const refund = event.data.object as Stripe.Refund;
         const mirrored = await mirrorStripeRefundEventToLedger({
           providerPaymentId: toStripeObjectId(refund.payment_intent),
+          stripeChargeId: toStripeObjectId(refund.charge),
           providerRefundId: refund.id,
           amountCents: refund.amount ?? null,
           reason: refund.reason ?? null,
@@ -206,6 +251,7 @@ export async function POST(req: Request) {
         for (const refund of charge.refunds?.data ?? []) {
           const mirroredRefund = await mirrorStripeRefundEventToLedger({
             providerPaymentId: toStripeObjectId(charge.payment_intent),
+            stripeChargeId: charge.id,
             providerRefundId: refund.id,
             amountCents: refund.amount ?? null,
             reason: refund.reason ?? null,
@@ -215,6 +261,15 @@ export async function POST(req: Request) {
           mirrored = Boolean(mirroredRefund) || mirrored;
         }
 
+        return complete(mirrored ? "processed" : "ignored");
+      }
+      case "charge.dispute.created":
+      case "charge.dispute.closed": {
+        const dispute = event.data.object as Stripe.Dispute;
+        const mirrored = await mirrorStripeDisputeEventToLedger({
+          dispute,
+          eventType: eventType === "charge.dispute.created" ? "created" : "closed",
+        });
         return complete(mirrored ? "processed" : "ignored");
       }
       case "customer.subscription.updated":

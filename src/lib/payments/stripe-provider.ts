@@ -39,21 +39,33 @@ function normalizeStripePaymentStatus(status: string | null | undefined): Paymen
 }
 
 function normalizeWebhookEventType(type: Stripe.Event.Type): PaymentWebhookEventType {
+  const eventType = type as string;
   if (
-    type === "checkout.session.completed" ||
-    type === "checkout.session.async_payment_succeeded" ||
-    type === "checkout.session.async_payment_failed" ||
-    type === "payment_intent.succeeded" ||
-    type === "payment_intent.payment_failed" ||
-    type === "charge.refunded" ||
-    type === "refund.created" ||
-    type === "refund.updated" ||
-    type === "invoice.payment_succeeded" ||
-    type === "invoice.payment_failed" ||
-    type === "customer.subscription.updated" ||
-    type === "customer.subscription.deleted"
+    eventType === "checkout.session.completed" ||
+    eventType === "checkout.session.async_payment_succeeded" ||
+    eventType === "checkout.session.async_payment_failed" ||
+    eventType === "payment_intent.succeeded" ||
+    eventType === "payment_intent.payment_failed" ||
+    eventType === "charge.succeeded" ||
+    eventType === "charge.updated" ||
+    eventType === "charge.refunded" ||
+    eventType === "application_fee.created" ||
+    eventType === "application_fee.refunded" ||
+    eventType === "transfer.created" ||
+    eventType === "transfer.paid" ||
+    eventType === "transfer.failed" ||
+    eventType === "payout.paid" ||
+    eventType === "payout.failed" ||
+    eventType === "refund.created" ||
+    eventType === "refund.updated" ||
+    eventType === "charge.dispute.created" ||
+    eventType === "charge.dispute.closed" ||
+    eventType === "invoice.payment_succeeded" ||
+    eventType === "invoice.payment_failed" ||
+    eventType === "customer.subscription.updated" ||
+    eventType === "customer.subscription.deleted"
   ) {
-    return type;
+    return eventType as PaymentWebhookEventType;
   }
 
   return "unknown";
@@ -128,7 +140,8 @@ function mapSubscriptionStatus(status: Stripe.Subscription.Status): PaymentStatu
 }
 
 function buildNormalizedWebhookEvent(event: Stripe.Event): PaymentWebhookEvent {
-  switch (event.type) {
+  const eventType = event.type as string;
+  switch (eventType) {
     case "checkout.session.completed":
     case "checkout.session.async_payment_succeeded":
     case "checkout.session.async_payment_failed": {
@@ -156,6 +169,19 @@ function buildNormalizedWebhookEvent(event: Stripe.Event): PaymentWebhookEvent {
         rawEvent: event,
       };
     }
+    case "charge.succeeded":
+    case "charge.updated": {
+      const charge = event.data.object as Stripe.Charge;
+      return {
+        provider: "stripe",
+        type: normalizeWebhookEventType(event.type),
+        referenceType: "payment_intent",
+        referenceId: toStripeObjectId(charge.payment_intent),
+        paymentStatus: "paid",
+        metadata: charge.metadata ?? {},
+        rawEvent: event,
+      };
+    }
     case "charge.refunded": {
       const charge = event.data.object as Stripe.Charge;
       return {
@@ -165,6 +191,49 @@ function buildNormalizedWebhookEvent(event: Stripe.Event): PaymentWebhookEvent {
         referenceId: toStripeObjectId(charge.payment_intent),
         paymentStatus: "refunded",
         metadata: charge.metadata ?? {},
+        rawEvent: event,
+      };
+    }
+    case "application_fee.created":
+    case "application_fee.refunded": {
+      const applicationFee = event.data.object as Stripe.ApplicationFee;
+      return {
+        provider: "stripe",
+        type: normalizeWebhookEventType(event.type),
+        referenceType: "payment_intent",
+        referenceId:
+          typeof applicationFee.charge === "object"
+            ? toStripeObjectId(applicationFee.charge?.payment_intent)
+            : applicationFee.charge,
+        paymentStatus: eventType === "application_fee.refunded" ? "refunded" : "paid",
+        metadata: {},
+        rawEvent: event,
+      };
+    }
+    case "transfer.created":
+    case "transfer.paid":
+    case "transfer.failed": {
+      const transfer = event.data.object as Stripe.Transfer;
+      return {
+        provider: "stripe",
+        type: normalizeWebhookEventType(event.type),
+        referenceType: "payment_intent",
+        referenceId: toStripeObjectId(transfer.source_transaction),
+        paymentStatus: eventType === "transfer.failed" ? "failed" : "paid",
+        metadata: transfer.metadata ?? {},
+        rawEvent: event,
+      };
+    }
+    case "payout.paid":
+    case "payout.failed": {
+      const payout = event.data.object as Stripe.Payout;
+      return {
+        provider: "stripe",
+        type: normalizeWebhookEventType(event.type),
+        referenceType: "payout",
+        referenceId: payout.id,
+        paymentStatus: eventType === "payout.failed" ? "failed" : "paid",
+        metadata: payout.metadata ?? {},
         rawEvent: event,
       };
     }
@@ -178,6 +247,24 @@ function buildNormalizedWebhookEvent(event: Stripe.Event): PaymentWebhookEvent {
         referenceId: toStripeObjectId(refund.payment_intent),
         paymentStatus: mapRefundStatus(refund.status),
         metadata: refund.metadata ?? {},
+        rawEvent: event,
+      };
+    }
+    case "charge.dispute.created":
+    case "charge.dispute.closed": {
+      const dispute = event.data.object as Stripe.Dispute;
+      return {
+        provider: "stripe",
+        type: normalizeWebhookEventType(event.type),
+        referenceType: "payment_intent",
+        referenceId: toStripeObjectId(dispute.charge),
+        paymentStatus:
+          event.type === "charge.dispute.closed" && dispute.status === "won"
+            ? "chargeback_won"
+            : event.type === "charge.dispute.closed" && dispute.status === "lost"
+              ? "chargeback_lost"
+              : "disputed",
+        metadata: {},
         rawEvent: event,
       };
     }
@@ -203,7 +290,7 @@ function buildNormalizedWebhookEvent(event: Stripe.Event): PaymentWebhookEvent {
         referenceType: "subscription",
         referenceId: subscription.id,
         paymentStatus:
-          event.type === "customer.subscription.deleted"
+          eventType === "customer.subscription.deleted"
             ? "cancelled"
             : mapSubscriptionStatus(subscription.status),
         metadata: subscription.metadata ?? {},
