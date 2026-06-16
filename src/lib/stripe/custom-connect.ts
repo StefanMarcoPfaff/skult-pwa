@@ -113,19 +113,20 @@ function mapStatusPayload(account: Stripe.Account) {
 function toUpdateParams(
   params: Stripe.AccountCreateParams
 ): Stripe.AccountUpdateParams {
-  const updateParams = stripBusinessProfileMcc({ ...params });
+  const updateParams = sanitizeStripeAccountParams({ ...params });
   delete updateParams.country;
   delete updateParams.controller;
-  delete updateParams.type;
   return updateParams as Stripe.AccountUpdateParams;
 }
 
-function stripBusinessProfileMcc<T extends Stripe.AccountCreateParams | Stripe.AccountUpdateParams>(
+function sanitizeStripeAccountParams<T extends Stripe.AccountCreateParams | Stripe.AccountUpdateParams>(
   params: T
 ): T {
   if (params.business_profile && "mcc" in params.business_profile) {
     delete (params.business_profile as Stripe.AccountCreateParams.BusinessProfile & { mcc?: string }).mcc;
   }
+
+  delete (params as Stripe.AccountCreateParams & { type?: string }).type;
 
   return params;
 }
@@ -164,6 +165,8 @@ function getStripeAccountParamDiagnostics(
   return {
     hasEmail: Boolean(params.email),
     businessType: params.business_type ?? null,
+    accountTypeParamSent: Boolean(params.type),
+    controllerSent: Boolean(params.controller),
     mccOmitted: true,
     hasBusinessProfileUrl: Boolean(params.business_profile?.url),
     hasBusinessProfileProductDescription: Boolean(params.business_profile?.product_description),
@@ -293,7 +296,6 @@ export function mapProviderPayoutProfileToStripeAccountParams(
   };
 
   const params: Stripe.AccountCreateParams = {
-    type: "custom",
     country: "DE",
     default_currency: "eur",
     email: optionalText(profile.representativeEmail),
@@ -336,7 +338,7 @@ export function mapProviderPayoutProfileToStripeAccountParams(
     };
   }
 
-  return stripBusinessProfileMcc(params);
+  return sanitizeStripeAccountParams(params);
 }
 
 export async function createOrUpdateCustomAccountForProvider(providerId: string): Promise<Stripe.Account> {
@@ -380,7 +382,7 @@ export async function createOrUpdateCustomAccountForProvider(providerId: string)
   }
 
   const stripe = getStripe();
-  const params = stripBusinessProfileMcc(mapProviderPayoutProfileToStripeAccountParams(profile));
+  const params = sanitizeStripeAccountParams(mapProviderPayoutProfileToStripeAccountParams(profile));
   const writeKind = profile.providerAccountId ? "update" : "create";
   let account: Stripe.Account;
 
