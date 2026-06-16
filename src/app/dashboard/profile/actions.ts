@@ -971,7 +971,9 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       });
 
       if (shouldPrepareCustomConnect) {
-        const account = await createOrUpdateCustomAccountForProvider(user.id);
+        const account = await createOrUpdateCustomAccountForProvider(user.id, {
+          payoutIban: payout_iban,
+        });
         logProfilePayoutDebug("custom_connect_auto_prepare_result", {
           userId: user.id,
           providerPayoutProfileId,

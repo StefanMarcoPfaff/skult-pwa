@@ -91,6 +91,10 @@ export type ProviderFinancialPayoutProfileRow = {
   business_profile_url: string | null;
   business_profile_mcc: string | null;
   business_profile_product_description: string | null;
+  stripe_external_account_id: string | null;
+  stripe_external_account_last4: string | null;
+  stripe_external_account_status: string | null;
+  stripe_external_account_last_sync_at: string | null;
 };
 
 export type ProviderBillingProfile = {
@@ -149,6 +153,10 @@ export type ProviderBillingProfile = {
   businessProfileUrl: string | null;
   businessProfileMcc: string | null;
   businessProfileProductDescription: string | null;
+  stripeExternalAccountId: string | null;
+  stripeExternalAccountLast4: string | null;
+  stripeExternalAccountStatus: string | null;
+  stripeExternalAccountLastSyncAt: string | null;
   usedLegacyProfileFallback: boolean;
 };
 
@@ -315,6 +323,10 @@ export function getProviderBillingProfileFromRow(
     businessProfileUrl: normalizeOptionalText(payoutProfile?.business_profile_url),
     businessProfileMcc: normalizeOptionalText(payoutProfile?.business_profile_mcc),
     businessProfileProductDescription: normalizeOptionalText(payoutProfile?.business_profile_product_description),
+    stripeExternalAccountId: normalizeOptionalText(payoutProfile?.stripe_external_account_id),
+    stripeExternalAccountLast4: normalizeOptionalText(payoutProfile?.stripe_external_account_last4),
+    stripeExternalAccountStatus: normalizeOptionalText(payoutProfile?.stripe_external_account_status),
+    stripeExternalAccountLastSyncAt: payoutProfile?.stripe_external_account_last_sync_at ?? null,
     usedLegacyProfileFallback,
   };
 }
@@ -490,6 +502,10 @@ export async function getProviderBillingProfile(
           "business_profile_url",
           "business_profile_mcc",
           "business_profile_product_description",
+          "stripe_external_account_id",
+          "stripe_external_account_last4",
+          "stripe_external_account_status",
+          "stripe_external_account_last_sync_at",
         ].join(",")
       )
       .eq("teacher_id", providerId)

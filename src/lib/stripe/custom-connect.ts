@@ -6,7 +6,7 @@ import {
   getProviderCustomConnectReadiness,
   type ProviderBillingProfile,
 } from "@/lib/provider-billing-profile";
-import { PROVIDER_PAYOUT_PROFILE_PROVIDER } from "@/lib/payout-profile";
+import { getIbanLast4, PROVIDER_PAYOUT_PROFILE_PROVIDER } from "@/lib/payout-profile";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/stripe";
 import { normalizeGermanPhoneForStripe } from "@/lib/stripe/phone-normalization";
@@ -17,6 +17,8 @@ type StripeVerificationStatus =
   | "past_due"
   | "disabled"
   | "verified";
+
+const RESER_DEFAULT_STRIPE_MCC = "7999";
 
 function optionalText(value: string | null | undefined): string | undefined {
   const trimmed = String(value ?? "").trim();
@@ -122,13 +124,45 @@ function toUpdateParams(
 function sanitizeStripeAccountParams<T extends Stripe.AccountCreateParams | Stripe.AccountUpdateParams>(
   params: T
 ): T {
-  if (params.business_profile && "mcc" in params.business_profile) {
-    delete (params.business_profile as Stripe.AccountCreateParams.BusinessProfile & { mcc?: string }).mcc;
-  }
-
   delete (params as Stripe.AccountCreateParams & { type?: string }).type;
 
   return params;
+}
+
+function getStripeExternalBankAccountPayload(input: {
+  iban: string;
+  accountHolderName: string;
+  legalEntityType: ProviderBillingProfile["legalEntityType"];
+}): Stripe.TokenCreateParams.BankAccount {
+  return {
+    country: "DE",
+    currency: "eur",
+    account_holder_name: input.accountHolderName,
+    account_holder_type: input.legalEntityType === "company" || input.legalEntityType === "nonprofit"
+      ? "company"
+      : "individual",
+    account_number: input.iban,
+  };
+}
+
+function getExternalBankAccountDetails(externalAccount: Stripe.ExternalAccount): {
+  id: string;
+  last4: string | null;
+  status: string | null;
+} {
+  if (externalAccount.object !== "bank_account") {
+    return {
+      id: externalAccount.id,
+      last4: null,
+      status: externalAccount.object,
+    };
+  }
+
+  return {
+    id: externalAccount.id,
+    last4: externalAccount.last4,
+    status: externalAccount.status,
+  };
 }
 
 function getErrorProperty(error: unknown, key: string): unknown {
@@ -167,7 +201,7 @@ function getStripeAccountParamDiagnostics(
     businessType: params.business_type ?? null,
     accountTypeParamSent: Boolean(params.type),
     controllerSent: Boolean(params.controller),
-    mccOmitted: true,
+    defaultMccSent: params.business_profile?.mcc ?? null,
     hasBusinessProfileUrl: Boolean(params.business_profile?.url),
     hasBusinessProfileProductDescription: Boolean(params.business_profile?.product_description),
     hasTosAcceptanceDate: Boolean(params.tos_acceptance?.date),
@@ -280,6 +314,127 @@ async function persistStripeCustomAccountStatus(
   });
 }
 
+async function persistStripeExternalAccountStatus(input: {
+  providerId: string;
+  payoutProfileId: string;
+  externalAccount: Stripe.ExternalAccount;
+}) {
+  const details = getExternalBankAccountDetails(input.externalAccount);
+  const supabase = createSupabaseAdmin();
+  const { error } = await supabase
+    .from("provider_payout_profiles")
+    .update({
+      stripe_external_account_id: details.id,
+      stripe_external_account_last4: details.last4,
+      stripe_external_account_status: details.status,
+      stripe_external_account_last_sync_at: new Date().toISOString(),
+      ...(details.last4 ? { iban_last4: details.last4 } : {}),
+    })
+    .eq("id", input.payoutProfileId)
+    .eq("teacher_id", input.providerId)
+    .eq("provider", PROVIDER_PAYOUT_PROFILE_PROVIDER);
+
+  if (error) {
+    console.error("[stripe-custom-connect]", {
+      kind: "persist_external_account_error",
+      providerId: input.providerId,
+      providerPayoutProfileId: input.payoutProfileId,
+      externalAccountId: details.id,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
+    throw new Error(`Stripe External Account Status konnte nicht gespeichert werden: ${error.message}`);
+  }
+}
+
+async function syncStripeExternalAccount(input: {
+  stripe: Stripe;
+  providerId: string;
+  profile: ProviderBillingProfile;
+  providerAccountId: string;
+  iban?: string | null;
+}): Promise<Stripe.ExternalAccount | null> {
+  const payoutProfileId = input.profile.providerPayoutProfileId;
+
+  if (!payoutProfileId) return null;
+
+  if (input.profile.stripeExternalAccountId) {
+    const externalAccount = await input.stripe.accounts.retrieveExternalAccount(
+      input.providerAccountId,
+      input.profile.stripeExternalAccountId
+    );
+    await persistStripeExternalAccountStatus({
+      providerId: input.providerId,
+      payoutProfileId,
+      externalAccount,
+    });
+    console.info("[stripe-custom-connect]", {
+      kind: "external_account_status_synced",
+      providerId: input.providerId,
+      providerPayoutProfileId: payoutProfileId,
+      providerAccountId: input.providerAccountId,
+      externalAccountId: externalAccount.id,
+      externalAccountCreated: false,
+    });
+    return externalAccount;
+  }
+
+  const iban = optionalText(input.iban);
+  const accountHolderName = optionalText(input.profile.accountHolderName);
+
+  if (!iban || input.profile.payoutMethod !== "iban" || !accountHolderName) {
+    console.info("[stripe-custom-connect]", {
+      kind: "external_account_skipped",
+      providerId: input.providerId,
+      providerPayoutProfileId: payoutProfileId,
+      providerAccountId: input.providerAccountId,
+      reason: "missing_new_iban_or_account_holder",
+      hasNewIban: Boolean(iban),
+      hasAccountHolderName: Boolean(accountHolderName),
+      payoutMethod: input.profile.payoutMethod,
+    });
+    return null;
+  }
+
+  const token = await input.stripe.tokens.create({
+    bank_account: getStripeExternalBankAccountPayload({
+      iban,
+      accountHolderName,
+      legalEntityType: input.profile.legalEntityType,
+    }),
+  });
+  const externalAccount = await input.stripe.accounts.createExternalAccount(input.providerAccountId, {
+    external_account: token.id,
+    default_for_currency: true,
+    metadata: {
+      provider_id: input.providerId,
+      provider_payout_profile_id: payoutProfileId,
+      source: "reser_provider_payout_profiles",
+      iban_last4: getIbanLast4(iban) ?? "",
+    },
+  });
+
+  await persistStripeExternalAccountStatus({
+    providerId: input.providerId,
+    payoutProfileId,
+    externalAccount,
+  });
+
+  console.info("[stripe-custom-connect]", {
+    kind: "external_account_created",
+    providerId: input.providerId,
+    providerPayoutProfileId: payoutProfileId,
+    providerAccountId: input.providerAccountId,
+    externalAccountId: externalAccount.id,
+    externalAccountCreated: true,
+    externalAccountLast4: getExternalBankAccountDetails(externalAccount).last4,
+  });
+
+  return externalAccount;
+}
+
 export function mapProviderPayoutProfileToStripeAccountParams(
   profile: ProviderBillingProfile
 ): Stripe.AccountCreateParams {
@@ -291,6 +446,7 @@ export function mapProviderPayoutProfileToStripeAccountParams(
     optionalText(profile.providerDisplayName) ||
     optionalText(profile.documentRecipientName);
   const businessProfile: Stripe.AccountCreateParams.BusinessProfile = {
+    mcc: RESER_DEFAULT_STRIPE_MCC,
     url: optionalText(profile.businessProfileUrl),
     product_description: optionalText(profile.businessProfileProductDescription),
   };
@@ -341,7 +497,10 @@ export function mapProviderPayoutProfileToStripeAccountParams(
   return sanitizeStripeAccountParams(params);
 }
 
-export async function createOrUpdateCustomAccountForProvider(providerId: string): Promise<Stripe.Account> {
+export async function createOrUpdateCustomAccountForProvider(
+  providerId: string,
+  options: { payoutIban?: string | null } = {}
+): Promise<Stripe.Account> {
   const supabase = createSupabaseAdmin();
   const profile = await getProviderBillingProfile(supabase, providerId);
   const readiness = getProviderCustomConnectReadiness(profile);
@@ -421,6 +580,14 @@ export async function createOrUpdateCustomAccountForProvider(providerId: string)
       });
       writtenAccount = await stripe.accounts.create(params);
     }
+
+    await syncStripeExternalAccount({
+      stripe,
+      providerId,
+      profile,
+      providerAccountId: writtenAccount.id,
+      iban: options.payoutIban,
+    });
 
     console.info("[stripe-custom-connect]", {
       kind: `${writeKind}_success`,
