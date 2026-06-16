@@ -154,7 +154,7 @@ function getStripeAccountParamDiagnostics(
   return {
     hasEmail: Boolean(params.email),
     businessType: params.business_type ?? null,
-    hasBusinessProfileMcc: Boolean(params.business_profile?.mcc),
+    mccOmitted: true,
     hasBusinessProfileUrl: Boolean(params.business_profile?.url),
     hasBusinessProfileProductDescription: Boolean(params.business_profile?.product_description),
     hasTosAcceptanceDate: Boolean(params.tos_acceptance?.date),
@@ -278,7 +278,6 @@ export function mapProviderPayoutProfileToStripeAccountParams(
     optionalText(profile.providerDisplayName) ||
     optionalText(profile.documentRecipientName);
   const businessProfile: Stripe.AccountCreateParams.BusinessProfile = {
-    mcc: optionalText(profile.businessProfileMcc),
     url: optionalText(profile.businessProfileUrl),
     product_description: optionalText(profile.businessProfileProductDescription),
   };

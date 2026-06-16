@@ -46,7 +46,6 @@ type ProfileFormProps = {
     legal_entity_type: ProviderLegalEntityType | "";
     representative_birth_date: string;
     business_profile_url: string;
-    business_profile_mcc: string;
     business_profile_product_description: string;
     consentAccepted: boolean;
     payoutComplete: boolean;
@@ -255,10 +254,6 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
           <label className="block space-y-1">
             <span className="text-sm font-medium">Produktbeschreibung</span>
             <input name="business_profile_product_description" defaultValue={initialValues.business_profile_product_description} className="w-full rounded-xl border px-3 py-2 text-sm" />
-          </label>
-          <label className="block space-y-1">
-            <span className="text-sm font-medium">Branche / Kategorie</span>
-            <input name="business_profile_mcc" defaultValue={initialValues.business_profile_mcc} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
           <label className="block space-y-1">
             <span className="text-sm font-medium">Beschreibung / Bio</span>

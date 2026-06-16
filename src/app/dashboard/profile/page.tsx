@@ -199,7 +199,6 @@ export default async function DashboardProfilePage({
     legal_entity_type: (directPayoutProfile?.legal_entity_type ?? effectiveFinancialProfile?.legalEntityType ?? "") as ProviderLegalEntityType | "",
     representative_birth_date: representativeBirthDate,
     business_profile_url: directPayoutProfile?.business_profile_url ?? effectiveFinancialProfile?.businessProfileUrl ?? "",
-    business_profile_mcc: directPayoutProfile?.business_profile_mcc ?? effectiveFinancialProfile?.businessProfileMcc ?? "",
     business_profile_product_description:
       directPayoutProfile?.business_profile_product_description ??
       effectiveFinancialProfile?.businessProfileProductDescription ??

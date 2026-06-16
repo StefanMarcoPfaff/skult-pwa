@@ -70,6 +70,7 @@ type ExistingPayoutProfile = {
   stripe_terms_accepted_at: string | null;
   stripe_terms_accepted_ip: string | null;
   stripe_terms_accepted_user_agent: string | null;
+  business_profile_mcc: string | null;
 };
 
 export type UnifiedProfileSaveDebug = {
@@ -383,7 +384,6 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
     const legal_entity_type = optionalText(formData.get("legal_entity_type"));
     const representative_birth_date = normalizeDateInput(optionalText(formData.get("representative_birth_date")));
     const business_profile_url = optionalText(formData.get("business_profile_url"));
-    const business_profile_mcc = optionalText(formData.get("business_profile_mcc"));
     const business_profile_product_description = optionalText(formData.get("business_profile_product_description"));
     const consentAccepted =
       formData.get("data_transfer_consent") === "on" ||
@@ -705,6 +705,7 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
           "stripe_terms_accepted_at",
           "stripe_terms_accepted_ip",
           "stripe_terms_accepted_user_agent",
+          "business_profile_mcc",
         ].join(",")
       )
       .eq("teacher_id", user.id)
@@ -778,7 +779,7 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       stripe_terms_accepted_ip: existingPayoutProfile?.stripe_terms_accepted_ip ?? clientIp,
       stripe_terms_accepted_user_agent: existingPayoutProfile?.stripe_terms_accepted_user_agent ?? userAgent,
       business_profile_url,
-      business_profile_mcc,
+      business_profile_mcc: existingPayoutProfile?.business_profile_mcc ?? null,
       business_profile_product_description,
       verification_status: "pending",
       provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
