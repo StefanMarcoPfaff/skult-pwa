@@ -163,8 +163,8 @@ function getDisplayStatus(input: {
   if (input.payoutItemStatus === "paid" || input.payoutStatus === "paid") {
     return {
       statusKey: "ausgezahlt",
-      statusLabel: "Ausgezahlt",
-      statusDetail: "Dieser Betrag wurde bereits ausgezahlt.",
+      statusLabel: "Settlement dokumentiert",
+      statusDetail: "Fuer diesen Betrag wurde das Settlement bereits dokumentiert.",
       includeInSummary: true,
     };
   }
@@ -172,8 +172,8 @@ function getDisplayStatus(input: {
   if (input.payoutItemStatus === "simulated_pending") {
     return {
       statusKey: "in_auszahlung",
-      statusLabel: "In Auszahlung",
-      statusDetail: "Dieser Betrag befindet sich aktuell im Auszahlungslauf.",
+      statusLabel: "Settlement in Vorbereitung",
+      statusDetail: "Dieser Anbieter*innen-Anteil befindet sich aktuell in der Settlement-Vorbereitung.",
       includeInSummary: true,
     };
   }
@@ -181,8 +181,8 @@ function getDisplayStatus(input: {
   if (input.payoutStatus === "batched") {
     return {
       statusKey: "vorbereitet",
-      statusLabel: "Zur Auszahlung vorbereitet",
-      statusDetail: "Dieser Betrag ist für den nächsten Auszahlungslauf vorbereitet.",
+      statusLabel: "Settlement vorbereitet",
+      statusDetail: "Dieser Anbieter*innen-Anteil ist fuer die naechste Settlement-Dokumentation vorbereitet.",
       includeInSummary: true,
     };
   }
@@ -190,8 +190,8 @@ function getDisplayStatus(input: {
   if (input.payoutStatus === "payable" || input.payoutStatus === "available") {
     return {
       statusKey: "auszahlbar",
-      statusLabel: "Auszahlbar",
-      statusDetail: "Dieser Betrag kann für eine Auszahlung berücksichtigt werden.",
+      statusLabel: "Dokumentierbar",
+      statusDetail: "Dieser Anbieter*innen-Anteil kann fuer die Settlement-Dokumentation beruecksichtigt werden.",
       includeInSummary: true,
     };
   }
@@ -199,10 +199,10 @@ function getDisplayStatus(input: {
   if (input.payoutStatus === "pending_event_completion") {
     return {
       statusKey: "vorgemerkt",
-      statusLabel: "Vorgemerkt - Auszahlung nach Durchführung",
+      statusLabel: "Vorgemerkt - nach Durchfuehrung",
       statusDetail: input.availableAt
-        ? `Voraussichtlich auszahlbar ab ${formatDateTime(input.availableAt)}`
-        : "Die Auszahlung wird nach Durchführung des Angebots vorgemerkt.",
+        ? `Voraussichtlich dokumentierbar ab ${formatDateTime(input.availableAt)}`
+        : "Der Anbieter*innen-Anteil wird nach Durchfuehrung des Angebots vorgemerkt.",
       includeInSummary: true,
     };
   }
@@ -211,8 +211,8 @@ function getDisplayStatus(input: {
     statusKey: "vorgemerkt",
     statusLabel: "Vorgemerkt",
     statusDetail: input.availableAt
-      ? `Voraussichtlich auszahlbar ab ${formatDateTime(input.availableAt)}`
-      : "Dieser Betrag ist vorgemerkt und noch nicht auszahlbar.",
+      ? `Voraussichtlich dokumentierbar ab ${formatDateTime(input.availableAt)}`
+      : "Dieser Anbieter*innen-Anteil ist vorgemerkt und noch nicht dokumentierbar.",
     includeInSummary: true,
   };
 }
@@ -566,12 +566,12 @@ export default async function DashboardEarningsPage({
   return (
     <main className="mx-auto max-w-7xl space-y-6 p-6">
       <DashboardPageHeader
-        title="Einnahmen & Auszahlungen"
-        description="Hier siehst du, was gebucht wurde, was RESER abzieht und welche Beträge für dich bereits auszahlbar sind oder noch vorgemerkt bleiben."
+        title="Einnahmen & Anbieter*innen-Anteile"
+        description="Hier siehst du, was gebucht wurde, was RESER als Plattformgebuehr dokumentiert und welche Anbieter*innen-Anteile bereits dokumentierbar sind oder noch vorgemerkt bleiben."
       />
 
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        Hinweis: Auszahlungen befinden sich aktuell noch im Testmodus. Es werden keine echten Auszahlungen ausgelöst.
+        Hinweis: Settlement- und Anbieter*innen-Anteilsdokumente befinden sich aktuell noch im Testmodus. Es werden keine echten Zahlungsdienstleister-Aktionen ausgeloest.
       </div>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -591,9 +591,9 @@ export default async function DashboardEarningsPage({
           description="Das bleibt nach dem RESER-Abzug für dich übrig."
         />
         <SummaryCard
-          title="Bereits auszahlbar/ausgezahlt"
+          title="Bereits dokumentierbar/dokumentiert"
           value={formatMoney(totals.readyOrPaidCents, "EUR")}
-          description="Bereits auszahlbar, vorbereitet, in Auszahlung oder ausgezahlt."
+          description="Bereits dokumentierbar, vorbereitet oder als Settlement dokumentiert."
         />
         <SummaryCard
           title="Noch vorgemerkt"
@@ -641,7 +641,7 @@ export default async function DashboardEarningsPage({
             </div>
 
             <StatusFilterChips
-              ariaLabel="Auszahlungsstatus"
+              ariaLabel="Status Anbieter*innen-Anteil"
               items={[
                 {
                   href: buildFilterHref({ offerType: selectedOfferType, status: "all", period: selectedPeriod, offer: offerQuery }),
@@ -668,7 +668,7 @@ export default async function DashboardEarningsPage({
                     offer: offerQuery,
                   }),
                   active: selectedStatus === "payable",
-                  label: "Auszahlbar",
+                  label: "Dokumentierbar",
                   tone: "green",
                 },
                 {
@@ -679,7 +679,7 @@ export default async function DashboardEarningsPage({
                     offer: offerQuery,
                   }),
                   active: selectedStatus === "in_progress",
-                  label: "In Auszahlung",
+                  label: "Settlement in Vorbereitung",
                   tone: "sky",
                 },
                 {
@@ -690,7 +690,7 @@ export default async function DashboardEarningsPage({
                     offer: offerQuery,
                   }),
                   active: selectedStatus === "paid",
-                  label: "Ausgezahlt",
+                  label: "Settlement dokumentiert",
                   tone: "emerald",
                 },
                 {

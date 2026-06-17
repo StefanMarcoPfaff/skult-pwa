@@ -31,7 +31,7 @@ type DocumentStatusTone = "slate" | "green" | "rose";
 
 const DOCUMENT_TYPE_LABELS: Record<FinancialDocumentRecord["document_type"], string> = {
   customer_receipt: "Kund*innen-Beleg",
-  provider_payout_statement: "Auszahlungsabrechnung",
+  provider_payout_statement: "Anbieter*innen-Anteil",
   provider_platform_fee_invoice: "Plattformgebuehren-Beleg",
   platform_revenue_statement: "RESER-Provisionsabrechnung",
   refund_receipt: "Rueckerstattungsbeleg",
@@ -101,7 +101,7 @@ function getDocumentMetadata(record: FinancialDocumentRecord): FinancialDocument
 function getDocumentPrimaryAmountLabel(record: FinancialDocumentRecord): string {
   switch (record.document_type) {
     case "provider_payout_statement":
-      return "Auszahlung";
+      return "Anbieter*innen-Anteil";
     case "provider_platform_fee_invoice":
       return "Plattformgebuehr";
     case "platform_revenue_statement":
@@ -218,7 +218,7 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
             {props.role === "admin"
               ? "Hier findest du alle erzeugten Dokumente. Verfuegbare PDFs koennen direkt heruntergeladen werden."
-              : "Hier findest du deine Auszahlungsabrechnungen und Plattformgebuehren-Belege. Verfuegbare PDFs koennen direkt heruntergeladen werden."}
+              : "Hier findest du deine Anbieter*innen-Anteile und Plattformgebuehren-Belege. Verfuegbare PDFs koennen direkt heruntergeladen werden."}
           </p>
         </div>
         <div className="rounded-2xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600">
@@ -246,7 +246,7 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
             className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
           >
             <option value="all">Alle Dokumente</option>
-            <option value="provider_payout_statement">Auszahlungsabrechnung</option>
+            <option value="provider_payout_statement">Anbieter*innen-Anteil</option>
             <option value="provider_platform_fee_invoice">Plattformgebuehren-Beleg</option>
             {props.role === "admin" ? <option value="customer_receipt">Kund*innen-Beleg</option> : null}
             {props.role === "admin" ? <option value="platform_revenue_statement">RESER-Provisionsabrechnung</option> : null}
@@ -410,7 +410,7 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-4">
-                          <span>Auszahlung</span>
+                          <span>Anbieter*innen-Anteil</span>
                           <span className="font-medium text-slate-900">
                             {formatMoney(record.provider_payout_cents, record.currency)}
                           </span>

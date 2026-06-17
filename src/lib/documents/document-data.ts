@@ -118,7 +118,7 @@ async function buildFinancialDocumentData(
       ? "Kund*innen-Beleg als Teil der Buchungsbestaetigung vorbereitet."
       : null,
     documentType === "provider_payout_statement"
-      ? "Anbieter*innen-Auszahlungsabrechnung fuer die Einnahmenseite vorbereitet."
+      ? "Anbieter*innen-Anteil fuer die Einnahmenseite dokumentiert."
       : null,
     documentType === "provider_platform_fee_invoice"
       ? "Plattformgebuehr-Beleg fuer die Ausgabenseite der Anbieter*innen vorbereitet."

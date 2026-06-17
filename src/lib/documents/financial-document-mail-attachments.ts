@@ -28,7 +28,7 @@ const ATTACHMENT_FILENAMES: Record<
   string
 > = {
   customer_receipt: "Kund*innen-Beleg.pdf",
-  provider_payout_statement: "Auszahlungsabrechnung.pdf",
+  provider_payout_statement: "provider-revenue-document.pdf",
   provider_platform_fee_invoice: "Plattformgebuehren-Beleg.pdf",
 };
 
@@ -207,4 +207,3 @@ export async function loadProviderPayoutAttachmentsForMail(input: {
     supabase,
   });
 }
-

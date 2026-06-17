@@ -183,7 +183,7 @@ function buildProviderPayoutStatementLines(input: RenderPdfInput): PdfLine[] {
 
   return [
     ...buildHeaderLines(
-      "Anbieter*innen-Auszahlungsabrechnung",
+      "Dokumentation Anbieter*innen-Anteil",
       `Ausgestellt durch ${RESER_COMPANY.brand} | Erstellt ${formatDate(document.issued_at ?? document.created_at)}`
     ),
     ...buildKeyValueLines("Aussteller", [
@@ -195,15 +195,17 @@ function buildProviderPayoutStatementLines(input: RenderPdfInput): PdfLine[] {
     ...buildKeyValueLines("Empfaenger*in", [
       ["Name", normalizeText(provider?.documentRecipientName ?? provider?.providerDisplayName)],
       ["Adresse", normalizeText(provider?.billingAddressFormatted?.replace(/\n/g, ", "))],
-      ["Auszahlungsmethode", normalizeText(provider?.payoutMethod, "Nicht hinterlegt")],
-      ["Auszahlungsziel", normalizeText(provider?.payoutDestination, "Nicht hinterlegt")],
     ]),
     ...buildKeyValueLines("Abrechnungsdaten", [
       ["Angebot", normalizeText(metadata?.offer?.title)],
       ["Zeitraum", buildPeriodLabel(document, metadata)],
       ["Brutto-Kundenzahlungen", formatMoney(document.gross_amount_cents, document.currency)],
       [platformFeeLabel(metadata), formatMoney(document.platform_fee_cents, document.currency)],
-      ["Auszahlung", formatMoney(document.provider_payout_cents, document.currency)],
+      ["Anbieter*innen-Anteil", formatMoney(document.provider_payout_cents, document.currency)],
+      [
+        "Hinweis",
+        "Die Zahlungsabwicklung erfolgt ueber den eingebundenen Zahlungsdienstleister. RESER dokumentiert den Anbieter*innen-Anteil.",
+      ],
       ["Dokumentnummer", normalizeText(document.document_number, "Noch nicht vergeben")],
     ]),
     ...buildFooterLines(metadata),
