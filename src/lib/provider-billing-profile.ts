@@ -429,6 +429,12 @@ export function getProviderCustomConnectReadiness(
   };
 }
 
+export function isProviderCustomConnectPaymentProcessingConfigured(
+  profile: ProviderBillingProfile | null
+): boolean {
+  return getProviderCustomConnectReadiness(profile).isPaymentProcessingConfigured;
+}
+
 export async function getProviderBillingProfile(
   supabase: SupabaseClient<Database>,
   providerId: string

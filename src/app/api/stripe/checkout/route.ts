@@ -9,6 +9,10 @@ import {
 import { buildOfferAvailability, loadOccupiedWorkshopSeats } from "@/lib/public-offer-availability";
 import { isPaymentsV2StripePlatformChargesEnabled } from "@/lib/payments/config";
 import { paymentService } from "@/lib/payments/payment-service";
+import {
+  getProviderBillingProfile,
+  isProviderCustomConnectPaymentProcessingConfigured,
+} from "@/lib/provider-billing-profile";
 import { isDirectlyAccessibleOffer } from "@/lib/public-offer-visibility";
 import { getStripe } from "@/lib/stripe";
 import {
@@ -219,7 +223,7 @@ export async function POST(req: Request) {
     }
 
     const siteUrl = getSiteUrl(req.url);
-    const usePlatformCharge = isPaymentsV2StripePlatformChargesEnabled();
+    const platformChargesFlagEnabled = isPaymentsV2StripePlatformChargesEnabled();
 
     if (isFreeOffer) {
       let finalized: Awaited<ReturnType<typeof finalizeFreeWorkshopBooking>> = null;
@@ -279,6 +283,13 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    const providerBillingProfile = await getProviderBillingProfile(supabase, course.teacher_id);
+    const useCustomConnectPlatformCharge =
+      isProviderCustomConnectPaymentProcessingConfigured(providerBillingProfile);
+    const usePlatformCharge = platformChargesFlagEnabled || useCustomConnectPlatformCharge;
+    const stripeAccountIdForMetadata =
+      providerBillingProfile?.providerAccountId ?? teacherProfile.stripe_account_id;
 
     if (!usePlatformCharge && !teacherProfile.stripe_account_id) {
       return NextResponse.json(
@@ -351,14 +362,15 @@ export async function POST(req: Request) {
           },
       metadata: {
         payment_model: usePlatformCharge ? "platform_charge" : "connect_destination_charge",
-        ledger_mode: usePlatformCharge ? "reser_managed_split" : "stripe_connect_destination_split",
+        ledger_mode: usePlatformCharge ? "separate_charges_and_transfers" : "stripe_connect_destination_split",
+        connect_path: useCustomConnectPlatformCharge ? "custom_v2" : usePlatformCharge ? "platform_charge" : "legacy_express",
         provider_id: course.teacher_id,
         booking_id: booking.id,
         bookingId: booking.id,
         courseId: course.id,
         course_id: course.id,
         attendeeKey: booking.attendee_key,
-        ...(teacherProfile.stripe_account_id ? { teacherStripeAccountId: teacherProfile.stripe_account_id } : {}),
+        ...(stripeAccountIdForMetadata ? { teacherStripeAccountId: stripeAccountIdForMetadata } : {}),
         customerFirstName,
         customerLastName,
         customerEmail,

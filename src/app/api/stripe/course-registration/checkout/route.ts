@@ -22,6 +22,10 @@ import {
   findSubscriptionContractByIntentId,
 } from "@/lib/payments/subscriptions/contracts-repo";
 import { createPendingInitialPaymentContract } from "@/lib/payments/subscriptions/contracts-service";
+import {
+  getProviderBillingProfile,
+  isProviderCustomConnectPaymentProcessingConfigured,
+} from "@/lib/provider-billing-profile";
 import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
 import { getStripe } from "@/lib/stripe";
 import { getSiteUrl, isStripeDestinationChargeReady } from "@/lib/stripe-connect";
@@ -141,7 +145,7 @@ export async function GET(req: Request) {
   }
 
   const admin = createSupabaseAdmin();
-  const usePlatformCharge = isPaymentsV2StripePlatformChargesEnabled();
+  const platformChargesFlagEnabled = isPaymentsV2StripePlatformChargesEnabled();
 
   const { data: intent } = await admin
     .from("course_registration_intents")
@@ -213,6 +217,13 @@ export async function GET(req: Request) {
     .eq("id", course.teacher_id)
     .maybeSingle<{ stripe_account_id: string | null; provider_type: ProviderType | null }>();
 
+  const providerBillingProfile = await getProviderBillingProfile(admin, course.teacher_id);
+  const useCustomConnectPlatformCharge =
+    isProviderCustomConnectPaymentProcessingConfigured(providerBillingProfile);
+  const usePlatformCharge = platformChargesFlagEnabled || useCustomConnectPlatformCharge;
+  const stripeAccountIdForMetadata =
+    providerBillingProfile?.providerAccountId ?? profile?.stripe_account_id ?? null;
+
   if (!profile || (!usePlatformCharge && !profile.stripe_account_id)) {
     return NextResponse.redirect(new URL(`/trial/register/${token}?error=provider_payment_missing`, url));
   }
@@ -275,7 +286,8 @@ export async function GET(req: Request) {
       billingCycleAnchorUnix: billingCycleAnchor,
       metadata: {
         payment_model: usePlatformCharge ? "platform_charge" : "connect_destination_charge",
-        ledger_mode: usePlatformCharge ? "reser_managed_split" : "stripe_connect_destination_split",
+        ledger_mode: usePlatformCharge ? "separate_charges_and_transfers" : "stripe_connect_destination_split",
+        connect_path: useCustomConnectPlatformCharge ? "custom_v2" : usePlatformCharge ? "platform_charge" : "legacy_express",
         provider_id: course.teacher_id,
         course_id: intent.course_id,
         course_registration_intent_id: intent.id,
@@ -283,7 +295,7 @@ export async function GET(req: Request) {
         trialReservationId: intent.trial_reservation_id,
         courseId: intent.course_id,
         registrationToken: token,
-        ...(profile.stripe_account_id ? { teacherStripeAccountId: profile.stripe_account_id } : {}),
+        ...(stripeAccountIdForMetadata ? { teacherStripeAccountId: stripeAccountIdForMetadata } : {}),
         checkoutFlow: "course_registration",
         ...(subscriptionContractId ? { subscriptionContractId } : {}),
       },
