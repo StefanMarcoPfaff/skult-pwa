@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 import { loadCustomerReceiptAttachmentForMail } from "@/lib/documents/financial-document-mail-attachments";
+import { ensureCustomerReceiptForPayment } from "@/lib/documents/simulation-documents";
 import { mirrorStripePaymentToLedger } from "@/lib/payments/ledger";
 import { calculatePayoutAvailableAt } from "@/lib/payments/payout-eligibility";
 import { getProviderDisplayName, getWorkshopStornoPolicyLabel } from "@/lib/provider-profiles";
@@ -75,6 +76,24 @@ function isDev() {
 function logWorkshopFinalization(message: string, payload: Record<string, unknown>) {
   if (!isDev()) return;
   console.log("[workshop booking finalization]", message, payload);
+}
+
+function shouldEnsureStripeCustomerReceipt(input: {
+  paymentProvider: "stripe" | "free";
+  paymentStatus: "paid" | "free";
+  bookingId: string | null | undefined;
+  paymentTransactionId: string | null;
+  amountCents: number | null | undefined;
+}): boolean {
+  return (
+    input.paymentProvider === "stripe" &&
+    input.paymentStatus === "paid" &&
+    Boolean(input.bookingId) &&
+    Boolean(input.paymentTransactionId) &&
+    typeof input.amountCents === "number" &&
+    Number.isFinite(input.amountCents) &&
+    input.amountCents > 0
+  );
 }
 
 function resolveLastWorkshopSessionEnd(sessions: SessionRow[] | null | undefined): string | null {
@@ -264,6 +283,30 @@ async function finalizeWorkshopBookingRecord(input: {
     } catch (error) {
       logWorkshopFinalization("payment-v2 mirror failed", {
         bookingId: booking.id,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const paidStripeAmountCents = input.stripeSession?.amount_total ?? course?.price_cents ?? null;
+  if (
+    shouldEnsureStripeCustomerReceipt({
+      paymentProvider: input.paymentProvider,
+      paymentStatus: input.paymentStatus,
+      bookingId: booking.id,
+      paymentTransactionId,
+      amountCents: paidStripeAmountCents,
+    })
+  ) {
+    try {
+      await ensureCustomerReceiptForPayment({
+        paymentTransactionId: paymentTransactionId as string,
+        supabase: admin,
+      });
+    } catch (error) {
+      console.warn("[workshop booking finalization] customer receipt ensure failed", {
+        bookingId: booking.id,
+        paymentTransactionId,
         reason: error instanceof Error ? error.message : String(error),
       });
     }
