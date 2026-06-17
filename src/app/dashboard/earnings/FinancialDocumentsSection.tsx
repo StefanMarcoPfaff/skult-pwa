@@ -30,8 +30,8 @@ type FinancialDocumentsSectionProps = {
 type DocumentStatusTone = "slate" | "green" | "rose";
 
 const DOCUMENT_TYPE_LABELS: Record<FinancialDocumentRecord["document_type"], string> = {
-  customer_receipt: "Kund*innen-Beleg",
-  provider_payout_statement: "Anbieter*innen-Anteil",
+  customer_receipt: "Beleg fuer Teilnehmende",
+  provider_payout_statement: "Abrechnungsbeleg fuer Anbietende",
   provider_platform_fee_invoice: "Plattformgebuehren-Beleg",
   platform_revenue_statement: "RESER-Provisionsabrechnung",
   refund_receipt: "Rueckerstattungsbeleg",
@@ -101,7 +101,7 @@ function getDocumentMetadata(record: FinancialDocumentRecord): FinancialDocument
 function getDocumentPrimaryAmountLabel(record: FinancialDocumentRecord): string {
   switch (record.document_type) {
     case "provider_payout_statement":
-      return "Anbieter*innen-Anteil";
+      return "Anteil fuer Anbietende";
     case "provider_platform_fee_invoice":
       return "Plattformgebuehr";
     case "platform_revenue_statement":
@@ -218,7 +218,7 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
             {props.role === "admin"
               ? "Hier findest du alle erzeugten Dokumente. Verfuegbare PDFs koennen direkt heruntergeladen werden."
-              : "Hier findest du deine Anbieter*innen-Anteile und Plattformgebuehren-Belege. Verfuegbare PDFs koennen direkt heruntergeladen werden."}
+              : "Hier findest du deine Anteile fuer Anbietende und Plattformgebuehren-Belege. Verfuegbare PDFs koennen direkt heruntergeladen werden."}
           </p>
         </div>
         <div className="rounded-2xl bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600">
@@ -246,9 +246,9 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
             className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
           >
             <option value="all">Alle Dokumente</option>
-            <option value="provider_payout_statement">Anbieter*innen-Anteil</option>
+            <option value="provider_payout_statement">Abrechnungsbeleg fuer Anbietende</option>
             <option value="provider_platform_fee_invoice">Plattformgebuehren-Beleg</option>
-            {props.role === "admin" ? <option value="customer_receipt">Kund*innen-Beleg</option> : null}
+            {props.role === "admin" ? <option value="customer_receipt">Beleg fuer Teilnehmende</option> : null}
             {props.role === "admin" ? <option value="platform_revenue_statement">RESER-Provisionsabrechnung</option> : null}
             <option value="refund_receipt">Rueckerstattungsbeleg</option>
           </select>
@@ -320,12 +320,12 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
             const providerLabel =
               metadata?.providerBillingProfile?.providerDisplayName ||
               metadata?.providerBillingProfile?.documentRecipientName ||
-              "Anbieter*in";
+              "Anbietende";
             const taxHint = props.role === "admin" ? metadata?.taxHint ?? null : null;
             const roleNotice =
               props.role === "admin"
-                ? metadata?.roleNotice ?? "Die Leistung wird durch Anbieter*in erbracht."
-                : "Die Leistung wird durch Anbieter*in erbracht.";
+                ? metadata?.roleNotice ?? "Die Leistung wird durch Anbietende erbracht."
+                : "Die Leistung wird durch Anbietende erbracht.";
 
             return (
               <article key={record.id} className="rounded-3xl border border-slate-200 bg-slate-50/70 p-4">
@@ -373,7 +373,7 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
                   <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="rounded-2xl bg-slate-50 p-4">
-                        <p className="text-xs uppercase tracking-wide text-slate-500">Anbieter*in</p>
+                        <p className="text-xs uppercase tracking-wide text-slate-500">Anbietende</p>
                         <p className="mt-1 text-sm font-medium text-slate-900">{providerLabel}</p>
                       </div>
                       <div className="rounded-2xl bg-slate-50 p-4">
@@ -386,7 +386,7 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
                       </div>
                       {props.role === "admin" ? (
                         <div className="rounded-2xl bg-slate-50 p-4">
-                          <p className="text-xs uppercase tracking-wide text-slate-500">Kund*innen-Mail</p>
+                          <p className="text-xs uppercase tracking-wide text-slate-500">Mail Teilnehmende</p>
                           <p className="mt-1 text-sm font-medium text-slate-900">
                             {metadata?.customer?.email ?? record.customer_email ?? "-"}
                           </p>
@@ -410,7 +410,7 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-4">
-                          <span>Anbieter*innen-Anteil</span>
+                          <span>Anteil fuer Anbietende</span>
                           <span className="font-medium text-slate-900">
                             {formatMoney(record.provider_payout_cents, record.currency)}
                           </span>
@@ -468,7 +468,7 @@ export default function FinancialDocumentsSection(props: FinancialDocumentsSecti
       <div className="mt-5 text-xs text-slate-500">
         {props.role === "admin"
           ? "Admins sehen weiterhin alle Dokumenttypen. Eine groessere Admin-Dokumentenoberflaeche folgt spaeter."
-          : "Anbieter*innen sehen hier nur ihre fachlich relevanten Dokumente."}
+          : "Anbietende sehen hier nur ihre fachlich relevanten Dokumente."}
       </div>
     </section>
   );

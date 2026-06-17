@@ -9,7 +9,7 @@ import type {
 import { getPlatformFeeConfigForProvider } from "@/lib/platform-fees";
 
 const RESER_ROLE_NOTICE =
-  "Die Leistung wird durch den/die Anbieter*in erbracht. RESER stellt die Plattform zur Buchung und Zahlungsabwicklung bereit.";
+  "Die Leistung wird durch Anbietende erbracht. RESER stellt die Buchungs- und Abrechnungsdokumentation bereit.";
 
 export type BuildFinancialDocumentDataInput = {
   supabase: SupabaseClient<Database>;
@@ -92,11 +92,11 @@ function buildTaxHint(
 
   switch (providerSnapshot?.vatStatus) {
     case "small_business":
-      return "Anbieter*innenprofil mit Kleinunternehmerstatus hinterlegt; Steuerberechnung bleibt in dieser PR unveraendert.";
+      return "Profil der Anbietenden mit Kleinunternehmerstatus hinterlegt; Steuerberechnung bleibt in dieser PR unveraendert.";
     case "vat_registered":
-      return "Umsatzsteuerlich registriertes Anbieter*innenprofil hinterlegt; Steuerberechnung bleibt in dieser PR unveraendert.";
+      return "Umsatzsteuerlich registriertes Profil der Anbietenden hinterlegt; Steuerberechnung bleibt in dieser PR unveraendert.";
     case "tax_exempt":
-      return "Steuerbefreites Anbieter*innenprofil hinterlegt; Steuerberechnung bleibt in dieser PR unveraendert.";
+      return "Steuerbefreites Profil der Anbietenden hinterlegt; Steuerberechnung bleibt in dieser PR unveraendert.";
     default:
       return "Steuerberechnung bleibt unveraendert; das Dokument spiegelt nur die bereits vorhandenen Betraege.";
   }
@@ -115,13 +115,13 @@ async function buildFinancialDocumentData(
 
   const notes = [
     documentType === "customer_receipt"
-      ? "Kund*innen-Beleg als Teil der Buchungsbestaetigung vorbereitet."
+      ? "Beleg fuer Teilnehmende als Teil der Buchungsbestaetigung vorbereitet."
       : null,
     documentType === "provider_payout_statement"
-      ? "Anbieter*innen-Anteil fuer die Einnahmenseite dokumentiert."
+      ? "Anteil fuer Anbietende fuer die Einnahmenseite dokumentiert."
       : null,
     documentType === "provider_platform_fee_invoice"
-      ? "Plattformgebuehr-Beleg fuer die Ausgabenseite der Anbieter*innen vorbereitet."
+      ? "Plattformgebuehr-Beleg fuer die Ausgabenseite der Anbietenden vorbereitet."
       : null,
     documentType === "platform_revenue_statement"
       ? "Interner RESER-Provisionsbeleg vorbereitet."

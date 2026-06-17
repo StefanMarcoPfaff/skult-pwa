@@ -173,7 +173,7 @@ function getDisplayStatus(input: {
     return {
       statusKey: "in_auszahlung",
       statusLabel: "Settlement in Vorbereitung",
-      statusDetail: "Dieser Anbieter*innen-Anteil befindet sich aktuell in der Settlement-Vorbereitung.",
+      statusDetail: "Dieser Anteil fuer Anbietende befindet sich aktuell in der Settlement-Vorbereitung.",
       includeInSummary: true,
     };
   }
@@ -182,7 +182,7 @@ function getDisplayStatus(input: {
     return {
       statusKey: "vorbereitet",
       statusLabel: "Settlement vorbereitet",
-      statusDetail: "Dieser Anbieter*innen-Anteil ist fuer die naechste Settlement-Dokumentation vorbereitet.",
+      statusDetail: "Dieser Anteil fuer Anbietende ist fuer die naechste Settlement-Dokumentation vorbereitet.",
       includeInSummary: true,
     };
   }
@@ -191,7 +191,7 @@ function getDisplayStatus(input: {
     return {
       statusKey: "auszahlbar",
       statusLabel: "Dokumentierbar",
-      statusDetail: "Dieser Anbieter*innen-Anteil kann fuer die Settlement-Dokumentation beruecksichtigt werden.",
+      statusDetail: "Dieser Anteil fuer Anbietende kann fuer die Settlement-Dokumentation beruecksichtigt werden.",
       includeInSummary: true,
     };
   }
@@ -202,7 +202,7 @@ function getDisplayStatus(input: {
       statusLabel: "Vorgemerkt - nach Durchfuehrung",
       statusDetail: input.availableAt
         ? `Voraussichtlich dokumentierbar ab ${formatDateTime(input.availableAt)}`
-        : "Der Anbieter*innen-Anteil wird nach Durchfuehrung des Angebots vorgemerkt.",
+        : "Der Anteil fuer Anbietende wird nach Durchfuehrung des Angebots vorgemerkt.",
       includeInSummary: true,
     };
   }
@@ -212,7 +212,7 @@ function getDisplayStatus(input: {
     statusLabel: "Vorgemerkt",
     statusDetail: input.availableAt
       ? `Voraussichtlich dokumentierbar ab ${formatDateTime(input.availableAt)}`
-      : "Dieser Anbieter*innen-Anteil ist vorgemerkt und noch nicht dokumentierbar.",
+      : "Dieser Anteil fuer Anbietende ist vorgemerkt und noch nicht dokumentierbar.",
     includeInSummary: true,
   };
 }
@@ -566,12 +566,12 @@ export default async function DashboardEarningsPage({
   return (
     <main className="mx-auto max-w-7xl space-y-6 p-6">
       <DashboardPageHeader
-        title="Einnahmen & Anbieter*innen-Anteile"
-        description="Hier siehst du, was gebucht wurde, was RESER als Plattformgebuehr dokumentiert und welche Anbieter*innen-Anteile bereits dokumentierbar sind oder noch vorgemerkt bleiben."
+        title="Einnahmen & Anteile fuer Anbietende"
+        description="Hier siehst du, was gebucht wurde, was RESER als Plattformgebuehr dokumentiert und welche Anteile fuer Anbietende bereits dokumentierbar sind oder noch vorgemerkt bleiben."
       />
 
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        Hinweis: Settlement- und Anbieter*innen-Anteilsdokumente befinden sich aktuell noch im Testmodus. Es werden keine echten Zahlungsdienstleister-Aktionen ausgeloest.
+        Hinweis: Settlement- und Dokumente zu Anteilen fuer Anbietende befinden sich aktuell noch im Testmodus. Es werden keine echten Zahlungsdienstleister-Aktionen ausgeloest.
       </div>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -641,7 +641,7 @@ export default async function DashboardEarningsPage({
             </div>
 
             <StatusFilterChips
-              ariaLabel="Status Anbieter*innen-Anteil"
+              ariaLabel="Status Anteil fuer Anbietende"
               items={[
                 {
                   href: buildFilterHref({ offerType: selectedOfferType, status: "all", period: selectedPeriod, offer: offerQuery }),

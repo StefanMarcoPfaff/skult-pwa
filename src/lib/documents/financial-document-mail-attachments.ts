@@ -27,9 +27,9 @@ const ATTACHMENT_FILENAMES: Record<
   "customer_receipt" | "provider_payout_statement" | "provider_platform_fee_invoice",
   string
 > = {
-  customer_receipt: "Kund*innen-Beleg.pdf",
-  provider_payout_statement: "provider-revenue-document.pdf",
-  provider_platform_fee_invoice: "Plattformgebuehren-Beleg.pdf",
+  customer_receipt: "beleg-fuer-teilnehmende.pdf",
+  provider_payout_statement: "abrechnungsbeleg-fuer-anbietende.pdf",
+  provider_platform_fee_invoice: "reser-plattformgebuehr.pdf",
 };
 
 function getAdminSupabase(client?: SupabaseClient): SupabaseClient {

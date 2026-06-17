@@ -127,7 +127,7 @@ function buildFooterLines(metadata: FinancialDocumentMetadata | null): PdfLine[]
       leading: 18,
     },
     {
-      text: normalizeText(metadata?.roleNotice, "Die Leistung wird durch Anbieter*in erbracht."),
+      text: normalizeText(metadata?.roleNotice, "Die Leistung wird durch Anbietende erbracht."),
       fontSize: 10.5,
       color: [0.18, 0.20, 0.24],
       leading: 15,
@@ -152,17 +152,17 @@ function buildCustomerReceiptLines(input: RenderPdfInput): PdfLine[] {
 
   return [
     ...buildHeaderLines(
-      "Kund*innen-Beleg",
+      "Beleg fuer Teilnehmende",
       `Dokument-ID ${document.id} | Erstellt ${formatDate(document.issued_at ?? document.created_at)}`
     ),
-    ...buildKeyValueLines("Leistungserbringer*in", [
+    ...buildKeyValueLines("Anbietende", [
       ["Name", normalizeText(provider?.documentRecipientName ?? provider?.providerDisplayName)],
       ["Adresse", normalizeText(provider?.billingAddressFormatted?.replace(/\n/g, ", "))],
       ["Land", normalizeText(provider?.billingCountry)],
       ["Steuernummer", normalizeText(provider?.taxNumber, "-")],
       ["USt-ID", normalizeText(provider?.vatId, "-")],
     ]),
-    ...buildKeyValueLines("Kund*in", [
+    ...buildKeyValueLines("Teilnehmende", [
       ["Name", normalizeText(customer?.name)],
       ["E-Mail", normalizeText(customer?.email ?? document.customer_email)],
     ]),
@@ -183,7 +183,7 @@ function buildProviderPayoutStatementLines(input: RenderPdfInput): PdfLine[] {
 
   return [
     ...buildHeaderLines(
-      "Dokumentation Anbieter*innen-Anteil",
+      "Abrechnungsbeleg fuer Anbietende",
       `Ausgestellt durch ${RESER_COMPANY.brand} | Erstellt ${formatDate(document.issued_at ?? document.created_at)}`
     ),
     ...buildKeyValueLines("Aussteller", [
@@ -199,12 +199,12 @@ function buildProviderPayoutStatementLines(input: RenderPdfInput): PdfLine[] {
     ...buildKeyValueLines("Abrechnungsdaten", [
       ["Angebot", normalizeText(metadata?.offer?.title)],
       ["Zeitraum", buildPeriodLabel(document, metadata)],
-      ["Brutto-Kundenzahlungen", formatMoney(document.gross_amount_cents, document.currency)],
+      ["Zahlungen von Teilnehmenden", formatMoney(document.gross_amount_cents, document.currency)],
       [platformFeeLabel(metadata), formatMoney(document.platform_fee_cents, document.currency)],
-      ["Anbieter*innen-Anteil", formatMoney(document.provider_payout_cents, document.currency)],
+      ["Anteil fuer Anbietende", formatMoney(document.provider_payout_cents, document.currency)],
       [
         "Hinweis",
-        "Die Zahlungsabwicklung erfolgt ueber den eingebundenen Zahlungsdienstleister. RESER dokumentiert den Anbieter*innen-Anteil.",
+        "Die Zahlungsabwicklung erfolgt ueber den eingebundenen Zahlungsdienstleister. RESER stellt die Buchungs- und Abrechnungsdokumentation bereit.",
       ],
       ["Dokumentnummer", normalizeText(document.document_number, "Noch nicht vergeben")],
     ]),
@@ -234,7 +234,7 @@ function buildProviderPlatformFeeInvoiceLines(input: RenderPdfInput): PdfLine[] 
     ...buildKeyValueLines("Gebuehrendaten", [
       ["Angebot", normalizeText(metadata?.offer?.title)],
       ["Zeitraum", buildPeriodLabel(document, metadata)],
-      ["Brutto-Kundenzahlungen", formatMoney(document.gross_amount_cents, document.currency)],
+      ["Zahlungen von Teilnehmenden", formatMoney(document.gross_amount_cents, document.currency)],
       [platformFeeLabel(metadata), formatMoney(document.platform_fee_cents, document.currency)],
       ["Hinweis", "Beleg ueber RESER-Plattformgebuehr"],
       ["Dokumentnummer", normalizeText(document.document_number, "Noch nicht vergeben")],
@@ -258,7 +258,7 @@ function buildPlatformRevenueStatementLines(input: RenderPdfInput): PdfLine[] {
       ["Kontakt", RESER_COMPANY.email],
     ]),
     ...buildKeyValueLines("Kontext", [
-      ["Anbieter*in", normalizeText(provider?.providerDisplayName ?? provider?.documentRecipientName)],
+      ["Anbietende", normalizeText(provider?.providerDisplayName ?? provider?.documentRecipientName)],
       ["Angebot", normalizeText(metadata?.offer?.title)],
       ["Zeitraum", buildPeriodLabel(document, metadata)],
       ["Bruttoumsatz", formatMoney(document.gross_amount_cents, document.currency)],
@@ -282,7 +282,7 @@ function buildRefundReceiptLines(input: RenderPdfInput): PdfLine[] {
     ...buildKeyValueLines("Belegdaten", [
       ["Angebot", normalizeText(metadata?.offer?.title)],
       ["Zeitraum", buildPeriodLabel(document, metadata)],
-      ["Kund*innen-Mail", normalizeText(metadata?.customer?.email ?? document.customer_email)],
+      ["Mail Teilnehmende", normalizeText(metadata?.customer?.email ?? document.customer_email)],
       ["Rueckerstattungsbetrag", formatMoney(document.gross_amount_cents, document.currency)],
       ["Dokumentnummer", normalizeText(document.document_number, "Noch nicht vergeben")],
     ]),
