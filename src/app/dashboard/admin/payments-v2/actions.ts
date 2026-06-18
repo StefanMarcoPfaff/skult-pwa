@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { updateProviderPlatformFeeOverride } from "@/lib/platform-fees";
+import { processPayableOneTimeProviderTransfers } from "@/lib/payments/provider-transfer-processor";
 import {
   createSimulatedPaidPayoutForLedgerEntry,
   createSimulatedPayoutBatch,
@@ -163,6 +164,38 @@ export async function createSimulatedPayoutBatchAction() {
 
     revalidatePath(PAYMENTS_V2_ADMIN_PATH);
     redirectWithActionState("batch-error");
+  }
+}
+
+export async function processPayableOneTimeProviderTransfersAction() {
+  await requirePaymentsV2AdminAccess();
+
+  try {
+    const result = await processPayableOneTimeProviderTransfers();
+    revalidatePath(PAYMENTS_V2_ADMIN_PATH);
+    redirectWithParams({
+      action: result.createdCount > 0 ? "stripe-transfers-ok" : "stripe-transfers-none",
+      createdCount: String(result.createdCount),
+      skippedCount: String(result.skippedCount),
+      consideredCount: String(result.consideredCount),
+      message:
+        result.createdCount > 0
+          ? `${result.createdCount} Stripe-Transfer(s) fuer freigegebene einmalige Custom-v2-Angebote erstellt.`
+          : "Keine transferierbaren freigegebenen Custom-v2-Eintraege gefunden.",
+    });
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    const details = getErrorDetails(error);
+    console.error("[payments-v2] processPayableOneTimeProviderTransfers failed", details);
+    revalidatePath(PAYMENTS_V2_ADMIN_PATH);
+    redirectWithParams({
+      action: "stripe-transfers-error",
+      errorCode: details.code,
+      message: details.message,
+    });
   }
 }
 

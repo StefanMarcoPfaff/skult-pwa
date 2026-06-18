@@ -14,6 +14,7 @@ import {
   createSimulatedPayoutBatchAction,
   forceLedgerEntryPayableForTestAction,
   markEligibleLedgerEntriesAsPayableAction,
+  processPayableOneTimeProviderTransfersAction,
   simulateSelectedWorkshopPayoutAction,
   simulateWorkshopCustomerCancellationAction,
   simulateWorkshopCompletionForPayoutAction,
@@ -2257,6 +2258,11 @@ export default async function PaymentsV2AdminPage({
             action={createSimulatedPayoutBatchAction}
             label="Simulated Payout Batch erstellen"
             description="Ruft intern createSimulatedPayoutBatch() auf. Nur interne Batch-Simulation."
+          />
+          <ActionButton
+            action={processPayableOneTimeProviderTransfersAction}
+            label="Stripe-Transfers fuer freigegebene einmalige Custom-v2-Angebote ausfuehren"
+            description="Erstellt echte Stripe-Transfers nur fuer payable Ledger-Eintraege einmaliger Custom-v2-Angebote. Kein Cron, keine E-Mail, keine PDFs."
           />
         </div>
 
