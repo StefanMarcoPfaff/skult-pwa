@@ -895,23 +895,34 @@ function ActionButton({
   action,
   label,
   description,
+  buttonLabel,
+  tone = "default",
 }: {
   action: () => Promise<void>;
   label: string;
   description: string;
+  buttonLabel: string;
+  tone?: "default" | "warning";
 }) {
+  const formClassName =
+    tone === "warning"
+      ? "rounded-2xl border border-rose-200 bg-rose-50 p-4 shadow-sm"
+      : "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm";
+  const descriptionClassName = tone === "warning" ? "mt-1 text-xs text-rose-900" : "mt-1 text-xs text-slate-600";
+  const buttonClassName =
+    tone === "warning"
+      ? "inline-flex rounded-xl bg-rose-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-800"
+      : "inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700";
+
   return (
-    <form action={action} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <form action={action} className={formClassName}>
       <div className="space-y-3">
         <div>
           <div className="text-sm font-semibold text-slate-900">{label}</div>
-          <div className="mt-1 text-xs text-slate-600">{description}</div>
+          <div className={descriptionClassName}>{description}</div>
         </div>
-        <button
-          type="submit"
-          className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
-        >
-          Internal Simulation
+        <button type="submit" className={buttonClassName}>
+          {buttonLabel}
         </button>
       </div>
     </form>
@@ -922,11 +933,13 @@ function SimulationForm({
   action,
   title,
   description,
+  buttonLabel,
   children,
 }: {
   action: (formData: FormData) => Promise<void>;
   title: string;
   description: string;
+  buttonLabel: string;
   children: ReactNode;
 }) {
   return (
@@ -941,7 +954,7 @@ function SimulationForm({
           type="submit"
           className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
         >
-          Internal Simulation
+          {buttonLabel}
         </button>
       </div>
     </form>
@@ -1568,8 +1581,8 @@ export default async function PaymentsV2AdminPage({
           <div className="mt-4">
             <AuditNav currentPath={PAYMENTS_V2_ADMIN_PATH} />
           </div>
-          <div className="mt-4 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
-            Simulation only
+          <div className="mt-4 inline-flex rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-800">
+            Admin Test / Audit
           </div>
           <div className="mt-4 text-sm text-slate-600">
             Subscription-Domain-Audit:{" "}
@@ -1888,7 +1901,7 @@ export default async function PaymentsV2AdminPage({
                         type="submit"
                         className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
                       >
-                        24h nach Workshop simulieren & Auszahlung ausfuehren
+                        24h und Auszahlung intern simulieren
                       </button>
                     </div>
                   </form>
@@ -2240,117 +2253,204 @@ export default async function PaymentsV2AdminPage({
         </Section>
 
         <Section
-          title="Technische Details / Audit"
-          description="Bestehende technische Kontrollansichten fuer Payment Transactions, Ledger, Batches, Items und Webhooks."
+          title="Live-/Stripe-Test-Aktionen"
+          description="Echte Stripe-Testmodus-Aktionen. Diese Aktionen sind keine interne Simulation."
         >
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            Diese Bereiche bleiben fuer Debugging erhalten und zeigen weiterhin technische Referenzen.
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-950">
+              Loest echte Stripe-Test-Transfers aus. Nur fuer payable Ledger-Eintraege. Keine Simulation.
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <ActionButton
+                action={processPayableOneTimeProviderTransfersAction}
+                label="Stripe-Transfers fuer freigegebene einmalige Custom-v2-Angebote ausfuehren"
+                description="Erstellt echte Stripe-Test-Transfers nur fuer payable Ledger-Eintraege einmaliger Custom-v2-Angebote. Kein Cron, keine E-Mail, keine PDFs."
+                buttonLabel="Stripe-Transfers jetzt ausfuehren"
+                tone="warning"
+              />
+            </div>
           </div>
         </Section>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <ActionButton
-            action={markEligibleLedgerEntriesAsPayableAction}
-            label="Eligible Ledger Entries als payable markieren"
-            description="Ruft intern markEligibleLedgerEntriesAsPayable() auf. Keine echte Auszahlung."
-          />
-          <ActionButton
-            action={createSimulatedPayoutBatchAction}
-            label="Simulated Payout Batch erstellen"
-            description="Ruft intern createSimulatedPayoutBatch() auf. Nur interne Batch-Simulation."
-          />
-          <ActionButton
-            action={processPayableOneTimeProviderTransfersAction}
-            label="Stripe-Transfers fuer freigegebene einmalige Custom-v2-Angebote ausfuehren"
-            description="Erstellt echte Stripe-Transfers nur fuer payable Ledger-Eintraege einmaliger Custom-v2-Angebote. Kein Cron, keine E-Mail, keine PDFs."
-          />
-        </div>
+        <Section
+          title="Simulationen / Altlogik"
+          description="Nur interne Simulation - keine echte Stripe-Aktion."
+        >
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-amber-300 bg-amber-100 px-4 py-3 text-sm font-medium text-amber-950">
+              Nur interne Simulation - keine echte Stripe-Aktion.
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <ActionButton
+                action={markEligibleLedgerEntriesAsPayableAction}
+                label="Eligible Ledger Entries als payable markieren"
+                description="Ruft intern markEligibleLedgerEntriesAsPayable() auf. Keine echte Auszahlung."
+                buttonLabel="Payable intern markieren"
+              />
+              <ActionButton
+                action={createSimulatedPayoutBatchAction}
+                label="Simulated Payout Batch erstellen"
+                description="Ruft intern createSimulatedPayoutBatch() auf. Nur interne Batch-Simulation."
+                buttonLabel="Simulations-Batch erstellen"
+              />
+            </div>
+
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+              <div className="mb-4">
+                <h3 className="text-base font-semibold text-slate-900">Force payable (Test)</h3>
+                <p className="mt-1 text-xs text-amber-900">
+                  Setzt einzelne pending_event_completion Ledger-Eintraege intern auf payable. Keine echte Stripe-Aktion.
+                </p>
+              </div>
+              {ledgerEntries.some((row) => row.payout_status === "pending_event_completion" && !row.payout_batch_id) ? (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="border-b border-amber-200 text-xs uppercase tracking-wide text-amber-900">
+                      <tr>
+                        <th className="px-3 py-2">Ledger</th>
+                        <th className="px-3 py-2">Betrag</th>
+                        <th className="px-3 py-2">Verfuegbar ab</th>
+                        <th className="px-3 py-2">Simulation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ledgerEntries
+                        .filter((row) => row.payout_status === "pending_event_completion" && !row.payout_batch_id)
+                        .map((row) => (
+                          <tr key={row.id} className="border-b border-amber-100 align-top">
+                            <td className="px-3 py-3 text-xs text-slate-700">
+                              <div>ledger: {shortenId(row.id)}</div>
+                              <div>source: {shortenId(row.source_id)}</div>
+                            </td>
+                            <td className="px-3 py-3 font-medium text-slate-900">
+                              {formatMoney(row.net_amount_cents, row.currency)}
+                            </td>
+                            <td className="px-3 py-3 text-xs text-slate-700">{formatDateTime(row.available_at)}</td>
+                            <td className="px-3 py-3 text-xs text-slate-600">
+                              <form action={forceLedgerEntryPayableForTestAction} className="space-y-2">
+                                <input type="hidden" name="ledgerEntryId" value={row.id} />
+                                <button
+                                  type="submit"
+                                  className="inline-flex rounded-xl border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-900 transition hover:bg-amber-200"
+                                >
+                                  Force payable intern simulieren
+                                </button>
+                                <div className="text-[11px] text-amber-800">
+                                  Nur interne Simulation - keine echte Stripe-Aktion.
+                                </div>
+                              </form>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-amber-200 bg-white px-4 py-3 text-sm text-amber-900">
+                  Keine pending_event_completion Ledger-Eintraege ohne Batch gefunden.
+                </div>
+              )}
+            </section>
+
+            <section>
+              <div className="mb-3">
+                <h3 className="text-base font-semibold text-slate-900">Interne Workshop-Simulation</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Admin-only Einzelaktionen fuer Workshop-Zahlung, Fehlschlag, Refund und Storno. Kein Stripe, kein Mollie, kein PayPal, keine echte Auszahlung.
+                </p>
+              </div>
+              {canUseSimulation ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <SimulationForm
+                    action={simulateWorkshopPaymentSuccessAction}
+                    title="Zahlung erfolgreich simulieren"
+                    description="Erzeugt eine interne paid payment_transaction und genau einen positiven Ledger-Eintrag."
+                    buttonLabel="Zahlung intern simulieren"
+                  >
+                    <TextInput
+                      name="bookingId"
+                      label="booking_id"
+                      placeholder="uuid"
+                      defaultValue={selectedSimulationOption?.bookingId ?? ""}
+                    />
+                    <TextInput name="amountCents" label="Betrag in Cent optional" placeholder="z. B. 4900" />
+                    <TextInput name="currency" label="Waehrung optional" placeholder="EUR" />
+                    <TextInput name="scenarioNote" label="Scenario Note optional" placeholder="Kurznotiz" />
+                  </SimulationForm>
+
+                  <SimulationForm
+                    action={simulateWorkshopPaymentFailedAction}
+                    title="Zahlung fehlgeschlagen simulieren"
+                    description="Erzeugt eine interne failed payment_transaction ohne positiven Ledger-Eintrag."
+                    buttonLabel="Fehlschlag intern simulieren"
+                  >
+                    <TextInput
+                      name="bookingId"
+                      label="booking_id"
+                      placeholder="uuid"
+                      defaultValue={selectedSimulationOption?.bookingId ?? ""}
+                    />
+                    <TextInput name="amountCents" label="Betrag in Cent optional" placeholder="z. B. 4900" />
+                    <TextInput name="currency" label="Waehrung optional" placeholder="EUR" />
+                    <TextInput name="scenarioNote" label="Scenario Note optional" placeholder="Kurznotiz" />
+                  </SimulationForm>
+
+                  <SimulationForm
+                    action={simulateWorkshopRefundAction}
+                    title="Refund simulieren"
+                    description="Erzeugt einen internen succeeded Refund fuer eine simulierte Workshop-Zahlung. booking_id oder payment_transaction_id angeben."
+                    buttonLabel="Refund intern simulieren"
+                  >
+                    <TextInput
+                      name="bookingId"
+                      label="booking_id optional"
+                      placeholder="uuid"
+                      defaultValue={selectedSimulationOption?.bookingId ?? ""}
+                    />
+                    <TextInput
+                      name="paymentTransactionId"
+                      label="payment_transaction_id optional"
+                      placeholder="uuid"
+                      defaultValue={selectedSimulationOption?.paymentTransactionId ?? ""}
+                    />
+                    <TextInput name="refundAmountCents" label="Refund in Cent optional" placeholder="z. B. 4900" />
+                    <TextInput name="reason" label="Grund optional" placeholder="Refund reason" />
+                  </SimulationForm>
+
+                  <SimulationForm
+                    action={simulateWorkshopCancellationAction}
+                    title="Workshop-Storno simulieren"
+                    description="Bezahlte Simulationen werden ueber den Refund-Pfad abgewickelt. Unbezahlte Faelle werden nur intern als cancelled simuliert."
+                    buttonLabel="Storno intern simulieren"
+                  >
+                    <TextInput
+                      name="bookingId"
+                      label="booking_id"
+                      placeholder="uuid"
+                      defaultValue={selectedSimulationOption?.bookingId ?? ""}
+                    />
+                    <TextInput name="refundAmountCents" label="Refund in Cent optional" placeholder="z. B. 4900" />
+                    <TextInput name="reason" label="Grund optional" placeholder="Cancellation note" />
+                  </SimulationForm>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-700">
+                  Workshop-Simulation ist derzeit deaktiviert. Erforderlich sind `PAYMENTS_V2_SIMULATION_ENABLED` und eine
+                  freigeschaltete Admin-Mail in `PAYMENTS_V2_ADMIN_EMAILS`.
+                </div>
+              )}
+            </section>
+          </div>
+        </Section>
 
         <Section
-          title="Interne Workshop-Simulation"
-          description="Admin-only Einzelaktionen fuer Workshop-Zahlung, Fehlschlag, Refund und Storno. Kein Stripe, kein Mollie, kein PayPal, keine echte Auszahlung."
+          title="Read-only Audit"
+          description="Tabellen nur zur Kontrolle: Payment Transactions, Ledger Entries, Payout Batches, Payout Items, Refund Records und Provider Webhook Events."
         >
-          {canUseSimulation ? (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-amber-300 bg-amber-100 px-4 py-3 text-sm text-amber-950">
-                Simulation only. Keine echte Zahlung, keine echte Auszahlung, keine Kund*innenmail.
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <SimulationForm
-                  action={simulateWorkshopPaymentSuccessAction}
-                  title="Zahlung erfolgreich simulieren"
-                  description="Erzeugt eine interne paid payment_transaction und genau einen positiven Ledger-Eintrag."
-                >
-                  <TextInput
-                    name="bookingId"
-                    label="booking_id"
-                    placeholder="uuid"
-                    defaultValue={selectedSimulationOption?.bookingId ?? ""}
-                  />
-                  <TextInput name="amountCents" label="Betrag in Cent optional" placeholder="z. B. 4900" />
-                  <TextInput name="currency" label="Waehrung optional" placeholder="EUR" />
-                  <TextInput name="scenarioNote" label="Scenario Note optional" placeholder="Kurznotiz" />
-                </SimulationForm>
-
-                <SimulationForm
-                  action={simulateWorkshopPaymentFailedAction}
-                  title="Zahlung fehlgeschlagen simulieren"
-                  description="Erzeugt eine interne failed payment_transaction ohne positiven Ledger-Eintrag."
-                >
-                  <TextInput
-                    name="bookingId"
-                    label="booking_id"
-                    placeholder="uuid"
-                    defaultValue={selectedSimulationOption?.bookingId ?? ""}
-                  />
-                  <TextInput name="amountCents" label="Betrag in Cent optional" placeholder="z. B. 4900" />
-                  <TextInput name="currency" label="Waehrung optional" placeholder="EUR" />
-                  <TextInput name="scenarioNote" label="Scenario Note optional" placeholder="Kurznotiz" />
-                </SimulationForm>
-
-                <SimulationForm
-                  action={simulateWorkshopRefundAction}
-                  title="Refund simulieren"
-                  description="Erzeugt einen internen succeeded Refund fuer eine simulierte Workshop-Zahlung. booking_id oder payment_transaction_id angeben."
-                >
-                  <TextInput
-                    name="bookingId"
-                    label="booking_id optional"
-                    placeholder="uuid"
-                    defaultValue={selectedSimulationOption?.bookingId ?? ""}
-                  />
-                  <TextInput
-                    name="paymentTransactionId"
-                    label="payment_transaction_id optional"
-                    placeholder="uuid"
-                    defaultValue={selectedSimulationOption?.paymentTransactionId ?? ""}
-                  />
-                  <TextInput name="refundAmountCents" label="Refund in Cent optional" placeholder="z. B. 4900" />
-                  <TextInput name="reason" label="Grund optional" placeholder="Refund reason" />
-                </SimulationForm>
-
-                <SimulationForm
-                  action={simulateWorkshopCancellationAction}
-                  title="Workshop-Storno simulieren"
-                  description="Bezahlte Simulationen werden ueber den Refund-Pfad abgewickelt. Unbezahlte Faelle werden nur intern als cancelled simuliert."
-                >
-                  <TextInput
-                    name="bookingId"
-                    label="booking_id"
-                    placeholder="uuid"
-                    defaultValue={selectedSimulationOption?.bookingId ?? ""}
-                  />
-                  <TextInput name="refundAmountCents" label="Refund in Cent optional" placeholder="z. B. 4900" />
-                  <TextInput name="reason" label="Grund optional" placeholder="Cancellation note" />
-                </SimulationForm>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-700">
-              Workshop-Simulation ist derzeit deaktiviert. Erforderlich sind `PAYMENTS_V2_SIMULATION_ENABLED` und eine
-              freigeschaltete Admin-Mail in `PAYMENTS_V2_ADMIN_EMAILS`.
-            </div>
-          )}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            Nur Anzeige und technische Kontrolle. Aktionen stehen in den Bereichen Live-/Stripe-Test-Aktionen oder Simulationen / Altlogik.
+          </div>
         </Section>
 
         <div className="grid gap-6">
@@ -2407,7 +2507,7 @@ export default async function PaymentsV2AdminPage({
 
           <Section title="Ledger Entries" description="Letzte erzeugte Ledger-Zeilen der Payment-V2-Spiegelung.">
             <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Nur Testmodus - loest keine echte Auszahlung aus.
+              Read-only Audit-Tabelle. Force-payable-Aktionen stehen im Bereich Simulationen / Altlogik.
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
@@ -2419,7 +2519,6 @@ export default async function PaymentsV2AdminPage({
                     <th className="px-3 py-2">Payout Status</th>
                     <th className="px-3 py-2">Batch</th>
                     <th className="px-3 py-2">Referenz</th>
-                    <th className="px-3 py-2">Testmodus</th>
                     <th className="px-3 py-2">Erstellt</th>
                   </tr>
                 </thead>
@@ -2465,24 +2564,6 @@ export default async function PaymentsV2AdminPage({
                             bookingId={relatedTransaction?.booking_id}
                             courseRegistrationIntentId={relatedTransaction?.course_registration_intent_id}
                           />
-                        </td>
-                        <td className="px-3 py-3 text-xs text-slate-600">
-                          {row.payout_status === "pending_event_completion" && !row.payout_batch_id ? (
-                            <form action={forceLedgerEntryPayableForTestAction} className="space-y-2">
-                              <input type="hidden" name="ledgerEntryId" value={row.id} />
-                              <button
-                                type="submit"
-                                className="inline-flex rounded-xl border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-900 transition hover:bg-amber-200"
-                              >
-                                Force payable (Test)
-                              </button>
-                              <div className="text-[11px] text-amber-800">
-                                Nur Testmodus - loest keine echte Auszahlung aus.
-                              </div>
-                            </form>
-                          ) : (
-                            "-"
-                          )}
                         </td>
                         <td className="px-3 py-3 text-xs text-slate-600">{formatDateTime(row.created_at)}</td>
                       </tr>
