@@ -120,6 +120,15 @@ function getStripeObjectId(
 }
 
 function buildIdempotencyKey(ledgerEntryId: string): string {
+  // One transfer attempt belongs to one ledger entry. Keeping the key ledger-scoped
+  // makes cron retries safe, because Stripe will not create a second transfer for
+  // the same ledger entry if the HTTP request is retried after a timeout.
+  //
+  // Stripe also caches failed idempotent responses. If a connected-account setup
+  // problem such as inactive transfers is fixed after a failed request, reusing
+  // this same key can replay the cached Stripe error. Do not rotate this key
+  // casually: if the original Stripe request succeeded but local finalization
+  // failed, changing the key could create a duplicate money movement.
   return `reser-transfer-ledger-entry-${ledgerEntryId}-${TRANSFER_IDEMPOTENCY_VERSION}`;
 }
 
@@ -524,6 +533,11 @@ async function processLedgerEntryTransfer(ledgerEntryId: string): Promise<Provid
       message: null,
     };
   } catch (error) {
+    // Stripe-side failures, for example inactive/restricted connected accounts,
+    // are reported as skipped results. The finally block releases the claim back
+    // to payable, but no transfer id is persisted and payout_status is not moved
+    // to transfer_created. There is intentionally no new failed payout status here;
+    // retries stay operator-visible without changing the existing status model.
     return buildSkippedResult({
       ledgerEntry: claimedEntry,
       paymentTransactionId: claimedEntry.source_id,
