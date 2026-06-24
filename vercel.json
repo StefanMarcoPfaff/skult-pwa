@@ -11,6 +11,10 @@
     {
       "path": "/api/trial/registration-reminders",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/payments-v2/provider-transfers",
+      "schedule": "12 * * * *"
     }
   ]
 }

@@ -31,7 +31,10 @@ type PaymentTransactionRow = {
   id: string;
   booking_id: string | null;
   course_registration_intent_id: string | null;
+  provider: string | null;
   status: string;
+  refunded_at: string | null;
+  failed_at: string | null;
   stripe_charge_id: string | null;
   stripe_payment_intent_id: string | null;
   stripe_transfer_id: string | null;
@@ -53,6 +56,12 @@ type BookingRow = {
 type CourseRow = {
   id: string;
   kind: string | null;
+};
+
+type TransferCandidateRow = {
+  id: string;
+  provider_payout_profile_id: string | null;
+  source_id: string;
 };
 
 export type ProviderTransferSkipReason =
@@ -144,7 +153,9 @@ async function loadPaymentTransaction(paymentTransactionId: string): Promise<Pay
   const admin = createSupabaseAdmin();
   const { data } = await admin
     .from("payment_transactions")
-    .select("id,booking_id,course_registration_intent_id,status,stripe_charge_id,stripe_payment_intent_id,stripe_transfer_id")
+    .select(
+      "id,booking_id,course_registration_intent_id,provider,status,refunded_at,failed_at,stripe_charge_id,stripe_payment_intent_id,stripe_transfer_id"
+    )
     .eq("id", paymentTransactionId)
     .maybeSingle<PaymentTransactionRow>();
 
@@ -215,6 +226,7 @@ async function claimLedgerEntry(ledgerEntryId: string): Promise<PayableLedgerEnt
     .eq("entry_type", "payment")
     .eq("source_type", "payment_transaction")
     .eq("payout_status", "payable")
+    .is("payout_batch_id", null)
     .is("stripe_transfer_id", null)
     .select(
       [
@@ -274,6 +286,7 @@ async function markTransferCreated(input: {
     })
     .eq("id", input.ledgerEntry.id)
     .eq("payout_status", "scheduled")
+    .is("payout_batch_id", null)
     .is("stripe_transfer_id", null)
     .select("id")
     .limit(1);
@@ -355,7 +368,13 @@ async function processLedgerEntryTransfer(ledgerEntryId: string): Promise<Provid
       });
     }
 
-    if (["failed", "refunded", "refunded_partial", "refunded_full", "disputed", "chargeback_lost"].includes(paymentTransaction.status)) {
+    if (
+      ["failed", "refunded", "refunded_partial", "refunded_full", "disputed", "chargeback_lost"].includes(
+        paymentTransaction.status
+      ) ||
+      paymentTransaction.refunded_at ||
+      paymentTransaction.failed_at
+    ) {
       return buildSkippedResult({
         ledgerEntry: claimedEntry,
         paymentTransactionId: paymentTransaction.id,
@@ -525,23 +544,96 @@ export async function processPayableOneTimeProviderTransfers(input?: {
   const admin = createSupabaseAdmin();
   const { data: candidates, error } = await admin
     .from("ledger_entries")
-    .select("id")
+    .select("id,provider_payout_profile_id,source_id")
     .eq("entry_type", "payment")
     .eq("source_type", "payment_transaction")
     .eq("payout_status", "payable")
+    .is("payout_batch_id", null)
     .is("stripe_transfer_id", null)
     .not("provider_payout_profile_id", "is", null)
     .gt("net_amount_cents", 0)
     .order("available_at", { ascending: true, nullsFirst: false })
-    .limit(limit)
-    .returns<Array<{ id: string }>>();
+    .limit(limit * 4)
+    .returns<TransferCandidateRow[]>();
 
   if (error) {
     throw error;
   }
 
+  const candidateRows = candidates ?? [];
+  const paymentTransactionIds = Array.from(new Set(candidateRows.map((candidate) => candidate.source_id)));
+  const providerPayoutProfileIds = Array.from(
+    new Set(candidateRows.map((candidate) => candidate.provider_payout_profile_id).filter((id): id is string => Boolean(id)))
+  );
+
+  const [{ data: paymentTransactions }, { data: providerProfiles }] = await Promise.all([
+    paymentTransactionIds.length > 0
+      ? admin
+          .from("payment_transactions")
+          .select(
+            "id,booking_id,course_registration_intent_id,provider,status,refunded_at,failed_at,stripe_charge_id,stripe_payment_intent_id,stripe_transfer_id"
+          )
+          .in("id", paymentTransactionIds)
+          .returns<PaymentTransactionRow[]>()
+      : Promise.resolve({ data: [] as PaymentTransactionRow[] }),
+    providerPayoutProfileIds.length > 0
+      ? admin
+          .from("provider_payout_profiles")
+          .select("id,teacher_id,provider,provider_account_id,stripe_account_type")
+          .in("id", providerPayoutProfileIds)
+          .returns<ProviderPayoutProfileRow[]>()
+      : Promise.resolve({ data: [] as ProviderPayoutProfileRow[] }),
+  ]);
+
+  const paymentTransactionById = new Map((paymentTransactions ?? []).map((row) => [row.id, row] as const));
+  const providerProfileById = new Map((providerProfiles ?? []).map((row) => [row.id, row] as const));
+  const bookingIds = Array.from(
+    new Set(
+      (paymentTransactions ?? [])
+        .map((transaction) => transaction.booking_id)
+        .filter((bookingId): bookingId is string => Boolean(bookingId))
+    )
+  );
+  const { data: bookings } =
+    bookingIds.length > 0
+      ? await admin.from("bookings").select("id,course_id").in("id", bookingIds).returns<BookingRow[]>()
+      : { data: [] as BookingRow[] };
+  const bookingById = new Map((bookings ?? []).map((row) => [row.id, row] as const));
+  const courseIds = Array.from(
+    new Set((bookings ?? []).map((booking) => booking.course_id).filter((courseId): courseId is string => Boolean(courseId)))
+  );
+  const { data: courses } =
+    courseIds.length > 0
+      ? await admin.from("courses").select("id,kind").in("id", courseIds).returns<CourseRow[]>()
+      : { data: [] as CourseRow[] };
+  const courseById = new Map((courses ?? []).map((row) => [row.id, row] as const));
+
+  const eligibleCandidates = candidateRows
+    .filter((candidate) => {
+      const paymentTransaction = paymentTransactionById.get(candidate.source_id);
+      const providerProfile = candidate.provider_payout_profile_id
+        ? providerProfileById.get(candidate.provider_payout_profile_id)
+        : null;
+      const booking = paymentTransaction?.booking_id ? bookingById.get(paymentTransaction.booking_id) : null;
+      const course = booking?.course_id ? courseById.get(booking.course_id) : null;
+
+      return (
+        paymentTransaction?.provider === "stripe" &&
+        paymentTransaction.status === "paid" &&
+        !paymentTransaction.refunded_at &&
+        !paymentTransaction.failed_at &&
+        !paymentTransaction.stripe_transfer_id &&
+        Boolean(paymentTransaction.stripe_charge_id) &&
+        (course?.kind === "workshop" || course?.kind === "exclusive_offer") &&
+        providerProfile?.provider === PROVIDER_PAYOUT_PROFILE_PROVIDER &&
+        providerProfile.stripe_account_type === "custom" &&
+        Boolean(providerProfile.provider_account_id?.trim())
+      );
+    })
+    .slice(0, limit);
+
   const results: ProviderTransferResult[] = [];
-  for (const candidate of candidates ?? []) {
+  for (const candidate of eligibleCandidates) {
     const result = await processLedgerEntryTransfer(candidate.id);
     results.push(result);
 
@@ -551,7 +643,7 @@ export async function processPayableOneTimeProviderTransfers(input?: {
   }
 
   return {
-    consideredCount: candidates?.length ?? 0,
+    consideredCount: candidateRows.length,
     createdCount: results.filter((result) => result.status === "created").length,
     skippedCount: results.filter((result) => result.status === "skipped").length,
     results,
