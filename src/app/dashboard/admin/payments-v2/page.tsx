@@ -71,7 +71,10 @@ type LedgerEntryRow = {
   payout_status: string;
   available_at: string | null;
   payout_batch_id: string | null;
+  stripe_transfer_id: string | null;
+  stripe_balance_transaction_id: string | null;
   created_at: string;
+  updated_at: string | null;
 };
 
 type PayoutBatchRow = {
@@ -93,7 +96,10 @@ type PayoutItemRow = {
   amount_cents: number;
   currency: string;
   status: string;
+  stripe_transfer_id: string | null;
+  stripe_balance_transaction_id: string | null;
   created_at: string;
+  updated_at: string | null;
 };
 
 type RefundRecordRow = {
@@ -146,6 +152,11 @@ type SimulationCourseRow = {
   workshop_storno_policy: string | null;
 };
 
+type BookingRow = {
+  id: string;
+  course_id: string | null;
+};
+
 type SimulationProfileRow = {
   id: string;
   first_name: string | null;
@@ -169,6 +180,7 @@ type ProviderFeeProfileRow = {
   id: string;
   teacher_id: string | null;
   provider: string;
+  provider_account_id: string | null;
   account_holder_name: string | null;
   platform_fee_percent_override: number | string | null;
   platform_fee_override_note: string | null;
@@ -281,6 +293,28 @@ type BusinessReserIncomeRow = {
   statusLabel: string;
   providerName: string;
   offerName: string;
+};
+
+type ProviderTransferMonitorRow = {
+  ledgerEntryId: string;
+  paymentTransactionId: string;
+  bookingId: string | null;
+  offerId: string | null;
+  offerName: string;
+  providerName: string;
+  providerPayoutProfileId: string | null;
+  connectedAccountId: string | null;
+  grossCents: number;
+  platformFeeCents: number;
+  netCents: number;
+  currency: string;
+  payoutStatus: string;
+  stripeTransferId: string | null;
+  stripeBalanceTransactionId: string | null;
+  payoutItemId: string | null;
+  payoutItemStatus: string | null;
+  createdAt: string;
+  updatedAt: string | null;
 };
 
 type SearchParams = {
@@ -1001,7 +1035,7 @@ export default async function PaymentsV2AdminPage({
   const { data: providerFeeProfilesRaw } = await admin
     .from("provider_payout_profiles")
     .select(
-      "id,teacher_id,provider,account_holder_name,platform_fee_percent_override,platform_fee_override_note,platform_fee_override_updated_at,updated_at"
+      "id,teacher_id,provider,provider_account_id,account_holder_name,platform_fee_percent_override,platform_fee_override_note,platform_fee_override_updated_at,updated_at"
     )
     .not("teacher_id", "is", null)
     .returns<ProviderFeeProfileRow[]>();
@@ -1172,7 +1206,7 @@ export default async function PaymentsV2AdminPage({
       ? await admin
           .from("ledger_entries")
           .select(
-            "id,provider_payout_profile_id,source_type,source_id,entry_type,gross_amount_cents,platform_fee_cents,provider_fee_cents,net_amount_cents,currency,payout_status,available_at,payout_batch_id,created_at"
+            "id,provider_payout_profile_id,source_type,source_id,entry_type,gross_amount_cents,platform_fee_cents,provider_fee_cents,net_amount_cents,currency,payout_status,available_at,payout_batch_id,stripe_transfer_id,stripe_balance_transaction_id,created_at,updated_at"
           )
           .eq("source_type", "payment_transaction")
           .eq("entry_type", "payment")
@@ -1297,7 +1331,7 @@ export default async function PaymentsV2AdminPage({
     businessLedgerEntryIds.length > 0
       ? admin
           .from("payout_items")
-          .select("id,payout_batch_id,provider_payout_profile_id,ledger_entry_id,amount_cents,currency,status,created_at")
+          .select("id,payout_batch_id,provider_payout_profile_id,ledger_entry_id,amount_cents,currency,status,stripe_transfer_id,stripe_balance_transaction_id,created_at,updated_at")
           .in("ledger_entry_id", businessLedgerEntryIds)
           .returns<PayoutItemRow[]>()
       : Promise.resolve({ data: [] as PayoutItemRow[] }),
@@ -1489,7 +1523,7 @@ export default async function PaymentsV2AdminPage({
     admin
       .from("ledger_entries")
       .select(
-        "id,provider_payout_profile_id,source_type,source_id,entry_type,gross_amount_cents,platform_fee_cents,provider_fee_cents,net_amount_cents,currency,payout_status,available_at,payout_batch_id,created_at"
+        "id,provider_payout_profile_id,source_type,source_id,entry_type,gross_amount_cents,platform_fee_cents,provider_fee_cents,net_amount_cents,currency,payout_status,available_at,payout_batch_id,stripe_transfer_id,stripe_balance_transaction_id,created_at,updated_at"
       )
       .order("created_at", { ascending: false })
       .limit(ROW_LIMIT)
@@ -1515,7 +1549,7 @@ export default async function PaymentsV2AdminPage({
       .returns<PayoutBatchRow[]>(),
     admin
       .from("payout_items")
-      .select("id,payout_batch_id,provider_payout_profile_id,ledger_entry_id,amount_cents,currency,status,created_at")
+      .select("id,payout_batch_id,provider_payout_profile_id,ledger_entry_id,amount_cents,currency,status,stripe_transfer_id,stripe_balance_transaction_id,created_at,updated_at")
       .order("created_at", { ascending: false })
       .limit(ROW_LIMIT)
       .returns<PayoutItemRow[]>(),
@@ -1566,6 +1600,90 @@ export default async function PaymentsV2AdminPage({
     (relatedTransactionsResult.data ?? []).map((row) => [row.id, row] as const)
   );
   const relatedRefunds = new Map((relatedRefundsResult.data ?? []).map((row) => [row.id, row] as const));
+  const auditPayoutItemByLedgerEntryId = new Map(payoutItems.map((row) => [row.ledger_entry_id, row] as const));
+  const auditProviderProfileIds = Array.from(
+    new Set(ledgerEntries.map((row) => row.provider_payout_profile_id).filter((value): value is string => Boolean(value)))
+  );
+  const auditBookingIds = Array.from(
+    new Set(
+      Array.from(relatedTransactions.values())
+        .map((row) => row.booking_id)
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const [{ data: auditProviderProfilesRaw }, { data: auditBookingsRaw }] = await Promise.all([
+    auditProviderProfileIds.length > 0
+      ? admin
+          .from("provider_payout_profiles")
+          .select("id,teacher_id,provider,provider_account_id,account_holder_name")
+          .in("id", auditProviderProfileIds)
+          .returns<Pick<ProviderFeeProfileRow, "id" | "teacher_id" | "provider" | "provider_account_id" | "account_holder_name">[]>()
+      : Promise.resolve({ data: [] as Pick<ProviderFeeProfileRow, "id" | "teacher_id" | "provider" | "provider_account_id" | "account_holder_name">[] }),
+    auditBookingIds.length > 0
+      ? admin.from("bookings").select("id,course_id").in("id", auditBookingIds).returns<BookingRow[]>()
+      : Promise.resolve({ data: [] as BookingRow[] }),
+  ]);
+  const auditProviderProfilesById = new Map((auditProviderProfilesRaw ?? []).map((row) => [row.id, row] as const));
+  const auditProviderTeacherIds = Array.from(
+    new Set((auditProviderProfilesRaw ?? []).map((row) => row.teacher_id).filter((value): value is string => Boolean(value)))
+  );
+  const auditBookingsById = new Map((auditBookingsRaw ?? []).map((row) => [row.id, row] as const));
+  const auditCourseIds = Array.from(
+    new Set((auditBookingsRaw ?? []).map((row) => row.course_id).filter((value): value is string => Boolean(value)))
+  );
+  const [{ data: auditProviderProfileRows }, { data: auditCoursesRaw }] = await Promise.all([
+    auditProviderTeacherIds.length > 0
+      ? admin
+          .from("profiles")
+          .select("id,first_name,last_name,organization_name,provider_type")
+          .in("id", auditProviderTeacherIds)
+          .returns<SimulationProfileRow[]>()
+      : Promise.resolve({ data: [] as SimulationProfileRow[] }),
+    auditCourseIds.length > 0
+      ? admin.from("courses").select("id,title,kind,teacher_id,starts_at,workshop_storno_policy").in("id", auditCourseIds).returns<SimulationCourseRow[]>()
+      : Promise.resolve({ data: [] as SimulationCourseRow[] }),
+  ]);
+  const auditProfilesById = new Map((auditProviderProfileRows ?? []).map((row) => [row.id, row] as const));
+  const auditCoursesById = new Map((auditCoursesRaw ?? []).map((row) => [row.id, row] as const));
+  const providerTransferRows: ProviderTransferMonitorRow[] = ledgerEntries
+    .filter((row) => row.entry_type === "payment" && row.source_type === "payment_transaction")
+    .map((row) => {
+      const transaction = relatedTransactions.get(row.source_id);
+      const booking = transaction?.booking_id ? auditBookingsById.get(transaction.booking_id) : undefined;
+      const course = booking?.course_id ? auditCoursesById.get(booking.course_id) : undefined;
+      const payoutProfile = row.provider_payout_profile_id
+        ? auditProviderProfilesById.get(row.provider_payout_profile_id)
+        : undefined;
+      const profile = payoutProfile?.teacher_id ? auditProfilesById.get(payoutProfile.teacher_id) : undefined;
+      const payoutItem = auditPayoutItemByLedgerEntryId.get(row.id);
+
+      return {
+        ledgerEntryId: row.id,
+        paymentTransactionId: row.source_id,
+        bookingId: transaction?.booking_id ?? null,
+        offerId: booking?.course_id ?? null,
+        offerName: course?.title?.trim() || "Angebot",
+        providerName: getDisplayName({
+          firstName: profile?.first_name,
+          lastName: profile?.last_name,
+          organizationName: profile?.organization_name,
+          fallback: payoutProfile?.account_holder_name?.trim() || "Anbieter*in",
+        }),
+        providerPayoutProfileId: row.provider_payout_profile_id,
+        connectedAccountId: payoutProfile?.provider_account_id ?? null,
+        grossCents: row.gross_amount_cents,
+        platformFeeCents: row.platform_fee_cents,
+        netCents: row.net_amount_cents,
+        currency: row.currency,
+        payoutStatus: row.payout_status,
+        stripeTransferId: row.stripe_transfer_id ?? payoutItem?.stripe_transfer_id ?? null,
+        stripeBalanceTransactionId: row.stripe_balance_transaction_id ?? payoutItem?.stripe_balance_transaction_id ?? null,
+        payoutItemId: payoutItem?.id ?? null,
+        payoutItemStatus: payoutItem?.status ?? null,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at ?? payoutItem?.updated_at ?? null,
+      };
+    });
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 md:px-8">
@@ -2454,6 +2572,75 @@ export default async function PaymentsV2AdminPage({
         </Section>
 
         <div className="grid gap-6">
+          <Section
+            title="Stripe Provider Transfers"
+            description="Minimales Monitoring fuer einmalige Provider-Transfers aus Ledger-Eintraegen. Nur Anzeige, keine Bearbeitung."
+          >
+            {providerTransferRows.length === 0 ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                Keine Provider-Transfer-Ledger-Eintraege gefunden.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">Referenzen</th>
+                      <th className="px-3 py-2">Angebot / Anbieter</th>
+                      <th className="px-3 py-2">Connected Account</th>
+                      <th className="px-3 py-2">Betraege</th>
+                      <th className="px-3 py-2">Stripe IDs</th>
+                      <th className="px-3 py-2">Zeitpunkte</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {providerTransferRows.map((row) => (
+                      <tr key={row.ledgerEntryId} className="border-b border-slate-100 align-top">
+                        <td className="px-3 py-3">
+                          <div className="space-y-2">
+                            <StatusBadge value={row.payoutStatus} />
+                            {row.payoutItemStatus ? (
+                              <div className="text-xs text-slate-500">item: <StatusBadge value={row.payoutItemStatus} /></div>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-600">
+                          <div>booking: {shortenId(row.bookingId)}</div>
+                          <div>ledger: {shortenId(row.ledgerEntryId)}</div>
+                          <div>payment: {shortenId(row.paymentTransactionId)}</div>
+                          <div>payout item: {shortenId(row.payoutItemId)}</div>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-600">
+                          <div className="font-medium text-slate-900">{row.offerName}</div>
+                          <div>angebot: {shortenId(row.offerId)}</div>
+                          <div>anbieter: {row.providerName}</div>
+                          <div>profil: {shortenId(row.providerPayoutProfileId)}</div>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-600">
+                          {shortenId(row.connectedAccountId)}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-700">
+                          <div>brutto: {formatMoney(row.grossCents, row.currency)}</div>
+                          <div>plattform: {formatMoney(row.platformFeeCents, row.currency)}</div>
+                          <div className="font-medium text-slate-900">netto: {formatMoney(row.netCents, row.currency)}</div>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-600">
+                          <div>transfer: {shortenId(row.stripeTransferId)}</div>
+                          <div>balance tx: {shortenId(row.stripeBalanceTransactionId)}</div>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-slate-600">
+                          <div>created: {formatDateTime(row.createdAt)}</div>
+                          <div>updated: {formatDateTime(row.updatedAt)}</div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Section>
+
           <Section
             title="Payment Transactions"
             description="Letzte gespiegelt erfasste oder aktualisierte Zahlungs-Transaktionen."
