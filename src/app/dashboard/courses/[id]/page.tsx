@@ -26,6 +26,10 @@ import {
   shouldWarnAboutLargeMailingGroup,
 } from "@/lib/mailto";
 import { getProviderDisplayName, type ProviderType } from "@/lib/provider-profiles";
+import {
+  getPaidOfferPublicationReadiness,
+  getProviderBillingProfile,
+} from "@/lib/provider-billing-profile";
 import { normalizeOfferVisibility } from "@/lib/public-offer-visibility";
 import { getPublicCourseById } from "@/lib/public-offers";
 import { getSiteUrl } from "@/lib/site-url";
@@ -381,6 +385,11 @@ export default async function DashboardCourseDetailPage({
     (data.kind === "course" && !getCourseTerminationModelValue({ termination_model: data.cancellation_model })) ||
     (data.kind !== "course" &&
       !getWorkshopCancellationPolicyValue({ cancellation_policy: data.workshop_storno_policy }));
+  const providerBillingProfile = await getProviderBillingProfile(admin, user.id);
+  const paidOfferReadiness = getPaidOfferPublicationReadiness(providerBillingProfile);
+  const publishBlockedForMissingPaidOfferProfile =
+    isOneTimeOfferKind(data.kind) && (data.price_cents ?? 0) > 0 && !paidOfferReadiness.isReady;
+  const publishBlocked = publishBlockedForMissingPolicy || publishBlockedForMissingPaidOfferProfile;
 
   const ticketByTrialReservationId = new Map(
     (trialTickets ?? [])
@@ -657,6 +666,11 @@ export default async function DashboardCourseDetailPage({
           Aktivieren nicht möglich. Bitte hinterlege zuerst die Stornierungs- bzw. Kündigungsbedingungen.
         </p>
       ) : null}
+      {savedParam === "missing_paid_offer_profile" ? (
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          Kostenpflichtige Angebote koennen erst aktiviert werden, wenn Steuer-, Adress-, Auszahlungs- und Stripe-Daten vollstaendig sind.
+        </p>
+      ) : null}
       {savedParam === "pause_scheduled" ? (
         <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
           Pause für das laufende Angebot wurde geplant.
@@ -724,7 +738,7 @@ export default async function DashboardCourseDetailPage({
         visitorPreviewEnabled={visitorPreviewEnabled}
         visibility={normalizeOfferVisibility(data.visibility)}
         visibilityLabel={getOfferVisibilityLabel(data.visibility)}
-        publishBlockedForMissingPolicy={publishBlockedForMissingPolicy}
+        publishBlockedForMissingPolicy={publishBlocked}
         contactMailHref={contactMailHref}
         calendarHref={calendarEnabled ? buildOfferCalendarPath(data.id) : null}
         calendarDisabledReason={calendarEnabled ? null : "Kalenderdatei erst mit Termin verfügbar"}
@@ -735,6 +749,11 @@ export default async function DashboardCourseDetailPage({
       {normalizedStatus === "draft" && publishBlockedForMissingPolicy ? (
         <p className="mt-3 text-sm text-red-700">
           Dieses Angebot kann erst aktiviert werden, wenn die passende Stornierungs- bzw. Kündigungsregel gesetzt ist.
+        </p>
+      ) : null}
+      {normalizedStatus === "draft" && publishBlockedForMissingPaidOfferProfile ? (
+        <p className="mt-3 text-sm text-red-700">
+          Kostenpflichtige Angebote koennen erst aktiviert werden, wenn Steuer-, Adress-, Auszahlungs- und Stripe-Daten vollstaendig sind.
         </p>
       ) : null}
       {showOfferMailWarning ? (

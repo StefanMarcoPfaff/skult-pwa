@@ -7,6 +7,10 @@ import { normalizeEmailRecipients } from "@/lib/mailto";
 import { getOfferKindLabel, getOfferVisibilityLabel, isOneTimeOfferKind } from "@/lib/offer-ui";
 import { buildOfferLocationDisplay } from "@/lib/offers/offer-view-model";
 import { normalizeOfferVisibility } from "@/lib/public-offer-visibility";
+import {
+  getPaidOfferPublicationReadiness,
+  getProviderBillingProfile,
+} from "@/lib/provider-billing-profile";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatWorkshopSessionLine } from "@/lib/workshop-offer-display";
@@ -143,6 +147,8 @@ export default async function DashboardCoursesPage({
     .eq("id", user.id)
     .maybeSingle<ProfileImageRow>();
   const providerImageUrl = profileImage?.company_logo_url ?? profileImage?.photo_url ?? null;
+  const providerBillingProfile = await getProviderBillingProfile(admin, user.id);
+  const paidOfferReadiness = getPaidOfferPublicationReadiness(providerBillingProfile);
 
   const baseSelect =
     "id,teacher_id,title,description,kind,status,is_published,visibility,location,location_details,instructor_name,offer_image_url,starts_at,ends_at,duration_minutes,capacity,weekday,start_time,recurrence_type,created_at,cancellation_model,workshop_storno_policy,pause_start_date,pause_end_date,stop_date,archived_at,price_cents,currency";
@@ -325,6 +331,7 @@ export default async function DashboardCoursesPage({
         !row.refunded_at &&
         !row.stripe_refund_id
     ).length;
+    const missingPaidOfferProfile = isOneTimeOfferKind(kind) && (offer.price_cents ?? 0) > 0 && !paidOfferReadiness.isReady;
     return {
       id: offer.id,
       title: offer.title,
@@ -361,6 +368,10 @@ export default async function DashboardCoursesPage({
       sortSeats: offer.capacity === null ? null : Math.max(0, offer.capacity - (isOneTimeOfferKind(kind) ? activeBookingCount : activeTrialCount + activeRegistrationCount)),
       sortBookings: isOneTimeOfferKind(kind) ? activeBookingCount : activeTrialCount + activeRegistrationCount,
       sortCreatedAt: offer.created_at ? new Date(offer.created_at).getTime() : null,
+      publishBlocked: missingPaidOfferProfile,
+      publishBlockedReason: missingPaidOfferProfile
+        ? "Kostenpflichtige Angebote koennen erst veroeffentlicht werden, wenn Steuer-, Adress-, Auszahlungs- und Stripe-Daten vollstaendig sind."
+        : null,
     };
   });
 

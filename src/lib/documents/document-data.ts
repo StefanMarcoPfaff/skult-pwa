@@ -109,9 +109,13 @@ function buildTaxHint(
     case "small_business":
       return "Profil der Anbietenden mit Kleinunternehmerstatus hinterlegt; Steuerberechnung bleibt in dieser PR unveraendert.";
     case "vat_registered":
-      return "Umsatzsteuerlich registriertes Profil der Anbietenden hinterlegt; Steuerberechnung bleibt in dieser PR unveraendert.";
+      return "Umsatzsteuerpflichtiges Profil ohne konkreten Steuersatz hinterlegt; fuer neue kostenpflichtige Angebote muss 19% oder 7% ausgewaehlt werden.";
+    case "vat_19":
+      return "Umsatzsteuerpflichtiges Profil mit 19% Umsatzsteuer hinterlegt.";
+    case "vat_7":
+      return "Umsatzsteuerpflichtiges Profil mit 7% Umsatzsteuer hinterlegt.";
     case "tax_exempt":
-      return "Steuerbefreites Profil der Anbietenden hinterlegt; Steuerberechnung bleibt in dieser PR unveraendert.";
+      return "Steuerbefreites Profil der Anbietenden hinterlegt; es wird keine Umsatzsteuer ausgewiesen.";
     default:
       return "Steuerberechnung bleibt unveraendert; das Dokument spiegelt nur die bereits vorhandenen Betraege.";
   }

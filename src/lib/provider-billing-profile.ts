@@ -13,6 +13,8 @@ export type ProviderBillingPayoutMethod = (typeof PROVIDER_BILLING_PAYOUT_METHOD
 export const PROVIDER_BILLING_VAT_STATUSES = [
   "small_business",
   "vat_registered",
+  "vat_19",
+  "vat_7",
   "tax_exempt",
 ] as const;
 export type ProviderBillingVatStatus = (typeof PROVIDER_BILLING_VAT_STATUSES)[number];
@@ -168,6 +170,11 @@ export type ProviderCustomConnectReadiness = {
   isPaymentProcessingConfigured: boolean;
 };
 
+export type PaidOfferPublicationReadiness = {
+  isReady: boolean;
+  missingFields: string[];
+};
+
 function normalizeOptionalText(value: string | null | undefined): string | null {
   const trimmed = String(value ?? "").trim();
   return trimmed ? trimmed : null;
@@ -185,6 +192,8 @@ export function isProviderBillingVatStatus(
   return (
     value === "small_business" ||
     value === "vat_registered" ||
+    value === "vat_19" ||
+    value === "vat_7" ||
     value === "tax_exempt"
   );
 }
@@ -433,6 +442,58 @@ export function isProviderCustomConnectPaymentProcessingConfigured(
   profile: ProviderBillingProfile | null
 ): boolean {
   return getProviderCustomConnectReadiness(profile).isPaymentProcessingConfigured;
+}
+
+export function getPaidOfferPublicationReadiness(
+  profile: ProviderBillingProfile | null
+): PaidOfferPublicationReadiness {
+  const missingFields: string[] = [];
+  const customConnectReadiness = getProviderCustomConnectReadiness(profile);
+
+  if (!profile) {
+    return {
+      isReady: false,
+      missingFields: ["Anbieterprofil fehlt"],
+    };
+  }
+
+  if (!profile.documentRecipientName || profile.documentRecipientName === "Anbietende") {
+    missingFields.push("vollstaendiger Name oder Organisationsname fehlt");
+  }
+
+  if (
+    !profile.billingAddressLine1 ||
+    !profile.billingPostalCode ||
+    !profile.billingCity ||
+    !profile.billingCountry
+  ) {
+    missingFields.push("vollstaendige Anschrift fehlt");
+  }
+
+  if (!profile.vatStatus) {
+    missingFields.push("Steuerstatus fehlt");
+  }
+
+  if (profile.vatStatus === "vat_registered") {
+    missingFields.push("konkreter Umsatzsteuersatz fehlt");
+  }
+
+  if ((profile.vatStatus === "vat_19" || profile.vatStatus === "vat_7") && !profile.taxNumber && !profile.vatId) {
+    missingFields.push("Steuernummer oder USt-ID fehlt");
+  }
+
+  if (!profile.payoutDestination || !profile.accountHolderName) {
+    missingFields.push("Auszahlungsdaten fehlen");
+  }
+
+  if (!customConnectReadiness.isPaymentProcessingConfigured) {
+    missingFields.push("Stripe Custom Connect ist nicht vollstaendig fuer Transfers eingerichtet");
+  }
+
+  return {
+    isReady: missingFields.length === 0,
+    missingFields,
+  };
 }
 
 export async function getProviderBillingProfile(

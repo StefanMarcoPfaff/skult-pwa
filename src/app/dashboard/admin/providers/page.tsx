@@ -147,7 +147,11 @@ function formatVatStatus(value: string | null): string {
     case "small_business":
       return "Kleinunternehmer*in";
     case "vat_registered":
-      return "umsatzsteuerpflichtig";
+      return "umsatzsteuerpflichtig (Satz offen)";
+    case "vat_19":
+      return "umsatzsteuerpflichtig 19%";
+    case "vat_7":
+      return "umsatzsteuerpflichtig 7%";
     case "tax_exempt":
       return "steuerbefreit";
     default:

@@ -65,6 +65,8 @@ export type CourseOverviewItem = {
   sortSeats: number | null;
   sortBookings: number;
   sortCreatedAt: number | null;
+  publishBlocked: boolean;
+  publishBlockedReason: string | null;
 };
 
 const STATUS_FILTER_OPTIONS: Array<{ value: CourseStatusFilter; label: string; tone: ChipTone }> = [

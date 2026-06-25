@@ -394,8 +394,10 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
             <select name="vat_status" defaultValue={initialValues.vat_status} className="w-full rounded-xl border px-3 py-2 text-sm">
               <option value="">Keine Angabe</option>
               <option value={PROVIDER_BILLING_VAT_STATUSES[0]}>Kleinunternehmer*in</option>
-              <option value={PROVIDER_BILLING_VAT_STATUSES[1]}>Umsatzsteuerpflichtig</option>
-              <option value={PROVIDER_BILLING_VAT_STATUSES[2]}>Steuerbefreit/Gemeinnützig</option>
+              <option value={PROVIDER_BILLING_VAT_STATUSES[1]}>Umsatzsteuerpflichtig (Steuersatz noch offen)</option>
+              <option value={PROVIDER_BILLING_VAT_STATUSES[2]}>Umsatzsteuerpflichtig 19%</option>
+              <option value={PROVIDER_BILLING_VAT_STATUSES[3]}>Umsatzsteuerpflichtig 7%</option>
+              <option value={PROVIDER_BILLING_VAT_STATUSES[4]}>Steuerbefreit/Gemeinnützig</option>
             </select>
           </label>
           <label className="space-y-1 sm:col-span-2">
@@ -486,3 +488,4 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
     </form>
   );
 }
+

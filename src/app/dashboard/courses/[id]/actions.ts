@@ -28,6 +28,10 @@ import {
 import { getCourseTerminationModelValue, getWorkshopCancellationPolicyValue } from "@/lib/offer-policies";
 import { buildOfferViewModel } from "@/lib/offers/offer-view-model";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
+import {
+  getPaidOfferPublicationReadiness,
+  getProviderBillingProfile,
+} from "@/lib/provider-billing-profile";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { sendTrialCourseStopNotificationEmail } from "@/lib/trial-reservation-emails";
@@ -112,6 +116,7 @@ export type OfferActivationActionResult =
         | "not_found"
         | "invalid_status"
         | "missing_policy"
+        | "missing_paid_offer_profile"
         | "update_failed"
         | "unknown";
     };
@@ -327,6 +332,21 @@ export async function setCoursePublishStateAction(formData: FormData) {
         reason: "missing_policy",
       });
       return { ok: false, error: "missing_policy" } satisfies OfferActivationActionResult;
+    }
+
+    if ((course.kind === "workshop" || course.kind === "exclusive_offer") && (course.price_cents ?? 0) > 0) {
+      const providerProfile = await getProviderBillingProfile(admin, user.id);
+      const paidOfferReadiness = getPaidOfferPublicationReadiness(providerProfile);
+
+      if (!paidOfferReadiness.isReady) {
+        console.error("[activate_offer_error]", {
+          courseId,
+          userId: user.id,
+          reason: "missing_paid_offer_profile",
+          missingFields: paidOfferReadiness.missingFields,
+        });
+        return { ok: false, error: "missing_paid_offer_profile" } satisfies OfferActivationActionResult;
+      }
     }
 
     const { data: updatedCourse, error } = await admin

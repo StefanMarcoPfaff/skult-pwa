@@ -31,6 +31,8 @@ function getErrorMessage(errorCode: string | undefined) {
       return "Dieses Angebot kann in seinem aktuellen Status nicht aktiviert werden.";
     case "missing_policy":
       return "Vor der Aktivierung muss zuerst eine Storno- bzw. Kündigungsregel hinterlegt sein.";
+    case "missing_paid_offer_profile":
+      return "Kostenpflichtige Angebote koennen erst veroeffentlicht werden, wenn Steuer-, Adress-, Auszahlungs- und Stripe-Daten vollstaendig sind.";
     case "update_failed":
       return "Das Angebot konnte nicht aktiviert werden. Bitte versuche es erneut.";
     case "timeout":

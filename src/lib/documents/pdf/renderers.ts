@@ -95,7 +95,11 @@ function taxStatusLabel(value: string | null | undefined): string | null {
     case "small_business":
       return "Kleinunternehmerregelung im Anbieterprofil hinterlegt.";
     case "vat_registered":
-      return "Umsatzsteuerlich registriertes Anbieterprofil hinterlegt.";
+      return "Umsatzsteuerpflichtiges Anbieterprofil ohne konkreten Steuersatz.";
+    case "vat_19":
+      return "Umsatzsteuerpflichtig 19%.";
+    case "vat_7":
+      return "Umsatzsteuerpflichtig 7%.";
     case "tax_exempt":
       return "Steuerbefreiung im Anbieterprofil hinterlegt.";
     default:
@@ -103,24 +107,64 @@ function taxStatusLabel(value: string | null | undefined): string | null {
   }
 }
 
-function taxAmountLabel(document: FinancialDocumentRecord, metadata: FinancialDocumentMetadata | null): string {
-  const taxAmount = document.tax_amount_cents ?? metadata?.amounts.taxAmountCents ?? null;
-  return typeof taxAmount === "number" ? formatMoney(taxAmount, document.currency) : "Nicht separat ausgewiesen";
+function vatRateForMetadata(metadata: FinancialDocumentMetadata | null): number | null {
+  switch (metadata?.providerBillingProfile?.vatStatus) {
+    case "vat_19":
+      return 0.19;
+    case "vat_7":
+      return 0.07;
+    default:
+      return null;
+  }
 }
 
-function taxRateLabel(metadata: FinancialDocumentMetadata | null): string {
-  return metadata?.amounts.taxAmountCents === null || typeof metadata?.amounts.taxAmountCents === "undefined"
-    ? "Nicht separat ausgewiesen"
-    : "Siehe Belegdaten";
+function calculateIncludedVatCents(grossAmountCents: number, vatRate: number | null): number | null {
+  if (vatRate === null) return null;
+  return Math.round(Math.max(0, grossAmountCents) * (vatRate / (1 + vatRate)));
 }
 
-function netAmountLabel(document: FinancialDocumentRecord, metadata: FinancialDocumentMetadata | null): string {
-  const taxAmount = document.tax_amount_cents ?? metadata?.amounts.taxAmountCents ?? null;
+function taxAmountLabel(amountCents: number, document: FinancialDocumentRecord, metadata: FinancialDocumentMetadata | null): string {
+  const explicitTaxAmount = document.tax_amount_cents ?? metadata?.amounts.taxAmountCents ?? null;
+  const taxAmount = typeof explicitTaxAmount === "number"
+    ? explicitTaxAmount
+    : calculateIncludedVatCents(amountCents, vatRateForMetadata(metadata));
+
   if (typeof taxAmount === "number") {
-    return formatMoney(Math.max(0, document.gross_amount_cents - taxAmount), document.currency);
+    return formatMoney(taxAmount, document.currency);
   }
 
   return "Nicht separat ausgewiesen";
+}
+
+function taxRateLabel(metadata: FinancialDocumentMetadata | null): string {
+  const vatRate = vatRateForMetadata(metadata);
+  return vatRate === null ? "Nicht separat ausgewiesen" : formatPercent(vatRate);
+}
+
+function netAmountLabel(amountCents: number, document: FinancialDocumentRecord, metadata: FinancialDocumentMetadata | null): string {
+  const explicitTaxAmount = document.tax_amount_cents ?? metadata?.amounts.taxAmountCents ?? null;
+  const taxAmount = typeof explicitTaxAmount === "number"
+    ? explicitTaxAmount
+    : calculateIncludedVatCents(amountCents, vatRateForMetadata(metadata));
+
+  if (typeof taxAmount === "number") {
+    return formatMoney(Math.max(0, amountCents - taxAmount), document.currency);
+  }
+
+  return "Nicht separat ausgewiesen";
+}
+
+function buildVatNotice(metadata: FinancialDocumentMetadata | null): string {
+  switch (metadata?.providerBillingProfile?.vatStatus) {
+    case "small_business":
+      return "Gemaess § 19 UStG wird keine Umsatzsteuer berechnet.";
+    case "tax_exempt":
+      return "Keine Umsatzsteuer ausgewiesen, da im Anbieterprofil steuerbefreit/gemeinnuetzig hinterlegt ist.";
+    case "vat_registered":
+      return "Kein konkreter Steuersatz hinterlegt; Umsatzsteuer wird nicht separat ausgewiesen.";
+    default:
+      return "Keine Umsatzsteuer ausgewiesen, solange kein eindeutiger Steuerstatus mit Steuersatz hinterlegt ist.";
+  }
 }
 
 function buildTaxLines(
@@ -130,9 +174,10 @@ function buildTaxLines(
 ): Array<[string, string]> {
   return [
     ["Bruttobetrag", formatMoney(baseAmountCents, document.currency)],
-    ["Nettobetrag", netAmountLabel(document, metadata)],
-    ["Umsatzsteuerbetrag", taxAmountLabel(document, metadata)],
+    ["Nettobetrag", netAmountLabel(baseAmountCents, document, metadata)],
+    ["Umsatzsteuerbetrag", taxAmountLabel(baseAmountCents, document, metadata)],
     ["Steuersatz", taxRateLabel(metadata)],
+    ["Steuerhinweis", buildVatNotice(metadata)],
   ];
 }
 
