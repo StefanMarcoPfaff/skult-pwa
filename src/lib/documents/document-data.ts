@@ -23,16 +23,31 @@ export type BuildFinancialDocumentDataInput = {
     title?: string | null;
     kind?: string | null;
     instructorName?: string | null;
+    startsAt?: string | null;
+    endsAt?: string | null;
+    location?: string | null;
+    locationDetails?: string | null;
   } | null;
   periodStart?: string | null;
   periodEnd?: string | null;
   bookingId?: string | null;
+  bookingCreatedAt?: string | null;
   courseId?: string | null;
   courseRegistrationIntentId?: string | null;
   subscriptionContractId?: string | null;
   payoutBatchId?: string | null;
   payoutItemId?: string | null;
   paymentTransactionId?: string | null;
+  payment?: {
+    provider?: string | null;
+    providerPaymentId?: string | null;
+    providerCheckoutId?: string | null;
+    stripeChargeId?: string | null;
+    stripePaymentIntentId?: string | null;
+    status?: string | null;
+    paidAt?: string | null;
+    createdAt?: string | null;
+  } | null;
   refundRecordId?: string | null;
   ledgerEntryId?: string | null;
   currency?: string | null;
@@ -139,6 +154,10 @@ async function buildFinancialDocumentData(
           title: normalizeOptionalText(input.offer.title),
           kind: normalizeOptionalText(input.offer.kind),
           instructorName: normalizeOptionalText(input.offer.instructorName),
+          startsAt: input.offer.startsAt ?? null,
+          endsAt: input.offer.endsAt ?? null,
+          location: normalizeOptionalText(input.offer.location),
+          locationDetails: normalizeOptionalText(input.offer.locationDetails),
         }
       : null,
     customer: input.customer
@@ -163,12 +182,26 @@ async function buildFinancialDocumentData(
       providerSharePercent: platformFeeConfig.providerSharePercent,
       taxAmountCents: input.taxAmountCents ?? null,
     },
+    payment: input.payment
+      ? {
+          provider: normalizeOptionalText(input.payment.provider),
+          paymentTransactionId: input.paymentTransactionId ?? null,
+          providerPaymentId: normalizeOptionalText(input.payment.providerPaymentId),
+          providerCheckoutId: normalizeOptionalText(input.payment.providerCheckoutId),
+          stripeChargeId: normalizeOptionalText(input.payment.stripeChargeId),
+          stripePaymentIntentId: normalizeOptionalText(input.payment.stripePaymentIntentId),
+          status: normalizeOptionalText(input.payment.status),
+          paidAt: input.payment.paidAt ?? null,
+          createdAt: input.payment.createdAt ?? null,
+        }
+      : null,
     platformFeeOverrideApplied: platformFeeConfig.isOverride,
     platformFeeOverrideNote: platformFeeConfig.overrideNote,
     platformFeeOverrideUpdatedAt: platformFeeConfig.overrideUpdatedAt,
     notes,
     source: {
       bookingId: input.bookingId ?? null,
+      bookingCreatedAt: input.bookingCreatedAt ?? null,
       courseId: input.courseId ?? input.offer?.courseId ?? null,
       courseRegistrationIntentId: input.courseRegistrationIntentId ?? null,
       subscriptionContractId: input.subscriptionContractId ?? null,

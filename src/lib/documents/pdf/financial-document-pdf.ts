@@ -34,11 +34,11 @@ function getDocumentMetadata(record: FinancialDocumentRecord): FinancialDocument
 
 function buildDocumentNumber(document: FinancialDocumentRecord): string {
   const prefixByType: Record<FinancialDocumentRecord["document_type"], string> = {
-    customer_receipt: "TMP-CR",
-    provider_payout_statement: "TMP-PS",
-    provider_platform_fee_invoice: "TMP-PFI",
-    platform_revenue_statement: "TMP-REV",
-    refund_receipt: "TMP-RR",
+    customer_receipt: "RESER-CR",
+    provider_payout_statement: "RESER-PS",
+    provider_platform_fee_invoice: "RESER-PFI",
+    platform_revenue_statement: "RESER-REV",
+    refund_receipt: "RESER-RR",
   };
 
   const issuedDate = new Date(document.issued_at ?? document.created_at ?? new Date().toISOString());

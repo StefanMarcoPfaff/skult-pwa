@@ -8,4 +8,7 @@ export const RESER_COMPANY = {
   legalName: "Stefan Pfaff",
   addressLines: ["Holstenplatz 13", "22765 Hamburg", "Deutschland"],
   email: "hello@getreser.app",
+  taxNumber: null,
+  vatId: null,
+  vatStatus: null,
 } as const;

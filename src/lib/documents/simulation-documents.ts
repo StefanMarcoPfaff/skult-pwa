@@ -18,10 +18,16 @@ type PaymentTransactionDocumentRow = {
   booking_id: string | null;
   course_registration_intent_id: string | null;
   subscription_contract_id: string | null;
+  provider: string | null;
+  provider_payment_id: string | null;
+  provider_checkout_id: string | null;
+  stripe_charge_id: string | null;
+  stripe_payment_intent_id: string | null;
   amount_cents: number;
   currency: string;
   status: string;
   paid_at: string | null;
+  created_at: string;
 };
 
 type BookingDocumentRow = {
@@ -30,6 +36,7 @@ type BookingDocumentRow = {
   customer_first_name: string | null;
   customer_last_name: string | null;
   customer_email: string | null;
+  created_at: string;
 };
 
 type CourseRegistrationIntentDocumentRow = {
@@ -55,6 +62,10 @@ type CourseDocumentRow = {
   kind: string | null;
   instructor_name: string | null;
   teacher_id: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  location: string | null;
+  location_details: string | null;
 };
 
 type LedgerEntryDocumentRow = {
@@ -193,7 +204,7 @@ async function loadDocumentContext(input: {
       ? (
           await supabase
             .from("payment_transactions")
-            .select("id,booking_id,course_registration_intent_id,subscription_contract_id,amount_cents,currency,status,paid_at")
+            .select("id,booking_id,course_registration_intent_id,subscription_contract_id,provider,provider_payment_id,provider_checkout_id,stripe_charge_id,stripe_payment_intent_id,amount_cents,currency,status,paid_at,created_at")
             .eq("id", input.paymentTransactionId)
             .maybeSingle<PaymentTransactionDocumentRow>()
         ).data ?? null
@@ -224,7 +235,7 @@ async function loadDocumentContext(input: {
     bookingId
       ? supabase
           .from("bookings")
-          .select("id,course_id,customer_first_name,customer_last_name,customer_email")
+          .select("id,course_id,customer_first_name,customer_last_name,customer_email,created_at")
           .eq("id", bookingId)
           .maybeSingle<BookingDocumentRow>()
       : Promise.resolve({ data: null as BookingDocumentRow | null, error: null }),
@@ -252,7 +263,7 @@ async function loadDocumentContext(input: {
       ? (
           await supabase
             .from("courses")
-            .select("id,title,kind,instructor_name,teacher_id")
+            .select("id,title,kind,instructor_name,teacher_id,starts_at,ends_at,location,location_details")
             .eq("id", courseId)
             .maybeSingle<CourseDocumentRow>()
         ).data ?? null
@@ -327,12 +338,29 @@ export async function ensureCustomerReceiptForPayment(input: {
       title: context.course?.title ?? null,
       kind: context.course?.kind ?? null,
       instructorName: context.course?.instructor_name ?? null,
+      startsAt: context.course?.starts_at ?? null,
+      endsAt: context.course?.ends_at ?? null,
+      location: context.course?.location ?? null,
+      locationDetails: context.course?.location_details ?? null,
     },
+    periodStart: context.course?.starts_at ?? null,
+    periodEnd: context.course?.ends_at ?? context.course?.starts_at ?? null,
     bookingId: context.bookingId,
+    bookingCreatedAt: context.booking?.created_at ?? null,
     courseId: context.courseId,
     courseRegistrationIntentId: context.courseRegistrationIntentId,
     subscriptionContractId: context.subscriptionContractId,
     paymentTransactionId: context.paymentTransaction.id,
+    payment: {
+      provider: context.paymentTransaction.provider,
+      providerPaymentId: context.paymentTransaction.provider_payment_id,
+      providerCheckoutId: context.paymentTransaction.provider_checkout_id,
+      stripeChargeId: context.paymentTransaction.stripe_charge_id,
+      stripePaymentIntentId: context.paymentTransaction.stripe_payment_intent_id,
+      status: context.paymentTransaction.status,
+      paidAt: context.paymentTransaction.paid_at,
+      createdAt: context.paymentTransaction.created_at,
+    },
     currency: context.paymentTransaction.currency,
     grossAmountCents: context.paymentTransaction.amount_cents,
     platformFeeCents: 0,
@@ -414,16 +442,33 @@ async function ensureProviderPayoutDocumentRecord(input: {
       title: input.context.course?.title ?? null,
       kind: input.context.course?.kind ?? null,
       instructorName: input.context.course?.instructor_name ?? null,
+      startsAt: input.context.course?.starts_at ?? null,
+      endsAt: input.context.course?.ends_at ?? null,
+      location: input.context.course?.location ?? null,
+      locationDetails: input.context.course?.location_details ?? null,
     },
     periodStart: input.ledgerEntry.service_period_start,
     periodEnd: input.ledgerEntry.service_period_end,
     bookingId: input.context.bookingId,
+    bookingCreatedAt: input.context.booking?.created_at ?? null,
     courseId: input.context.courseId,
     courseRegistrationIntentId: input.context.courseRegistrationIntentId,
     subscriptionContractId: input.context.subscriptionContractId,
     payoutBatchId: input.payoutBatchId,
     payoutItemId: input.payoutItemId,
     paymentTransactionId: input.context.paymentTransaction?.id ?? null,
+    payment: input.context.paymentTransaction
+      ? {
+          provider: input.context.paymentTransaction.provider,
+          providerPaymentId: input.context.paymentTransaction.provider_payment_id,
+          providerCheckoutId: input.context.paymentTransaction.provider_checkout_id,
+          stripeChargeId: input.context.paymentTransaction.stripe_charge_id,
+          stripePaymentIntentId: input.context.paymentTransaction.stripe_payment_intent_id,
+          status: input.context.paymentTransaction.status,
+          paidAt: input.context.paymentTransaction.paid_at,
+          createdAt: input.context.paymentTransaction.created_at,
+        }
+      : null,
     ledgerEntryId: input.ledgerEntry.id,
     currency: input.ledgerEntry.currency,
     grossAmountCents: input.ledgerEntry.gross_amount_cents,
@@ -510,14 +555,31 @@ export async function ensurePlatformRevenueDocumentForLedgerEntry(input: {
       title: context.course?.title ?? null,
       kind: context.course?.kind ?? null,
       instructorName: context.course?.instructor_name ?? null,
+      startsAt: context.course?.starts_at ?? null,
+      endsAt: context.course?.ends_at ?? null,
+      location: context.course?.location ?? null,
+      locationDetails: context.course?.location_details ?? null,
     },
     periodStart: ledgerEntry.service_period_start,
     periodEnd: ledgerEntry.service_period_end,
     bookingId: context.bookingId,
+    bookingCreatedAt: context.booking?.created_at ?? null,
     courseId: context.courseId,
     courseRegistrationIntentId: context.courseRegistrationIntentId,
     subscriptionContractId: context.subscriptionContractId,
     paymentTransactionId,
+    payment: context.paymentTransaction
+      ? {
+          provider: context.paymentTransaction.provider,
+          providerPaymentId: context.paymentTransaction.provider_payment_id,
+          providerCheckoutId: context.paymentTransaction.provider_checkout_id,
+          stripeChargeId: context.paymentTransaction.stripe_charge_id,
+          stripePaymentIntentId: context.paymentTransaction.stripe_payment_intent_id,
+          status: context.paymentTransaction.status,
+          paidAt: context.paymentTransaction.paid_at,
+          createdAt: context.paymentTransaction.created_at,
+        }
+      : null,
     ledgerEntryId: ledgerEntry.id,
     currency: ledgerEntry.currency,
     grossAmountCents: ledgerEntry.gross_amount_cents,

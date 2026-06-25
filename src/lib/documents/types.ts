@@ -50,6 +50,10 @@ export type FinancialDocumentOfferSnapshot = {
   title: string | null;
   kind: string | null;
   instructorName: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  location: string | null;
+  locationDetails: string | null;
 };
 
 export type FinancialDocumentCustomerSnapshot = {
@@ -72,6 +76,18 @@ export type FinancialDocumentAmountsSnapshot = {
   taxAmountCents: number | null;
 };
 
+export type FinancialDocumentPaymentSnapshot = {
+  provider: string | null;
+  paymentTransactionId: string | null;
+  providerPaymentId: string | null;
+  providerCheckoutId: string | null;
+  stripeChargeId: string | null;
+  stripePaymentIntentId: string | null;
+  status: string | null;
+  paidAt: string | null;
+  createdAt: string | null;
+};
+
 export type FinancialDocumentMetadata = {
   roleNotice: string;
   taxHint: string | null;
@@ -80,9 +96,11 @@ export type FinancialDocumentMetadata = {
   customer: FinancialDocumentCustomerSnapshot | null;
   period: FinancialDocumentPeriodSnapshot | null;
   amounts: FinancialDocumentAmountsSnapshot;
+  payment: FinancialDocumentPaymentSnapshot | null;
   notes: string[];
   source: {
     bookingId: string | null;
+    bookingCreatedAt: string | null;
     courseId: string | null;
     courseRegistrationIntentId: string | null;
     subscriptionContractId: string | null;
