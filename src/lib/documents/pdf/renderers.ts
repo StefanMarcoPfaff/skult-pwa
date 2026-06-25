@@ -313,9 +313,9 @@ function buildCustomerReceiptLines(input: RenderPdfInput): PdfLine[] {
       ["Steuerstatus", normalizeText(providerTaxStatus, "-")],
     ]),
     ...buildKeyValueLines("Empfaenger*in", [
-      ["Name", normalizeText(customer?.name)],
+      ["Name", normalizeText(customer?.billingName ?? customer?.name)],
       ["E-Mail", normalizeText(customer?.email ?? document.customer_email)],
-      ["Adresse", "-"],
+      ["Adresse", normalizeText(customer?.billingAddressFormatted?.replace(/\n/g, ", "))],
     ]),
     ...buildKeyValueLines("Leistung", buildOfferEntries(document, metadata)),
     ...buildKeyValueLines("Zahlung", buildPaymentEntries(document, metadata)),

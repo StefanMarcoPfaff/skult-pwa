@@ -59,6 +59,14 @@ export type FinancialDocumentOfferSnapshot = {
 export type FinancialDocumentCustomerSnapshot = {
   name: string | null;
   email: string | null;
+  billingName: string | null;
+  billingStreet: string | null;
+  billingHouseNumber: string | null;
+  billingPostalCode: string | null;
+  billingCity: string | null;
+  billingCountry: string | null;
+  billingAddressLines: string[];
+  billingAddressFormatted: string | null;
 };
 
 export type FinancialDocumentPeriodSnapshot = {

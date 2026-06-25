@@ -100,6 +100,12 @@ export function PayButton({
     lastName: "",
     email: "",
     phone: "",
+    billingName: "",
+    billingStreet: "",
+    billingHouseNumber: "",
+    billingPostalCode: "",
+    billingCity: "",
+    billingCountry: "",
   });
   const [consents, setConsents] = useState({
     termsAndPrivacyAccepted: false,
@@ -130,6 +136,16 @@ export function PayButton({
           lastName: form.lastName,
           email: form.email,
           phone: form.phone,
+          billingAddress: isFreeOffer
+            ? undefined
+            : {
+                name: form.billingName,
+                street: form.billingStreet,
+                houseNumber: form.billingHouseNumber,
+                postalCode: form.billingPostalCode,
+                city: form.billingCity,
+                country: form.billingCountry,
+              },
           agbAccepted: consents.termsAndPrivacyAccepted,
           privacyAccepted: consents.termsAndPrivacyAccepted,
           workshopStornoAccepted: cancellationRequired ? consents.workshopStornoAccepted : true,
@@ -204,6 +220,68 @@ export function PayButton({
           Land und Buchung an, zum Beispiel Karte, Apple Pay, Google Pay, SEPA oder Klarna.
         </p>
       )}
+
+      {!isFreeOffer ? (
+        <div className="space-y-3 rounded-xl border p-4">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold">Rechnungsadresse</h3>
+            <p className="text-xs text-muted-foreground">
+              Wenn du einen vollständigen Beleg für deine Unterlagen oder Buchhaltung erhalten
+              möchtest, kannst du hier optional deine Rechnungsadresse angeben.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-1 sm:col-span-2">
+              <span className="text-sm font-medium">Name (falls abweichend)</span>
+              <input
+                value={form.billingName}
+                onChange={(event) => setForm((current) => ({ ...current, billingName: event.target.value }))}
+                className="w-full rounded-xl border px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-sm font-medium">Straße</span>
+              <input
+                value={form.billingStreet}
+                onChange={(event) => setForm((current) => ({ ...current, billingStreet: event.target.value }))}
+                className="w-full rounded-xl border px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-sm font-medium">Hausnummer</span>
+              <input
+                value={form.billingHouseNumber}
+                onChange={(event) => setForm((current) => ({ ...current, billingHouseNumber: event.target.value }))}
+                className="w-full rounded-xl border px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-sm font-medium">PLZ</span>
+              <input
+                value={form.billingPostalCode}
+                onChange={(event) => setForm((current) => ({ ...current, billingPostalCode: event.target.value }))}
+                className="w-full rounded-xl border px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-sm font-medium">Ort</span>
+              <input
+                value={form.billingCity}
+                onChange={(event) => setForm((current) => ({ ...current, billingCity: event.target.value }))}
+                className="w-full rounded-xl border px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="space-y-1 sm:col-span-2">
+              <span className="text-sm font-medium">Land</span>
+              <input
+                value={form.billingCountry}
+                onChange={(event) => setForm((current) => ({ ...current, billingCountry: event.target.value }))}
+                className="w-full rounded-xl border px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+        </div>
+      ) : null}
 
       <BookingConsentFields
         termsAndPrivacyAccepted={consents.termsAndPrivacyAccepted}

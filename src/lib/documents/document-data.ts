@@ -17,6 +17,12 @@ export type BuildFinancialDocumentDataInput = {
   customer?: {
     name?: string | null;
     email?: string | null;
+    billingName?: string | null;
+    billingStreet?: string | null;
+    billingHouseNumber?: string | null;
+    billingPostalCode?: string | null;
+    billingCity?: string | null;
+    billingCountry?: string | null;
   } | null;
   offer?: {
     courseId?: string | null;
@@ -66,6 +72,27 @@ function normalizeCurrency(currency: string | null | undefined): string {
 function normalizeOptionalText(value: string | null | undefined): string | null {
   const trimmed = String(value ?? "").trim();
   return trimmed ? trimmed : null;
+}
+
+function buildCustomerBillingAddressLines(customer: BuildFinancialDocumentDataInput["customer"]): string[] {
+  const streetLine = [
+    normalizeOptionalText(customer?.billingStreet),
+    normalizeOptionalText(customer?.billingHouseNumber),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const cityLine = [
+    normalizeOptionalText(customer?.billingPostalCode),
+    normalizeOptionalText(customer?.billingCity),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  return [streetLine, cityLine, normalizeOptionalText(customer?.billingCountry)].filter(
+    (value): value is string => Boolean(value)
+  );
 }
 
 function buildProviderSnapshot(
@@ -165,10 +192,21 @@ async function buildFinancialDocumentData(
         }
       : null,
     customer: input.customer
-      ? {
-          name: normalizeOptionalText(input.customer.name),
-          email: normalizeOptionalText(input.customer.email),
-        }
+      ? (() => {
+          const billingAddressLines = buildCustomerBillingAddressLines(input.customer);
+          return {
+            name: normalizeOptionalText(input.customer.name),
+            email: normalizeOptionalText(input.customer.email),
+            billingName: normalizeOptionalText(input.customer.billingName),
+            billingStreet: normalizeOptionalText(input.customer.billingStreet),
+            billingHouseNumber: normalizeOptionalText(input.customer.billingHouseNumber),
+            billingPostalCode: normalizeOptionalText(input.customer.billingPostalCode),
+            billingCity: normalizeOptionalText(input.customer.billingCity),
+            billingCountry: normalizeOptionalText(input.customer.billingCountry),
+            billingAddressLines,
+            billingAddressFormatted: billingAddressLines.length > 0 ? billingAddressLines.join("\n") : null,
+          };
+        })()
       : null,
     period:
       input.periodStart || input.periodEnd

@@ -36,6 +36,12 @@ type BookingDocumentRow = {
   customer_first_name: string | null;
   customer_last_name: string | null;
   customer_email: string | null;
+  customer_billing_name: string | null;
+  customer_billing_street: string | null;
+  customer_billing_house_number: string | null;
+  customer_billing_postal_code: string | null;
+  customer_billing_city: string | null;
+  customer_billing_country: string | null;
   created_at: string;
 };
 
@@ -235,7 +241,7 @@ async function loadDocumentContext(input: {
     bookingId
       ? supabase
           .from("bookings")
-          .select("id,course_id,customer_first_name,customer_last_name,customer_email,created_at")
+          .select("id,course_id,customer_first_name,customer_last_name,customer_email,customer_billing_name,customer_billing_street,customer_billing_house_number,customer_billing_postal_code,customer_billing_city,customer_billing_country,created_at")
           .eq("id", bookingId)
           .maybeSingle<BookingDocumentRow>()
       : Promise.resolve({ data: null as BookingDocumentRow | null, error: null }),
@@ -332,6 +338,12 @@ export async function ensureCustomerReceiptForPayment(input: {
     customer: {
       name: context.customerName,
       email: context.customerEmail,
+      billingName: context.booking?.customer_billing_name ?? null,
+      billingStreet: context.booking?.customer_billing_street ?? null,
+      billingHouseNumber: context.booking?.customer_billing_house_number ?? null,
+      billingPostalCode: context.booking?.customer_billing_postal_code ?? null,
+      billingCity: context.booking?.customer_billing_city ?? null,
+      billingCountry: context.booking?.customer_billing_country ?? null,
     },
     offer: {
       courseId: context.courseId,
