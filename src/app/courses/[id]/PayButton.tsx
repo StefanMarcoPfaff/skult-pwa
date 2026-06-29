@@ -9,7 +9,14 @@ type PayButtonProps = {
   priceLabel?: string | null;
   stornoPolicyLabel?: string | null;
   showCancellationTerms?: boolean;
+  maxGuestCountPerBooking?: number;
   disabled?: boolean;
+};
+
+type GuestForm = {
+  firstName: string;
+  lastName: string;
+  email: string;
 };
 
 type BookingConsentFieldsProps = {
@@ -91,6 +98,7 @@ export function PayButton({
   priceLabel,
   stornoPolicyLabel,
   showCancellationTerms = false,
+  maxGuestCountPerBooking = 0,
   disabled,
 }: PayButtonProps) {
   const [loading, setLoading] = useState(false);
@@ -111,17 +119,30 @@ export function PayButton({
     termsAndPrivacyAccepted: false,
     workshopStornoAccepted: false,
   });
+  const [guestCount, setGuestCount] = useState(0);
+  const [guests, setGuests] = useState<GuestForm[]>([]);
 
   const isFreeOffer = priceLabel === "Kostenlos" || priceLabel === "Kostenfreie Reservierung";
   const cancellationLabel = stornoPolicyLabel?.trim() || null;
   const cancellationRequired = showCancellationTerms && Boolean(cancellationLabel);
+  const normalizedMaxGuestCount = Math.max(0, Math.trunc(maxGuestCountPerBooking));
+  const selectedGuests = guests.slice(0, guestCount);
   const canSubmit =
     Boolean(form.firstName.trim()) &&
     Boolean(form.lastName.trim()) &&
     Boolean(form.email.trim()) &&
     Boolean(form.phone.trim()) &&
+    selectedGuests.every((guest) => guest.firstName.trim() && guest.lastName.trim()) &&
     consents.termsAndPrivacyAccepted &&
     (!cancellationRequired || consents.workshopStornoAccepted);
+
+  function updateGuestCount(nextCount: number) {
+    const boundedCount = Math.max(0, Math.min(normalizedMaxGuestCount, nextCount));
+    setGuestCount(boundedCount);
+    setGuests((current) =>
+      Array.from({ length: boundedCount }, (_, index) => current[index] ?? { firstName: "", lastName: "", email: "" })
+    );
+  }
 
   async function startCheckout() {
     setErr(null);
@@ -146,6 +167,11 @@ export function PayButton({
                 city: form.billingCity,
                 country: form.billingCountry,
               },
+          guests: selectedGuests.map((guest) => ({
+            firstName: guest.firstName,
+            lastName: guest.lastName,
+            email: guest.email,
+          })),
           agbAccepted: consents.termsAndPrivacyAccepted,
           privacyAccepted: consents.termsAndPrivacyAccepted,
           workshopStornoAccepted: cancellationRequired ? consents.workshopStornoAccepted : true,
@@ -220,6 +246,75 @@ export function PayButton({
           Land und Buchung an, zum Beispiel Karte, Apple Pay, Google Pay, SEPA oder Klarna.
         </p>
       )}
+
+      {normalizedMaxGuestCount > 0 ? (
+        <div className="space-y-3 rounded-xl border p-4">
+          <label className="block space-y-1">
+            <span className="text-sm font-medium">Begleitpersonen</span>
+            <select
+              value={guestCount}
+              onChange={(event) => updateGuestCount(Number(event.target.value))}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            >
+              {Array.from({ length: normalizedMaxGuestCount + 1 }, (_, index) => (
+                <option key={index} value={index}>
+                  {index}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {selectedGuests.map((guest, index) => (
+            <div key={index} className="grid gap-3 border-t pt-3 sm:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-sm font-medium">Vorname Begleitperson {index + 1} *</span>
+                <input
+                  value={guest.firstName}
+                  onChange={(event) =>
+                    setGuests((current) =>
+                      current.map((item, itemIndex) =>
+                        itemIndex === index ? { ...item, firstName: event.target.value } : item
+                      )
+                    )
+                  }
+                  className="w-full rounded-xl border px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm font-medium">Nachname Begleitperson {index + 1} *</span>
+                <input
+                  value={guest.lastName}
+                  onChange={(event) =>
+                    setGuests((current) =>
+                      current.map((item, itemIndex) =>
+                        itemIndex === index ? { ...item, lastName: event.target.value } : item
+                      )
+                    )
+                  }
+                  className="w-full rounded-xl border px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="space-y-1 sm:col-span-2">
+                <span className="text-sm font-medium">E-Mail Begleitperson {index + 1}</span>
+                <input
+                  type="email"
+                  value={guest.email}
+                  onChange={(event) =>
+                    setGuests((current) =>
+                      current.map((item, itemIndex) =>
+                        itemIndex === index ? { ...item, email: event.target.value } : item
+                      )
+                    )
+                  }
+                  className="w-full rounded-xl border px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+          ))}
+
+          <p className="text-sm text-muted-foreground">Gesamtplaetze: {1 + guestCount}</p>
+        </div>
+      ) : null}
 
       {!isFreeOffer ? (
         <div className="space-y-3 rounded-xl border p-4">

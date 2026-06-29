@@ -208,6 +208,14 @@ export default async function CourseDetailPage({
       })
     : null;
   const displayedPrice = isSinglePaymentOffer ? formatWorkshopPriceLabel(priceCents, asString(data.currency)) : price;
+  const maxGuestCountPerBooking = Math.max(
+    0,
+    Math.trunc(publicCourse?.max_guest_count_per_booking ?? asNumber(data.max_guest_count_per_booking) ?? 0)
+  );
+  const selectableGuestCount =
+    availability.free === null
+      ? maxGuestCountPerBooking
+      : Math.min(maxGuestCountPerBooking, Math.max(0, availability.free - 1));
   const offerViewModel = buildOfferViewModel({
     course: {
       title,
@@ -322,6 +330,7 @@ export default async function CourseDetailPage({
                 priceLabel={displayedPrice}
                 stornoPolicyLabel={workshopPolicyLabel}
                 showCancellationTerms={offerViewModel.showCancellationTerms}
+                maxGuestCountPerBooking={selectableGuestCount}
                 disabled={availability.isSoldOut}
               />
               </>

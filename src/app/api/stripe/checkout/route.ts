@@ -28,6 +28,11 @@ import {
   normalizeWorkshopCurrency,
 } from "@/lib/workshop-checkout";
 import { finalizeFreeWorkshopBooking } from "@/lib/workshop-booking-finalization";
+import {
+  getWorkshopSeatCount,
+  parseWorkshopBookingGuests,
+  validateWorkshopBookingGuests,
+} from "@/lib/workshop-booking-guests";
 import { getWorkshopCancellationPolicyValue } from "@/lib/offer-policies";
 import { shouldShowWorkshopCancellationPolicy } from "@/lib/workshop-offer-display";
 import crypto from "crypto";
@@ -69,6 +74,7 @@ export async function POST(req: Request) {
       agbAccepted,
       privacyAccepted,
       workshopStornoAccepted,
+      guests,
     } = (await req.json()) as {
       courseId?: string;
       firstName?: string;
@@ -86,6 +92,7 @@ export async function POST(req: Request) {
       agbAccepted?: boolean;
       privacyAccepted?: boolean;
       workshopStornoAccepted?: boolean;
+      guests?: unknown;
     };
 
     if (!courseId) {
@@ -117,7 +124,7 @@ export async function POST(req: Request) {
     const supabase = createSupabaseAdmin();
     const { data: course, error: courseErr } = await supabase
       .from("courses")
-      .select("id,title,teacher_id,kind,price_cents,currency,capacity,starts_at,ends_at,is_published,status,visibility,workshop_storno_policy")
+      .select("id,title,teacher_id,kind,price_cents,currency,capacity,max_guest_count_per_booking,starts_at,ends_at,is_published,status,visibility,workshop_storno_policy")
       .eq("id", courseId)
       .maybeSingle<{
         id: string;
@@ -127,6 +134,7 @@ export async function POST(req: Request) {
         price_cents: number | null;
         currency: string | null;
         capacity: number | null;
+        max_guest_count_per_booking: number | null;
         starts_at: string | null;
         ends_at: string | null;
         is_published: boolean | null;
@@ -171,6 +179,17 @@ export async function POST(req: Request) {
     const isFreeOffer = normalizedPriceCents <= 0;
 
     const capacity = typeof course.capacity === "number" ? course.capacity : null;
+    const bookingGuests = parseWorkshopBookingGuests(guests);
+    const guestValidation = validateWorkshopBookingGuests({
+      guests: bookingGuests,
+      maxGuestCount: course.max_guest_count_per_booking,
+      capacity,
+      mainEmail: customerEmail,
+    });
+    if (!guestValidation.ok) {
+      return NextResponse.json({ error: guestValidation.error }, { status: guestValidation.status });
+    }
+    const totalSeats = getWorkshopSeatCount(bookingGuests.length);
     const workshopCanBook = isWorkshopBookable(course.starts_at, course.ends_at);
     const availability = buildOfferAvailability(
       Number.isFinite(capacity) ? capacity : null,
@@ -182,8 +201,11 @@ export async function POST(req: Request) {
     if (!workshopCanBook) {
       return NextResponse.json({ error: "Dieses Angebot ist nicht mehr buchbar." }, { status: 400 });
     }
-    if (availability.isSoldOut) {
-      return NextResponse.json({ error: "Dieses Angebot ist aktuell ausgebucht." }, { status: 400 });
+    if (availability.isSoldOut || (availability.free !== null && availability.free < totalSeats)) {
+      return NextResponse.json(
+        { error: "Dieses Angebot hat nicht mehr genuegend freie Plaetze." },
+        { status: 400 }
+      );
     }
 
     const hasDuplicateBooking = await hasActiveWorkshopBookingForEmail({
@@ -239,6 +261,30 @@ export async function POST(req: Request) {
         { error: bookingErr?.message || "Reservierung konnte nicht erstellt werden." },
         { status: 500 }
       );
+    }
+
+    if (bookingGuests.length > 0) {
+      const { error: guestsInsertError } = await supabase.from("workshop_booking_guests").insert(
+        bookingGuests.map((guest, index) => ({
+          booking_id: booking.id,
+          course_id: course.id,
+          first_name: guest.firstName,
+          last_name: guest.lastName,
+          email: guest.email,
+          position: index + 1,
+        }))
+      );
+
+      if (guestsInsertError) {
+        await supabase
+          .from("bookings")
+          .update({ status: "cancelled", payment_status: "cancelled" })
+          .eq("id", booking.id);
+        return NextResponse.json(
+          { error: guestsInsertError.message || "Begleitpersonen konnten nicht reserviert werden." },
+          { status: 400 }
+        );
+      }
     }
 
     if (isFreeOffer) {
@@ -371,7 +417,7 @@ export async function POST(req: Request) {
       },
       lineItems: [
         {
-          quantity: 1,
+          quantity: totalSeats,
           priceData: {
             currency: workshopCurrency,
             unitAmount: normalizedPriceCents,
@@ -403,6 +449,8 @@ export async function POST(req: Request) {
         customerLastName,
         customerEmail,
         customerPhone,
+        totalSeats: String(totalSeats),
+        guestCount: String(bookingGuests.length),
       },
       clientReferenceId: booking.id,
     });

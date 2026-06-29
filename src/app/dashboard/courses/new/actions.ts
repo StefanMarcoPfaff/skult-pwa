@@ -312,6 +312,7 @@ async function createOrUpdateWorkshop(
   const location = parseOptionalString(formData.get("location"));
   const location_details = parseOptionalString(formData.get("location_details"));
   const capacity = parseOptionalInt(formData.get("capacity"));
+  const max_guest_count_per_booking = parseOptionalInt(formData.get("max_guest_count_per_booking")) ?? 0;
   const price_cents = parseOptionalInt(formData.get("price_cents"));
   const currency = normalizeWorkshopCurrency(String(formData.get("currency") || ""));
   const workshop_storno_policy = String(formData.get("workshop_storno_policy") || "").trim();
@@ -330,6 +331,12 @@ async function createOrUpdateWorkshop(
   }
   const sessions = parseSessionsJson(formData);
   if (!sessions) return { error: "Bitte fuege mindestens einen gueltigen Termin hinzu (Ende nach Start)." };
+  if (max_guest_count_per_booking < 0) {
+    return { error: "Begleitpersonen pro Buchung muss mindestens 0 sein." };
+  }
+  if (capacity !== null && max_guest_count_per_booking > Math.max(0, capacity - 1)) {
+    return { error: "Begleitpersonen pro Buchung duerfen hoechstens Kapazitaet minus 1 sein." };
+  }
   if (!isWorkshopStornoPolicy(workshop_storno_policy)) {
     return { error: "Bitte waehle eine gueltige Storno-Regel." };
   }
@@ -381,6 +388,7 @@ async function createOrUpdateWorkshop(
           instructor_name,
           workshop_storno_policy,
           capacity,
+          max_guest_count_per_booking,
           price_cents,
           currency,
           visibility,
@@ -440,6 +448,7 @@ async function createOrUpdateWorkshop(
           p_instructor_name: instructor_name,
           p_workshop_storno_policy: workshop_storno_policy,
           p_capacity: capacity,
+          p_max_guest_count_per_booking: max_guest_count_per_booking,
           p_price_cents: price_cents,
           p_currency: currency,
           p_sessions: sessions,
@@ -516,6 +525,7 @@ async function createOrUpdateWorkshop(
           instructor_name,
           workshop_storno_policy,
           capacity,
+          max_guest_count_per_booking,
           price_cents,
           currency,
           starts_at: firstSessionStart,

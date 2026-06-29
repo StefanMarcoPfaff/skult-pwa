@@ -338,9 +338,13 @@ export default async function DashboardAttendancePage({
     return true;
   });
 
-  const workshopTicketsByBookingId = new Map(
-    ticketRows.filter((ticket) => ticket.booking_id).map((ticket) => [ticket.booking_id as string, ticket])
-  );
+  const workshopTicketsByBookingId = new Map<string, TicketRow[]>();
+  for (const ticket of ticketRows.filter((row) => row.booking_id)) {
+    const bookingId = ticket.booking_id as string;
+    const current = workshopTicketsByBookingId.get(bookingId) ?? [];
+    current.push(ticket);
+    workshopTicketsByBookingId.set(bookingId, current);
+  }
   const trialTicketsByReservationId = new Map(
     ticketRows
       .filter((ticket) => ticket.trial_reservation_id)
@@ -370,28 +374,28 @@ export default async function DashboardAttendancePage({
 
     if (course.kind === "workshop") {
       for (const booking of workshopBookings.filter((row) => row.course_id === course.id)) {
-        const ticket = workshopTicketsByBookingId.get(booking.id);
-        if (!ticket) continue;
-        const attendance = attendanceByKey.get(`${event.sessionId ?? event.eventDate}::${ticket.id}`) ?? null;
-        rows.push({
-          rowKey: `${event.sessionId ?? event.eventDate}::${ticket.id}`,
-          date: formatDate(event.startsAt ?? event.eventDate),
-          time: formatTime(event.startsAt),
-          offerTitle: course.title ?? "Einmaliges Angebot",
-          offerKind: kindLabel,
-          participantName: formatName(
-            booking.customer_first_name,
-            booking.customer_last_name,
-            ticket.customer_name || "Teilnehmer*in eines einmaligen Angebots"
-          ),
-          participantEmail: booking.customer_email ?? ticket.customer_email ?? null,
-          instructorName,
-          room: attendance?.room ?? room,
-          methodLabel: mapMethodLabel(attendance?.method ?? null),
-          checkedInAt: attendance?.checked_in_at ?? null,
-          status: attendance ? "present" : "not_checked_in",
-          sortDate: new Date(event.startsAt ?? event.eventDate).getTime(),
-        });
+        for (const ticket of workshopTicketsByBookingId.get(booking.id) ?? []) {
+          const attendance = attendanceByKey.get(`${event.sessionId ?? event.eventDate}::${ticket.id}`) ?? null;
+          rows.push({
+            rowKey: `${event.sessionId ?? event.eventDate}::${ticket.id}`,
+            date: formatDate(event.startsAt ?? event.eventDate),
+            time: formatTime(event.startsAt),
+            offerTitle: course.title ?? "Einmaliges Angebot",
+            offerKind: kindLabel,
+            participantName: ticket.customer_name || formatName(
+              booking.customer_first_name,
+              booking.customer_last_name,
+              "Teilnehmer*in eines einmaligen Angebots"
+            ),
+            participantEmail: ticket.customer_email || booking.customer_email || null,
+            instructorName,
+            room: attendance?.room ?? room,
+            methodLabel: mapMethodLabel(attendance?.method ?? null),
+            checkedInAt: attendance?.checked_in_at ?? null,
+            status: attendance ? "present" : "not_checked_in",
+            sortDate: new Date(event.startsAt ?? event.eventDate).getTime(),
+          });
+        }
       }
       continue;
     }

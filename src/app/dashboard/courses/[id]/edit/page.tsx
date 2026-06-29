@@ -18,6 +18,7 @@ type OfferRow = {
   location: string | null;
   location_details: string | null;
   capacity: number | null;
+  max_guest_count_per_booking: number | null;
   kind: string | null;
   starts_at: string | null;
   weekday: number | null;
@@ -91,7 +92,7 @@ export default async function EditOfferPage({
   const { data, error } = await supabase
     .from("courses")
     .select(
-      "id,teacher_id,title,description,location,location_details,capacity,kind,starts_at,weekday,start_time,duration_minutes,recurrence_type,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,price_cents,currency,visibility,internal_note,reservation_notice,offer_image_url"
+      "id,teacher_id,title,description,location,location_details,capacity,max_guest_count_per_booking,kind,starts_at,weekday,start_time,duration_minutes,recurrence_type,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,price_cents,currency,visibility,internal_note,reservation_notice,offer_image_url"
     )
     .eq("id", id)
     .eq("teacher_id", user.id)
@@ -158,6 +159,8 @@ export default async function EditOfferPage({
     location_details: data.location_details ?? "",
     description: data.description ?? "",
     capacity: data.capacity !== null ? String(data.capacity) : "",
+    max_guest_count_per_booking:
+      data.max_guest_count_per_booking !== null ? String(data.max_guest_count_per_booking) : "0",
     price_eur: toPriceEur(data.price_cents),
     currency: data.currency ?? "EUR",
     instructor_name: data.instructor_name ?? "",

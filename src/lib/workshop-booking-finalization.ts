@@ -7,6 +7,7 @@ import { getProviderDisplayName, getWorkshopStornoPolicyLabel } from "@/lib/prov
 import { getStripe } from "@/lib/stripe";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { issueWorkshopTicketForBooking, type TicketRow } from "@/lib/tickets";
+import type { WorkshopBookingGuestRow } from "@/lib/workshop-booking-guests";
 import {
   sendWorkshopBookingNotificationEmail,
   sendWorkshopCustomerBookingConfirmationEmail,
@@ -257,6 +258,13 @@ async function finalizeWorkshopBookingRecord(input: {
       : Promise.resolve({ data: [] as SessionRow[] }),
   ]);
 
+  const { data: bookingGuests } = await admin
+    .from("workshop_booking_guests")
+    .select("id,booking_id,course_id,first_name,last_name,email,position,confirmation_email_sent_at,created_at")
+    .eq("booking_id", booking.id)
+    .order("position", { ascending: true })
+    .returns<WorkshopBookingGuestRow[]>();
+
   const providerContact = await resolveWorkshopProviderContact(admin, course ?? null);
   const sessionLines =
     (workshopSessions ?? []).length > 0
@@ -376,6 +384,82 @@ async function finalizeWorkshopBookingRecord(input: {
       logWorkshopFinalization("customer confirmation email failed", {
         bookingId: booking.id,
         recipient: customerEmail,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  for (const guest of bookingGuests ?? []) {
+    const guestName = [guest.first_name, guest.last_name].filter(Boolean).join(" ").trim();
+    const guestEmail = guest.email?.trim() || null;
+    if (!guestName) continue;
+
+    let guestTicket: TicketRow | null = null;
+    try {
+      guestTicket = (
+        await issueWorkshopTicketForBooking({
+          bookingId: booking.id,
+          workshopBookingGuestId: guest.id,
+          courseId: booking.course_id,
+          customerName: guestName,
+          customerEmail: guestEmail ?? customerEmail ?? "",
+        })
+      ).ticket;
+    } catch (error) {
+      logWorkshopFinalization("guest ticket failed", {
+        bookingId: booking.id,
+        guestId: guest.id,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
+
+    if (!guestEmail || guest.confirmation_email_sent_at || !guestTicket) continue;
+
+    try {
+      const stornoPolicyLabel = shouldShowWorkshopCancellationPolicy(course?.price_cents ?? null, input.paymentStatus)
+        ? getWorkshopStornoPolicyLabel(course?.workshop_storno_policy)
+        : null;
+      const result = await sendWorkshopCustomerBookingConfirmationEmail({
+        bookingId: booking.id,
+        workshopTitle: course?.title ?? "Angebot",
+        providerType: providerContact.providerType,
+        providerName: providerContact.providerName,
+        teacherName: course?.instructor_name ?? null,
+        teacherEmail: providerContact.providerEmail,
+        senderDisplayName:
+          providerContact.providerType === "studio_provider"
+            ? providerContact.providerName
+            : course?.instructor_name ?? providerContact.providerContactName,
+        senderImageUrl: providerContact.senderImageUrl,
+        providerLogoUrl: providerContact.providerLogoUrl,
+        customerName: guestName,
+        customerEmail: guestEmail,
+        customerPhone: null,
+        location: course?.location ?? null,
+        locationDetails: course?.location_details ?? null,
+        startsAt: firstSessionStart,
+        endsAt: lastSessionEnd,
+        sessionLines,
+        stornoPolicyLabel,
+        priceLabel: formatWorkshopPriceLabel(course?.price_cents ?? null, course?.currency ?? null, input.paymentStatus),
+        paymentStatus: input.paymentStatus,
+        qrToken: guestTicket.qr_token,
+        attachments: [],
+      });
+
+      if (result?.error) throw result.error;
+
+      await admin
+        .from("workshop_booking_guests")
+        .update({ confirmation_email_sent_at: new Date().toISOString() })
+        .eq("id", guest.id)
+        .is("confirmation_email_sent_at", null);
+    } catch (error) {
+      logWorkshopFinalization("guest confirmation email failed", {
+        bookingId: booking.id,
+        guestId: guest.id,
+        recipient: guestEmail,
         reason: error instanceof Error ? error.message : String(error),
       });
     }

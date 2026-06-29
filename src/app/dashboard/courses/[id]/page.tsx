@@ -53,6 +53,7 @@ type Row = {
   duration_minutes: number | null;
   recurrence_type: string | null;
   capacity: number | null;
+  max_guest_count_per_booking: number | null;
   kind: string | null;
   status: CourseStatus | null;
   is_published: boolean | null;
@@ -136,11 +137,22 @@ type WorkshopBookingRow = {
 };
 
 type WorkshopTicketRow = {
+  id: string;
   booking_id: string | null;
+  workshop_booking_guest_id: string | null;
   customer_name: string;
   customer_email: string;
   status: string | null;
   checked_in_at: string | null;
+};
+
+type WorkshopGuestRow = {
+  id: string;
+  booking_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  position: number | null;
 };
 
 type CourseParticipantEntry = {
@@ -255,7 +267,7 @@ export default async function DashboardCourseDetailPage({
   let courseResponse = await admin
     .from("courses")
     .select(
-      "id,title,description,internal_note,location,location_details,starts_at,start_time,duration_minutes,recurrence_type,capacity,kind,status,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,pause_start_date,pause_end_date,stop_date"
+      "id,title,description,internal_note,location,location_details,starts_at,start_time,duration_minutes,recurrence_type,capacity,max_guest_count_per_booking,kind,status,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,pause_start_date,pause_end_date,stop_date"
       + ",archived_at,visibility,offer_image_url,price_cents,currency"
     )
     .eq("id", id)
@@ -266,7 +278,7 @@ export default async function DashboardCourseDetailPage({
     courseResponse = await admin
       .from("courses")
       .select(
-        "id,title,description,internal_note,location,location_details,starts_at,start_time,duration_minutes,recurrence_type,capacity,kind,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,archived_at,visibility,offer_image_url,price_cents,currency"
+        "id,title,description,internal_note,location,location_details,starts_at,start_time,duration_minutes,recurrence_type,capacity,max_guest_count_per_booking,kind,is_published,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,teacher_id,ends_at,archived_at,visibility,offer_image_url,price_cents,currency"
       )
       .eq("id", id)
       .eq("teacher_id", user.id)
@@ -330,14 +342,22 @@ export default async function DashboardCourseDetailPage({
       : { data: [] as WorkshopBookingRow[] };
 
   const workshopBookingIds = (workshopBookings ?? []).map((booking) => booking.id);
-  const { data: workshopTickets } =
+  const [{ data: workshopTickets }, { data: workshopGuests }] =
     isOneTimeOfferKind(data?.kind) && workshopBookingIds.length > 0
-      ? await admin
-          .from("tickets")
-          .select("booking_id,customer_name,customer_email,status,checked_in_at")
-          .in("booking_id", workshopBookingIds)
-          .returns<WorkshopTicketRow[]>()
-      : { data: [] as WorkshopTicketRow[] };
+      ? await Promise.all([
+          admin
+            .from("tickets")
+            .select("id,booking_id,workshop_booking_guest_id,customer_name,customer_email,status,checked_in_at")
+            .in("booking_id", workshopBookingIds)
+            .returns<WorkshopTicketRow[]>(),
+          admin
+            .from("workshop_booking_guests")
+            .select("id,booking_id,first_name,last_name,email,position")
+            .in("booking_id", workshopBookingIds)
+            .order("position", { ascending: true })
+            .returns<WorkshopGuestRow[]>(),
+        ])
+      : [{ data: [] as WorkshopTicketRow[] }, { data: [] as WorkshopGuestRow[] }];
 
   if (error || !data) {
     return (
@@ -510,15 +530,26 @@ export default async function DashboardCourseDetailPage({
 
   const workshopTicketByBookingId = new Map(
     (workshopTickets ?? [])
-      .filter((ticket) => ticket.booking_id)
+      .filter((ticket) => ticket.booking_id && !ticket.workshop_booking_guest_id)
       .map((ticket) => [ticket.booking_id as string, ticket])
   );
+  const workshopTicketByGuestId = new Map(
+    (workshopTickets ?? [])
+      .filter((ticket) => ticket.workshop_booking_guest_id)
+      .map((ticket) => [ticket.workshop_booking_guest_id as string, ticket])
+  );
+  const workshopGuestsByBookingId = new Map<string, WorkshopGuestRow[]>();
+  for (const guest of workshopGuests ?? []) {
+    const current = workshopGuestsByBookingId.get(guest.booking_id) ?? [];
+    current.push(guest);
+    workshopGuestsByBookingId.set(guest.booking_id, current);
+  }
   const workshopParticipants =
     isOneTimeOfferKind(data.kind)
-      ? (workshopBookings ?? []).map<WorkshopParticipantEntry>((booking) => {
+      ? (workshopBookings ?? []).flatMap<WorkshopParticipantEntry>((booking) => {
           const ticket = workshopTicketByBookingId.get(booking.id);
           const email = booking.customer_email ?? ticket?.customer_email ?? null;
-          return {
+          const entries: WorkshopParticipantEntry[] = [{
             id: booking.id,
             name: formatName(
               booking.customer_first_name,
@@ -536,7 +567,28 @@ export default async function DashboardCourseDetailPage({
               to: email ? [email] : [],
               subject: buildParticipantMailSubject(data.title),
             }),
-          };
+          }];
+
+          for (const guest of workshopGuestsByBookingId.get(booking.id) ?? []) {
+            const guestTicket = workshopTicketByGuestId.get(guest.id);
+            const guestEmail = guest.email ?? guestTicket?.customer_email ?? null;
+            entries.push({
+              id: guest.id,
+              name: formatName(guest.first_name, guest.last_name, guestTicket?.customer_name || "Begleitperson"),
+              email: guestEmail,
+              statusLabel: "Begleitperson",
+              checkInLabel: guestTicket?.checked_in_at
+                ? `Eingecheckt am ${formatDateTime(guestTicket.checked_in_at)}`
+                : "Noch nicht eingecheckt",
+              meta: `Begleitperson zu Buchung ${booking.id.slice(0, 8)} · Platz ${guest.position ?? "-"}`,
+              mailHref: buildMailtoHref({
+                to: guestEmail ? [guestEmail] : [],
+                subject: buildParticipantMailSubject(data.title),
+              }),
+            });
+          }
+
+          return entries;
         })
       : [];
 
@@ -554,11 +606,16 @@ export default async function DashboardCourseDetailPage({
     subject: buildOfferMailSubject(data.kind, data.title),
   });
   const showOfferMailWarning = shouldWarnAboutLargeMailingGroup(offerRecipientEmails.length, contactMailHref);
-  const activeWorkshopBookingCount = (workshopBookings ?? []).filter(
+  const activeWorkshopBookings = (workshopBookings ?? []).filter(
     (booking) => !booking.archived_at && booking.status === "paid" && !booking.refunded_at && !booking.stripe_refund_id
-  ).length;
+  );
+  const activeWorkshopBookingCount = activeWorkshopBookings.length;
+  const activeWorkshopSeatCount = activeWorkshopBookings.reduce(
+    (sum, booking) => sum + 1 + (workshopGuestsByBookingId.get(booking.id)?.length ?? 0),
+    0
+  );
   const freeWorkshopSeats =
-    data.capacity === null ? null : Math.max(0, data.capacity - activeWorkshopBookingCount);
+    data.capacity === null ? null : Math.max(0, data.capacity - activeWorkshopSeatCount);
   const archiveEligibility = getOfferArchiveEligibility({
     kind: data.kind,
     status: data.status,
@@ -574,8 +631,8 @@ export default async function DashboardCourseDetailPage({
         intent.status === "checkout_completed" &&
         ["active", "pause_scheduled", "paused", "cancel_scheduled"].includes(intent.subscription_status ?? "active")
     ).length,
-    activeBookingCount: activeWorkshopBookingCount,
-    openPaymentCount: activeWorkshopBookingCount,
+    activeBookingCount: activeWorkshopSeatCount,
+    openPaymentCount: activeWorkshopSeatCount,
   });
   const calendarEnabled = hasOfferCalendarData({
     kind: data.kind,
@@ -787,8 +844,10 @@ export default async function DashboardCourseDetailPage({
         {data.kind === "course" && data.starts_at ? <div>Start des laufenden Angebots: {formatDateTime(data.starts_at)}</div> : null}
         {data.kind !== "course" && data.starts_at ? <div>Start: {formatDateTime(data.starts_at)}</div> : null}
         {data.capacity !== null ? <div>Max. Teilnehmende: {data.capacity}</div> : null}
+        {isSinglePaymentOffer ? <div>Begleitpersonen pro Buchung: {data.max_guest_count_per_booking ?? 0}</div> : null}
         {isSinglePaymentOffer && freeWorkshopSeats !== null ? <div>Freie Plätze: {freeWorkshopSeats}</div> : null}
         {isSinglePaymentOffer ? <div>Reservierungen/Buchungen: {activeWorkshopBookingCount}</div> : null}
+        {isSinglePaymentOffer ? <div>Belegte Plätze: {activeWorkshopSeatCount}</div> : null}
         {data.price_cents !== null ? <div>Preis: {formatOfferPrice(data.price_cents, data.currency)}</div> : null}
         </div>
       </section>

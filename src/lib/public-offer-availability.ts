@@ -5,11 +5,16 @@ type CountRow = {
 };
 
 type WorkshopBookingCountRow = {
+  id: string;
   course_id: string | null;
   status: string | null;
   payment_status: string | null;
   refunded_at: string | null;
   archived_at: string | null;
+};
+
+type WorkshopGuestCountRow = {
+  booking_id: string | null;
 };
 
 type TrialReservationCountRow = {
@@ -50,12 +55,13 @@ function isActiveTrialReservationForCapacity(row: TrialReservationCountRow, now 
   return trialEndsAt >= now;
 }
 
-function buildCountMap(rows: CountRow[]): Map<string, number> {
+function buildCountMap(rows: CountRow[], weights?: Map<string, number>): Map<string, number> {
   const map = new Map<string, number>();
 
   for (const row of rows) {
     if (!row.course_id) continue;
-    map.set(row.course_id, (map.get(row.course_id) ?? 0) + 1);
+    const id = "id" in row && typeof row.id === "string" ? row.id : null;
+    map.set(row.course_id, (map.get(row.course_id) ?? 0) + (id ? (weights?.get(id) ?? 1) : 1));
   }
 
   return map;
@@ -70,7 +76,7 @@ function isActiveWorkshopBookingForCapacity(row: WorkshopBookingCountRow): boole
   if (status === "cancelled" || status === "refunded") return false;
   if (paymentStatus === "cancelled" || paymentStatus === "refunded") return false;
 
-  return status === "paid";
+  return status === "paid" || status === "pending";
 }
 
 export async function loadOccupiedSeatCountsForOffers(courseIds: string[]): Promise<{
@@ -94,7 +100,7 @@ export async function loadOccupiedSeatCountsForOffers(courseIds: string[]): Prom
       .returns<CountRow[]>(),
     admin
       .from("bookings")
-      .select("course_id,status,payment_status,refunded_at,archived_at")
+      .select("id,course_id,status,payment_status,refunded_at,archived_at")
       .in("course_id", courseIds)
       .returns<WorkshopBookingCountRow[]>(),
     admin
@@ -112,9 +118,25 @@ export async function loadOccupiedSeatCountsForOffers(courseIds: string[]): Prom
     courseCounts.set(row.course_id, (courseCounts.get(row.course_id) ?? 0) + 1);
   }
 
+  const activeWorkshopRows = (workshopRows ?? []).filter(isActiveWorkshopBookingForCapacity);
+  const activeWorkshopBookingIds = activeWorkshopRows.map((row) => row.id);
+  const { data: workshopGuestRows } =
+    activeWorkshopBookingIds.length > 0
+      ? await admin
+          .from("workshop_booking_guests")
+          .select("booking_id")
+          .in("booking_id", activeWorkshopBookingIds)
+          .returns<WorkshopGuestCountRow[]>()
+      : { data: [] as WorkshopGuestCountRow[] };
+  const workshopSeatWeights = new Map(activeWorkshopRows.map((row) => [row.id, 1]));
+  for (const guest of workshopGuestRows ?? []) {
+    if (!guest.booking_id) continue;
+    workshopSeatWeights.set(guest.booking_id, (workshopSeatWeights.get(guest.booking_id) ?? 1) + 1);
+  }
+
   return {
     courseCounts,
-    workshopCounts: buildCountMap((workshopRows ?? []).filter(isActiveWorkshopBookingForCapacity)),
+    workshopCounts: buildCountMap(activeWorkshopRows, workshopSeatWeights),
   };
 }
 

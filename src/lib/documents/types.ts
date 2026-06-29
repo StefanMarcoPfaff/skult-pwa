@@ -54,6 +54,7 @@ export type FinancialDocumentOfferSnapshot = {
   endsAt: string | null;
   location: string | null;
   locationDetails: string | null;
+  seatCount?: number | null;
 };
 
 export type FinancialDocumentCustomerSnapshot = {

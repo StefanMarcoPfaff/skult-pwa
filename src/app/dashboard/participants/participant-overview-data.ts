@@ -98,6 +98,8 @@ type TicketLookupRow = {
   booking_id: string | null;
   trial_reservation_id: string | null;
   subscription_id: string | null;
+  customer_name?: string | null;
+  customer_email?: string | null;
   status: string | null;
   checked_in_at: string | null;
 };
@@ -312,7 +314,7 @@ export async function loadParticipantOverviewItems(input: {
     bookingIds.length > 0
       ? admin
           .from("tickets")
-          .select("id,booking_id,trial_reservation_id,subscription_id,status,checked_in_at")
+          .select("id,booking_id,trial_reservation_id,subscription_id,customer_name,customer_email,status,checked_in_at")
           .in("booking_id", bookingIds)
           .returns<TicketLookupRow[]>()
       : Promise.resolve({ data: [] as TicketLookupRow[] }),
@@ -362,11 +364,13 @@ export async function loadParticipantOverviewItems(input: {
       .filter((ticket) => ticket.subscription_id)
       .map((ticket) => [ticket.subscription_id as string, ticket])
   );
-  const workshopTicketByBookingId = new Map(
-    (workshopTicketsResult.data ?? [])
-      .filter((ticket) => ticket.booking_id)
-      .map((ticket) => [ticket.booking_id as string, ticket])
-  );
+  const workshopTicketsByBookingId = new Map<string, TicketLookupRow[]>();
+  for (const ticket of (workshopTicketsResult.data ?? []).filter((row) => row.booking_id)) {
+    const bookingId = ticket.booking_id as string;
+    const current = workshopTicketsByBookingId.get(bookingId) ?? [];
+    current.push(ticket);
+    workshopTicketsByBookingId.set(bookingId, current);
+  }
   const attendanceByKey = new Map(
     ((attendanceRows as AttendanceLookupRow[] | null) ?? []).map((row) => [
       createAttendanceKey(row.course_id, row.session_id, row.event_date ?? "", row.ticket_id),
@@ -663,7 +667,7 @@ export async function loadParticipantOverviewItems(input: {
     const course = courseById.get(booking.course_id);
     if (!course) continue;
 
-    const ticket = workshopTicketByBookingId.get(booking.id);
+    const ticket = workshopTicketsByBookingId.get(booking.id)?.[0] ?? null;
     const event = getDefaultCourseEvent(course, sessionsByCourseId.get(course.id) ?? []);
     const checkedInAt =
       ticket && event

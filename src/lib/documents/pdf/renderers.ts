@@ -182,12 +182,18 @@ function buildTaxLines(
 }
 
 function buildOfferEntries(document: FinancialDocumentRecord, metadata: FinancialDocumentMetadata | null): Array<[string, string]> {
-  return [
+  const entries: Array<[string, string]> = [
     ["Angebot", normalizeText(metadata?.offer?.title)],
     ["Angebotsart", formatOfferKind(metadata?.offer?.kind)],
     ["Leistungsdatum / Zeitraum", buildPeriodLabel(document, metadata)],
     ["Ort", normalizeText([metadata?.offer?.location, metadata?.offer?.locationDetails].filter(Boolean).join(", "), "-")],
   ];
+
+  if (typeof metadata?.offer?.seatCount === "number" && metadata.offer.seatCount > 0) {
+    entries.push(["Gebuchte Plaetze", String(metadata.offer.seatCount)]);
+  }
+
+  return entries;
 }
 
 function buildPaymentEntries(document: FinancialDocumentRecord, metadata: FinancialDocumentMetadata | null): Array<[string, string]> {

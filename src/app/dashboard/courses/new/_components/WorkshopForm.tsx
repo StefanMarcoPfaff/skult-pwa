@@ -28,6 +28,7 @@ export type WorkshopFormValues = {
   location_details?: string;
   description?: string;
   capacity?: string;
+  max_guest_count_per_booking?: string;
   price_eur?: string;
   currency?: string;
   instructor_name?: string;
@@ -93,6 +94,7 @@ export default function WorkshopForm({
   const [offerImageError, setOfferImageError] = useState<string | null>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const [priceEur, setPriceEur] = useState(initialValues?.price_eur ?? "");
+  const [capacityValue, setCapacityValue] = useState(initialValues?.capacity ?? "");
   const [currency] = useState(workshopCurrency);
   const [sessions, setSessions] = useState<SessionInput[]>(() =>
     initialValues?.sessions && initialValues.sessions.length > 0
@@ -175,6 +177,22 @@ export default function WorkshopForm({
     }
 
     const priceRaw = String(formData.get("price_eur") ?? "").trim();
+    const capacityRaw = String(formData.get("capacity") ?? "").trim();
+    const maxGuestsRaw = String(formData.get("max_guest_count_per_booking") ?? "0").trim();
+    const parsedCapacity = capacityRaw ? Number(capacityRaw) : null;
+    const parsedMaxGuests = maxGuestsRaw ? Number(maxGuestsRaw) : 0;
+    if (!Number.isFinite(parsedMaxGuests) || parsedMaxGuests < 0) {
+      setError("Bitte gib eine gueltige Anzahl Begleitpersonen ein.");
+      return;
+    }
+    if (
+      parsedCapacity !== null &&
+      Number.isFinite(parsedCapacity) &&
+      parsedMaxGuests > Math.max(0, Math.trunc(parsedCapacity) - 1)
+    ) {
+      setError("Begleitpersonen pro Buchung duerfen hoechstens Kapazitaet minus 1 sein.");
+      return;
+    }
     if (priceRaw) {
       const parsed = Number(priceRaw.replace(",", "."));
       if (!Number.isFinite(parsed) || parsed < 0) {
@@ -523,10 +541,27 @@ export default function WorkshopForm({
           type="number"
           name="capacity"
           min={1}
-          defaultValue={initialValues?.capacity ?? ""}
+          value={capacityValue}
+          onChange={(event) => setCapacityValue(event.target.value)}
           className="w-full rounded-xl border px-3 py-2 text-sm"
           placeholder="10"
         />
+      </label>
+
+      <label className="space-y-1">
+        <span className="text-sm font-medium">Begleitpersonen pro Buchung</span>
+        <input
+          type="number"
+          name="max_guest_count_per_booking"
+          min={0}
+          max={capacityValue ? Math.max(0, Number(capacityValue) - 1) : undefined}
+          defaultValue={initialValues?.max_guest_count_per_booking ?? "0"}
+          className="w-full rounded-xl border px-3 py-2 text-sm"
+          placeholder="0"
+        />
+        <span className="block text-xs text-muted-foreground">
+          0 bedeutet: nur die buchende Person. Maximal Kapazitaet minus 1.
+        </span>
       </label>
 
       <div className="grid gap-4 sm:grid-cols-2">

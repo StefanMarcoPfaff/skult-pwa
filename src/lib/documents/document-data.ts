@@ -33,6 +33,7 @@ export type BuildFinancialDocumentDataInput = {
     endsAt?: string | null;
     location?: string | null;
     locationDetails?: string | null;
+    seatCount?: number | null;
   } | null;
   periodStart?: string | null;
   periodEnd?: string | null;
@@ -189,6 +190,7 @@ async function buildFinancialDocumentData(
           endsAt: input.offer.endsAt ?? null,
           location: normalizeOptionalText(input.offer.location),
           locationDetails: normalizeOptionalText(input.offer.locationDetails),
+          seatCount: input.offer.seatCount ?? null,
         }
       : null,
     customer: input.customer

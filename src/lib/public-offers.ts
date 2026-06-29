@@ -12,6 +12,7 @@ type PublicCourseRow = {
   location_details: string | null;
   workshop_storno_policy: string | null;
   reservation_notice: string | null;
+  max_guest_count_per_booking: number | null;
 };
 
 type PublicProfileRow = {
@@ -134,7 +135,7 @@ export async function getPublicCourseById(id: string): Promise<PublicOfferDetail
   const admin = createSupabaseAdmin();
   const { data: loadedCourse } = await admin
     .from("courses")
-    .select("teacher_id,instructor_name,location_details,workshop_storno_policy,reservation_notice")
+    .select("teacher_id,instructor_name,location_details,workshop_storno_policy,reservation_notice,max_guest_count_per_booking")
     .eq("id", id)
     .maybeSingle<PublicCourseRow>();
 

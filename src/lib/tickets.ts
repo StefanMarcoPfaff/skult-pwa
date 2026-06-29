@@ -10,6 +10,7 @@ export type TicketRow = {
   id: string;
   type: TicketType;
   booking_id: string | null;
+  workshop_booking_guest_id?: string | null;
   trial_reservation_id: string | null;
   subscription_id: string | null;
   course_id: string | null;
@@ -25,6 +26,7 @@ export type TicketRow = {
 type TicketCreateInput = {
   type: TicketType;
   bookingId?: string | null;
+  workshopBookingGuestId?: string | null;
   trialReservationId?: string | null;
   subscriptionId?: string | null;
   courseId?: string | null;
@@ -98,11 +100,11 @@ async function loadExistingTicketForInput(input: TicketCreateInput): Promise<Tic
   }
 
   if (input.bookingId) {
-    const { data } = await admin
-      .from("tickets")
-      .select("*")
-      .eq("booking_id", input.bookingId)
-      .maybeSingle<TicketRow>();
+    let query = admin.from("tickets").select("*").eq("booking_id", input.bookingId);
+    query = input.workshopBookingGuestId
+      ? query.eq("workshop_booking_guest_id", input.workshopBookingGuestId)
+      : query.is("workshop_booking_guest_id", null);
+    const { data } = await query.maybeSingle<TicketRow>();
     if (data) return data;
   }
 
@@ -128,6 +130,7 @@ async function createTicketRecordInternal(input: TicketCreateInput): Promise<Tic
   const payload = {
     type: input.type,
     booking_id: input.bookingId ?? null,
+    workshop_booking_guest_id: input.workshopBookingGuestId ?? null,
     trial_reservation_id: input.trialReservationId ?? null,
     subscription_id: input.subscriptionId ?? null,
     course_id: input.courseId ?? null,
@@ -183,10 +186,12 @@ export async function issueWorkshopTicketForBooking(input: {
   courseId: string | null;
   customerName: string;
   customerEmail: string;
+  workshopBookingGuestId?: string | null;
 }): Promise<TicketIssueResult> {
   const result = await createTicketRecordInternal({
     type: "workshop",
     bookingId: input.bookingId,
+    workshopBookingGuestId: input.workshopBookingGuestId,
     courseId: input.courseId,
     customerName: input.customerName,
     customerEmail: input.customerEmail,

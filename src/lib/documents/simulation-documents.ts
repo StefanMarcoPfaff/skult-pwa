@@ -332,6 +332,14 @@ export async function ensureCustomerReceiptForPayment(input: {
     throw new Error(`Payment transaction not found for customer receipt: ${input.paymentTransactionId}`);
   }
 
+  const { count: guestCount } = context.bookingId
+    ? await supabase
+        .from("workshop_booking_guests")
+        .select("id", { count: "exact", head: true })
+        .eq("booking_id", context.bookingId)
+    : { count: 0 };
+  const bookedSeatCount = context.bookingId ? 1 + Math.max(0, guestCount ?? 0) : null;
+
   const metadata = await buildCustomerReceiptDocumentData({
     supabase: asTypedSupabase(supabase),
     providerId: context.providerId,
@@ -354,6 +362,7 @@ export async function ensureCustomerReceiptForPayment(input: {
       endsAt: context.course?.ends_at ?? null,
       location: context.course?.location ?? null,
       locationDetails: context.course?.location_details ?? null,
+      seatCount: bookedSeatCount,
     },
     periodStart: context.course?.starts_at ?? null,
     periodEnd: context.course?.ends_at ?? context.course?.starts_at ?? null,
