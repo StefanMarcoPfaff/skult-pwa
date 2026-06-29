@@ -198,29 +198,36 @@ export async function POST(req: Request) {
 
     const attendeeKey = makeAttendeeKey();
     const acceptedAt = new Date().toISOString();
+    const bookingInsert = {
+      course_id: course.id,
+      attendee_key: attendeeKey,
+      status: "pending",
+      payment_provider: isFreeOffer ? "free" : "stripe",
+      payment_status: "pending",
+      customer_first_name: customerFirstName,
+      customer_last_name: customerLastName,
+      customer_email: customerEmail,
+      customer_phone: customerPhone,
+      agb_accepted_at: acceptedAt,
+      privacy_accepted_at: acceptedAt,
+      workshop_storno_terms_accepted_at: acceptedAt,
+    };
+
+    if (!isFreeOffer) {
+      Object.assign(
+        bookingInsert,
+        customerBillingName ? { customer_billing_name: customerBillingName } : {},
+        customerBillingStreet ? { customer_billing_street: customerBillingStreet } : {},
+        customerBillingHouseNumber ? { customer_billing_house_number: customerBillingHouseNumber } : {},
+        customerBillingPostalCode ? { customer_billing_postal_code: customerBillingPostalCode } : {},
+        customerBillingCity ? { customer_billing_city: customerBillingCity } : {},
+        customerBillingCountry ? { customer_billing_country: customerBillingCountry } : {}
+      );
+    }
 
     const { data: booking, error: bookingErr } = await supabase
       .from("bookings")
-      .insert({
-        course_id: course.id,
-        attendee_key: attendeeKey,
-        status: "pending",
-        payment_provider: isFreeOffer ? "free" : "stripe",
-        payment_status: "pending",
-        customer_first_name: customerFirstName,
-        customer_last_name: customerLastName,
-        customer_email: customerEmail,
-        customer_phone: customerPhone,
-        customer_billing_name: isFreeOffer ? null : customerBillingName,
-        customer_billing_street: isFreeOffer ? null : customerBillingStreet,
-        customer_billing_house_number: isFreeOffer ? null : customerBillingHouseNumber,
-        customer_billing_postal_code: isFreeOffer ? null : customerBillingPostalCode,
-        customer_billing_city: isFreeOffer ? null : customerBillingCity,
-        customer_billing_country: isFreeOffer ? null : customerBillingCountry,
-        agb_accepted_at: acceptedAt,
-        privacy_accepted_at: acceptedAt,
-        workshop_storno_terms_accepted_at: acceptedAt,
-      })
+      .insert(bookingInsert)
       .select("id,attendee_key")
       .single();
 
