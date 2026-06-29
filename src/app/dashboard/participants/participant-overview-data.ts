@@ -173,10 +173,16 @@ function buildTeacherScanHref(courseId: string, event: EventContext) {
   return `/dashboard/check-in?${params.toString()}`;
 }
 
-function buildParticipantDetailHref(id: string, source: "trial" | "registered" | "workshop") {
+function buildParticipantDetailHref(
+  id: string,
+  source: "trial" | "registered" | "workshop",
+  options?: { ticketId?: string | null; guestId?: string | null }
+) {
   const params = new URLSearchParams();
   params.set("source", source);
   params.set("from", "participants");
+  if (options?.ticketId) params.set("ticketId", options.ticketId);
+  if (options?.guestId) params.set("guestId", options.guestId);
   return `/dashboard/participants/${id}?${params.toString()}`;
 }
 
@@ -774,7 +780,10 @@ export async function loadParticipantOverviewItems(input: {
 
       items.push({
         id: `workshop-${booking.id}-${ticket.id}`,
-        detailHref: buildParticipantDetailHref(booking.id, "workshop"),
+        detailHref: buildParticipantDetailHref(booking.id, "workshop", {
+          ticketId: fallbackPrimaryTicket ? null : ticket.id,
+          guestId: ticket.workshop_booking_guest_id ?? null,
+        }),
         displayName,
         email: contactEmail,
         offerId: course.id,

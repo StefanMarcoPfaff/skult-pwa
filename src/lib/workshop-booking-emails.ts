@@ -181,6 +181,67 @@ function renderParticipantsText(data: WorkshopBookingEmailData): string[] {
   ].filter((line): line is string => Boolean(line !== null));
 }
 
+function renderProviderBookingParticipantsHtml(data: WorkshopBookingEmailData): string {
+  const participants = data.participants ?? [];
+  const additionalParticipants = participants.slice(1);
+  const reservedSeatCount = data.reservedSeatCount ?? Math.max(participants.length, 1);
+
+  return `
+    <div style="margin: 22px 0; padding: 18px 20px; border: 1px solid #e5e7eb; border-radius: 14px; background: #f8fafc;">
+      <p style="margin: 0 0 14px;"><b>Reservierte Pl&auml;tze:</b> ${reservedSeatCount}</p>
+      <div style="margin: 0 0 16px;">
+        <p style="margin: 0 0 6px;"><b>Buchende Person:</b></p>
+        <p style="margin: 0;">${data.customerName}</p>
+        <p style="margin: 0;">${data.customerEmail}</p>
+        ${data.customerPhone ? `<p style="margin: 0;">${data.customerPhone}</p>` : ""}
+      </div>
+      ${
+        additionalParticipants.length > 0
+          ? `
+            <div>
+              <p style="margin: 0 0 6px;"><b>Weitere teilnehmende ${additionalParticipants.length === 1 ? "Person" : "Personen"}:</b></p>
+              ${additionalParticipants
+                .map(
+                  (participant) => `
+                    <div style="margin: 0 0 10px;">
+                      <p style="margin: 0;">${participant.name}</p>
+                      <p style="margin: 0; color: #4b5563;">${participant.email?.trim() || "Kontakt &uuml;ber buchende Person"}</p>
+                    </div>
+                  `
+                )
+                .join("")}
+            </div>
+          `
+          : ""
+      }
+    </div>
+  `;
+}
+
+function renderProviderBookingParticipantsText(data: WorkshopBookingEmailData): string[] {
+  const participants = data.participants ?? [];
+  const additionalParticipants = participants.slice(1);
+  const reservedSeatCount = data.reservedSeatCount ?? Math.max(participants.length, 1);
+
+  return [
+    `Reservierte Plaetze: ${reservedSeatCount}`,
+    "",
+    "Buchende Person:",
+    data.customerName,
+    data.customerEmail,
+    data.customerPhone ?? null,
+    additionalParticipants.length > 0 ? "" : null,
+    additionalParticipants.length > 0
+      ? `Weitere teilnehmende ${additionalParticipants.length === 1 ? "Person" : "Personen"}:`
+      : null,
+    ...additionalParticipants.flatMap((participant) => [
+      participant.name,
+      participant.email?.trim() || "Kontakt ueber buchende Person",
+      "",
+    ]),
+  ].filter((line): line is string => Boolean(line !== null));
+}
+
 function renderFooterText(branding?: FooterBranding) {
   return renderOfferEmailFooterText({
     senderName: branding?.senderName?.trim() || "SKULT",
@@ -403,6 +464,8 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
   const calendarUrl = buildBookingCalendarUrl(data.qrToken, "ticket");
   const isFreeBooking = data.paymentStatus === "free";
   const offerSummaryHtml = renderOfferSummaryEmailHtml(buildEmailOfferViewModel(data));
+  const providerParticipantsHtml = renderProviderBookingParticipantsHtml(data);
+  const providerParticipantsText = renderProviderBookingParticipantsText(data);
 
   return {
     to: data.teacherEmail ?? "",
@@ -412,8 +475,7 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
         <h2>Neue Reservierung</h2>
         <p>Es gibt eine neue Reservierung für dein Angebot.</p>
         <p><b>${data.customerName}</b> hat ${isFreeBooking ? "kostenlos reserviert" : "gebucht und bezahlt"}.</p>
-        <p><b>E-Mail:</b> ${data.customerEmail}</p>
-        ${data.customerPhone ? `<p><b>Telefon:</b> ${data.customerPhone}</p>` : ""}
+        ${providerParticipantsHtml}
         ${offerSummaryHtml}
         <p><a href="${calendarUrl}">Zum Kalender hinzufügen</a></p>
         ${footerHtml}
@@ -423,8 +485,8 @@ export function prepareWorkshopTeacherBookingNotification(data: WorkshopBookingE
       `Neue Reservierung: ${data.workshopTitle}`,
       `Es gibt eine neue Reservierung für dein Angebot.`,
       `${data.customerName} hat ${isFreeBooking ? "kostenlos reserviert" : "gebucht und bezahlt"}.`,
-      `E-Mail: ${data.customerEmail}`,
-      data.customerPhone ? `Telefon: ${data.customerPhone}` : null,
+      "",
+      ...providerParticipantsText,
       buildLocationInfoItem(data).value ? `Ort: ${buildLocationInfoItem(data).value}` : null,
       data.priceLabel ? `Preis: ${data.priceLabel}` : null,
       data.sessionLines.length > 0 ? "Termine:" : "Termin: Termin folgt",

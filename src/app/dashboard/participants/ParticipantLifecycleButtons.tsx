@@ -227,6 +227,7 @@ export function WorkshopParticipantLifecycleButtons(props: {
   playClassName: string;
   pauseClassName: string;
   stopClassName: string;
+  cancelEntireBooking?: boolean;
 }) {
   const isFree = props.paymentStatus === "free";
   const playLabel =
@@ -235,10 +236,19 @@ export function WorkshopParticipantLifecycleButtons(props: {
       : props.playMode === "workshop_cancelled" || props.playMode === "inactive"
         ? "Storniert"
         : "Reserviert";
-  const stopLabel = props.playMode === "workshop_cancelled" || props.playMode === "inactive" ? "Storniert" : "Stornieren";
-  const confirmationText = isFree
-    ? "Möchtest du diese Teilnahme wirklich stornieren? Es wird keine Rückzahlung ausgelöst, weil diese Reservierung kostenlos war."
-    : "Möchtest du diese Teilnahme wirklich stornieren? Die Rückerstattung richtet sich nach den Stornierungsbedingungen.";
+  const stopLabel =
+    props.playMode === "workshop_cancelled" || props.playMode === "inactive"
+      ? "Storniert"
+      : props.cancelEntireBooking
+        ? "Gesamte Buchung stornieren"
+        : "Stornieren";
+  const confirmationText = props.cancelEntireBooking
+    ? isFree
+      ? "Möchtest du die gesamte Buchung wirklich stornieren? Es wird keine Rückzahlung ausgelöst, weil diese Reservierung kostenlos war."
+      : "Möchtest du die gesamte Buchung wirklich stornieren? Die Rückerstattung richtet sich nach den Stornierungsbedingungen."
+    : isFree
+      ? "Möchtest du diese Teilnahme wirklich stornieren? Es wird keine Rückzahlung ausgelöst, weil diese Reservierung kostenlos war."
+      : "Möchtest du diese Teilnahme wirklich stornieren? Die Rückerstattung richtet sich nach den Stornierungsbedingungen.";
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -261,13 +271,13 @@ export function WorkshopParticipantLifecycleButtons(props: {
           <ConfirmIconAction
             action={cancelWorkshopParticipantBookingAction}
             fields={{ booking_id: props.bookingId, redirect_to: props.redirectTo }}
-            title="Teilnahme stornieren?"
+            title={props.cancelEntireBooking ? "Gesamte Buchung stornieren?" : "Teilnahme stornieren?"}
             text={confirmationText}
             cancelLabel="Nein, abbrechen"
-            confirmLabel="Ja, Teilnahme stornieren"
-            triggerLabel="Teilnahme stornieren"
+            confirmLabel={props.cancelEntireBooking ? "Ja, gesamte Buchung stornieren" : "Ja, Teilnahme stornieren"}
+            triggerLabel={props.cancelEntireBooking ? "Gesamte Buchung stornieren" : "Teilnahme stornieren"}
             trigger={
-              <OfferActionIcon title="Teilnahme stornieren" label="Teilnahme stornieren" className={props.stopClassName}>
+              <OfferActionIcon title={stopLabel} label={stopLabel} className={props.stopClassName}>
                 <StopGlyph />
               </OfferActionIcon>
             }

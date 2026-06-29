@@ -532,6 +532,14 @@ async function finalizeWorkshopBookingRecord(input: {
         const stornoPolicyLabel = shouldShowWorkshopCancellationPolicy(course?.price_cents ?? null, input.paymentStatus)
           ? getWorkshopStornoPolicyLabel(course?.workshop_storno_policy)
           : null;
+        const providerParticipants = [
+          { name: customerName, email: customerEmail, qrToken: ticket.qr_token },
+          ...(bookingGuests ?? []).map((guest) => ({
+            name: [guest.first_name, guest.last_name].filter(Boolean).join(" ").trim() || "Weitere teilnehmende Person",
+            email: guest.email?.trim() || null,
+            qrToken: preparedGuestTicketById.get(guest.id)?.qr_token ?? null,
+          })),
+        ];
         const result = await sendWorkshopBookingNotificationEmail({
           bookingId: booking.id,
           workshopTitle: course?.title ?? "Angebot",
@@ -557,6 +565,8 @@ async function finalizeWorkshopBookingRecord(input: {
           priceLabel: formatWorkshopPriceLabel(course?.price_cents ?? null, course?.currency ?? null, input.paymentStatus),
           paymentStatus: input.paymentStatus,
           qrToken: ticket.qr_token,
+          reservedSeatCount: providerParticipants.length,
+          participants: providerParticipants,
         });
 
         if (result?.error) {

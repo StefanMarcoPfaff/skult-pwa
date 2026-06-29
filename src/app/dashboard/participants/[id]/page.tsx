@@ -27,6 +27,8 @@ type SearchParams = {
   from?: string | string[];
   courseId?: string | string[];
   returnTo?: string | string[];
+  ticketId?: string | string[];
+  guestId?: string | string[];
   saved?: string | string[];
 };
 
@@ -147,10 +149,21 @@ type WorkshopBookingRow = {
 };
 
 type WorkshopTicketRow = {
+  id: string;
+  workshop_booking_guest_id: string | null;
   status: string | null;
   checked_in_at: string | null;
   customer_name: string;
   customer_email: string;
+};
+
+type WorkshopGuestRow = {
+  id: string;
+  booking_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  position: number | null;
 };
 
 function formatDateTime(value: string | null): string {
@@ -234,18 +247,24 @@ function buildParticipantDetailRedirectTo({
   origin,
   returnTo,
   courseId,
+  ticketId,
+  guestId,
 }: {
   id: string;
   source: ParticipantDetailSource;
   origin: ParticipantDetailOrigin | null;
   returnTo?: string;
   courseId?: string;
+  ticketId?: string | null;
+  guestId?: string | null;
 }) {
   const params = new URLSearchParams();
   params.set("source", source);
   if (origin) params.set("from", origin);
   if (returnTo?.startsWith("/dashboard/participants")) params.set("returnTo", returnTo);
   if (origin === "course" && courseId) params.set("courseId", courseId);
+  if (ticketId) params.set("ticketId", ticketId);
+  if (guestId) params.set("guestId", guestId);
   return `/dashboard/participants/${id}?${params.toString()}`;
 }
 
@@ -538,6 +557,8 @@ export default async function DashboardParticipantDetailPage({
   const origin = getParticipantDetailOrigin(sp.from);
   const returnCourseId = getFirstSearchParamValue(sp.courseId);
   const returnTo = getFirstSearchParamValue(sp.returnTo);
+  const requestedTicketId = getFirstSearchParamValue(sp.ticketId);
+  const requestedGuestId = getFirstSearchParamValue(sp.guestId);
   console.log("[participants-detail] request", {
     id,
     rawSource: sp.source,
@@ -573,7 +594,7 @@ export default async function DashboardParticipantDetailPage({
       return <ParticipantNotFoundMessage id={id} rawSource={sp.source} resolvedSource={resolvedSource} reason="workshop_booking_not_found" />;
     }
 
-    const [{ data: course }, { data: ticket }, { data: profile }] = await Promise.all([
+    const [{ data: course }, { data: tickets }, { data: guests }, { data: profile }] = await Promise.all([
       admin
         .from("courses")
         .select("id,title,teacher_id,kind,description,instructor_name,price_cents,currency,location,location_details,starts_at,ends_at,start_time,duration_minutes,recurrence_type,workshop_storno_policy,cancellation_model,offer_image_url")
@@ -581,9 +602,14 @@ export default async function DashboardParticipantDetailPage({
         .maybeSingle<CourseRow>(),
       admin
         .from("tickets")
-        .select("status,checked_in_at,customer_name,customer_email")
+        .select("id,workshop_booking_guest_id,status,checked_in_at,customer_name,customer_email")
         .eq("booking_id", booking.id)
-        .maybeSingle<WorkshopTicketRow>(),
+        .returns<WorkshopTicketRow[]>(),
+      admin
+        .from("workshop_booking_guests")
+        .select("id,booking_id,first_name,last_name,email,position")
+        .eq("booking_id", booking.id)
+        .returns<WorkshopGuestRow[]>(),
       admin
         .from("profiles")
         .select("first_name,last_name,provider_type,organization_name,photo_url,company_logo_url")
@@ -602,11 +628,43 @@ export default async function DashboardParticipantDetailPage({
       .order("starts_at", { ascending: true })
       .returns<SessionRow[]>();
     const offerViewModel = buildParticipantOfferViewModel(course, profile, sessions ?? []);
+    const ticketRows = tickets ?? [];
+    const guestRows = guests ?? [];
+    const guestById = new Map(guestRows.map((guest) => [guest.id, guest] as const));
+    const selectedTicket =
+      ticketRows.find((ticket) => ticket.id === requestedTicketId) ??
+      ticketRows.find((ticket) => ticket.workshop_booking_guest_id === requestedGuestId) ??
+      ticketRows.find((ticket) => !ticket.workshop_booking_guest_id) ??
+      ticketRows[0] ??
+      null;
+    const selectedGuest = selectedTicket?.workshop_booking_guest_id
+      ? guestById.get(selectedTicket.workshop_booking_guest_id) ?? null
+      : requestedGuestId
+        ? guestById.get(requestedGuestId) ?? null
+        : null;
+    const isAdditionalParticipant = Boolean(selectedGuest || selectedTicket?.workshop_booking_guest_id);
+    const bookingCustomerName = participantName(
+      booking.customer_first_name,
+      booking.customer_last_name,
+      selectedTicket?.customer_name ?? "Teilnehmer*in"
+    );
+    const participantDisplayName = isAdditionalParticipant
+      ? participantName(
+          selectedGuest?.first_name ?? null,
+          selectedGuest?.last_name ?? null,
+          selectedTicket?.customer_name ?? "Weitere teilnehmende Person"
+        )
+      : bookingCustomerName;
+    const participantEmail = isAdditionalParticipant
+      ? selectedGuest?.email?.trim() || booking.customer_email || selectedTicket?.customer_email || null
+      : booking.customer_email ?? selectedTicket?.customer_email ?? null;
+    const hasOwnParticipantEmail = isAdditionalParticipant && Boolean(selectedGuest?.email?.trim());
+    const reservedSeatCount = Math.max(ticketRows.length, 1);
     const workshopMailHref = buildMailtoHref({
-      to: [booking.customer_email ?? ticket?.customer_email ?? null],
+      to: [participantEmail],
       subject: buildParticipantMailSubject(course.title),
     });
-    const checkedInAt = ticket?.checked_in_at ?? booking.checked_in_at ?? null;
+    const checkedInAt = selectedTicket?.checked_in_at ?? booking.checked_in_at ?? null;
     const lifecycle = getWorkshopParticipantLifecycleDisplay({
       bookingStatus: booking.status,
       checkedInAt,
@@ -626,6 +684,8 @@ export default async function DashboardParticipantDetailPage({
       origin,
       returnTo,
       courseId: returnCourseId,
+      ticketId: selectedTicket?.id ?? requestedTicketId,
+      guestId: selectedGuest?.id ?? requestedGuestId,
     });
 
     return (
@@ -639,13 +699,7 @@ export default async function DashboardParticipantDetailPage({
         <section className="rounded-2xl border p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-semibold">
-                {participantName(
-                  booking.customer_first_name,
-                  booking.customer_last_name,
-                  ticket?.customer_name ?? "Teilnehmer*in"
-                )}
-              </h1>
+              <h1 className="text-2xl font-semibold">{participantDisplayName}</h1>
               <p className="mt-2 text-sm text-muted-foreground">
                 Teilnehmerdetail für {course.title ?? "einmaliges Angebot"}.
               </p>
@@ -654,15 +708,30 @@ export default async function DashboardParticipantDetailPage({
           </div>
 
           <div className="mt-4 grid gap-4 text-sm text-muted-foreground sm:grid-cols-2">
-            <p>Name: <span className="font-medium text-foreground">{participantName(booking.customer_first_name, booking.customer_last_name, ticket?.customer_name ?? "Teilnehmer*in")}</span></p>
-            <p>E-Mail: <span className="font-medium text-foreground">{booking.customer_email ?? ticket?.customer_email ?? "-"}</span></p>
-            <p>Telefon: <span className="font-medium text-foreground">{booking.customer_phone ?? "-"}</span></p>
-            <p>Status: <span className="font-medium text-foreground">{ticket?.status ?? booking.status ?? "-"}</span></p>
+            <p>Name: <span className="font-medium text-foreground">{participantDisplayName}</span></p>
+            <p>Rolle: <span className="font-medium text-foreground">{isAdditionalParticipant ? "Weitere teilnehmende Person" : "Buchende Person"}</span></p>
+            <p>E-Mail/Kontakt: <span className="font-medium text-foreground">{participantEmail ?? "-"}</span></p>
+            {isAdditionalParticipant && !hasOwnParticipantEmail ? (
+              <p>Hinweis: <span className="font-medium text-foreground">Kontakt über buchende Person</span></p>
+            ) : null}
+            <p>Telefon: <span className="font-medium text-foreground">{isAdditionalParticipant ? "-" : booking.customer_phone ?? "-"}</span></p>
+            <p>Status: <span className="font-medium text-foreground">{selectedTicket?.status ?? booking.status ?? "-"}</span></p>
             <p>Gebucht am: <span className="font-medium text-foreground">{formatDateTime(booking.created_at)}</span></p>
             <p>Check-in: <span className="font-medium text-foreground">{formatDateTime(checkedInAt)}</span></p>
+            {isAdditionalParticipant ? (
+              <p className="sm:col-span-2">Buchende Person: <span className="font-medium text-foreground">{bookingCustomerName}{booking.customer_email ? ` · ${booking.customer_email}` : ""}</span></p>
+            ) : reservedSeatCount > 1 ? (
+              <p className="sm:col-span-2">Hinweis: <span className="font-medium text-foreground">Diese Buchung umfasst {reservedSeatCount} Plätze.</span></p>
+            ) : null}
             {booking.payment_provider ? <p>Zahlungsanbieter: <span className="font-medium text-foreground">{booking.payment_provider}</span></p> : null}
           </div>
         </section>
+
+        {isAdditionalParticipant ? (
+          <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            Diese teilnehmende Person ist Teil einer Mehrpersonen-Buchung. Aktionen wie Stornieren betreffen derzeit die gesamte Buchung.
+          </section>
+        ) : null}
 
         <ParticipantDetailActions
           lifecycle={
@@ -675,6 +744,7 @@ export default async function DashboardParticipantDetailPage({
               playClassName={lifecycle.playClassName}
               pauseClassName={lifecycle.pauseClassName}
               stopClassName={lifecycle.stopClassName}
+              cancelEntireBooking={reservedSeatCount > 1}
             />
           }
           mailHref={workshopMailHref}
