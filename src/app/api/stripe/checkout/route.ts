@@ -281,7 +281,7 @@ export async function POST(req: Request) {
           .update({ status: "cancelled", payment_status: "cancelled" })
           .eq("id", booking.id);
         return NextResponse.json(
-          { error: guestsInsertError.message || "Begleitpersonen konnten nicht reserviert werden." },
+          { error: guestsInsertError.message || "Weitere teilnehmende Personen konnten nicht reserviert werden." },
           { status: 400 }
         );
       }

@@ -320,6 +320,91 @@ async function finalizeWorkshopBookingRecord(input: {
     }
   }
 
+  const preparedGuestTicketById = new Map<string, TicketRow>();
+  const guestOwnEmailSentIds = new Set<string>();
+  for (const guest of (bookingGuests ?? []).filter((item) => !preparedGuestTicketById.has(item.id))) {
+    const guestName = [guest.first_name, guest.last_name].filter(Boolean).join(" ").trim();
+    const guestEmail = guest.email?.trim() || null;
+    if (!guestName) continue;
+
+    let guestTicket: TicketRow | null = null;
+    try {
+      guestTicket = (
+        await issueWorkshopTicketForBooking({
+          bookingId: booking.id,
+          workshopBookingGuestId: guest.id,
+          courseId: booking.course_id,
+          customerName: guestName,
+          customerEmail: guestEmail ?? customerEmail ?? "",
+        })
+      ).ticket;
+      preparedGuestTicketById.set(guest.id, guestTicket);
+    } catch (error) {
+      logWorkshopFinalization("additional participant ticket failed", {
+        bookingId: booking.id,
+        guestId: guest.id,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
+
+    if (!guestEmail || guest.confirmation_email_sent_at || !guestTicket) {
+      if (guestEmail && guest.confirmation_email_sent_at) guestOwnEmailSentIds.add(guest.id);
+      continue;
+    }
+
+    try {
+      const stornoPolicyLabel = shouldShowWorkshopCancellationPolicy(course?.price_cents ?? null, input.paymentStatus)
+        ? getWorkshopStornoPolicyLabel(course?.workshop_storno_policy)
+        : null;
+      const result = await sendWorkshopCustomerBookingConfirmationEmail({
+        bookingId: booking.id,
+        workshopTitle: course?.title ?? "Angebot",
+        providerType: providerContact.providerType,
+        providerName: providerContact.providerName,
+        teacherName: course?.instructor_name ?? null,
+        teacherEmail: providerContact.providerEmail,
+        senderDisplayName:
+          providerContact.providerType === "studio_provider"
+            ? providerContact.providerName
+            : course?.instructor_name ?? providerContact.providerContactName,
+        senderImageUrl: providerContact.senderImageUrl,
+        providerLogoUrl: providerContact.providerLogoUrl,
+        customerName: guestName,
+        customerEmail: guestEmail,
+        customerPhone: null,
+        location: course?.location ?? null,
+        locationDetails: course?.location_details ?? null,
+        startsAt: firstSessionStart,
+        endsAt: lastSessionEnd,
+        sessionLines,
+        stornoPolicyLabel,
+        priceLabel: formatWorkshopPriceLabel(course?.price_cents ?? null, course?.currency ?? null, input.paymentStatus),
+        paymentStatus: input.paymentStatus,
+        qrToken: guestTicket.qr_token,
+        reservedSeatCount: 1,
+        participants: [{ name: guestName, email: guestEmail, qrToken: guestTicket.qr_token }],
+        attachments: [],
+      });
+
+      if (result?.error) throw result.error;
+
+      await admin
+        .from("workshop_booking_guests")
+        .update({ confirmation_email_sent_at: new Date().toISOString() })
+        .eq("id", guest.id)
+        .is("confirmation_email_sent_at", null);
+      guestOwnEmailSentIds.add(guest.id);
+    } catch (error) {
+      logWorkshopFinalization("additional participant confirmation email failed", {
+        bookingId: booking.id,
+        guestId: guest.id,
+        recipient: guestEmail,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   if (ticket && customerEmail && !booking.workshop_confirmation_email_sent_at) {
     try {
       const attachments =
@@ -337,6 +422,21 @@ async function finalizeWorkshopBookingRecord(input: {
       const stornoPolicyLabel = shouldShowWorkshopCancellationPolicy(course?.price_cents ?? null, input.paymentStatus)
         ? getWorkshopStornoPolicyLabel(course?.workshop_storno_policy)
         : null;
+      const participants = [
+        { name: customerName, email: customerEmail, qrToken: ticket.qr_token },
+        ...(bookingGuests ?? []).map((guest) => {
+          const guestName = [guest.first_name, guest.last_name].filter(Boolean).join(" ").trim() || "Weitere teilnehmende Person";
+          const guestEmail = guest.email?.trim() || null;
+          const guestTicket = preparedGuestTicketById.get(guest.id) ?? null;
+          const ownTicketEmailSent = guestOwnEmailSentIds.has(guest.id);
+          return {
+            name: guestName,
+            email: guestEmail,
+            qrToken: ownTicketEmailSent ? null : guestTicket?.qr_token ?? null,
+            ownTicketEmailSent,
+          };
+        }),
+      ];
       const result = await sendWorkshopCustomerBookingConfirmationEmail({
         bookingId: booking.id,
         workshopTitle: course?.title ?? "Angebot",
@@ -362,6 +462,8 @@ async function finalizeWorkshopBookingRecord(input: {
         priceLabel: formatWorkshopPriceLabel(course?.price_cents ?? null, course?.currency ?? null, input.paymentStatus),
         paymentStatus: input.paymentStatus,
         qrToken: ticket.qr_token,
+        reservedSeatCount: participants.length,
+        participants,
         attachments,
       });
 

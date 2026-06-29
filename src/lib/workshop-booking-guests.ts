@@ -58,7 +58,7 @@ export function validateWorkshopBookingGuests(input: {
   if (input.guests.length > allowedGuestCount) {
     return {
       ok: false,
-      error: "Fuer dieses Angebot sind nicht so viele Begleitpersonen erlaubt.",
+      error: "Fuer dieses Angebot sind nicht so viele weitere teilnehmende Personen erlaubt.",
       status: 400,
     };
   }
@@ -67,7 +67,7 @@ export function validateWorkshopBookingGuests(input: {
     if (!guest.firstName || !guest.lastName) {
       return {
         ok: false,
-        error: "Bitte gib fuer jede Begleitperson Vor- und Nachname an.",
+        error: "Bitte gib fuer jede weitere teilnehmende Person Vor- und Nachname an.",
         status: 400,
       };
     }
@@ -75,7 +75,7 @@ export function validateWorkshopBookingGuests(input: {
     if (guest.email && guest.email === input.mainEmail) {
       return {
         ok: false,
-        error: "Die E-Mail-Adresse einer Begleitperson darf nicht mit der buchenden Person identisch sein.",
+        error: "Die E-Mail-Adresse einer weiteren teilnehmenden Person darf nicht mit der buchenden Person identisch sein.",
         status: 400,
       };
     }

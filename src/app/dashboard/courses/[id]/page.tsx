@@ -574,13 +574,13 @@ export default async function DashboardCourseDetailPage({
             const guestEmail = guest.email ?? guestTicket?.customer_email ?? null;
             entries.push({
               id: guest.id,
-              name: formatName(guest.first_name, guest.last_name, guestTicket?.customer_name || "Begleitperson"),
+              name: formatName(guest.first_name, guest.last_name, guestTicket?.customer_name || "Weitere teilnehmende Person"),
               email: guestEmail,
-              statusLabel: "Begleitperson",
+              statusLabel: "Weitere teilnehmende Person",
               checkInLabel: guestTicket?.checked_in_at
                 ? `Eingecheckt am ${formatDateTime(guestTicket.checked_in_at)}`
                 : "Noch nicht eingecheckt",
-              meta: `Begleitperson zu Buchung ${booking.id.slice(0, 8)} · Platz ${guest.position ?? "-"}`,
+              meta: `Weitere teilnehmende Person zu Buchung ${booking.id.slice(0, 8)} · Platz ${guest.position ?? "-"}`,
               mailHref: buildMailtoHref({
                 to: guestEmail ? [guestEmail] : [],
                 subject: buildParticipantMailSubject(data.title),
@@ -844,7 +844,7 @@ export default async function DashboardCourseDetailPage({
         {data.kind === "course" && data.starts_at ? <div>Start des laufenden Angebots: {formatDateTime(data.starts_at)}</div> : null}
         {data.kind !== "course" && data.starts_at ? <div>Start: {formatDateTime(data.starts_at)}</div> : null}
         {data.capacity !== null ? <div>Max. Teilnehmende: {data.capacity}</div> : null}
-        {isSinglePaymentOffer ? <div>Begleitpersonen pro Buchung: {data.max_guest_count_per_booking ?? 0}</div> : null}
+        {isSinglePaymentOffer ? <div>Weitere teilnehmende Personen pro Buchung: {data.max_guest_count_per_booking ?? 0}</div> : null}
         {isSinglePaymentOffer && freeWorkshopSeats !== null ? <div>Freie Plätze: {freeWorkshopSeats}</div> : null}
         {isSinglePaymentOffer ? <div>Reservierungen/Buchungen: {activeWorkshopBookingCount}</div> : null}
         {isSinglePaymentOffer ? <div>Belegte Plätze: {activeWorkshopSeatCount}</div> : null}

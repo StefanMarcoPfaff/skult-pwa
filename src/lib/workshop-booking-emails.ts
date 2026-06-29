@@ -35,6 +35,13 @@ export type WorkshopBookingEmailData = {
   priceLabel: string | null;
   paymentStatus?: "paid" | "free" | null;
   qrToken: string;
+  reservedSeatCount?: number | null;
+  participants?: Array<{
+    name: string;
+    email?: string | null;
+    qrToken?: string | null;
+    ownTicketEmailSent?: boolean;
+  }>;
   attachments?: Attachment[];
 };
 
@@ -115,6 +122,63 @@ function renderActionsHtml(actions: EmailAction[]): string {
         .join("")}
     </div>
   `;
+}
+
+async function renderParticipantsHtml(data: WorkshopBookingEmailData): Promise<string> {
+  const participants =
+    data.participants && data.participants.length > 0
+      ? data.participants
+      : [{ name: data.customerName, email: data.customerEmail, qrToken: data.qrToken }];
+  const rows = await Promise.all(
+    participants.map(async (participant, index) => {
+      const ticketUrl = participant.qrToken ? buildTicketViewUrl(participant.qrToken) : null;
+      const qrDataUrl = participant.qrToken ? await buildTicketQrCodeDataUrl(participant.qrToken) : null;
+      return `
+        <div style="margin: 0 0 18px; padding: 16px; border: 1px solid #e5e7eb; border-radius: 14px;">
+          <p style="margin: 0 0 8px; font-weight: 700;">${index + 1}. ${participant.name}</p>
+          ${
+            ticketUrl && qrDataUrl
+              ? `
+                <p style="margin: 0 0 10px;"><a href="${ticketUrl}" style="color: #111827; font-weight: 700;">QR-Code / Ticket</a></p>
+                <p style="margin: 0;"><img src="${qrDataUrl}" alt="QR-Ticket fuer ${participant.name}" width="160" height="160" /></p>
+              `
+              : ""
+          }
+          ${
+            participant.ownTicketEmailSent
+              ? `<p style="margin: 10px 0 0; color: #4b5563; font-size: 13px;">Für diese teilnehmende Person wurde zusätzlich eine eigene Ticket-E-Mail versendet.</p>`
+              : ""
+          }
+        </div>
+      `;
+    })
+  );
+
+  return `
+    <div style="margin: 24px 0 0;">
+      <p style="margin: 0 0 12px;"><b>Teilnehmende</b></p>
+      ${rows.join("")}
+    </div>
+  `;
+}
+
+function renderParticipantsText(data: WorkshopBookingEmailData): string[] {
+  const participants =
+    data.participants && data.participants.length > 0
+      ? data.participants
+      : [{ name: data.customerName, email: data.customerEmail, qrToken: data.qrToken }];
+
+  return [
+    "Teilnehmende",
+    ...participants.flatMap((participant, index) => [
+      `${index + 1}. ${participant.name}`,
+      participant.qrToken ? `QR-Code / Ticket: ${buildTicketViewUrl(participant.qrToken)}` : null,
+      participant.ownTicketEmailSent
+        ? "Für diese teilnehmende Person wurde zusätzlich eine eigene Ticket-E-Mail versendet."
+        : null,
+      "",
+    ]),
+  ].filter((line): line is string => Boolean(line !== null));
 }
 
 function renderFooterText(branding?: FooterBranding) {
@@ -264,11 +328,13 @@ function createTextEmail(input: {
 export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopBookingEmailData) {
   const ticketUrl = buildTicketViewUrl(data.qrToken);
   const walletUrl = buildTicketWalletUrl(data.qrToken);
-  const qrDataUrl = await buildTicketQrCodeDataUrl(data.qrToken);
   const calendarUrl = buildBookingCalendarUrl(data.qrToken, "ticket");
   const isFreeBooking = data.paymentStatus === "free";
   const replyTo = data.teacherEmail?.trim() || null;
   const offerViewModel = buildEmailOfferViewModel(data);
+  const reservedSeatCount =
+    data.reservedSeatCount ?? (data.participants && data.participants.length > 0 ? data.participants.length : 1);
+  const participantsHtml = await renderParticipantsHtml(data);
 
   return {
     to: data.customerEmail,
@@ -283,9 +349,10 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
         intro: isFreeBooking
           ? `dein Platz für <b>${data.workshopTitle}</b> wurde erfolgreich reserviert.`
           : `deine Buchung für <b>${data.workshopTitle}</b> ist erfolgreich abgeschlossen. Deine Zahlung wurde bestätigt.`,
+        infoItems: [{ label: "Reservierte Plätze", value: String(reservedSeatCount) }],
         offerSummaryHtml: renderOfferSummaryEmailHtml(offerViewModel),
         nextSteps: [
-          "Bitte zeige dein Ticket beim Einlass vor.",
+          "Bitte zeige die Tickets beim Einlass vor.",
         ],
         actions: [
           { label: "Ticket ansehen", href: ticketUrl },
@@ -294,11 +361,7 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
           { label: "Zu den Angeboten", href: buildAbsoluteUrl("/courses") },
         ],
         support: `
-          <div style="margin: 24px 0 0;">
-            <p style="margin: 0 0 10px;"><b>Dein Ticket</b></p>
-            <p style="margin: 0 0 14px;">Bitte zeige dieses Ticket beim Einlass vor.</p>
-            <p style="margin: 0 0 14px;"><img src="${qrDataUrl}" alt="QR-Ticket für das Angebot" width="180" height="180" /></p>
-          </div>
+          ${participantsHtml}
           <p style="margin: 18px 0 0; color: #4b5563;">Wenn du Fragen hast, helfen wir dir gerne weiter.</p>
         `,
         footer: buildFooterBranding(data),
@@ -310,6 +373,7 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
         ? `dein Platz für ${data.workshopTitle} wurde erfolgreich reserviert.`
         : `deine Buchung für ${data.workshopTitle} ist erfolgreich abgeschlossen. Deine Zahlung wurde bestätigt.`,
       infoItems: [
+        { label: "Reservierte Plätze", value: String(reservedSeatCount) },
         { label: "Angebot", value: data.workshopTitle },
         ...buildProviderInfoItems(data),
         { label: "Preis", value: data.priceLabel },
@@ -318,7 +382,7 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
         { label: "Datum / Zeiten", value: data.sessionLines.length > 0 ? data.sessionLines.join(" | ") : "Termin folgt" },
       ],
       nextSteps: [
-        "Bitte zeige dein Ticket beim Einlass vor.",
+        "Bitte zeige die Tickets beim Einlass vor.",
       ],
       actions: [
         { label: "Ticket ansehen", href: ticketUrl },
@@ -326,7 +390,7 @@ export async function prepareWorkshopCustomerBookingConfirmation(data: WorkshopB
         { label: "Ins Wallet speichern", href: walletUrl },
         { label: "Zu den Angeboten", href: buildAbsoluteUrl("/courses") },
       ],
-      support: `Ticket-Link: ${ticketUrl}`,
+      support: [...renderParticipantsText(data), `Hauptticket-Link: ${ticketUrl}`].join("\n"),
       footer: buildFooterBranding(data),
     }),
   };

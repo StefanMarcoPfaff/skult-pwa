@@ -332,10 +332,10 @@ async function createOrUpdateWorkshop(
   const sessions = parseSessionsJson(formData);
   if (!sessions) return { error: "Bitte fuege mindestens einen gueltigen Termin hinzu (Ende nach Start)." };
   if (max_guest_count_per_booking < 0) {
-    return { error: "Begleitpersonen pro Buchung muss mindestens 0 sein." };
+    return { error: "Weitere teilnehmende Personen pro Buchung muss mindestens 0 sein." };
   }
   if (capacity !== null && max_guest_count_per_booking > Math.max(0, capacity - 1)) {
-    return { error: "Begleitpersonen pro Buchung duerfen hoechstens Kapazitaet minus 1 sein." };
+    return { error: "Weitere teilnehmende Personen pro Buchung duerfen hoechstens Kapazitaet minus 1 sein." };
   }
   if (!isWorkshopStornoPolicy(workshop_storno_policy)) {
     return { error: "Bitte waehle eine gueltige Storno-Regel." };

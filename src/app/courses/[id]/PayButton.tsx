@@ -250,7 +250,7 @@ export function PayButton({
       {normalizedMaxGuestCount > 0 ? (
         <div className="space-y-3 rounded-xl border p-4">
           <label className="block space-y-1">
-            <span className="text-sm font-medium">Begleitpersonen</span>
+            <span className="text-sm font-medium">Weitere teilnehmende Personen</span>
             <select
               value={guestCount}
               onChange={(event) => updateGuestCount(Number(event.target.value))}
@@ -267,7 +267,7 @@ export function PayButton({
           {selectedGuests.map((guest, index) => (
             <div key={index} className="grid gap-3 border-t pt-3 sm:grid-cols-2">
               <label className="space-y-1">
-                <span className="text-sm font-medium">Vorname Begleitperson {index + 1} *</span>
+                <span className="text-sm font-medium">Vorname weitere teilnehmende Person {index + 1} *</span>
                 <input
                   value={guest.firstName}
                   onChange={(event) =>
@@ -281,7 +281,7 @@ export function PayButton({
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-sm font-medium">Nachname Begleitperson {index + 1} *</span>
+                <span className="text-sm font-medium">Nachname weitere teilnehmende Person {index + 1} *</span>
                 <input
                   value={guest.lastName}
                   onChange={(event) =>
@@ -295,7 +295,7 @@ export function PayButton({
                 />
               </label>
               <label className="space-y-1 sm:col-span-2">
-                <span className="text-sm font-medium">E-Mail Begleitperson {index + 1}</span>
+                <span className="text-sm font-medium">E-Mail weitere teilnehmende Person {index + 1}</span>
                 <input
                   type="email"
                   value={guest.email}

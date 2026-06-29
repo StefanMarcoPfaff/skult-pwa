@@ -182,7 +182,7 @@ export default function WorkshopForm({
     const parsedCapacity = capacityRaw ? Number(capacityRaw) : null;
     const parsedMaxGuests = maxGuestsRaw ? Number(maxGuestsRaw) : 0;
     if (!Number.isFinite(parsedMaxGuests) || parsedMaxGuests < 0) {
-      setError("Bitte gib eine gueltige Anzahl Begleitpersonen ein.");
+      setError("Bitte gib eine gueltige Anzahl weiterer teilnehmender Personen ein.");
       return;
     }
     if (
@@ -190,7 +190,7 @@ export default function WorkshopForm({
       Number.isFinite(parsedCapacity) &&
       parsedMaxGuests > Math.max(0, Math.trunc(parsedCapacity) - 1)
     ) {
-      setError("Begleitpersonen pro Buchung duerfen hoechstens Kapazitaet minus 1 sein.");
+      setError("Weitere teilnehmende Personen pro Buchung duerfen hoechstens Kapazitaet minus 1 sein.");
       return;
     }
     if (priceRaw) {
@@ -549,7 +549,7 @@ export default function WorkshopForm({
       </label>
 
       <label className="space-y-1">
-        <span className="text-sm font-medium">Begleitpersonen pro Buchung</span>
+        <span className="text-sm font-medium">Weitere teilnehmende Personen pro Buchung</span>
         <input
           type="number"
           name="max_guest_count_per_booking"
