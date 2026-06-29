@@ -79,6 +79,11 @@ function logWorkshopFinalization(message: string, payload: Record<string, unknow
   console.log("[workshop booking finalization]", message, payload);
 }
 
+function normalizeEmailForMailGuard(value: string | null | undefined): string | null {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  return normalized ? normalized : null;
+}
+
 function shouldEnsureStripeCustomerReceipt(input: {
   paymentProvider: "stripe" | "free";
   paymentStatus: "paid" | "free";
@@ -206,6 +211,7 @@ async function finalizeWorkshopBookingRecord(input: {
     input.customerName ||
     "Gast";
   const customerEmail = booking.customer_email?.trim() || input.customerEmail?.trim() || null;
+  const normalizedCustomerEmail = normalizeEmailForMailGuard(customerEmail);
 
   await admin
     .from("bookings")
@@ -322,9 +328,11 @@ async function finalizeWorkshopBookingRecord(input: {
 
   const preparedGuestTicketById = new Map<string, TicketRow>();
   const guestOwnEmailSentIds = new Set<string>();
-  for (const guest of (bookingGuests ?? []).filter((item) => !preparedGuestTicketById.has(item.id))) {
+  const sentCustomerMailKeys = new Set<string>();
+  for (const guest of bookingGuests ?? []) {
     const guestName = [guest.first_name, guest.last_name].filter(Boolean).join(" ").trim();
     const guestEmail = guest.email?.trim() || null;
+    const normalizedGuestEmail = normalizeEmailForMailGuard(guestEmail);
     if (!guestName) continue;
 
     let guestTicket: TicketRow | null = null;
@@ -348,8 +356,14 @@ async function finalizeWorkshopBookingRecord(input: {
       continue;
     }
 
-    if (!guestEmail || guest.confirmation_email_sent_at || !guestTicket) {
+    if (!guestEmail || guest.confirmation_email_sent_at || !guestTicket || normalizedGuestEmail === normalizedCustomerEmail) {
       if (guestEmail && guest.confirmation_email_sent_at) guestOwnEmailSentIds.add(guest.id);
+      continue;
+    }
+
+    const guestMailKey = `${normalizedGuestEmail ?? ""}:ticket:${guestTicket.id}`;
+    if (sentCustomerMailKeys.has(guestMailKey)) {
+      guestOwnEmailSentIds.add(guest.id);
       continue;
     }
 
@@ -388,6 +402,7 @@ async function finalizeWorkshopBookingRecord(input: {
       });
 
       if (result?.error) throw result.error;
+      sentCustomerMailKeys.add(guestMailKey);
 
       await admin
         .from("workshop_booking_guests")
@@ -407,6 +422,10 @@ async function finalizeWorkshopBookingRecord(input: {
 
   if (ticket && customerEmail && !booking.workshop_confirmation_email_sent_at) {
     try {
+      const mainMailKey = `${normalizedCustomerEmail ?? ""}:booking:${booking.id}`;
+      if (sentCustomerMailKeys.has(mainMailKey)) {
+        throw new Error("Duplicate booking confirmation mail suppressed.");
+      }
       const attachments =
         input.paymentStatus === "paid"
           ? await loadCustomerReceiptAttachmentForMail({
@@ -470,6 +489,7 @@ async function finalizeWorkshopBookingRecord(input: {
       if (result?.error) {
         throw result.error;
       }
+      sentCustomerMailKeys.add(mainMailKey);
 
       await admin
         .from("bookings")
@@ -486,82 +506,6 @@ async function finalizeWorkshopBookingRecord(input: {
       logWorkshopFinalization("customer confirmation email failed", {
         bookingId: booking.id,
         recipient: customerEmail,
-        reason: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  for (const guest of bookingGuests ?? []) {
-    const guestName = [guest.first_name, guest.last_name].filter(Boolean).join(" ").trim();
-    const guestEmail = guest.email?.trim() || null;
-    if (!guestName) continue;
-
-    let guestTicket: TicketRow | null = null;
-    try {
-      guestTicket = (
-        await issueWorkshopTicketForBooking({
-          bookingId: booking.id,
-          workshopBookingGuestId: guest.id,
-          courseId: booking.course_id,
-          customerName: guestName,
-          customerEmail: guestEmail ?? customerEmail ?? "",
-        })
-      ).ticket;
-    } catch (error) {
-      logWorkshopFinalization("guest ticket failed", {
-        bookingId: booking.id,
-        guestId: guest.id,
-        reason: error instanceof Error ? error.message : String(error),
-      });
-      continue;
-    }
-
-    if (!guestEmail || guest.confirmation_email_sent_at || !guestTicket) continue;
-
-    try {
-      const stornoPolicyLabel = shouldShowWorkshopCancellationPolicy(course?.price_cents ?? null, input.paymentStatus)
-        ? getWorkshopStornoPolicyLabel(course?.workshop_storno_policy)
-        : null;
-      const result = await sendWorkshopCustomerBookingConfirmationEmail({
-        bookingId: booking.id,
-        workshopTitle: course?.title ?? "Angebot",
-        providerType: providerContact.providerType,
-        providerName: providerContact.providerName,
-        teacherName: course?.instructor_name ?? null,
-        teacherEmail: providerContact.providerEmail,
-        senderDisplayName:
-          providerContact.providerType === "studio_provider"
-            ? providerContact.providerName
-            : course?.instructor_name ?? providerContact.providerContactName,
-        senderImageUrl: providerContact.senderImageUrl,
-        providerLogoUrl: providerContact.providerLogoUrl,
-        customerName: guestName,
-        customerEmail: guestEmail,
-        customerPhone: null,
-        location: course?.location ?? null,
-        locationDetails: course?.location_details ?? null,
-        startsAt: firstSessionStart,
-        endsAt: lastSessionEnd,
-        sessionLines,
-        stornoPolicyLabel,
-        priceLabel: formatWorkshopPriceLabel(course?.price_cents ?? null, course?.currency ?? null, input.paymentStatus),
-        paymentStatus: input.paymentStatus,
-        qrToken: guestTicket.qr_token,
-        attachments: [],
-      });
-
-      if (result?.error) throw result.error;
-
-      await admin
-        .from("workshop_booking_guests")
-        .update({ confirmation_email_sent_at: new Date().toISOString() })
-        .eq("id", guest.id)
-        .is("confirmation_email_sent_at", null);
-    } catch (error) {
-      logWorkshopFinalization("guest confirmation email failed", {
-        bookingId: booking.id,
-        guestId: guest.id,
-        recipient: guestEmail,
         reason: error instanceof Error ? error.message : String(error),
       });
     }
