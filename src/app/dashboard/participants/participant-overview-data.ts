@@ -96,12 +96,22 @@ type BookingRow = {
 type TicketLookupRow = {
   id: string;
   booking_id: string | null;
+  workshop_booking_guest_id?: string | null;
   trial_reservation_id: string | null;
   subscription_id: string | null;
   customer_name?: string | null;
   customer_email?: string | null;
   status: string | null;
   checked_in_at: string | null;
+};
+
+type WorkshopGuestLookupRow = {
+  id: string;
+  booking_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  position: number | null;
 };
 
 type AttendanceLookupRow = {
@@ -314,11 +324,20 @@ export async function loadParticipantOverviewItems(input: {
     bookingIds.length > 0
       ? admin
           .from("tickets")
-          .select("id,booking_id,trial_reservation_id,subscription_id,customer_name,customer_email,status,checked_in_at")
+          .select("id,booking_id,workshop_booking_guest_id,trial_reservation_id,subscription_id,customer_name,customer_email,status,checked_in_at")
           .in("booking_id", bookingIds)
           .returns<TicketLookupRow[]>()
       : Promise.resolve({ data: [] as TicketLookupRow[] }),
   ]);
+
+  const { data: workshopGuests } =
+    bookingIds.length > 0
+      ? await admin
+          .from("workshop_booking_guests")
+          .select("id,booking_id,first_name,last_name,email,position")
+          .in("booking_id", bookingIds)
+          .returns<WorkshopGuestLookupRow[]>()
+      : { data: [] as WorkshopGuestLookupRow[] };
 
   const ticketRows = [
     ...(trialTicketsResult.data ?? []),
@@ -371,6 +390,16 @@ export async function loadParticipantOverviewItems(input: {
     current.push(ticket);
     workshopTicketsByBookingId.set(bookingId, current);
   }
+  for (const tickets of workshopTicketsByBookingId.values()) {
+    tickets.sort((left, right) => {
+      if (!left.workshop_booking_guest_id && right.workshop_booking_guest_id) return -1;
+      if (left.workshop_booking_guest_id && !right.workshop_booking_guest_id) return 1;
+      return String(left.customer_name ?? "").localeCompare(String(right.customer_name ?? ""), "de", {
+        sensitivity: "base",
+      });
+    });
+  }
+  const workshopGuestById = new Map((workshopGuests ?? []).map((guest) => [guest.id, guest] as const));
   const attendanceByKey = new Map(
     ((attendanceRows as AttendanceLookupRow[] | null) ?? []).map((row) => [
       createAttendanceKey(row.course_id, row.session_id, row.event_date ?? "", row.ticket_id),
@@ -667,64 +696,102 @@ export async function loadParticipantOverviewItems(input: {
     const course = courseById.get(booking.course_id);
     if (!course) continue;
 
-    const ticket = workshopTicketsByBookingId.get(booking.id)?.[0] ?? null;
-    const event = getDefaultCourseEvent(course, sessionsByCourseId.get(course.id) ?? []);
-    const checkedInAt =
-      ticket && event
-        ? attendanceByKey.get(createAttendanceKey(course.id, event.sessionId, event.eventDate, ticket.id))
-            ?.checked_in_at ??
-          ticket.checked_in_at ??
-          booking.checked_in_at ??
-          null
-        : ticket?.checked_in_at ?? booking.checked_in_at ?? null;
-    const lifecycle = getWorkshopParticipantLifecycleDisplay({
-      bookingStatus: booking.status,
-      checkedInAt,
-      refundedAt: booking.refunded_at,
-      stripeRefundId: booking.stripe_refund_id,
-    });
-    const mailHref = buildMailtoHref({
-      to: booking.customer_email ? [booking.customer_email] : [],
-      subject: buildParticipantMailSubject(course.title),
-    });
-    const workshopStatus = {
-      kind: "workshop" as const,
-      bookingStatus: booking.status,
-      paymentStatus: booking.payment_status,
-      refundedAt: booking.refunded_at,
-      stripeRefundId: booking.stripe_refund_id,
-    };
-    const workshopStatusPresentation = getParticipantStatusPresentation(workshopStatus, checkedInAt);
-    const archiveEligibility = getParticipantArchiveEligibility({
-      source: "workshop",
-      archivedAt: booking.archived_at,
-      bookingStatus: booking.status,
-      checkedInAt,
-      refundedAt: booking.refunded_at,
-      stripeRefundId: booking.stripe_refund_id,
-    });
-    const workshopCalendarEnabled = hasOfferCalendarData({
-      kind: course.kind,
-      startsAt: course.starts_at,
-      sessionCount: (sessionsByCourseId.get(course.id) ?? []).length,
-    });
+    const ticketsForBooking = workshopTicketsByBookingId.get(booking.id) ?? [];
+    const fallbackPrimaryTicket: TicketLookupRow | null =
+      ticketsForBooking.length === 0
+        ? {
+            id: `legacy-booking-${booking.id}`,
+            booking_id: booking.id,
+            workshop_booking_guest_id: null,
+            trial_reservation_id: null,
+            subscription_id: null,
+            customer_name: participantName(booking.customer_first_name, booking.customer_last_name, "Teilnehmer*in"),
+            customer_email: booking.customer_email,
+            status: booking.status,
+            checked_in_at: booking.checked_in_at,
+          }
+        : null;
 
-    items.push({
-      id: `workshop-${booking.id}`,
-      detailHref: buildParticipantDetailHref(booking.id, "workshop"),
-      displayName: participantName(booking.customer_first_name, booking.customer_last_name, "Teilnehmer*in"),
-      email: booking.customer_email,
-      offerId: course.id,
-      offerTitle: course.title,
-      offerKindLabel: getOfferKindLabel(course.kind),
-      sourceLabel: "Buchung",
-      metaLabel: booking.created_at ? `Gebucht am ${formatDateTime(booking.created_at)}` : null,
-      decisionInfo: null,
-      highlight: false,
-      status: workshopStatus,
-      statusLabel: workshopStatusPresentation.sortLabel,
-      mailHref,
-      calendarAction: {
+    for (const ticket of fallbackPrimaryTicket ? [fallbackPrimaryTicket] : ticketsForBooking) {
+      const guest = ticket.workshop_booking_guest_id
+        ? workshopGuestById.get(ticket.workshop_booking_guest_id)
+        : null;
+      const isAdditionalParticipant = Boolean(ticket.workshop_booking_guest_id);
+      const displayName = isAdditionalParticipant
+        ? participantName(
+            guest?.first_name ?? null,
+            guest?.last_name ?? null,
+            ticket.customer_name ?? "Weitere teilnehmende Person"
+          )
+        : participantName(
+            booking.customer_first_name,
+            booking.customer_last_name,
+            ticket.customer_name ?? "Teilnehmer*in"
+          );
+      const contactEmail = isAdditionalParticipant
+        ? guest?.email?.trim() || booking.customer_email || ticket.customer_email || null
+        : booking.customer_email || ticket.customer_email || null;
+      const hasOwnEmail = isAdditionalParticipant && Boolean(guest?.email?.trim());
+      const event = getDefaultCourseEvent(course, sessionsByCourseId.get(course.id) ?? []);
+      const checkedInAt =
+        event && !fallbackPrimaryTicket
+          ? attendanceByKey.get(createAttendanceKey(course.id, event.sessionId, event.eventDate, ticket.id))
+              ?.checked_in_at ??
+            ticket.checked_in_at ??
+            null
+          : ticket.checked_in_at ?? booking.checked_in_at ?? null;
+      const lifecycle = getWorkshopParticipantLifecycleDisplay({
+        bookingStatus: booking.status,
+        checkedInAt,
+        refundedAt: booking.refunded_at,
+        stripeRefundId: booking.stripe_refund_id,
+      });
+      const mailHref = buildMailtoHref({
+        to: contactEmail ? [contactEmail] : [],
+        subject: buildParticipantMailSubject(course.title),
+      });
+      const workshopStatus = {
+        kind: "workshop" as const,
+        bookingStatus: booking.status,
+        paymentStatus: booking.payment_status,
+        refundedAt: booking.refunded_at,
+        stripeRefundId: booking.stripe_refund_id,
+      };
+      const workshopStatusPresentation = getParticipantStatusPresentation(workshopStatus, checkedInAt);
+      const archiveEligibility = getParticipantArchiveEligibility({
+        source: "workshop",
+        archivedAt: booking.archived_at,
+        bookingStatus: booking.status,
+        checkedInAt,
+        refundedAt: booking.refunded_at,
+        stripeRefundId: booking.stripe_refund_id,
+      });
+      const workshopCalendarEnabled = hasOfferCalendarData({
+        kind: course.kind,
+        startsAt: course.starts_at,
+        sessionCount: (sessionsByCourseId.get(course.id) ?? []).length,
+      });
+
+      items.push({
+        id: `workshop-${booking.id}-${ticket.id}`,
+        detailHref: buildParticipantDetailHref(booking.id, "workshop"),
+        displayName,
+        email: contactEmail,
+        offerId: course.id,
+        offerTitle: course.title,
+        offerKindLabel: getOfferKindLabel(course.kind),
+        sourceLabel: isAdditionalParticipant ? "Weitere teilnehmende Person" : "Buchende Person",
+        metaLabel: booking.created_at ? `Gebucht am ${formatDateTime(booking.created_at)}` : null,
+        decisionInfo: isAdditionalParticipant
+          ? hasOwnEmail
+            ? "Teil einer Mehrpersonen-Buchung"
+            : "Teil einer Mehrpersonen-Buchung · Kontakt über buchende Person"
+          : null,
+        highlight: false,
+        status: workshopStatus,
+        statusLabel: workshopStatusPresentation.sortLabel,
+        mailHref,
+        calendarAction: {
         href: workshopCalendarEnabled ? buildBookingCalendarPath(booking.id, "workshop") : null,
         disabledReason: workshopCalendarEnabled ? null : "Kalenderdatei erst mit Termin verfügbar",
       },
@@ -735,6 +802,7 @@ export async function loadParticipantOverviewItems(input: {
         paymentStatus: booking.payment_status,
         playMode: lifecycle.playMode,
         stopDisabled:
+          isAdditionalParticipant ||
           booking.status !== "paid" ||
           Boolean(booking.refunded_at) ||
           Boolean(booking.stripe_refund_id),
@@ -743,7 +811,7 @@ export async function loadParticipantOverviewItems(input: {
         stopClassName: lifecycle.stopClassName,
       },
       checkIn:
-        ticket && event
+        event && !fallbackPrimaryTicket
           ? {
               courseId: course.id,
               sessionId: event.sessionId,
@@ -771,12 +839,17 @@ export async function loadParticipantOverviewItems(input: {
         source: "workshop",
         redirectTo: "/dashboard/participants",
         title: "Teilnahme archivieren?",
-        text: "Die Buchung bleibt historisch erhalten und wird nur aus den aktiven Übersichten entfernt.",
-        allowed: archiveEligibility.allowed,
-        reason: archiveEligibility.reason,
+        text: isAdditionalParticipant
+          ? "Diese Person ist Teil einer Mehrpersonen-Buchung. Archivieren ist aktuell nur auf Buchungsebene vorgesehen."
+          : "Die Buchung bleibt historisch erhalten und wird nur aus den aktiven Übersichten entfernt.",
+        allowed: isAdditionalParticipant ? false : archiveEligibility.allowed,
+        reason: isAdditionalParticipant
+          ? "Einzelarchivierung pro Ticket ist als Folge-PR offen."
+          : archiveEligibility.reason,
       },
       sortDate: booking.created_at ?? "",
     });
+    }
   }
 
   items.sort((left, right) => {

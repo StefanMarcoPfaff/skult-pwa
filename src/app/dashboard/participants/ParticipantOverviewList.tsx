@@ -771,6 +771,17 @@ export function ParticipantOverviewList(props: {
                     </span>
                   }
                 />
+                <DetailField
+                  label="Rolle"
+                  value={
+                    <span className="space-y-0.5">
+                      <span>{item.sourceLabel}</span>
+                      {item.decisionInfo ? (
+                        <span className="block text-xs font-normal text-muted-foreground">{item.decisionInfo}</span>
+                      ) : null}
+                    </span>
+                  }
+                />
                 <DetailField label="Letzter Check-in" value={checkedInAt ? formatDateTime(checkedInAt) : "Nicht eingecheckt"} />
               </div>
 
