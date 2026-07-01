@@ -15,6 +15,7 @@ import {
 import { maskIbanLast4 } from "@/lib/payout-profile";
 import type { ProviderType } from "@/lib/provider-profiles";
 import {
+  refreshStripeCustomAccountStatusAction,
   saveUnifiedProviderProfile,
   type SaveProfileState,
 } from "./actions";
@@ -131,7 +132,9 @@ function getPaymentPreparationStatus(input: {
 export default function ProfileForm({ initialSection, initialValues }: ProfileFormProps) {
   const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
+  const [isRefreshingStripeStatus, setIsRefreshingStripeStatus] = useState(false);
   const [state, setState] = useState<SaveProfileState>({});
+  const [stripeRefreshState, setStripeRefreshState] = useState<SaveProfileState>({});
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState(initialValues.photo_url);
   const [photoObjectUrl, setPhotoObjectUrl] = useState<string | null>(null);
   const [companyLogoPreviewUrl, setCompanyLogoPreviewUrl] = useState(initialValues.company_logo_url);
@@ -176,6 +179,28 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
       setIsSaving(false);
     }
   };
+
+  async function refreshStripeStatus() {
+    setStripeRefreshState({});
+    setIsRefreshingStripeStatus(true);
+
+    try {
+      const result = await refreshStripeCustomAccountStatusAction();
+      setStripeRefreshState(result);
+
+      if (result.redirectTo) {
+        router.push(result.redirectTo);
+      } else if (result.success) {
+        router.refresh();
+      }
+    } catch {
+      setStripeRefreshState({
+        error: "Stripe-Status konnte gerade nicht aktualisiert werden. Bitte versuche es spaeter erneut.",
+      });
+    } finally {
+      setIsRefreshingStripeStatus(false);
+    }
+  }
 
   const maskedIban = maskIbanLast4(initialValues.iban_last4);
   const friendlyRequirements = uniqueLabels([
@@ -465,6 +490,28 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
               <p className="mt-3 text-muted-foreground">
                 Der Zahlungsdienstleister kann zu einem spÃ¤teren Zeitpunkt weitere Nachweise anfordern.
               </p>
+            ) : null}
+            {initialValues.customConnectAccountExists ? (
+              <div className="mt-4 space-y-3">
+                <button
+                  type="button"
+                  disabled={isRefreshingStripeStatus}
+                  onClick={refreshStripeStatus}
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isRefreshingStripeStatus ? "Stripe-Status wird aktualisiert..." : "Stripe-Status aktualisieren"}
+                </button>
+                {stripeRefreshState.error ? (
+                  <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {stripeRefreshState.error}
+                  </p>
+                ) : null}
+                {stripeRefreshState.success ? (
+                  <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                    {stripeRefreshState.success}
+                  </p>
+                ) : null}
+              </div>
             ) : null}
           </div>
           <label className="sm:col-span-2 flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm">

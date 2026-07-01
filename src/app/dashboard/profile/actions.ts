@@ -15,7 +15,10 @@ import {
 } from "@/lib/payout-profile";
 import { validateProfileImageFile } from "@/lib/profile-image-upload";
 import { isProviderType } from "@/lib/provider-profiles";
-import { createOrUpdateCustomAccountForProvider } from "@/lib/stripe/custom-connect";
+import {
+  createOrUpdateCustomAccountForProvider,
+  syncCustomAccountStatus,
+} from "@/lib/stripe/custom-connect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const PROFILE_PAYOUT_DEBUG = process.env.PROFILE_PAYOUT_DEBUG === "1";
@@ -151,6 +154,12 @@ function getStripeErrorLogPayload(error: unknown): Record<string, unknown> {
     stripeStatusCode: getErrorProperty(error, "statusCode"),
     message: error instanceof Error ? error.message : String(error),
   };
+}
+
+function isUnreadableStripeAccountError(error: unknown): boolean {
+  const code = getErrorProperty(error, "code");
+  const message = error instanceof Error ? error.message : String(error);
+  return code === "account_invalid" || /does not have access to account|account does not exist|application access/i.test(message);
 }
 
 function buildBillingAddress(input: {
@@ -1071,6 +1080,44 @@ export async function prepareCustomConnectAction(): Promise<SaveProfileState> {
     return {
       error:
         "Die Auszahlungsabwicklung konnte gerade nicht vorbereitet werden. Dein Profil bleibt gespeichert. Bitte versuche es später erneut.",
+    };
+  }
+}
+
+export async function refreshStripeCustomAccountStatusAction(): Promise<SaveProfileState> {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return {
+        error: "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
+        redirectTo: "/login",
+      };
+    }
+
+    await syncCustomAccountStatus(user.id);
+
+    return {
+      success: "Stripe-Status wurde aktualisiert.",
+    };
+  } catch (error: unknown) {
+    console.error("[custom-connect]", {
+      kind: "refresh_custom_connect_status_error",
+      ...getStripeErrorLogPayload(error),
+    });
+
+    if (isUnreadableStripeAccountError(error)) {
+      return {
+        error:
+          "Dieser Stripe-Testaccount kann mit dem aktuellen Stripe-Key nicht gelesen werden. Bitte Stripe-Testumgebung pruefen.",
+      };
+    }
+
+    return {
+      error: "Stripe-Status konnte gerade nicht aktualisiert werden. Bitte versuche es spaeter erneut.",
     };
   }
 }
