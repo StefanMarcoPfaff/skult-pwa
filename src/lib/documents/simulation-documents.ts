@@ -36,6 +36,7 @@ type BookingDocumentRow = {
   customer_first_name: string | null;
   customer_last_name: string | null;
   customer_email: string | null;
+  customer_billing_company_name: string | null;
   customer_billing_name: string | null;
   customer_billing_street: string | null;
   customer_billing_house_number: string | null;
@@ -95,6 +96,11 @@ type PayoutItemDocumentRow = {
   ledger_entry_id: string;
 };
 
+type WorkshopBookingGuestDocumentRow = {
+  first_name: string | null;
+  last_name: string | null;
+};
+
 type EnsureCustomerReceiptResult = {
   documentId: string;
   record: FinancialDocumentRecord;
@@ -149,6 +155,16 @@ function normalizeOptionalText(value: string | null | undefined): string | null 
 function buildFullName(firstName: string | null | undefined, lastName: string | null | undefined): string | null {
   const fullName = [normalizeOptionalText(firstName), normalizeOptionalText(lastName)].filter(Boolean).join(" ").trim();
   return fullName || null;
+}
+
+function buildParticipantNames(input: {
+  customerName: string | null;
+  guests: WorkshopBookingGuestDocumentRow[];
+}): string[] {
+  return [
+    input.customerName,
+    ...input.guests.map((guest) => buildFullName(guest.first_name, guest.last_name)),
+  ].filter((value): value is string => Boolean(value));
 }
 
 async function finalizeFinancialDocumentRecord(input: {
@@ -241,7 +257,7 @@ async function loadDocumentContext(input: {
     bookingId
       ? supabase
           .from("bookings")
-          .select("id,course_id,customer_first_name,customer_last_name,customer_email,customer_billing_name,customer_billing_street,customer_billing_house_number,customer_billing_postal_code,customer_billing_city,customer_billing_country,created_at")
+            .select("id,course_id,customer_first_name,customer_last_name,customer_email,customer_billing_company_name,customer_billing_name,customer_billing_street,customer_billing_house_number,customer_billing_postal_code,customer_billing_city,customer_billing_country,created_at")
           .eq("id", bookingId)
           .maybeSingle<BookingDocumentRow>()
       : Promise.resolve({ data: null as BookingDocumentRow | null, error: null }),
@@ -332,13 +348,21 @@ export async function ensureCustomerReceiptForPayment(input: {
     throw new Error(`Payment transaction not found for customer receipt: ${input.paymentTransactionId}`);
   }
 
-  const { count: guestCount } = context.bookingId
+  const { data: guestRows, error: guestRowsError } = context.bookingId
     ? await supabase
         .from("workshop_booking_guests")
-        .select("id", { count: "exact", head: true })
+        .select("first_name,last_name")
         .eq("booking_id", context.bookingId)
-    : { count: 0 };
-  const bookedSeatCount = context.bookingId ? 1 + Math.max(0, guestCount ?? 0) : null;
+        .order("position", { ascending: true })
+        .returns<WorkshopBookingGuestDocumentRow[]>()
+    : { data: [] as WorkshopBookingGuestDocumentRow[], error: null };
+  if (guestRowsError) throw guestRowsError;
+  const guests = guestRows ?? [];
+  const bookedSeatCount = context.bookingId ? 1 + guests.length : null;
+  const participantNames = buildParticipantNames({
+    customerName: context.customerName,
+    guests,
+  });
 
   const metadata = await buildCustomerReceiptDocumentData({
     supabase: asTypedSupabase(supabase),
@@ -346,6 +370,7 @@ export async function ensureCustomerReceiptForPayment(input: {
     customer: {
       name: context.customerName,
       email: context.customerEmail,
+      billingCompanyName: context.booking?.customer_billing_company_name ?? null,
       billingName: context.booking?.customer_billing_name ?? null,
       billingStreet: context.booking?.customer_billing_street ?? null,
       billingHouseNumber: context.booking?.customer_billing_house_number ?? null,
@@ -386,6 +411,9 @@ export async function ensureCustomerReceiptForPayment(input: {
     grossAmountCents: context.paymentTransaction.amount_cents,
     platformFeeCents: 0,
     providerPayoutCents: 0,
+    metadata: {
+      participantNames,
+    },
   });
 
   const record = await createFinancialDocumentRecord({

@@ -108,6 +108,7 @@ export function PayButton({
     lastName: "",
     email: "",
     phone: "",
+    billingCompanyName: "",
     billingName: "",
     billingStreet: "",
     billingHouseNumber: "",
@@ -161,6 +162,7 @@ export function PayButton({
             ? undefined
             : {
                 name: form.billingName,
+                companyName: form.billingCompanyName,
                 street: form.billingStreet,
                 houseNumber: form.billingHouseNumber,
                 postalCode: form.billingPostalCode,
@@ -326,6 +328,14 @@ export function PayButton({
             </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-1 sm:col-span-2">
+              <span className="text-sm font-medium">Firma / Organisation</span>
+              <input
+                value={form.billingCompanyName}
+                onChange={(event) => setForm((current) => ({ ...current, billingCompanyName: event.target.value }))}
+                className="w-full rounded-xl border px-3 py-2 text-sm"
+              />
+            </label>
             <label className="space-y-1 sm:col-span-2">
               <span className="text-sm font-medium">Name (falls abweichend)</span>
               <input

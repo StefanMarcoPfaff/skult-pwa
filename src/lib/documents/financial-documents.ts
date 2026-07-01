@@ -90,14 +90,51 @@ function normalizeCurrency(currency: string | null | undefined): string {
   return (currency ?? "EUR").trim().toUpperCase() || "EUR";
 }
 
+function normalizeDocumentText(value: string | null | undefined, fallback: string): string {
+  return String(value ?? "").trim() || fallback;
+}
+
 function normalizeDocumentPayload(
   input: CreateFinancialDocumentInput
 ): FinancialDocumentInsert {
+  const metadata: Record<string, unknown> = input.metadata ?? {};
+  const documentCountry = normalizeDocumentText(
+    input.document_country,
+    (metadata.documentCountry as string | null | undefined) ?? "DE"
+  );
+  const documentLocale = normalizeDocumentText(
+    input.document_locale,
+    (metadata.documentLocale as string | null | undefined) ?? "de-DE"
+  );
+  const documentTemplateVersion = normalizeDocumentText(
+    input.document_template_version,
+    (metadata.documentTemplateVersion as string | null | undefined) ?? "1.0"
+  );
+  const taxRegime =
+    input.tax_regime ??
+    (metadata.taxRegime as string | null | undefined) ??
+    (metadata.taxStatus as string | null | undefined) ??
+    null;
+
   return {
     ...input,
     status: input.status ?? "draft",
     currency: normalizeCurrency(input.currency),
-    metadata: input.metadata ?? {},
+    document_country: documentCountry,
+    document_locale: documentLocale,
+    document_template_version: documentTemplateVersion,
+    tax_regime: taxRegime,
+    metadata: {
+      ...metadata,
+      documentType: input.document_type,
+      documentNumber: input.document_number ?? (metadata.documentNumber as string | null | undefined) ?? null,
+      documentCountry,
+      documentLocale,
+      documentCurrency: normalizeCurrency(input.currency),
+      documentTemplateVersion,
+      taxRegime,
+      issuedAt: input.issued_at ?? (metadata.issuedAt as string | null | undefined) ?? null,
+    },
   };
 }
 

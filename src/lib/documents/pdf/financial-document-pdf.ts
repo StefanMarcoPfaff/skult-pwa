@@ -32,29 +32,98 @@ function getDocumentMetadata(record: FinancialDocumentRecord): FinancialDocument
   return metadata as FinancialDocumentMetadata;
 }
 
-function buildDocumentNumber(document: FinancialDocumentRecord): string {
-  const prefixByType: Record<FinancialDocumentRecord["document_type"], string> = {
-    customer_receipt: "RESER-CR",
-    provider_payout_statement: "RESER-PS",
-    provider_platform_fee_invoice: "RESER-PFI",
-    platform_revenue_statement: "RESER-REV",
-    refund_receipt: "RESER-RR",
-  };
-
-  const issuedDate = new Date(document.issued_at ?? document.created_at ?? new Date().toISOString());
-  const datePart = Number.isNaN(issuedDate.getTime())
-    ? new Date().toISOString().slice(0, 10).replace(/-/g, "")
-    : issuedDate.toISOString().slice(0, 10).replace(/-/g, "");
-  const idPart = document.id.replace(/-/g, "").slice(0, 8).toUpperCase();
-
-  return `${prefixByType[document.document_type]}-${datePart}-${idPart}`;
-}
-
 function buildDocumentPdfPath(document: FinancialDocumentRecord, documentNumber: string): string {
   const issuedDate = new Date(document.issued_at ?? document.created_at ?? new Date().toISOString());
   const year = Number.isNaN(issuedDate.getTime()) ? "unknown" : String(issuedDate.getUTCFullYear());
   const sanitizedNumber = documentNumber.toLowerCase().replace(/[^a-z0-9-]+/g, "-");
   return `${year}/${document.document_type}/${document.id}/${sanitizedNumber}.pdf`;
+}
+
+function buildMetadataWithDocumentModel(
+  document: FinancialDocumentRecord,
+  documentNumber: string
+): Record<string, unknown> {
+  const metadata: Record<string, unknown> = getDocumentMetadata(document) ?? {};
+  const offer =
+    metadata.offer && typeof metadata.offer === "object" && !Array.isArray(metadata.offer)
+      ? (metadata.offer as { startsAt?: string | null })
+      : null;
+  return {
+    ...metadata,
+    documentType: document.document_type,
+    documentNumber,
+    documentCountry: document.document_country,
+    documentLocale: document.document_locale,
+    documentCurrency: document.currency,
+    documentTemplateVersion: document.document_template_version,
+    taxRegime: document.tax_regime ?? (metadata.taxRegime as string | null | undefined) ?? null,
+    taxStatus: (metadata.taxStatus as string | null | undefined) ?? document.tax_regime ?? null,
+    issuedAt: document.issued_at ?? (metadata.issuedAt as string | null | undefined) ?? null,
+    serviceDate:
+      (metadata.serviceDate as string | null | undefined) ??
+      document.period_start ??
+      offer?.startsAt ??
+      null,
+  };
+}
+
+async function ensurePersistedDocumentNumber(input: {
+  document: FinancialDocumentRecord;
+  supabase: SupabaseClient;
+}): Promise<FinancialDocumentRecord> {
+  if (input.document.document_number) {
+    const metadata = getDocumentMetadata(input.document);
+    if (
+      metadata?.documentNumber === input.document.document_number &&
+      metadata.documentCountry === input.document.document_country &&
+      metadata.documentTemplateVersion === input.document.document_template_version
+    ) {
+      return input.document;
+    }
+
+    const { data: updatedDocument, error: updateError } = await input.supabase
+      .from("financial_documents")
+      .update({
+        metadata: buildMetadataWithDocumentModel(input.document, input.document.document_number),
+      } as never)
+      .eq("id", input.document.id)
+      .select("*")
+      .maybeSingle<FinancialDocumentRecord>();
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    return updatedDocument ?? input.document;
+  }
+
+  const { error } = await input.supabase.rpc("ensure_financial_document_number", {
+    p_document_id: input.document.id,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const numberedDocument = await getFinancialDocumentById(input.document.id, input.supabase);
+  if (!numberedDocument?.document_number) {
+    throw new Error(`Document number could not be assigned: ${input.document.id}`);
+  }
+
+  const { data: updatedDocument, error: updateError } = await input.supabase
+    .from("financial_documents")
+    .update({
+      metadata: buildMetadataWithDocumentModel(numberedDocument, numberedDocument.document_number),
+    } as never)
+    .eq("id", numberedDocument.id)
+    .select("*")
+    .maybeSingle<FinancialDocumentRecord>();
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  return updatedDocument ?? numberedDocument;
 }
 
 export async function createFinancialDocumentSignedDownloadUrl(input: {
@@ -85,22 +154,26 @@ export async function generateFinancialDocumentPdf(input: {
     throw new Error(`Financial document not found: ${input.documentId}`);
   }
 
-  const documentNumber = document.document_number ?? buildDocumentNumber(document);
-  const pdfPath = document.pdf_path ?? buildDocumentPdfPath(document, documentNumber);
+  const numberedDocument = await ensurePersistedDocumentNumber({ document, supabase });
+  const documentNumber = numberedDocument.document_number;
+  if (!documentNumber) {
+    throw new Error(`Financial document has no document number: ${numberedDocument.id}`);
+  }
+  const pdfPath = numberedDocument.pdf_path ?? buildDocumentPdfPath(numberedDocument, documentNumber);
 
-  if (document.pdf_path) {
+  if (numberedDocument.pdf_path) {
     const record =
-      document.document_number && document.pdf_path === pdfPath
-        ? document
+      numberedDocument.document_number && numberedDocument.pdf_path === pdfPath
+        ? numberedDocument
         : ((await setFinancialDocumentPdfAsset(
             {
-              documentId: document.id,
+              documentId: numberedDocument.id,
               pdfPath,
               documentNumber,
             },
             supabase
           )) ??
-          document);
+          numberedDocument);
 
     return {
       documentId: record.id,
@@ -111,9 +184,9 @@ export async function generateFinancialDocumentPdf(input: {
     };
   }
 
-  const metadata = getDocumentMetadata(document);
+  const metadata = getDocumentMetadata(numberedDocument);
   const pdfBuffer = renderFinancialDocumentPdfByType({
-    document,
+    document: numberedDocument,
     metadata,
   });
 
@@ -131,12 +204,12 @@ export async function generateFinancialDocumentPdf(input: {
   const record =
     (await setFinancialDocumentPdfAsset(
       {
-        documentId: document.id,
+        documentId: numberedDocument.id,
         pdfPath,
         documentNumber,
       },
       supabase
-    )) ?? document;
+    )) ?? numberedDocument;
 
   return {
     documentId: record.id,

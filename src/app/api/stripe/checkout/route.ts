@@ -83,6 +83,7 @@ export async function POST(req: Request) {
       phone?: string;
       billingAddress?: {
         name?: string;
+        companyName?: string;
         street?: string;
         houseNumber?: string;
         postalCode?: string;
@@ -104,6 +105,7 @@ export async function POST(req: Request) {
     const customerEmail = normalizeBookingEmail(requiredText(email));
     const customerPhone = requiredText(phone);
     const customerBillingName = requiredText(billingAddress?.name) || null;
+    const customerBillingCompanyName = requiredText(billingAddress?.companyName) || null;
     const customerBillingStreet = requiredText(billingAddress?.street) || null;
     const customerBillingHouseNumber = requiredText(billingAddress?.houseNumber) || null;
     const customerBillingPostalCode = requiredText(billingAddress?.postalCode) || null;
@@ -239,6 +241,7 @@ export async function POST(req: Request) {
       Object.assign(
         bookingInsert,
         customerBillingName ? { customer_billing_name: customerBillingName } : {},
+        customerBillingCompanyName ? { customer_billing_company_name: customerBillingCompanyName } : {},
         customerBillingStreet ? { customer_billing_street: customerBillingStreet } : {},
         customerBillingHouseNumber ? { customer_billing_house_number: customerBillingHouseNumber } : {},
         customerBillingPostalCode ? { customer_billing_postal_code: customerBillingPostalCode } : {},

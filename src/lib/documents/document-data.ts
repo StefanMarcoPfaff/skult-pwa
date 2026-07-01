@@ -17,6 +17,7 @@ export type BuildFinancialDocumentDataInput = {
   customer?: {
     name?: string | null;
     email?: string | null;
+    billingCompanyName?: string | null;
     billingName?: string | null;
     billingStreet?: string | null;
     billingHouseNumber?: string | null;
@@ -91,7 +92,12 @@ function buildCustomerBillingAddressLines(customer: BuildFinancialDocumentDataIn
     .join(" ")
     .trim();
 
-  return [streetLine, cityLine, normalizeOptionalText(customer?.billingCountry)].filter(
+  return [
+    normalizeOptionalText(customer?.billingCompanyName),
+    streetLine,
+    cityLine,
+    normalizeOptionalText(customer?.billingCountry),
+  ].filter(
     (value): value is string => Boolean(value)
   );
 }
@@ -126,11 +132,16 @@ function buildProviderSnapshot(
 }
 
 function buildTaxHint(
+  documentType: DocumentType,
   providerSnapshot: FinancialDocumentProviderSnapshot | null,
   explicitTaxHint: string | null | undefined
 ): string | null {
   if (explicitTaxHint && explicitTaxHint.trim()) {
     return explicitTaxHint.trim();
+  }
+
+  if (documentType === "provider_platform_fee_invoice") {
+    return "Steuerangaben zur RESER-Plattformgebuehr sind noch nicht vollstaendig hinterlegt; es werden keine Werte geraten.";
   }
 
   switch (providerSnapshot?.vatStatus) {
@@ -158,7 +169,11 @@ async function buildFinancialDocumentData(
     : null;
   const providerSnapshot = buildProviderSnapshot(providerProfile);
   const platformFeeConfig = await getPlatformFeeConfigForProvider(input.supabase, input.providerId);
-  const taxHint = buildTaxHint(providerSnapshot, input.taxHint);
+  const taxHint = buildTaxHint(documentType, providerSnapshot, input.taxHint);
+  const documentTaxStatus =
+    documentType === "provider_platform_fee_invoice"
+      ? null
+      : providerSnapshot?.vatStatus ?? null;
 
   const notes = [
     documentType === "customer_receipt"
@@ -177,6 +192,16 @@ async function buildFinancialDocumentData(
   ].filter((value): value is string => Boolean(value));
 
   return {
+    documentType,
+    documentNumber: null,
+    documentCountry: "DE",
+    documentLocale: "de-DE",
+    documentCurrency: normalizeCurrency(input.currency),
+    documentTemplateVersion: "1.0",
+    taxRegime: documentTaxStatus,
+    taxStatus: documentTaxStatus,
+    issuedAt: null,
+    serviceDate: input.periodStart ?? input.offer?.startsAt ?? null,
     roleNotice: RESER_ROLE_NOTICE,
     taxHint,
     providerBillingProfile: providerSnapshot,
@@ -199,6 +224,7 @@ async function buildFinancialDocumentData(
           return {
             name: normalizeOptionalText(input.customer.name),
             email: normalizeOptionalText(input.customer.email),
+            billingCompanyName: normalizeOptionalText(input.customer.billingCompanyName),
             billingName: normalizeOptionalText(input.customer.billingName),
             billingStreet: normalizeOptionalText(input.customer.billingStreet),
             billingHouseNumber: normalizeOptionalText(input.customer.billingHouseNumber),
@@ -255,7 +281,6 @@ async function buildFinancialDocumentData(
       refundRecordId: input.refundRecordId ?? null,
       ledgerEntryId: input.ledgerEntryId ?? null,
     },
-    documentType,
     ...input.metadata,
   };
 }

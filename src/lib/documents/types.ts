@@ -60,6 +60,7 @@ export type FinancialDocumentOfferSnapshot = {
 export type FinancialDocumentCustomerSnapshot = {
   name: string | null;
   email: string | null;
+  billingCompanyName: string | null;
   billingName: string | null;
   billingStreet: string | null;
   billingHouseNumber: string | null;
@@ -98,6 +99,16 @@ export type FinancialDocumentPaymentSnapshot = {
 };
 
 export type FinancialDocumentMetadata = {
+  documentType: DocumentType;
+  documentNumber: string | null;
+  documentCountry: string;
+  documentLocale: string;
+  documentCurrency: string;
+  documentTemplateVersion: string;
+  taxRegime: string | null;
+  taxStatus: string | null;
+  issuedAt: string | null;
+  serviceDate: string | null;
   roleNotice: string;
   taxHint: string | null;
   providerBillingProfile: FinancialDocumentProviderSnapshot | null;

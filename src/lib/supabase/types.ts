@@ -68,6 +68,10 @@ export type Database = {
             | "refund_receipt";
           status: "draft" | "issued" | "voided";
           document_number: string | null;
+          document_country: string;
+          document_locale: string;
+          document_template_version: string;
+          tax_regime: string | null;
           provider_id: string | null;
           customer_email: string | null;
           booking_id: string | null;
@@ -103,6 +107,10 @@ export type Database = {
             | "refund_receipt";
           status?: "draft" | "issued" | "voided";
           document_number?: string | null;
+          document_country?: string;
+          document_locale?: string;
+          document_template_version?: string;
+          tax_regime?: string | null;
           provider_id?: string | null;
           customer_email?: string | null;
           booking_id?: string | null;
@@ -137,6 +145,10 @@ export type Database = {
             | "refund_receipt";
           status: "draft" | "issued" | "voided";
           document_number: string | null;
+          document_country: string;
+          document_locale: string;
+          document_template_version: string;
+          tax_regime: string | null;
           provider_id: string | null;
           customer_email: string | null;
           booking_id: string | null;
