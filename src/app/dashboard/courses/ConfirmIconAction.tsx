@@ -5,7 +5,7 @@ import type { FormEvent, ReactNode } from "react";
 import { useId, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 
-type ServerActionResult = { ok?: boolean; error?: string } | void;
+type ServerActionResult = { ok?: boolean; error?: string; missingFields?: string[] } | void;
 
 function ConfirmSubmitButton(props: { label: string; pending?: boolean }) {
   const formStatus = useFormStatus();
@@ -17,11 +17,16 @@ function ConfirmSubmitButton(props: { label: string; pending?: boolean }) {
   );
 }
 
-function isResultObject(value: unknown): value is { ok?: boolean; error?: string } {
+function isResultObject(value: unknown): value is { ok?: boolean; error?: string; missingFields?: string[] } {
   return typeof value === "object" && value !== null && ("ok" in value || "error" in value);
 }
 
-function getErrorMessage(errorCode: string | undefined) {
+function formatMissingFields(missingFields: string[] | undefined): string | null {
+  if (!missingFields?.length) return null;
+  return missingFields.map((field) => `- ${field}`).join("\n");
+}
+
+function getErrorMessage(errorCode: string | undefined, missingFields?: string[]) {
   switch (errorCode) {
     case "invalid_request":
       return "Die Aktion konnte nicht gestartet werden.";
@@ -31,8 +36,12 @@ function getErrorMessage(errorCode: string | undefined) {
       return "Dieses Angebot kann in seinem aktuellen Status nicht aktiviert werden.";
     case "missing_policy":
       return "Vor der Aktivierung muss zuerst eine Storno- bzw. Kündigungsregel hinterlegt sein.";
-    case "missing_paid_offer_profile":
-      return "Kostenpflichtige Angebote koennen erst veroeffentlicht werden, wenn Steuer-, Adress-, Auszahlungs- und Stripe-Daten vollstaendig sind.";
+    case "missing_paid_offer_profile": {
+      const details = formatMissingFields(missingFields);
+      return details
+        ? `Kostenpflichtige Angebote koennen noch nicht veroeffentlicht werden:\n${details}`
+        : "Kostenpflichtige Angebote koennen erst veroeffentlicht werden, wenn Steuer-, Adress-, Auszahlungs- und Stripe-Daten vollstaendig sind.";
+    }
     case "update_failed":
       return "Das Angebot konnte nicht aktiviert werden. Bitte versuche es erneut.";
     case "timeout":
@@ -104,7 +113,7 @@ export function ConfirmIconAction(props: {
       void runWithTimeout(Promise.resolve(props.action(formData)), props.timeoutMs ?? 15000)
         .then((result) => {
           if (isResultObject(result) && result.ok === false) {
-            setErrorMessage(getErrorMessage(result.error));
+            setErrorMessage(getErrorMessage(result.error, result.missingFields));
             return;
           }
 
@@ -149,7 +158,7 @@ export function ConfirmIconAction(props: {
               <input key={name} type="hidden" name={name} value={value} />
             ))}
             {errorMessage ? (
-              <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMessage}</p>
+              <p className="whitespace-pre-line rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{errorMessage}</p>
             ) : null}
             <div className="flex justify-end gap-3">
               <button

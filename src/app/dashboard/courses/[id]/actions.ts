@@ -119,6 +119,7 @@ export type OfferActivationActionResult =
         | "missing_paid_offer_profile"
         | "update_failed"
         | "unknown";
+      missingFields?: string[];
     };
 
 type CourseCopySourceRow = {
@@ -345,7 +346,11 @@ export async function setCoursePublishStateAction(formData: FormData) {
           reason: "missing_paid_offer_profile",
           missingFields: paidOfferReadiness.missingFields,
         });
-        return { ok: false, error: "missing_paid_offer_profile" } satisfies OfferActivationActionResult;
+        return {
+          ok: false,
+          error: "missing_paid_offer_profile",
+          missingFields: paidOfferReadiness.missingFields,
+        } satisfies OfferActivationActionResult;
       }
     }
 

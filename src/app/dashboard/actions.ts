@@ -30,7 +30,8 @@ export async function setPublishedAction(courseId: string, publish: boolean) {
       const profile = await getProviderBillingProfile(admin, data.user.id);
       const readiness = getPaidOfferPublicationReadiness(profile);
       if (!readiness.isReady) {
-        throw new Error("Kostenpflichtige Angebote koennen erst veroeffentlicht werden, wenn Steuer-, Adress-, Auszahlungs- und Stripe-Daten vollstaendig sind.");
+        const details = readiness.missingFields.length ? `\n${readiness.missingFields.join("\n")}` : "";
+        throw new Error(`Kostenpflichtige Angebote koennen noch nicht veroeffentlicht werden.${details}`);
       }
     }
   }

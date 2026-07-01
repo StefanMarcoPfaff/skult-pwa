@@ -237,6 +237,14 @@ function getStatusHint(normalizedStatus: string, isSinglePaymentOffer: boolean):
   return "Dieses Angebot ist aktiv. Verwaltung und Kommunikation erfolgen über die Aktionen unten.";
 }
 
+function formatPaidOfferReadinessMessage(missingFields: string[]): string {
+  if (missingFields.length === 0) {
+    return "Kostenpflichtige Angebote koennen erst aktiviert werden, wenn Steuer-, Adress-, Auszahlungs- und Stripe-Daten vollstaendig sind.";
+  }
+
+  return `Kostenpflichtige Angebote koennen noch nicht aktiviert werden. ${missingFields.join(" ")}`;
+}
+
 export default async function DashboardCourseDetailPage({
   params,
   searchParams,
@@ -725,7 +733,7 @@ export default async function DashboardCourseDetailPage({
       ) : null}
       {savedParam === "missing_paid_offer_profile" ? (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Kostenpflichtige Angebote koennen erst aktiviert werden, wenn Steuer-, Adress-, Auszahlungs- und Stripe-Daten vollstaendig sind.
+          {formatPaidOfferReadinessMessage(paidOfferReadiness.missingFields)}
         </p>
       ) : null}
       {savedParam === "pause_scheduled" ? (
@@ -810,7 +818,7 @@ export default async function DashboardCourseDetailPage({
       ) : null}
       {normalizedStatus === "draft" && publishBlockedForMissingPaidOfferProfile ? (
         <p className="mt-3 text-sm text-red-700">
-          Kostenpflichtige Angebote koennen erst aktiviert werden, wenn Steuer-, Adress-, Auszahlungs- und Stripe-Daten vollstaendig sind.
+          {formatPaidOfferReadinessMessage(paidOfferReadiness.missingFields)}
         </p>
       ) : null}
       {showOfferMailWarning ? (

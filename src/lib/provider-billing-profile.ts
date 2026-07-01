@@ -453,12 +453,12 @@ export function getPaidOfferPublicationReadiness(
   if (!profile) {
     return {
       isReady: false,
-      missingFields: ["Anbieterprofil fehlt"],
+      missingFields: ["Es fehlt: Anbieterprofil"],
     };
   }
 
   if (!profile.documentRecipientName || profile.documentRecipientName === "Anbietende") {
-    missingFields.push("vollstaendiger Name oder Organisationsname fehlt");
+    missingFields.push("Es fehlt: vollstaendiger Name oder Organisationsname");
   }
 
   if (
@@ -467,27 +467,54 @@ export function getPaidOfferPublicationReadiness(
     !profile.billingCity ||
     !profile.billingCountry
   ) {
-    missingFields.push("vollstaendige Anschrift fehlt");
+    missingFields.push("Es fehlt: vollstaendige Rechnungsadresse");
   }
 
   if (!profile.vatStatus) {
-    missingFields.push("Steuerstatus fehlt");
+    missingFields.push("Es fehlt: Steuerstatus");
   }
 
   if (profile.vatStatus === "vat_registered") {
-    missingFields.push("konkreter Umsatzsteuersatz fehlt");
+    missingFields.push("Bitte 7% oder 19% Umsatzsteuer auswaehlen");
   }
 
   if ((profile.vatStatus === "vat_19" || profile.vatStatus === "vat_7") && !profile.taxNumber && !profile.vatId) {
-    missingFields.push("Steuernummer oder USt-ID fehlt");
+    missingFields.push("Es fehlt: USt-ID oder Steuernummer");
   }
 
-  if (!profile.payoutDestination || !profile.accountHolderName) {
-    missingFields.push("Auszahlungsdaten fehlen");
+  if (!profile.accountHolderName) {
+    missingFields.push("Es fehlt: Kontoinhaber*in fuer Auszahlungen");
+  }
+
+  if (!profile.payoutDestination) {
+    missingFields.push("Es fehlt: IBAN / Auszahlungskonto");
   }
 
   if (!customConnectReadiness.isPaymentProcessingConfigured) {
-    missingFields.push("Stripe Custom Connect ist nicht vollstaendig fuer Transfers eingerichtet");
+    if (!profile.providerAccountId) {
+      missingFields.push("Es fehlt: Stripe-Auszahlungskonto wurde noch nicht eingerichtet");
+    }
+    if (profile.providerAccountId && profile.stripeAccountType !== "custom") {
+      missingFields.push("Es fehlt: Stripe Custom Account fuer automatische Transfers");
+    }
+    if (!profile.stripeDetailsSubmitted) {
+      missingFields.push("Es fehlt: Stripe-Onboarding ist noch nicht vollstaendig eingereicht");
+    }
+    if (!profile.stripeChargesEnabled) {
+      missingFields.push("Es fehlt: Stripe-Zahlungen sind noch nicht freigeschaltet");
+    }
+    if (!profile.stripePayoutsEnabled) {
+      missingFields.push("Es fehlt: Stripe-Auszahlung noch nicht freigeschaltet");
+    }
+    if (profile.stripeRequirementsCurrentlyDue.length > 0) {
+      missingFields.push("Es fehlt: Stripe benoetigt weitere Angaben");
+    }
+    if (profile.stripeRequirementsPastDue.length > 0) {
+      missingFields.push("Es fehlt: ueberfaellige Stripe-Angaben");
+    }
+    if (profile.stripeRequirementsDisabledReason) {
+      missingFields.push("Stripe-Auszahlungen sind pausiert");
+    }
   }
 
   return {

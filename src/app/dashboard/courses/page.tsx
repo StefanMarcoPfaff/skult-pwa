@@ -117,6 +117,14 @@ function formatOfferPrice(priceCents: number | null, currency: string | null) {
   return formatMoney(priceCents, currency || "EUR");
 }
 
+function formatPaidOfferReadinessMessage(missingFields: string[]): string {
+  if (missingFields.length === 0) {
+    return "Kostenpflichtige Angebote koennen erst veroeffentlicht werden, wenn Steuer-, Adress-, Auszahlungs- und Stripe-Daten vollstaendig sind.";
+  }
+
+  return `Kostenpflichtige Angebote koennen noch nicht veroeffentlicht werden. ${missingFields.join(" ")}`;
+}
+
 function getOfferView(value: string | string[] | undefined): DashboardOfferView {
   const selected = Array.isArray(value) ? value[0] : value;
   if (selected === "active" || selected === "drafts" || selected === "archive") return selected;
@@ -370,7 +378,7 @@ export default async function DashboardCoursesPage({
       sortCreatedAt: offer.created_at ? new Date(offer.created_at).getTime() : null,
       publishBlocked: missingPaidOfferProfile,
       publishBlockedReason: missingPaidOfferProfile
-        ? "Kostenpflichtige Angebote koennen erst veroeffentlicht werden, wenn Steuer-, Adress-, Auszahlungs- und Stripe-Daten vollstaendig sind."
+        ? formatPaidOfferReadinessMessage(paidOfferReadiness.missingFields)
         : null,
     };
   });
