@@ -173,6 +173,7 @@ export type ProviderCustomConnectReadiness = {
 export type PaidOfferPublicationReadiness = {
   isReady: boolean;
   missingFields: string[];
+  warnings: string[];
 };
 
 function normalizeOptionalText(value: string | null | undefined): string | null {
@@ -448,12 +449,14 @@ export function getPaidOfferPublicationReadiness(
   profile: ProviderBillingProfile | null
 ): PaidOfferPublicationReadiness {
   const missingFields: string[] = [];
+  const warnings: string[] = [];
   const customConnectReadiness = getProviderCustomConnectReadiness(profile);
 
   if (!profile) {
     return {
       isReady: false,
       missingFields: ["Es fehlt: Anbieterprofil"],
+      warnings: [],
     };
   }
 
@@ -492,34 +495,35 @@ export function getPaidOfferPublicationReadiness(
 
   if (!customConnectReadiness.isPaymentProcessingConfigured) {
     if (!profile.providerAccountId) {
-      missingFields.push("Es fehlt: Stripe-Auszahlungskonto wurde noch nicht eingerichtet");
+      warnings.push("Stripe-Auszahlungskonto wurde noch nicht eingerichtet");
     }
     if (profile.providerAccountId && profile.stripeAccountType !== "custom") {
-      missingFields.push("Es fehlt: Stripe Custom Account fuer automatische Transfers");
+      warnings.push("Stripe Custom Account fuer automatische Transfers ist noch nicht eingerichtet");
     }
     if (!profile.stripeDetailsSubmitted) {
-      missingFields.push("Es fehlt: Stripe-Onboarding ist noch nicht vollstaendig eingereicht");
+      warnings.push("Stripe-Onboarding ist noch nicht vollstaendig eingereicht");
     }
     if (!profile.stripeChargesEnabled) {
-      missingFields.push("Es fehlt: Stripe-Zahlungen sind noch nicht freigeschaltet");
+      warnings.push("Stripe-Zahlungen sind noch nicht freigeschaltet");
     }
     if (!profile.stripePayoutsEnabled) {
-      missingFields.push("Es fehlt: Stripe-Auszahlung noch nicht freigeschaltet");
+      warnings.push("Stripe-Auszahlung noch nicht freigeschaltet");
     }
     if (profile.stripeRequirementsCurrentlyDue.length > 0) {
-      missingFields.push("Es fehlt: Stripe benoetigt weitere Angaben");
+      warnings.push("Stripe benoetigt weitere Angaben");
     }
     if (profile.stripeRequirementsPastDue.length > 0) {
-      missingFields.push("Es fehlt: ueberfaellige Stripe-Angaben");
+      warnings.push("Ueberfaellige Stripe-Angaben");
     }
     if (profile.stripeRequirementsDisabledReason) {
-      missingFields.push("Stripe-Auszahlungen sind pausiert");
+      warnings.push("Stripe-Auszahlungen sind pausiert");
     }
   }
 
   return {
     isReady: missingFields.length === 0,
     missingFields,
+    warnings,
   };
 }
 

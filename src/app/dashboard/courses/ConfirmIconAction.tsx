@@ -5,7 +5,7 @@ import type { FormEvent, ReactNode } from "react";
 import { useId, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 
-type ServerActionResult = { ok?: boolean; error?: string; missingFields?: string[] } | void;
+type ServerActionResult = { ok?: boolean; error?: string; missingFields?: string[]; warnings?: string[] } | void;
 
 function ConfirmSubmitButton(props: { label: string; pending?: boolean }) {
   const formStatus = useFormStatus();
@@ -17,7 +17,7 @@ function ConfirmSubmitButton(props: { label: string; pending?: boolean }) {
   );
 }
 
-function isResultObject(value: unknown): value is { ok?: boolean; error?: string; missingFields?: string[] } {
+function isResultObject(value: unknown): value is { ok?: boolean; error?: string; missingFields?: string[]; warnings?: string[] } {
   return typeof value === "object" && value !== null && ("ok" in value || "error" in value);
 }
 
@@ -26,7 +26,7 @@ function formatMissingFields(missingFields: string[] | undefined): string | null
   return missingFields.map((field) => `- ${field}`).join("\n");
 }
 
-function getErrorMessage(errorCode: string | undefined, missingFields?: string[]) {
+function getErrorMessage(errorCode: string | undefined, missingFields?: string[], warnings?: string[]) {
   switch (errorCode) {
     case "invalid_request":
       return "Die Aktion konnte nicht gestartet werden.";
@@ -38,8 +38,11 @@ function getErrorMessage(errorCode: string | undefined, missingFields?: string[]
       return "Vor der Aktivierung muss zuerst eine Storno- bzw. Kündigungsregel hinterlegt sein.";
     case "missing_paid_offer_profile": {
       const details = formatMissingFields(missingFields);
+      const warningDetails = formatMissingFields(warnings);
       return details
-        ? `Kostenpflichtige Angebote koennen noch nicht veroeffentlicht werden:\n${details}`
+        ? `Kostenpflichtige Angebote koennen noch nicht veroeffentlicht werden:\n${details}${
+            warningDetails ? `\n\nHinweise:\n${warningDetails}` : ""
+          }`
         : "Kostenpflichtige Angebote koennen erst veroeffentlicht werden, wenn Steuer-, Adress-, Auszahlungs- und Stripe-Daten vollstaendig sind.";
     }
     case "update_failed":
@@ -113,7 +116,7 @@ export function ConfirmIconAction(props: {
       void runWithTimeout(Promise.resolve(props.action(formData)), props.timeoutMs ?? 15000)
         .then((result) => {
           if (isResultObject(result) && result.ok === false) {
-            setErrorMessage(getErrorMessage(result.error, result.missingFields));
+            setErrorMessage(getErrorMessage(result.error, result.missingFields, result.warnings));
             return;
           }
 

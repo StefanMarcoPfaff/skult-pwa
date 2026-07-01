@@ -360,6 +360,10 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
 
       <details open={sectionIsOpen(initialSection, "rechnung")} className="rounded-2xl border p-5">
         <summary className="cursor-pointer text-base font-semibold">Adresse &amp; Rechnungsdaten</summary>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Wenn du deine Rechnungs- und Steuerdaten vollstaendig hinterlegst, kann RESER automatische Belege fuer deine
+          Buchhaltung und Steuerunterlagen erstellen. Bitte achte darauf, dass deine Angaben korrekt und aktuell sind.
+        </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="space-y-1 sm:col-span-2">
             <span className="text-sm font-medium">Straße + Hausnummer *</span>

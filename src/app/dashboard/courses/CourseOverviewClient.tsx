@@ -67,6 +67,7 @@ export type CourseOverviewItem = {
   sortCreatedAt: number | null;
   publishBlocked: boolean;
   publishBlockedReason: string | null;
+  publishWarningReason: string | null;
 };
 
 const STATUS_FILTER_OPTIONS: Array<{ value: CourseStatusFilter; label: string; tone: ChipTone }> = [
@@ -727,6 +728,15 @@ export default function CourseOverviewClient(props: {
                 <DetailField label="Sichtbarkeit" value={item.visibilityLabel} />
                 <DetailField label="Preis" value={item.priceLabel ?? "-"} />
               </div>
+              {item.publishBlockedReason ? (
+                <p className="rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {item.publishBlockedReason}
+                </p>
+              ) : item.publishWarningReason ? (
+                <p className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  {item.publishWarningReason}
+                </p>
+              ) : null}
             </div>
           </Link>
         ))}

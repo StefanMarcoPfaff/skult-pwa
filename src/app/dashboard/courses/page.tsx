@@ -125,6 +125,11 @@ function formatPaidOfferReadinessMessage(missingFields: string[]): string {
   return `Kostenpflichtige Angebote koennen noch nicht veroeffentlicht werden. ${missingFields.join(" ")}`;
 }
 
+function formatPaidOfferWarningMessage(warnings: string[]): string | null {
+  if (warnings.length === 0) return null;
+  return "Hinweis: Stripe-Auszahlungen sind fuer dieses Profil noch nicht vollstaendig freigeschaltet. Das Angebot kann veroeffentlicht werden, Auszahlungen erfolgen jedoch erst, wenn Stripe alle Angaben akzeptiert hat.";
+}
+
 function getOfferView(value: string | string[] | undefined): DashboardOfferView {
   const selected = Array.isArray(value) ? value[0] : value;
   if (selected === "active" || selected === "drafts" || selected === "archive") return selected;
@@ -340,6 +345,7 @@ export default async function DashboardCoursesPage({
         !row.stripe_refund_id
     ).length;
     const missingPaidOfferProfile = isOneTimeOfferKind(kind) && (offer.price_cents ?? 0) > 0 && !paidOfferReadiness.isReady;
+    const hasPaidOfferWarnings = isOneTimeOfferKind(kind) && (offer.price_cents ?? 0) > 0 && paidOfferReadiness.warnings.length > 0;
     return {
       id: offer.id,
       title: offer.title,
@@ -379,6 +385,9 @@ export default async function DashboardCoursesPage({
       publishBlocked: missingPaidOfferProfile,
       publishBlockedReason: missingPaidOfferProfile
         ? formatPaidOfferReadinessMessage(paidOfferReadiness.missingFields)
+        : null,
+      publishWarningReason: !missingPaidOfferProfile && hasPaidOfferWarnings
+        ? formatPaidOfferWarningMessage(paidOfferReadiness.warnings)
         : null,
     };
   });
