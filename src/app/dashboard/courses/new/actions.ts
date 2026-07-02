@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { redirect } from "next/navigation";
 import {
@@ -84,9 +84,7 @@ function getWorkshopFieldSection(field: string): WorkshopSection {
   if (
     field === "title" ||
     field === "description" ||
-    field === "offer_image_file" ||
-    field === "visibility" ||
-    field === "reservation_notice"
+    field === "offer_image_file"
   ) {
     return "basic";
   }
@@ -95,7 +93,12 @@ function getWorkshopFieldSection(field: string): WorkshopSection {
   }
   if (field === "sessions") return "schedule";
   if (field === "capacity" || field === "max_guest_count_per_booking") return "booking";
-  if (field === "price_eur" || field === "currency" || field === "workshop_storno_policy") {
+  if (
+    field === "price_eur" ||
+    field === "currency" ||
+    field === "workshop_storno_policy" ||
+    field === "reservation_notice"
+  ) {
     return "payment";
   }
   return "publishing";
@@ -419,7 +422,7 @@ async function createOrUpdateWorkshop(
   const offerKind = parseSinglePaymentOfferKind(formData.get("offer_kind"));
   const visibility = parseOfferVisibility(formData.get("visibility"));
   if (formData.get("visibility") !== "public" && formData.get("visibility") !== "private_link") {
-    validationErrors.push(validationIssue("visibility", "Bitte eine gueltige Sichtbarkeit auswaehlen."));
+    validationErrors.push(validationIssue("visibility", "Bitte eine gültige Sichtbarkeit auswählen."));
   }
   const internal_note = parseOptionalString(formData.get("internal_note"));
   const reservation_notice = parseOptionalString(formData.get("reservation_notice"));
@@ -439,14 +442,14 @@ async function createOrUpdateWorkshop(
     max_guest_count_per_booking !== null &&
     max_guest_count_per_booking > Math.max(0, capacity - 1)
   ) {
-    validationErrors.push(validationIssue("max_guest_count_per_booking", "Weitere teilnehmende Personen pro Buchung duerfen hoechstens Kapazitaet minus 1 sein."));
+    validationErrors.push(validationIssue("max_guest_count_per_booking", "Weitere teilnehmende Personen pro Buchung dürfen höchstens Kapazität minus 1 sein."));
   }
   if (!isWorkshopStornoPolicy(workshop_storno_policy)) {
-    validationErrors.push(validationIssue("workshop_storno_policy", "Bitte eine gueltige Storno-Regel auswaehlen."));
+    validationErrors.push(validationIssue("workshop_storno_policy", "Bitte eine gültige Storno-Regel auswählen."));
   }
 
   if (!isWorkshopCheckoutCurrencySupported(currency)) {
-    validationErrors.push(validationIssue("currency", `Workshops sind aktuell nur mit ${getWorkshopCheckoutCurrency()} als Waehrung verfuegbar.`));
+    validationErrors.push(validationIssue("currency", `Workshops sind aktuell nur mit ${getWorkshopCheckoutCurrency()} als Währung verfügbar.`));
   }
 
   const providerProfileResult = await loadProviderProfile(supabase, user.id);
@@ -455,13 +458,13 @@ async function createOrUpdateWorkshop(
   const providerType = providerProfileResult.profile?.provider_type ?? "independent_teacher";
   const providerDisplayName = getProviderDisplayName(providerType, providerProfileResult.profile ?? {});
   if (!providerDisplayName) {
-    return { error: "Bitte vervollstaendige zuerst dein Profil, damit dein öffentlicher Profilname verfügbar ist." };
+    return { error: "Bitte vervollständige zuerst dein Profil, damit dein öffentlicher Profilname verfügbar ist." };
   }
 
   const instructorInput = parseOptionalString(formData.get("instructor_name"));
   const instructor_name = providerType === "studio_provider" ? instructorInput : providerDisplayName;
   if (!instructor_name) {
-    validationErrors.push(validationIssue("instructor_name", "Bitte eine verantwortliche Person fuer dieses Angebot angeben."));
+    validationErrors.push(validationIssue("instructor_name", "Bitte eine verantwortliche Person für dieses Angebot angeben."));
   }
 
   if (validationErrors.length > 0) {
@@ -732,28 +735,28 @@ async function createOrUpdateCourse(
   const cancellation_model = "monthly";
 
   if (weekday === null || weekday < 0 || weekday > 6) {
-    return { error: "Bitte waehle einen gueltigen Wochentag (0-6)." };
+    return { error: "Bitte wähle einen gültigen Wochentag (0-6)." };
   }
-  if (!start_date) return { error: "Bitte waehle ein Startdatum fuer den Kurs." };
+  if (!start_date) return { error: "Bitte wähle ein Startdatum für den Kurs." };
   if (!start_time) return { error: "Bitte gib eine Startzeit an." };
   if (duration_minutes === null || duration_minutes <= 0) {
-    return { error: "Bitte gib eine gueltige Dauer in Minuten an." };
+    return { error: "Bitte gib eine gültige Dauer in Minuten an." };
   }
-  if (!recurrence_type) return { error: "Bitte waehle eine Wiederholung." };
+  if (!recurrence_type) return { error: "Bitte wähle eine Wiederholung." };
   if (trial_mode !== "all_sessions" && trial_mode !== "manual") {
-    return { error: "Bitte waehle eine gueltige Probestunden-Regel." };
+    return { error: "Bitte wähle eine gültige Probestunden-Regel." };
   }
   const startDateWeekday = getWeekdayForDate(start_date);
   if (startDateWeekday === null) {
-    return { error: "Bitte waehle ein gueltiges Startdatum fuer den Kurs." };
+    return { error: "Bitte wähle ein gültiges Startdatum für den Kurs." };
   }
   if (startDateWeekday !== weekday) {
-    return { error: "Das Startdatum muss zum gewaehlten Wochentag passen." };
+    return { error: "Das Startdatum muss zum gewählten Wochentag passen." };
   }
 
   const starts_at = combineCourseStartsAtISO(start_date, start_time);
   if (!starts_at) {
-    return { error: "Startdatum konnte nicht berechnet werden. Bitte pruefe Startdatum und Startzeit." };
+    return { error: "Startdatum konnte nicht berechnet werden. Bitte prüfe Startdatum und Startzeit." };
   }
 
   const validManualTrialOccurrences =
@@ -771,7 +774,7 @@ async function createOrUpdateCourse(
       : [];
 
   if (trial_mode === "manual" && selectedTrialSlotStarts.length === 0) {
-    return { error: "Bitte waehle mindestens einen Termin fuer Probestunden aus." };
+    return { error: "Bitte wähle mindestens einen Termin für Probestunden aus." };
   }
 
   const manualTrialSlots: TrialSlotInsert[] =
@@ -788,7 +791,7 @@ async function createOrUpdateCourse(
       : [];
 
   if (trial_mode === "manual" && manualTrialSlots.length !== selectedTrialSlotStarts.length) {
-    return { error: "Mindestens einer der ausgewaehlten Probestunden-Termine ist ungueltig." };
+    return { error: "Mindestens einer der ausgewählten Probestunden-Termine ist ungültig." };
   }
 
   const price_cents = parseOptionalInt(formData.get("price_cents"));
@@ -800,7 +803,7 @@ async function createOrUpdateCourse(
   const providerType = providerProfileResult.profile?.provider_type ?? "independent_teacher";
   const providerDisplayName = getProviderDisplayName(providerType, providerProfileResult.profile ?? {});
   if (!providerDisplayName) {
-    return { error: "Bitte vervollstaendige zuerst dein Profil, damit dein öffentlicher Profilname verfügbar ist." };
+    return { error: "Bitte vervollständige zuerst dein Profil, damit dein öffentlicher Profilname verfügbar ist." };
   }
 
   const instructorInput = parseOptionalString(formData.get("instructor_name"));
@@ -953,4 +956,7 @@ export async function createCourseAction(formData: FormData): Promise<ActionResu
 export async function updateCourseAction(courseId: string, formData: FormData): Promise<ActionResult> {
   return createOrUpdateCourse(formData, { mode: "update", courseId });
 }
+
+
+
 

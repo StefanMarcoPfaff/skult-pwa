@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   getProviderDisplayName,
@@ -189,7 +189,7 @@ export default async function EditOfferPage({
         </p>
         {copiedParam === "1" ? (
           <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-            Angebot wurde dupliziert. Bitte Datum und Uhrzeit pruefen.
+            Angebot wurde dupliziert. Bitte Datum und Uhrzeit prüfen.
           </p>
         ) : null}
       </header>
@@ -217,3 +217,5 @@ export default async function EditOfferPage({
     </div>
   );
 }
+
+

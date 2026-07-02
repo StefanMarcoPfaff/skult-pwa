@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
@@ -59,25 +59,30 @@ const sectionLabels: Record<WorkshopSection, string> = {
   basic: "Grunddaten",
   location: "Ort & Leitung",
   schedule: "Termine",
-  booking: "Plaetze & Buchungsoptionen",
+  booking: "Plätze & Buchungsoptionen",
   payment: "Preis & Zahlung",
-  publishing: "Veroeffentlichung",
+  publishing: "Veröffentlichung",
 };
 
 function getWorkshopFieldSection(field: string): WorkshopSection {
   if (
     field === "title" ||
     field === "description" ||
-    field === "offer_image_file" ||
-    field === "visibility" ||
-    field === "reservation_notice"
+    field === "offer_image_file"
   ) {
     return "basic";
   }
   if (field === "location" || field === "location_details" || field === "instructor_name") return "location";
   if (field === "sessions") return "schedule";
   if (field === "capacity" || field === "max_guest_count_per_booking") return "booking";
-  if (field === "price_eur" || field === "currency" || field === "workshop_storno_policy") return "payment";
+  if (
+    field === "price_eur" ||
+    field === "currency" ||
+    field === "workshop_storno_policy" ||
+    field === "reservation_notice"
+  ) {
+    return "payment";
+  }
   return "publishing";
 }
 
@@ -96,7 +101,7 @@ function WorkshopFormSection(props: {
     >
       <summary className="cursor-pointer text-base font-semibold">
         <span>{sectionLabels[props.section]}</span>
-        {props.hasError ? <span className="ml-2 text-sm font-medium text-red-700">Bitte pruefen</span> : null}
+        {props.hasError ? <span className="ml-2 text-sm font-medium text-red-700">Bitte prüfen</span> : null}
       </summary>
       <div className="mt-4 space-y-4">{props.children}</div>
     </details>
@@ -175,7 +180,7 @@ export default function WorkshopForm({
       const start = new Date(session.starts_at);
       const end = new Date(session.ends_at);
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        return "Ungueltiges Datum";
+        return "Ungültiges Datum";
       }
       if (end <= start) return "Ende muss nach dem Start liegen";
       return null;
@@ -451,7 +456,7 @@ export default function WorkshopForm({
           rows={4}
           defaultValue={initialValues?.description ?? ""}
           className="w-full rounded-xl border px-3 py-2 text-sm"
-          placeholder="Kurzbeschreibung fuer die Angebotsseite. Absätze bleiben erhalten."
+          placeholder="Kurzbeschreibung für die Angebotsseite. Absätze bleiben erhalten."
         />
         <span className="block text-xs text-muted-foreground">
           Unterstützt **fett**, *kursiv*, &lt;u&gt;unterstrichen&lt;/u&gt; und Leerzeilen als Absätze.
@@ -482,40 +487,8 @@ export default function WorkshopForm({
           placeholder="Nur intern sichtbar, z. B. Anlass, Konditionen oder Teilnehmenden-Kontext."
         />
         <span className="block text-xs text-muted-foreground">
-          Nur fuer dich sichtbar. Teilnehmende sehen diese Notiz nicht.
+          Nur für dich sichtbar. Teilnehmende sehen diese Notiz nicht.
         </span>
-      </label>
-
-      <label className="block space-y-1">
-        <span className="text-sm font-medium">Reservierungshinweis (optional)</span>
-        <textarea
-          name="reservation_notice"
-          rows={3}
-          defaultValue={initialValues?.reservation_notice ?? ""}
-          className="w-full rounded-xl border px-3 py-2 text-sm"
-          placeholder="Hinweis fuer Teilnehmende vor der Reservierung."
-        />
-        <span className="block text-xs text-muted-foreground">
-          Dieser Hinweis wird direkt über dem Reservierungsformular angezeigt.
-        </span>
-      </label>
-
-      <label className="block space-y-1">
-        <span className="text-sm font-medium">Sichtbarkeit *</span>
-        <select
-          name="visibility"
-          defaultValue={initialValues?.visibility ?? (isLegacyExclusiveOffer ? "private_link" : "public")}
-          aria-invalid={Boolean(getFieldError("visibility"))}
-          className={fieldInputClass("visibility")}
-        >
-          <option value="public">Öffentlich sichtbar</option>
-          <option value="private_link">Nur per Link buchbar</option>
-        </select>
-        {renderFieldError("visibility")}
-        <div className="space-y-1 text-xs text-muted-foreground">
-          <p>Öffentlich sichtbar: Dein Angebot erscheint auf RESER und kann von allen gefunden und gebucht werden.</p>
-          <p>Nur per Link buchbar: Dein Angebot erscheint nicht öffentlich auf RESER. Du kannst den Link gezielt an ausgewählte Personen schicken.</p>
-        </div>
       </label>
       </WorkshopFormSection>
 
@@ -585,7 +558,7 @@ export default function WorkshopForm({
         <div className="flex items-center justify-between gap-3">
           <div>
             <span className="text-sm font-medium">Termine *</span>
-            <p className="text-xs text-muted-foreground">Jeder Termin benoetigt Start- und Endzeit.</p>
+            <p className="text-xs text-muted-foreground">Jeder Termin benötigt Start- und Endzeit.</p>
           </div>
           {!isLegacyExclusiveOffer ? (
             <button
@@ -593,7 +566,7 @@ export default function WorkshopForm({
               onClick={() => setSessions((prev) => [...prev, createEmptySession()])}
               className="rounded-lg border px-3 py-1 text-xs font-semibold"
             >
-              Termin hinzufuegen
+              Termin hinzufügen
             </button>
           ) : null}
         </div>
@@ -707,7 +680,7 @@ export default function WorkshopForm({
         />
         {renderFieldError("max_guest_count_per_booking")}
         <span className="block text-xs text-muted-foreground">
-          0 bedeutet: nur die buchende Person. Maximal Kapazitaet minus 1.
+          0 bedeutet: nur die buchende Person. Maximal Kapazität minus 1.
         </span>
       </label>
       </WorkshopFormSection>
@@ -735,7 +708,7 @@ export default function WorkshopForm({
         </label>
 
         <label className="space-y-1">
-          <span className="text-sm font-medium">Waehrung</span>
+          <span className="text-sm font-medium">Währung</span>
           <input
             name="currency"
             value={currency}
@@ -761,7 +734,21 @@ export default function WorkshopForm({
         </select>
         {renderFieldError("workshop_storno_policy")}
         <span className="block text-xs text-muted-foreground">
-          Klare und flexible Storno-Regeln schaffen Vertrauen und fuehren oft zu mehr Buchungen.
+          Klare und flexible Storno-Regeln schaffen Vertrauen und führen oft zu mehr Buchungen.
+        </span>
+      </label>
+
+      <label className="block space-y-1">
+        <span className="text-sm font-medium">Reservierungshinweis (optional)</span>
+        <textarea
+          name="reservation_notice"
+          rows={3}
+          defaultValue={initialValues?.reservation_notice ?? ""}
+          className="w-full rounded-xl border px-3 py-2 text-sm"
+          placeholder="Hinweis für Teilnehmende vor der Reservierung."
+        />
+        <span className="block text-xs text-muted-foreground">
+          Dieser Hinweis wird direkt über dem Reservierungsformular angezeigt.
         </span>
       </label>
 
@@ -773,7 +760,7 @@ export default function WorkshopForm({
             <span>{formatCurrency(priceBreakdown.grossCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
-            <span>Plattformgebuehr ({platformFeePercentLabel} %)</span>
+            <span>Plattformgebühr ({platformFeePercentLabel} %)</span>
             <span>{formatCurrency(priceBreakdown.platformFeeCents, currency)}</span>
           </div>
           <div className="flex items-center justify-between gap-4 font-medium text-foreground">
@@ -782,8 +769,8 @@ export default function WorkshopForm({
           </div>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Die Auszahlung an Dich berechnet sich aus dem eingegebenen Preis abzueglich der
-          Plattformgebuehr von {platformFeePercentLabel} %.
+          Die Auszahlung an Dich berechnet sich aus dem eingegebenen Preis abzüglich der
+          Plattformgebühr von {platformFeePercentLabel} %.
         </p>
       </div>
 
@@ -795,6 +782,24 @@ export default function WorkshopForm({
       </WorkshopFormSection>
 
       <WorkshopFormSection section="publishing" open={openSections.includes("publishing")} hasError={sectionHasError("publishing")} onToggle={toggleSection}>
+      <label className="block space-y-1">
+        <span className="text-sm font-medium">Sichtbarkeit *</span>
+        <select
+          name="visibility"
+          defaultValue={initialValues?.visibility ?? (isLegacyExclusiveOffer ? "private_link" : "public")}
+          aria-invalid={Boolean(getFieldError("visibility"))}
+          className={fieldInputClass("visibility")}
+        >
+          <option value="public">Öffentlich sichtbar</option>
+          <option value="private_link">Nur per Link buchbar</option>
+        </select>
+        {renderFieldError("visibility")}
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <p>Öffentlich sichtbar: Dein Angebot erscheint auf RESER und kann von allen gefunden und gebucht werden.</p>
+          <p>Nur per Link buchbar: Dein Angebot erscheint nicht öffentlich auf RESER. Du kannst den Link gezielt an ausgewählte Personen schicken.</p>
+        </div>
+      </label>
+
       {errorEntries.length > 0 ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
           <p className="font-semibold">Bitte korrigiere folgende Angaben:</p>
@@ -832,4 +837,9 @@ export default function WorkshopForm({
     </form>
   );
 }
+
+
+
+
+
 
