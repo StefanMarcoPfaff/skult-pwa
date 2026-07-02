@@ -16,7 +16,25 @@ import {
   normalizeWorkshopCurrency,
 } from "@/lib/workshop-checkout";
 
-type ActionResult = { error?: string; redirectTo?: string };
+type WorkshopSection =
+  | "basic"
+  | "location"
+  | "schedule"
+  | "booking"
+  | "payment"
+  | "publishing";
+type WorkshopValidationIssue = {
+  field: string;
+  message: string;
+  section: WorkshopSection;
+};
+type WorkshopFieldErrors = Record<string, string>;
+type ActionResult = {
+  error?: string;
+  fieldErrors?: WorkshopFieldErrors;
+  validationErrors?: WorkshopValidationIssue[];
+  redirectTo?: string;
+};
 type SupabaseLikeError = {
   message?: string;
   code?: string;
@@ -60,6 +78,75 @@ function parseOptionalInt(value: FormDataEntryValue | null): number | null {
   if (!s) return null;
   const n = Number(s);
   return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
+function getWorkshopFieldSection(field: string): WorkshopSection {
+  if (
+    field === "title" ||
+    field === "description" ||
+    field === "offer_image_file" ||
+    field === "visibility" ||
+    field === "reservation_notice"
+  ) {
+    return "basic";
+  }
+  if (field === "location" || field === "location_details" || field === "instructor_name") {
+    return "location";
+  }
+  if (field === "sessions") return "schedule";
+  if (field === "capacity" || field === "max_guest_count_per_booking") return "booking";
+  if (field === "price_eur" || field === "currency" || field === "workshop_storno_policy") {
+    return "payment";
+  }
+  return "publishing";
+}
+
+function buildWorkshopValidationResult(errors: WorkshopValidationIssue[]): ActionResult {
+  const fieldErrors = errors.reduce<WorkshopFieldErrors>((acc, issue) => {
+    acc[issue.field] = issue.message;
+    return acc;
+  }, {});
+  return {
+    error: "Bitte korrigiere die markierten Angaben.",
+    fieldErrors,
+    validationErrors: errors,
+  };
+}
+
+function validationIssue(field: string, message: string): WorkshopValidationIssue {
+  return { field, message, section: getWorkshopFieldSection(field) };
+}
+
+function validationError(field: string, message: string): ActionResult {
+  return buildWorkshopValidationResult([validationIssue(field, message)]);
+}
+
+function parseRequiredPositiveInt(value: FormDataEntryValue | null): number | null {
+  if (value === null) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+  const n = Number(s);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) return null;
+  return n;
+}
+
+function parseRequiredNonNegativeInt(value: FormDataEntryValue | null): number | null {
+  if (value === null) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+  const n = Number(s);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) return null;
+  return n;
+}
+
+function parseWorkshopPriceCents(formData: FormData): { value: number | null } | { error: string } {
+  const rawPrice = String(formData.get("price_eur") ?? "").trim();
+  if (!rawPrice) return { value: null };
+  const parsedPrice = Number(rawPrice.replace(",", "."));
+  if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+    return { error: "Bitte einen gültigen Preis eingeben." };
+  }
+  return { value: Math.round(parsedPrice * 100) };
 }
 
 function parseOptionalString(value: FormDataEntryValue | null): string | null {
@@ -305,19 +392,35 @@ async function createOrUpdateWorkshop(
   if (authError) return { error: authError };
   if (!user) return { redirectTo: "/login" };
 
+  const validationErrors: WorkshopValidationIssue[] = [];
   const title = String(formData.get("title") || "").trim();
-  if (!title) return { error: "Bitte gib einen Titel an." };
+  if (!title) validationErrors.push(validationIssue("title", "Bitte einen Titel eingeben."));
 
   const description = parseOptionalString(formData.get("description"));
   const location = parseOptionalString(formData.get("location"));
   const location_details = parseOptionalString(formData.get("location_details"));
-  const capacity = parseOptionalInt(formData.get("capacity"));
-  const max_guest_count_per_booking = parseOptionalInt(formData.get("max_guest_count_per_booking")) ?? 0;
-  const price_cents = parseOptionalInt(formData.get("price_cents"));
+  if (!location) validationErrors.push(validationIssue("location", "Bitte einen Ort eingeben."));
+  const capacity = parseRequiredPositiveInt(formData.get("capacity"));
+  if (capacity === null) {
+    validationErrors.push(validationIssue("capacity", "Bitte eine maximale Teilnehmeranzahl angeben."));
+  }
+  const max_guest_count_per_booking = parseRequiredNonNegativeInt(formData.get("max_guest_count_per_booking"));
+  if (max_guest_count_per_booking === null) {
+    validationErrors.push(validationIssue(
+      "max_guest_count_per_booking",
+      "Bitte eine gültige Anzahl weiterer teilnehmender Personen eingeben."
+    ));
+  }
+  const parsedPrice = parseWorkshopPriceCents(formData);
+  if ("error" in parsedPrice) validationErrors.push(validationIssue("price_eur", parsedPrice.error));
+  const price_cents = "error" in parsedPrice ? null : parsedPrice.value;
   const currency = normalizeWorkshopCurrency(String(formData.get("currency") || ""));
   const workshop_storno_policy = String(formData.get("workshop_storno_policy") || "").trim();
   const offerKind = parseSinglePaymentOfferKind(formData.get("offer_kind"));
   const visibility = parseOfferVisibility(formData.get("visibility"));
+  if (formData.get("visibility") !== "public" && formData.get("visibility") !== "private_link") {
+    validationErrors.push(validationIssue("visibility", "Bitte eine gueltige Sichtbarkeit auswaehlen."));
+  }
   const internal_note = parseOptionalString(formData.get("internal_note"));
   const reservation_notice = parseOptionalString(formData.get("reservation_notice"));
   const { offerImageFile } = getOfferImageInput(formData);
@@ -327,24 +430,23 @@ async function createOrUpdateWorkshop(
       type: offerImageFile.type,
       name: offerImageFile.name,
     });
-    if (!validation.ok) return { error: validation.error };
+    if (!validation.ok) validationErrors.push(validationIssue("offer_image_file", validation.error));
   }
   const sessions = parseSessionsJson(formData);
-  if (!sessions) return { error: "Bitte fuege mindestens einen gueltigen Termin hinzu (Ende nach Start)." };
-  if (max_guest_count_per_booking < 0) {
-    return { error: "Weitere teilnehmende Personen pro Buchung muss mindestens 0 sein." };
-  }
-  if (capacity !== null && max_guest_count_per_booking > Math.max(0, capacity - 1)) {
-    return { error: "Weitere teilnehmende Personen pro Buchung duerfen hoechstens Kapazitaet minus 1 sein." };
+  if (!sessions) validationErrors.push(validationIssue("sessions", "Bitte mindestens einen Termin angeben."));
+  if (
+    capacity !== null &&
+    max_guest_count_per_booking !== null &&
+    max_guest_count_per_booking > Math.max(0, capacity - 1)
+  ) {
+    validationErrors.push(validationIssue("max_guest_count_per_booking", "Weitere teilnehmende Personen pro Buchung duerfen hoechstens Kapazitaet minus 1 sein."));
   }
   if (!isWorkshopStornoPolicy(workshop_storno_policy)) {
-    return { error: "Bitte waehle eine gueltige Storno-Regel." };
+    validationErrors.push(validationIssue("workshop_storno_policy", "Bitte eine gueltige Storno-Regel auswaehlen."));
   }
 
   if (!isWorkshopCheckoutCurrencySupported(currency)) {
-    return {
-      error: `Workshops sind aktuell nur mit ${getWorkshopCheckoutCurrency()} als Waehrung verfuegbar.`,
-    };
+    validationErrors.push(validationIssue("currency", `Workshops sind aktuell nur mit ${getWorkshopCheckoutCurrency()} als Waehrung verfuegbar.`));
   }
 
   const providerProfileResult = await loadProviderProfile(supabase, user.id);
@@ -359,7 +461,14 @@ async function createOrUpdateWorkshop(
   const instructorInput = parseOptionalString(formData.get("instructor_name"));
   const instructor_name = providerType === "studio_provider" ? instructorInput : providerDisplayName;
   if (!instructor_name) {
-    return { error: "Bitte gib eine verantwortliche Person fuer dieses Angebot an." };
+    validationErrors.push(validationIssue("instructor_name", "Bitte eine verantwortliche Person fuer dieses Angebot angeben."));
+  }
+
+  if (validationErrors.length > 0) {
+    return buildWorkshopValidationResult(validationErrors);
+  }
+  if (!sessions || capacity === null || max_guest_count_per_booking === null || "error" in parsedPrice) {
+    return buildWorkshopValidationResult(validationErrors);
   }
 
   logWorkshopSaveEvent("start", {
@@ -421,7 +530,7 @@ async function createOrUpdateWorkshop(
       }
 
       const offerImageResult = await resolveOfferImageUrl(formData, inserted.id);
-      if ("error" in offerImageResult) return { error: offerImageResult.error };
+      if ("error" in offerImageResult) return validationError("offer_image_file", offerImageResult.error);
       if (offerImageResult.url) {
         const { error: imageUpdateError } = await supabase
           .from("courses")
@@ -464,7 +573,7 @@ async function createOrUpdateWorkshop(
       if (!newId) return { error: "Workshop wurde erstellt, aber keine ID zurueckgegeben." };
 
       const offerImageResult = await resolveOfferImageUrl(formData, newId);
-      if ("error" in offerImageResult) return { error: offerImageResult.error };
+      if ("error" in offerImageResult) return validationError("offer_image_file", offerImageResult.error);
 
       const { error: statusUpdateError } = await supabase
         .from("courses")
@@ -509,7 +618,7 @@ async function createOrUpdateWorkshop(
 
   const firstSessionStart = sessions[0]?.starts_at ?? null;
   const offerImageResult = await resolveOfferImageUrl(formData, options.courseId);
-  if ("error" in offerImageResult) return { error: offerImageResult.error };
+  if ("error" in offerImageResult) return validationError("offer_image_file", offerImageResult.error);
 
   try {
     const lastSessionEnd = sessions[sessions.length - 1]?.ends_at ?? null;
@@ -844,3 +953,4 @@ export async function createCourseAction(formData: FormData): Promise<ActionResu
 export async function updateCourseAction(courseId: string, formData: FormData): Promise<ActionResult> {
   return createOrUpdateCourse(formData, { mode: "update", courseId });
 }
+

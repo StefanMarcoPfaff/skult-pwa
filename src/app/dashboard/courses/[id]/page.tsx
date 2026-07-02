@@ -245,11 +245,6 @@ function formatPaidOfferReadinessMessage(missingFields: string[]): string {
   return `Kostenpflichtige Angebote koennen noch nicht aktiviert werden. ${missingFields.join(" ")}`;
 }
 
-function formatPaidOfferWarningMessage(warnings: string[]): string | null {
-  if (warnings.length === 0) return null;
-  return "Hinweis: Stripe-Auszahlungen sind fuer dieses Profil noch nicht vollstaendig freigeschaltet. Das Angebot kann veroeffentlicht werden, Auszahlungen erfolgen jedoch erst, wenn Stripe alle Angaben akzeptiert hat.";
-}
-
 export default async function DashboardCourseDetailPage({
   params,
   searchParams,
@@ -422,10 +417,6 @@ export default async function DashboardCourseDetailPage({
   const paidOfferReadiness = getPaidOfferPublicationReadiness(providerBillingProfile);
   const publishBlockedForMissingPaidOfferProfile =
     isOneTimeOfferKind(data.kind) && (data.price_cents ?? 0) > 0 && !paidOfferReadiness.isReady;
-  const paidOfferWarningMessage =
-    isOneTimeOfferKind(data.kind) && (data.price_cents ?? 0) > 0
-      ? formatPaidOfferWarningMessage(paidOfferReadiness.warnings)
-      : null;
   const publishBlocked = publishBlockedForMissingPolicy || publishBlockedForMissingPaidOfferProfile;
 
   const ticketByTrialReservationId = new Map(
@@ -828,11 +819,6 @@ export default async function DashboardCourseDetailPage({
       {normalizedStatus === "draft" && publishBlockedForMissingPaidOfferProfile ? (
         <p className="mt-3 text-sm text-red-700">
           {formatPaidOfferReadinessMessage(paidOfferReadiness.missingFields)}
-        </p>
-      ) : null}
-      {normalizedStatus === "draft" && !publishBlockedForMissingPaidOfferProfile && paidOfferWarningMessage ? (
-        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {paidOfferWarningMessage}
         </p>
       ) : null}
       {showOfferMailWarning ? (

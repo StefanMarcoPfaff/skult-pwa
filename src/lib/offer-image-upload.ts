@@ -51,7 +51,7 @@ export function validateOfferImageFile(input: {
   if (!fileName || input.size <= 0) {
     return {
       ok: false,
-      error: "Bitte waehle eine Bilddatei aus.",
+      error: "Bitte wähle eine Bilddatei aus.",
       reason: "missing_file",
     };
   }
@@ -59,7 +59,7 @@ export function validateOfferImageFile(input: {
   if (!ALLOWED_OFFER_IMAGE_MIME_TYPES.includes(mimeType as (typeof ALLOWED_OFFER_IMAGE_MIME_TYPES)[number])) {
     return {
       ok: false,
-      error: "Dieses Dateiformat wird nicht unterstuetzt. Bitte nutze JPG, JPEG, PNG oder WebP.",
+      error: "Dieses Dateiformat wird nicht unterstützt. Bitte nutze JPG, JPEG, PNG oder WebP.",
       reason: "invalid_type",
     };
   }
@@ -67,7 +67,7 @@ export function validateOfferImageFile(input: {
   if (input.size > OFFER_IMAGE_MAX_SIZE_BYTES) {
     return {
       ok: false,
-      error: "Das Bild ist zu gross. Bitte waehle eine Datei bis maximal 5 MB.",
+      error: "Das Bild ist zu groß. Maximal erlaubt sind 5 MB.",
       reason: "file_too_large",
     };
   }

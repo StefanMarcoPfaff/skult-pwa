@@ -5,9 +5,11 @@ import { getOfferImageMaxSizeLabel, validateOfferImageFile } from "@/lib/offer-i
 
 export default function OfferImageField({
   initialUrl,
+  error,
   onValidationError,
 }: {
   initialUrl?: string | null;
+  error?: string | null;
   onValidationError: (error: string | null) => void;
 }) {
   const [previewUrl, setPreviewUrl] = useState(initialUrl ?? "");
@@ -28,6 +30,7 @@ export default function OfferImageField({
         type="file"
         name="offer_image_file"
         accept="image/jpeg,image/png,image/webp"
+        aria-invalid={Boolean(error)}
         onChange={(event) => {
           const nextFile = event.target.files?.[0];
           if (!nextFile) {
@@ -65,8 +68,13 @@ export default function OfferImageField({
           setObjectUrl(nextObjectUrl);
           setPreviewUrl(nextObjectUrl);
         }}
-        className="w-full rounded-xl border px-3 py-2 text-sm"
+        className={
+          error
+            ? "w-full rounded-xl border border-red-400 bg-red-50 px-3 py-2 text-sm"
+            : "w-full rounded-xl border px-3 py-2 text-sm"
+        }
       />
+      {error ? <span className="block text-xs font-medium text-red-700">{error}</span> : null}
       <span className="block text-xs text-muted-foreground">
         Optional. Dieses Bild wird später auf öffentlichen Angebotsseiten, in Suchergebnissen und Buchungsseiten
         angezeigt.

@@ -22,6 +22,8 @@ import {
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const PROFILE_PAYOUT_DEBUG = process.env.PROFILE_PAYOUT_DEBUG === "1";
+const STRIPE_STATUS_SYNC_WARNING =
+  "Dein Profil wurde gespeichert. Der Stripe-Status konnte nicht aktualisiert werden. Bitte prüfe deine Zahlungsdaten.";
 
 export type SaveProfileState = {
   success?: string;
@@ -934,6 +936,8 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
     }
 
     let customConnectWarning: string | undefined;
+    let stripeStatusSyncWarning: string | undefined;
+    let providerAccountIdForStatusSync = reloadedPayoutProfile.provider_account_id;
 
     try {
       const refreshedBillingProfile = await getProviderBillingProfile(profileAdmin, user.id);
@@ -995,6 +999,7 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
           stripeAccountTypeAfter: account.type,
           createOrUpdateCustomAccountForProviderCalled: true,
         });
+        providerAccountIdForStatusSync = account.id;
       } else {
         logProfilePayoutDebug("custom_connect_auto_prepare_skipped", {
           userId: user.id,
@@ -1009,8 +1014,9 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
         });
       }
     } catch (error: unknown) {
-      customConnectWarning =
-        "Profil gespeichert. Die automatische Zahlungsabwicklung konnte noch nicht vorbereitet werden.";
+      customConnectWarning = isUnreadableStripeAccountError(error)
+        ? STRIPE_STATUS_SYNC_WARNING
+        : "Profil gespeichert. Die automatische Zahlungsabwicklung konnte noch nicht vorbereitet werden.";
       logProfileSaveEvent("save_warning", {
         context: "custom_connect.auto_prepare",
         userId: user.id,
@@ -1021,7 +1027,26 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       });
     }
 
-    const combinedWarning = [warning, customConnectWarning].filter(Boolean).join(" ");
+    if (providerAccountIdForStatusSync) {
+      try {
+        await syncCustomAccountStatus(user.id);
+      } catch (error: unknown) {
+        stripeStatusSyncWarning = STRIPE_STATUS_SYNC_WARNING;
+        logProfileSaveEvent("save_warning", {
+          context: "custom_connect.status_sync_after_profile_save",
+          userId: user.id,
+          providerPayoutProfileId: reloadedPayoutProfile.id,
+          teacherId: user.id,
+          provider: PROVIDER_PAYOUT_PROFILE_PROVIDER,
+          providerAccountId: providerAccountIdForStatusSync,
+          ...getStripeErrorLogPayload(error),
+        });
+      }
+    }
+
+    const combinedWarning = Array.from(
+      new Set([warning, customConnectWarning, stripeStatusSyncWarning].filter(Boolean))
+    ).join(" ");
 
     if (combinedWarning) {
       logProfileSaveEvent("save_warning", {
@@ -1080,44 +1105,6 @@ export async function prepareCustomConnectAction(): Promise<SaveProfileState> {
     return {
       error:
         "Die Auszahlungsabwicklung konnte gerade nicht vorbereitet werden. Dein Profil bleibt gespeichert. Bitte versuche es später erneut.",
-    };
-  }
-}
-
-export async function refreshStripeCustomAccountStatusAction(): Promise<SaveProfileState> {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return {
-        error: "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
-        redirectTo: "/login",
-      };
-    }
-
-    await syncCustomAccountStatus(user.id);
-
-    return {
-      success: "Stripe-Status wurde aktualisiert.",
-    };
-  } catch (error: unknown) {
-    console.error("[custom-connect]", {
-      kind: "refresh_custom_connect_status_error",
-      ...getStripeErrorLogPayload(error),
-    });
-
-    if (isUnreadableStripeAccountError(error)) {
-      return {
-        error:
-          "Dieser Stripe-Testaccount kann mit dem aktuellen Stripe-Key nicht gelesen werden. Bitte Stripe-Testumgebung pruefen.",
-      };
-    }
-
-    return {
-      error: "Stripe-Status konnte gerade nicht aktualisiert werden. Bitte versuche es spaeter erneut.",
     };
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { calculateCoursePriceBreakdown } from "@/lib/course-pricing";
 import { DEFAULT_PLATFORM_FEE_PERCENT } from "@/lib/platform-fees";
@@ -41,6 +41,67 @@ export type WorkshopFormValues = {
 };
 
 type SinglePaymentOfferKind = "workshop" | "exclusive_offer";
+type WorkshopSection = "basic" | "location" | "schedule" | "booking" | "payment" | "publishing";
+type WorkshopValidationIssue = {
+  field: string;
+  message: string;
+  section: WorkshopSection;
+};
+type WorkshopFieldErrors = Record<string, string>;
+type WorkshopActionResult = {
+  error?: string;
+  fieldErrors?: WorkshopFieldErrors;
+  validationErrors?: WorkshopValidationIssue[];
+  redirectTo?: string;
+};
+
+const sectionLabels: Record<WorkshopSection, string> = {
+  basic: "Grunddaten",
+  location: "Ort & Leitung",
+  schedule: "Termine",
+  booking: "Plaetze & Buchungsoptionen",
+  payment: "Preis & Zahlung",
+  publishing: "Veroeffentlichung",
+};
+
+function getWorkshopFieldSection(field: string): WorkshopSection {
+  if (
+    field === "title" ||
+    field === "description" ||
+    field === "offer_image_file" ||
+    field === "visibility" ||
+    field === "reservation_notice"
+  ) {
+    return "basic";
+  }
+  if (field === "location" || field === "location_details" || field === "instructor_name") return "location";
+  if (field === "sessions") return "schedule";
+  if (field === "capacity" || field === "max_guest_count_per_booking") return "booking";
+  if (field === "price_eur" || field === "currency" || field === "workshop_storno_policy") return "payment";
+  return "publishing";
+}
+
+function WorkshopFormSection(props: {
+  section: WorkshopSection;
+  open: boolean;
+  hasError: boolean;
+  onToggle: (section: WorkshopSection, open: boolean) => void;
+  children: ReactNode;
+}) {
+  return (
+    <details
+      open={props.open}
+      onToggle={(event) => props.onToggle(props.section, event.currentTarget.open)}
+      className={`rounded-2xl border p-4 ${props.hasError ? "border-red-300 bg-red-50/30" : "bg-white"}`}
+    >
+      <summary className="cursor-pointer text-base font-semibold">
+        <span>{sectionLabels[props.section]}</span>
+        {props.hasError ? <span className="ml-2 text-sm font-medium text-red-700">Bitte pruefen</span> : null}
+      </summary>
+      <div className="mt-4 space-y-4">{props.children}</div>
+    </details>
+  );
+}
 
 function createEmptySession(): SessionInput {
   return {
@@ -79,7 +140,7 @@ export default function WorkshopForm({
   offerKind = "workshop",
 }: {
   initialValues?: WorkshopFormValues;
-  submitActionOverride?: (formData: FormData) => Promise<{ error?: string; redirectTo?: string } | void>;
+  submitActionOverride?: (formData: FormData) => Promise<WorkshopActionResult | void>;
   submitLabel?: string;
   providerType: ProviderType;
   providerDisplayName: string;
@@ -91,6 +152,8 @@ export default function WorkshopForm({
   const workshopCurrency = getWorkshopCheckoutCurrency();
   const isLegacyExclusiveOffer = offerKind === "exclusive_offer";
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<WorkshopFieldErrors>({});
+  const [openSections, setOpenSections] = useState<WorkshopSection[]>(["basic"]);
   const [offerImageError, setOfferImageError] = useState<string | null>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const [priceEur, setPriceEur] = useState(initialValues?.price_eur ?? "");
@@ -146,34 +209,79 @@ export default function WorkshopForm({
     platformFeePercent
   );
 
+  function getFieldError(field: string): string | undefined {
+    return fieldErrors[field];
+  }
+
+  function fieldInputClass(field: string, className = "w-full rounded-xl border px-3 py-2 text-sm") {
+    return getFieldError(field)
+      ? `${className} border-red-400 bg-red-50 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-100`
+      : className;
+  }
+
+  function renderFieldError(field: string) {
+    const message = getFieldError(field);
+    return message ? <span className="block text-xs font-medium text-red-700">{message}</span> : null;
+  }
+
+  function getSectionsForErrors(errors: WorkshopFieldErrors): WorkshopSection[] {
+    return Array.from(new Set(Object.keys(errors).map(getWorkshopFieldSection)));
+  }
+
+  function setFieldErrorsAndOpen(errors: WorkshopFieldErrors) {
+    setFieldErrors(errors);
+    const errorSections = getSectionsForErrors(errors);
+    if (errorSections.length > 0) {
+      setOpenSections((current) => Array.from(new Set([...current, ...errorSections])));
+    }
+  }
+
+  function toggleSection(section: WorkshopSection, open: boolean) {
+    setOpenSections((current) =>
+      open ? Array.from(new Set([...current, section])) : current.filter((item) => item !== section)
+    );
+  }
+
+  function sectionHasError(section: WorkshopSection): boolean {
+    return Object.keys(fieldErrors).some((field) => getWorkshopFieldSection(field) === section);
+  }
+
+  const errorEntries = Object.entries(fieldErrors);
+
   const submitAction = (formData: FormData) => {
+    const nextFieldErrors: WorkshopFieldErrors = {};
     const title = String(formData.get("title") ?? "").trim();
     const stornoPolicy = String(formData.get("workshop_storno_policy") ?? "").trim();
     const instructorName = String(formData.get("instructor_name") ?? "").trim();
+    const location = String(formData.get("location") ?? "").trim();
+    const visibility = String(formData.get("visibility") ?? "").trim();
 
     if (offerImageError) {
-      setError(offerImageError);
-      return;
+      nextFieldErrors.offer_image_file = offerImageError;
     }
 
     if (!title) {
-      setError("Bitte gib einen Titel ein.");
-      return;
+      nextFieldErrors.title = "Bitte einen Titel eingeben.";
+    }
+
+    if (!location) {
+      nextFieldErrors.location = "Bitte einen Ort eingeben.";
+    }
+
+    if (visibility !== "public" && visibility !== "private_link") {
+      nextFieldErrors.visibility = "Bitte eine gültige Sichtbarkeit auswählen.";
     }
 
     if (providerType === "studio_provider" && !instructorName) {
-      setError("Bitte gib die Leitung fuer dieses einmalige Angebot an.");
-      return;
+      nextFieldErrors.instructor_name = "Bitte eine verantwortliche Person für dieses Angebot angeben.";
     }
 
     if (!stornoPolicy) {
-      setError("Bitte waehle eine Storno-Regel.");
-      return;
+      nextFieldErrors.workshop_storno_policy = "Bitte eine Storno-Regel auswählen.";
     }
 
     if (sessions.length === 0) {
-      setError("Bitte fuege mindestens einen Termin hinzu.");
-      return;
+      nextFieldErrors.sessions = "Bitte mindestens einen Termin angeben.";
     }
 
     const priceRaw = String(formData.get("price_eur") ?? "").trim();
@@ -181,51 +289,63 @@ export default function WorkshopForm({
     const maxGuestsRaw = String(formData.get("max_guest_count_per_booking") ?? "0").trim();
     const parsedCapacity = capacityRaw ? Number(capacityRaw) : null;
     const parsedMaxGuests = maxGuestsRaw ? Number(maxGuestsRaw) : 0;
-    if (!Number.isFinite(parsedMaxGuests) || parsedMaxGuests < 0) {
-      setError("Bitte gib eine gueltige Anzahl weiterer teilnehmender Personen ein.");
-      return;
-    }
-    if (
+    const capacityIsValid =
       parsedCapacity !== null &&
       Number.isFinite(parsedCapacity) &&
-      parsedMaxGuests > Math.max(0, Math.trunc(parsedCapacity) - 1)
-    ) {
-      setError("Weitere teilnehmende Personen pro Buchung duerfen hoechstens Kapazitaet minus 1 sein.");
-      return;
+      Number.isInteger(parsedCapacity) &&
+      parsedCapacity >= 1;
+    const maxGuestsIsValid =
+      Number.isFinite(parsedMaxGuests) && Number.isInteger(parsedMaxGuests) && parsedMaxGuests >= 0;
+    if (!capacityIsValid) {
+      nextFieldErrors.capacity = "Bitte eine maximale Teilnehmeranzahl angeben.";
+    }
+    if (!maxGuestsIsValid) {
+      nextFieldErrors.max_guest_count_per_booking =
+        "Bitte eine gültige Anzahl weiterer teilnehmender Personen eingeben.";
+    }
+    if (capacityIsValid && maxGuestsIsValid && parsedMaxGuests > Math.max(0, Math.trunc(parsedCapacity) - 1)) {
+      nextFieldErrors.max_guest_count_per_booking =
+        "Weitere teilnehmende Personen pro Buchung dürfen höchstens Kapazität minus 1 sein.";
     }
     if (priceRaw) {
       const parsed = Number(priceRaw.replace(",", "."));
       if (!Number.isFinite(parsed) || parsed < 0) {
-        setError("Bitte gib einen gueltigen Preis >= 0 ein.");
-        return;
+        nextFieldErrors.price_eur = "Bitte einen gültigen Preis eingeben.";
       }
     }
 
     for (const session of sessions) {
       if (!session.starts_at || !session.ends_at) {
-        setError("Bitte fuelle Start- und Endzeit fuer alle Termine aus.");
-        return;
+        nextFieldErrors.sessions = "Bitte Start- und Endzeit für alle Termine ausfüllen.";
+        break;
       }
 
       const start = new Date(session.starts_at);
       const end = new Date(session.ends_at);
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        setError("Ein Termin hat ein ungueltiges Datum.");
-        return;
+        nextFieldErrors.sessions = "Ein Termin hat ein ungültiges Datum.";
+        break;
       }
       if (end <= start) {
-        setError("Ende muss nach dem Start liegen.");
-        return;
+        nextFieldErrors.sessions = "Ende muss nach dem Start liegen.";
+        break;
       }
     }
 
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrorsAndOpen(nextFieldErrors);
+      setError("Bitte korrigiere die markierten Angaben.");
+      return;
+    }
+
+    setFieldErrors({});
     setError(null);
     startTransition(async () => {
       try {
         const action = submitActionOverride ?? createWorkshopAction;
-        const result: { error?: string; redirectTo?: string } = await Promise.race([
+        const result: WorkshopActionResult = await Promise.race([
           action(formData).then((value) => value ?? {}),
-          new Promise<{ error?: string; redirectTo?: string }>((resolve) =>
+          new Promise<WorkshopActionResult>((resolve) =>
             setTimeout(
               () =>
                 resolve({
@@ -237,6 +357,7 @@ export default function WorkshopForm({
         ]);
 
         if (result?.error) {
+          setFieldErrorsAndOpen(result.fieldErrors ?? {});
           setError(result.error);
           return;
         }
@@ -268,43 +389,25 @@ export default function WorkshopForm({
   }
 
   return (
-    <form action={submitAction} className="space-y-4">
+    <form action={submitAction} className="space-y-4" noValidate>
       <input type="hidden" name="offer_kind" value={offerKind} readOnly />
       <input type="hidden" name="sessions_json" value={JSON.stringify(sessionsAsISO)} readOnly />
       <input type="hidden" name="price_cents" value={priceCentsOrEmpty} readOnly />
 
+      <WorkshopFormSection section="basic" open={openSections.includes("basic")} hasError={sectionHasError("basic")} onToggle={toggleSection}>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-1">
           <span className="text-sm font-medium">Titel *</span>
           <input
             name="title"
-            required
             defaultValue={initialValues?.title ?? ""}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
+            aria-invalid={Boolean(getFieldError("title"))}
+            className={fieldInputClass("title")}
             placeholder="z. B. Keramik-Weekend"
           />
-        </label>
-
-        <label className="space-y-1">
-          <span className="text-sm font-medium">Ort</span>
-          <input
-            name="location"
-            defaultValue={initialValues?.location ?? ""}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
-            placeholder="z. B. Treffpunkt Innenstadt"
-          />
+          {renderFieldError("title")}
         </label>
       </div>
-
-      <label className="block space-y-1">
-        <span className="text-sm font-medium">Raum / Zusatzinfo zum Ort</span>
-        <input
-          name="location_details"
-          defaultValue={initialValues?.location_details ?? ""}
-          className="w-full rounded-xl border px-3 py-2 text-sm"
-          placeholder="z. B. Raumname, Stockwerk, Klingelhinweis oder Treffpunkt"
-        />
-      </label>
 
       <label className="block space-y-1">
         <span className="text-sm font-medium">Beschreibung</span>
@@ -355,7 +458,19 @@ export default function WorkshopForm({
         </span>
       </label>
 
-      <OfferImageField initialUrl={initialValues?.offer_image_url ?? ""} onValidationError={setOfferImageError} />
+      <OfferImageField
+        initialUrl={initialValues?.offer_image_url ?? ""}
+        error={getFieldError("offer_image_file") ?? offerImageError}
+        onValidationError={(nextError) => {
+          setOfferImageError(nextError);
+          setFieldErrors((prev) => {
+            const next = { ...prev };
+            if (nextError) next.offer_image_file = nextError;
+            else delete next.offer_image_file;
+            return next;
+          });
+        }}
+      />
 
       <label className="block space-y-1">
         <span className="text-sm font-medium">Interne Notiz</span>
@@ -390,16 +505,44 @@ export default function WorkshopForm({
         <select
           name="visibility"
           defaultValue={initialValues?.visibility ?? (isLegacyExclusiveOffer ? "private_link" : "public")}
-          className="w-full rounded-xl border px-3 py-2 text-sm"
+          aria-invalid={Boolean(getFieldError("visibility"))}
+          className={fieldInputClass("visibility")}
         >
           <option value="public">Öffentlich sichtbar</option>
           <option value="private_link">Nur per Link buchbar</option>
         </select>
+        {renderFieldError("visibility")}
         <div className="space-y-1 text-xs text-muted-foreground">
           <p>Öffentlich sichtbar: Dein Angebot erscheint auf RESER und kann von allen gefunden und gebucht werden.</p>
           <p>Nur per Link buchbar: Dein Angebot erscheint nicht öffentlich auf RESER. Du kannst den Link gezielt an ausgewählte Personen schicken.</p>
         </div>
       </label>
+      </WorkshopFormSection>
+
+      <WorkshopFormSection section="location" open={openSections.includes("location")} hasError={sectionHasError("location")} onToggle={toggleSection}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Ort *</span>
+            <input
+              name="location"
+              defaultValue={initialValues?.location ?? ""}
+              aria-invalid={Boolean(getFieldError("location"))}
+              className={fieldInputClass("location")}
+              placeholder="z. B. Treffpunkt Innenstadt"
+            />
+            {renderFieldError("location")}
+          </label>
+
+          <label className="space-y-1">
+            <span className="text-sm font-medium">Raum / Zusatzinfo zum Ort</span>
+            <input
+              name="location_details"
+              defaultValue={initialValues?.location_details ?? ""}
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+              placeholder="z. B. Raumname, Stockwerk, Klingelhinweis oder Treffpunkt"
+            />
+          </label>
+        </div>
 
       {providerType === "studio_provider" ? (
         <div className="grid gap-4 sm:grid-cols-2">
@@ -416,11 +559,12 @@ export default function WorkshopForm({
             <span className="text-sm font-medium">Leitung: *</span>
             <input
               name="instructor_name"
-              required
               defaultValue={initialValues?.instructor_name ?? ""}
-              className="w-full rounded-xl border px-3 py-2 text-sm"
+              aria-invalid={Boolean(getFieldError("instructor_name"))}
+              className={fieldInputClass("instructor_name")}
               placeholder="Name der Leitung"
             />
+            {renderFieldError("instructor_name")}
           </label>
         </div>
       ) : (
@@ -434,26 +578,9 @@ export default function WorkshopForm({
           />
         </label>
       )}
+      </WorkshopFormSection>
 
-      <label className="block space-y-1">
-        <span className="text-sm font-medium">Storno-Regel *</span>
-        <select
-          name="workshop_storno_policy"
-          required
-          defaultValue={initialValues?.workshop_storno_policy ?? "no_refund"}
-          className="w-full rounded-xl border px-3 py-2 text-sm"
-        >
-          {stornoOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <span className="block text-xs text-muted-foreground">
-          Klare und flexible Storno-Regeln schaffen Vertrauen und fuehren oft zu mehr Buchungen.
-        </span>
-      </label>
-
+      <WorkshopFormSection section="schedule" open={openSections.includes("schedule")} hasError={sectionHasError("schedule")} onToggle={toggleSection}>
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -475,7 +602,12 @@ export default function WorkshopForm({
           {sessions.map((session, index) => {
             const sessionError = sessionErrors[index];
             return (
-              <div key={session.id} className="space-y-2 rounded-xl border p-3">
+              <div
+                key={session.id}
+                className={`space-y-2 rounded-xl border p-3 ${
+                  getFieldError("sessions") || sessionError ? "border-red-300 bg-red-50/40" : ""
+                }`}
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs font-semibold text-muted-foreground">Termin {index + 1}</p>
                   {!isLegacyExclusiveOffer ? (
@@ -505,8 +637,12 @@ export default function WorkshopForm({
                           )
                         )
                       }
-                      className="w-full rounded-xl border px-3 py-2 text-sm"
-                      required
+                      aria-invalid={Boolean(getFieldError("sessions") || sessionError)}
+                      className={
+                        getFieldError("sessions") || sessionError
+                          ? "w-full rounded-xl border border-red-400 bg-red-50 px-3 py-2 text-sm"
+                          : "w-full rounded-xl border px-3 py-2 text-sm"
+                      }
                     />
                   </label>
 
@@ -522,8 +658,12 @@ export default function WorkshopForm({
                           )
                         )
                       }
-                      className="w-full rounded-xl border px-3 py-2 text-sm"
-                      required
+                      aria-invalid={Boolean(getFieldError("sessions") || sessionError)}
+                      className={
+                        getFieldError("sessions") || sessionError
+                          ? "w-full rounded-xl border border-red-400 bg-red-50 px-3 py-2 text-sm"
+                          : "w-full rounded-xl border px-3 py-2 text-sm"
+                      }
                     />
                   </label>
                 </div>
@@ -532,20 +672,25 @@ export default function WorkshopForm({
               </div>
             );
           })}
+          {renderFieldError("sessions")}
         </div>
       </div>
+      </WorkshopFormSection>
 
+      <WorkshopFormSection section="booking" open={openSections.includes("booking")} hasError={sectionHasError("booking")} onToggle={toggleSection}>
       <label className="space-y-1">
-        <span className="text-sm font-medium">Max. Teilnehmende</span>
+        <span className="text-sm font-medium">Max. Teilnehmende *</span>
         <input
           type="number"
           name="capacity"
           min={1}
           value={capacityValue}
           onChange={(event) => setCapacityValue(event.target.value)}
-          className="w-full rounded-xl border px-3 py-2 text-sm"
+          aria-invalid={Boolean(getFieldError("capacity"))}
+          className={fieldInputClass("capacity")}
           placeholder="10"
         />
+        {renderFieldError("capacity")}
       </label>
 
       <label className="space-y-1">
@@ -556,14 +701,18 @@ export default function WorkshopForm({
           min={0}
           max={capacityValue ? Math.max(0, Number(capacityValue) - 1) : undefined}
           defaultValue={initialValues?.max_guest_count_per_booking ?? "0"}
-          className="w-full rounded-xl border px-3 py-2 text-sm"
+          aria-invalid={Boolean(getFieldError("max_guest_count_per_booking"))}
+          className={fieldInputClass("max_guest_count_per_booking")}
           placeholder="0"
         />
+        {renderFieldError("max_guest_count_per_booking")}
         <span className="block text-xs text-muted-foreground">
           0 bedeutet: nur die buchende Person. Maximal Kapazitaet minus 1.
         </span>
       </label>
+      </WorkshopFormSection>
 
+      <WorkshopFormSection section="payment" open={openSections.includes("payment")} hasError={sectionHasError("payment")} onToggle={toggleSection}>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="space-y-1">
           <span className="text-sm font-medium">Preis pro Person (EUR)</span>
@@ -575,9 +724,11 @@ export default function WorkshopForm({
             inputMode="decimal"
             value={priceEur}
             onChange={(event) => setPriceEur(event.target.value)}
-            className="w-full rounded-xl border px-3 py-2 text-sm"
+            aria-invalid={Boolean(getFieldError("price_eur"))}
+            className={fieldInputClass("price_eur")}
             placeholder="49.00"
           />
+          {renderFieldError("price_eur")}
           <span className="block text-xs text-muted-foreground">
             0,00 ist erlaubt. Kostenlose einmalige Angebote werden ohne Stripe direkt bestätigt.
           </span>
@@ -593,6 +744,26 @@ export default function WorkshopForm({
           />
         </label>
       </div>
+
+      <label className="block space-y-1">
+        <span className="text-sm font-medium">Storno-Regel *</span>
+        <select
+          name="workshop_storno_policy"
+          defaultValue={initialValues?.workshop_storno_policy ?? "no_refund"}
+          aria-invalid={Boolean(getFieldError("workshop_storno_policy"))}
+          className={fieldInputClass("workshop_storno_policy")}
+        >
+          {stornoOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {renderFieldError("workshop_storno_policy")}
+        <span className="block text-xs text-muted-foreground">
+          Klare und flexible Storno-Regeln schaffen Vertrauen und fuehren oft zu mehr Buchungen.
+        </span>
+      </label>
 
       <div className="rounded-2xl border bg-gray-50 p-4 text-sm">
         <p className="font-medium">Preisaufteilung</p>
@@ -621,6 +792,20 @@ export default function WorkshopForm({
         Einmalangebote werden direkt bestätigt.
       </p>
 
+      </WorkshopFormSection>
+
+      <WorkshopFormSection section="publishing" open={openSections.includes("publishing")} hasError={sectionHasError("publishing")} onToggle={toggleSection}>
+      {errorEntries.length > 0 ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
+          <p className="font-semibold">Bitte korrigiere folgende Angaben:</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {errorEntries.map(([field, message]) => (
+              <li key={field}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {offerImageError ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {offerImageError}
@@ -635,7 +820,7 @@ export default function WorkshopForm({
 
       <button
         type="submit"
-        disabled={pending || Boolean(offerImageError)}
+        disabled={pending}
         className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
       >
         {pending ? "Speichert..." : submitLabel}
@@ -643,6 +828,8 @@ export default function WorkshopForm({
       <p className="text-xs text-muted-foreground">
         Dein Angebot wird zunächst als Entwurf gespeichert. Im nächsten Schritt kannst du es prüfen und veröffentlichen.
       </p>
+      </WorkshopFormSection>
     </form>
   );
 }
+
