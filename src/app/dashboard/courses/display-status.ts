@@ -3,16 +3,19 @@ import {
   resolveDashboardCourseStatus,
   type CourseStatus,
 } from "@/lib/course-lifecycle-shared";
+import { isOneTimeOfferKind } from "@/lib/offer-ui";
 
 export type DashboardOfferView = "all" | "active" | "drafts" | "archive";
+export type OfferDisplayStatus = CourseStatus | "cancelled" | "archived";
 
 type OfferStatusInput = {
   kind: string | null;
-  status: CourseStatus | null;
+  status: string | null;
   isPublished: boolean | null;
   endsAt: string | null;
   startsAt?: string | null;
   lastSessionEndsAt?: string | null;
+  archivedAt?: string | null;
 };
 
 export type OfferActionVisualState = {
@@ -23,6 +26,7 @@ export type OfferActionVisualState = {
   pauseDisabled: boolean;
   stopDisabled: boolean;
   currentStatusLabel: string;
+  displayStatus: OfferDisplayStatus;
   view: Exclude<DashboardOfferView, "all">;
 };
 
@@ -32,13 +36,16 @@ const ACTIVE_ICON_CLASS = "border-green-600 bg-green-600 text-white";
 const PAUSED_ICON_CLASS = "border-orange-500 bg-orange-500 text-white";
 const STOPPED_ICON_CLASS = "border-red-600 bg-red-600 text-white";
 
+function getOfferTimelineEnd(input: OfferStatusInput): string | null {
+  return input.lastSessionEndsAt ?? input.endsAt ?? input.startsAt ?? null;
+}
+
 function hasOneTimeOfferEnded(input: OfferStatusInput): boolean {
-  const kind = String(input.kind ?? "").toLowerCase();
-  if (!["workshop", "exclusive_offer"].includes(kind)) {
+  if (!isOneTimeOfferKind(input.kind)) {
     return false;
   }
 
-  const timestampSource = input.lastSessionEndsAt ?? input.endsAt ?? input.startsAt ?? null;
+  const timestampSource = getOfferTimelineEnd(input);
   if (!timestampSource) {
     return false;
   }
@@ -47,20 +54,86 @@ function hasOneTimeOfferEnded(input: OfferStatusInput): boolean {
   return Number.isFinite(timestamp) && timestamp < Date.now();
 }
 
+function isPublishedStatus(input: OfferStatusInput): boolean {
+  const status = String(input.status ?? "").toLowerCase();
+  return status === "active" || status === "published" || input.isPublished === true;
+}
+
+function getOfferStatusLabel(displayStatus: OfferDisplayStatus): string {
+  if (displayStatus === "archived") return "Archiviert";
+  if (displayStatus === "cancelled") return "Storniert / Abgesagt";
+  return getCourseStatusLabel(displayStatus);
+}
+
+export function getOfferStatusBadgeClassName(displayStatus: OfferDisplayStatus): string {
+  if (displayStatus === "archived") return "border-slate-200 bg-slate-100 text-slate-700";
+  if (
+    displayStatus === "cancelled" ||
+    displayStatus === "ended" ||
+    displayStatus === "stop_scheduled"
+  ) {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+  if (displayStatus === "draft" || displayStatus === "paused" || displayStatus === "pause_scheduled") {
+    return "border-orange-200 bg-orange-50 text-orange-800";
+  }
+  return "border-green-200 bg-green-50 text-green-700";
+}
+
+export function getOfferStatusPanelClassName(displayStatus: OfferDisplayStatus): string {
+  if (displayStatus === "archived") return "border-slate-200 bg-slate-50/80";
+  if (
+    displayStatus === "cancelled" ||
+    displayStatus === "ended" ||
+    displayStatus === "stop_scheduled"
+  ) {
+    return "border-red-200 bg-red-50/70";
+  }
+  if (displayStatus === "draft" || displayStatus === "paused" || displayStatus === "pause_scheduled") {
+    return "border-orange-200 bg-orange-50/70";
+  }
+  return "border-green-200 bg-green-50/70";
+}
+
+export function getOfferStatusCardClassName(displayStatus: OfferDisplayStatus): string {
+  if (displayStatus === "archived") return "border-slate-200 bg-slate-50/80 hover:border-slate-300";
+  if (
+    displayStatus === "cancelled" ||
+    displayStatus === "ended" ||
+    displayStatus === "stop_scheduled"
+  ) {
+    return "border-red-200 bg-red-50/30 hover:border-red-300";
+  }
+  if (displayStatus === "draft" || displayStatus === "paused" || displayStatus === "pause_scheduled") {
+    return "border-orange-200 bg-orange-50/35 hover:border-orange-300";
+  }
+  return "border-green-200 bg-green-50/25 hover:border-green-300";
+}
+
 export function getDisplayStatus(input: OfferStatusInput) {
-  const oneTimeOfferEnded = hasOneTimeOfferEnded(input);
+  const rawStatus = String(input.status ?? "").toLowerCase();
+  const displayStatusOverride: OfferDisplayStatus | null =
+    input.archivedAt || rawStatus === "archived"
+      ? "archived"
+      : rawStatus === "cancelled" || rawStatus === "canceled"
+        ? "cancelled"
+        : null;
+  const oneTimeOfferEnded = !displayStatusOverride && hasOneTimeOfferEnded(input) && isPublishedStatus(input);
   const normalizedStatus = resolveDashboardCourseStatus({
     status: oneTimeOfferEnded ? "ended" : input.status,
     isPublished: oneTimeOfferEnded ? false : input.isPublished,
-    endsAt: input.lastSessionEndsAt ?? input.endsAt,
+    endsAt: isOneTimeOfferKind(input.kind) && !oneTimeOfferEnded ? null : input.lastSessionEndsAt ?? input.endsAt,
   });
+  const displayStatus = displayStatusOverride ?? normalizedStatus;
 
   let view: Exclude<DashboardOfferView, "all"> = "active";
-  if (normalizedStatus === "draft" || normalizedStatus === "paused" || normalizedStatus === "pause_scheduled") {
+  if (displayStatus === "draft" || displayStatus === "paused" || displayStatus === "pause_scheduled") {
     view = "drafts";
   } else if (
-    normalizedStatus === "stop_scheduled" ||
-    normalizedStatus === "ended"
+    displayStatus === "archived" ||
+    displayStatus === "cancelled" ||
+    displayStatus === "stop_scheduled" ||
+    displayStatus === "ended"
   ) {
     view = "archive";
   }
@@ -93,8 +166,9 @@ export function getDisplayStatus(input: OfferStatusInput) {
 
   return {
     normalizedStatus,
+    displayStatus,
     view,
-    currentStatusLabel: getCourseStatusLabel(normalizedStatus),
+    currentStatusLabel: getOfferStatusLabel(displayStatus),
     playClassName,
     pauseClassName,
     stopClassName,

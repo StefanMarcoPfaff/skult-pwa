@@ -7,6 +7,11 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { buildMailtoHref, normalizeEmailRecipients, shouldWarnAboutLargeMailingGroup } from "@/lib/mailto";
 import DashboardEmptyState from "../_components/DashboardEmptyState";
 import SortableTableHeader, { type SortDirection } from "../_components/SortableTableHeader";
+import {
+  getOfferStatusBadgeClassName,
+  getOfferStatusCardClassName,
+  type OfferDisplayStatus,
+} from "./display-status";
 
 type CourseStatusFilter =
   | "all"
@@ -41,6 +46,7 @@ export type CourseOverviewItem = {
   kindLabel: string;
   statusLabel: string;
   normalizedStatus: "draft" | "active" | "pause_scheduled" | "paused" | "stop_scheduled" | "ended" | null;
+  displayStatus: OfferDisplayStatus;
   archived: boolean;
   imageUrl: string | null;
   priceLabel: string | null;
@@ -289,29 +295,15 @@ function DetailField(props: { label: string; value: ReactNode }) {
 }
 
 function getStatusBadgeClassName(item: CourseOverviewItem) {
-  if (item.archived) return "border-slate-200 bg-slate-100 text-slate-700";
-  if (item.normalizedStatus === "draft" || item.normalizedStatus === "paused" || item.normalizedStatus === "pause_scheduled") {
-    return "border-orange-200 bg-orange-50 text-orange-800";
-  }
-  if (item.normalizedStatus === "ended" || item.normalizedStatus === "stop_scheduled") {
-    return "border-red-200 bg-red-50 text-red-700";
-  }
-  return "border-green-200 bg-green-50 text-green-700";
+  return getOfferStatusBadgeClassName(item.displayStatus);
 }
 
 function getCardClassName(item: CourseOverviewItem) {
-  if (item.archived) return "border-slate-200 bg-slate-50/80 hover:border-slate-300";
-  if (item.normalizedStatus === "draft" || item.normalizedStatus === "paused" || item.normalizedStatus === "pause_scheduled") {
-    return "border-orange-200 bg-orange-50/35 hover:border-orange-300";
-  }
-  if (item.normalizedStatus === "ended" || item.normalizedStatus === "stop_scheduled") {
-    return "border-red-200 bg-red-50/30 hover:border-red-300";
-  }
-  return "border-green-200 bg-green-50/25 hover:border-green-300";
+  return getOfferStatusCardClassName(item.displayStatus);
 }
 
 function getStatusLabel(item: CourseOverviewItem) {
-  return item.archived ? "Archiviert" : item.statusLabel;
+  return item.statusLabel;
 }
 
 function itemMatchesStatus(item: CourseOverviewItem, filter: CourseStatusFilter) {

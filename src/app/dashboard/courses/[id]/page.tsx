@@ -39,7 +39,12 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ParticipantOverviewList } from "../../participants/ParticipantOverviewList";
 import { loadParticipantOverviewItems } from "../../participants/participant-overview-data";
 import { CourseDetailActions } from "./CourseDetailActions";
-import { getDisplayStatus } from "../display-status";
+import {
+  getDisplayStatus,
+  getOfferStatusBadgeClassName,
+  getOfferStatusPanelClassName,
+  type OfferDisplayStatus,
+} from "../display-status";
 
 type Row = {
   id: string;
@@ -201,40 +206,44 @@ function formatOfferPrice(priceCents: number | null, currency: string | null): s
   return formatMoney(priceCents, currency || "EUR");
 }
 
-function getDetailStatusPresentation(normalizedStatus: string) {
-  if (normalizedStatus === "draft" || normalizedStatus === "paused" || normalizedStatus === "pause_scheduled") {
-    return {
-      panelClassName: "border-orange-200 bg-orange-50/70",
-      badgeClassName: "border-orange-200 bg-orange-50 text-orange-800",
-    };
-  }
-
-  if (normalizedStatus === "ended" || normalizedStatus === "stop_scheduled") {
-    return {
-      panelClassName: "border-red-200 bg-red-50/70",
-      badgeClassName: "border-red-200 bg-red-50 text-red-700",
-    };
-  }
-
+function getDetailStatusPresentation(displayStatus: OfferDisplayStatus) {
   return {
-    panelClassName: "border-green-200 bg-green-50/70",
-    badgeClassName: "border-green-200 bg-green-50 text-green-700",
+    panelClassName: getOfferStatusPanelClassName(displayStatus),
+    badgeClassName: getOfferStatusBadgeClassName(displayStatus),
   };
 }
 
-function getStatusHint(normalizedStatus: string, isSinglePaymentOffer: boolean): string {
-  if (normalizedStatus === "draft") {
+function getStatusHint(displayStatus: OfferDisplayStatus, isSinglePaymentOffer: boolean): string {
+  if (displayStatus === "archived") {
+    return "Dieses Angebot ist archiviert.";
+  }
+  if (displayStatus === "cancelled") {
+    return "Dieses einmalige Angebot ist storniert oder abgesagt.";
+  }
+  if (displayStatus === "draft") {
     return "Dieses Angebot ist ein Entwurf. Prüfe die internen Angaben und veröffentliche es erst danach.";
   }
-  if (normalizedStatus === "paused" || normalizedStatus === "pause_scheduled") {
+  if (displayStatus === "paused" || displayStatus === "pause_scheduled") {
     return "Dieses laufende Angebot ist pausiert oder zur Pause vorgemerkt.";
   }
-  if (normalizedStatus === "ended" || normalizedStatus === "stop_scheduled") {
+  if (displayStatus === "ended" || displayStatus === "stop_scheduled") {
     return isSinglePaymentOffer
       ? "Dieses einmalige Angebot ist beendet oder abgesagt."
       : "Dieses laufende Angebot ist beendet oder zum Stopp vorgemerkt.";
   }
   return "Dieses Angebot ist aktiv. Verwaltung und Kommunikation erfolgen über die Aktionen unten.";
+}
+
+function getLastSessionEndAt(sessions: SessionRow[]): string | null {
+  let latest: string | null = null;
+  for (const session of sessions) {
+    const candidate = session.ends_at ?? session.starts_at ?? null;
+    if (!candidate) continue;
+    if (!latest || new Date(candidate).getTime() > new Date(latest).getTime()) {
+      latest = candidate;
+    }
+  }
+  return latest;
 }
 
 function formatPaidOfferReadinessMessage(missingFields: string[]): string {
@@ -391,17 +400,21 @@ export default async function DashboardCourseDetailPage({
           organization_name: profile.organization_name,
         })
       : null;
+  const lastSessionEndsAt = getLastSessionEndAt(sessions ?? []);
   const displayState = getDisplayStatus({
     kind: data.kind,
     status: data.status ?? "draft",
     isPublished: data.is_published ?? null,
     endsAt: data.ends_at ?? null,
     startsAt: data.starts_at,
+    lastSessionEndsAt,
+    archivedAt: data.archived_at ?? null,
   });
   const normalizedStatus = displayState.normalizedStatus;
+  const displayStatus = displayState.displayStatus;
   const statusLabel = displayState.currentStatusLabel;
   const isSinglePaymentOffer = isOneTimeOfferKind(data.kind);
-  const detailStatusPresentation = getDetailStatusPresentation(normalizedStatus);
+  const detailStatusPresentation = getDetailStatusPresentation(displayStatus);
   const pauseStartLabel = formatCourseLifecycleDate(data.pause_start_date);
   const pauseEndLabel = formatCourseLifecycleDate(data.pause_end_date);
   const stopDateLabel = formatCourseLifecycleDate(data.stop_date);
@@ -705,7 +718,7 @@ export default async function DashboardCourseDetailPage({
           <div className="min-w-0">
             <h1 className="text-3xl font-black text-slate-950">{data.title}</h1>
             <p className="mt-3 text-sm text-muted-foreground">
-              {getStatusHint(normalizedStatus, isSinglePaymentOffer)}
+              {getStatusHint(displayStatus, isSinglePaymentOffer)}
             </p>
           </div>
           <span

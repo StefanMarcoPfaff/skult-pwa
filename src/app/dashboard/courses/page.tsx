@@ -281,6 +281,7 @@ export default async function DashboardCoursesPage({
         endsAt: offer.ends_at ?? null,
         startsAt: offer.starts_at,
         lastSessionEndsAt: lastSessionEndByCourseId.get(offer.id) ?? null,
+        archivedAt: offer.archived_at,
       }),
     ])
   );
@@ -348,6 +349,7 @@ export default async function DashboardCoursesPage({
       kind: isOneTimeOfferKind(kind) ? "one-time" : "ongoing",
       statusLabel: displayState.currentStatusLabel,
       normalizedStatus: displayState.normalizedStatus,
+      displayStatus: displayState.displayStatus,
       archived: Boolean(offer.archived_at),
       imageUrl: offer.offer_image_url ?? providerImageUrl,
       priceLabel: formatOfferPrice(offer.price_cents, offer.currency),
