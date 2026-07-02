@@ -180,6 +180,8 @@ type WorkshopParticipantEntry = {
   mailHref: string | null;
 };
 
+const ACTIVE_WORKSHOP_TICKET_STATUSES = new Set(["issued", "checked_in"]);
+
 function formatDateTime(dt: string | null) {
   return formatBerlinDateTime(dt);
 }
@@ -195,6 +197,20 @@ function formatName(firstName: string | null, lastName: string | null, fallback:
 
 function resolveCourseParticipantEmail(participant: TrialParticipantRow): string | null {
   return participant.email;
+}
+
+function isActiveWorkshopBookingForMail(booking: WorkshopBookingRow): boolean {
+  return (
+    !booking.archived_at &&
+    booking.status === "paid" &&
+    !booking.refunded_at &&
+    !booking.stripe_refund_id
+  );
+}
+
+function isActiveWorkshopTicketForMail(ticket: WorkshopTicketRow | undefined, allowMissingTicket: boolean): boolean {
+  if (!ticket) return allowMissingTicket;
+  return ACTIVE_WORKSHOP_TICKET_STATUSES.has(String(ticket.status ?? "").toLowerCase());
 }
 
 function formatDateTimeRange(start: string | null, end: string | null): string | null {
@@ -612,10 +628,33 @@ export default async function DashboardCourseDetailPage({
           return entries;
         })
       : [];
+  void workshopParticipants;
+
+  const workshopMailRecipientEmails = normalizeEmailRecipients(
+    isOneTimeOfferKind(data.kind)
+      ? (workshopBookings ?? []).flatMap((booking) => {
+          if (!isActiveWorkshopBookingForMail(booking)) return [];
+
+          const bookingTicket = workshopTicketByBookingId.get(booking.id);
+          const recipients: Array<string | null | undefined> = [];
+          if (isActiveWorkshopTicketForMail(bookingTicket, true)) {
+            recipients.push(booking.customer_email ?? bookingTicket?.customer_email);
+          }
+
+          for (const guest of workshopGuestsByBookingId.get(booking.id) ?? []) {
+            const guestTicket = workshopTicketByGuestId.get(guest.id);
+            if (!isActiveWorkshopTicketForMail(guestTicket, true)) continue;
+            recipients.push(guest.email);
+          }
+
+          return recipients;
+        })
+      : []
+  );
 
   const offerRecipientEmails =
     isOneTimeOfferKind(data.kind)
-      ? normalizeEmailRecipients(workshopParticipants.map((entry) => entry.email))
+      ? workshopMailRecipientEmails
       : normalizeEmailRecipients([
           ...(groupedCourseParticipants?.firmlyRegistered.map((entry) => entry.email) ?? []),
           ...(groupedCourseParticipants?.attendedApproved.map((entry) => entry.email) ?? []),
