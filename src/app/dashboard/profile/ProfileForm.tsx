@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  PROVIDER_BILLING_VAT_STATUSES,
   type ProviderBillingVatStatus,
   type ProviderLegalEntityType,
 } from "@/lib/provider-billing-profile";
@@ -220,6 +219,7 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
     initialValues.payout_method,
     initialValues.account_holder_name,
     initialValues.iban_last4,
+    initialValues.vat_status,
   ].join("|");
 
   return (
@@ -397,11 +397,11 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
             <span className="text-sm font-medium">Umsatzsteuerstatus</span>
             <select name="vat_status" defaultValue={initialValues.vat_status} className="w-full rounded-xl border px-3 py-2 text-sm">
               <option value="">Keine Angabe</option>
-              <option value={PROVIDER_BILLING_VAT_STATUSES[0]}>Kleinunternehmer*in</option>
-              <option value={PROVIDER_BILLING_VAT_STATUSES[1]}>Umsatzsteuerpflichtig (Steuersatz noch offen)</option>
-              <option value={PROVIDER_BILLING_VAT_STATUSES[2]}>Umsatzsteuerpflichtig 19%</option>
-              <option value={PROVIDER_BILLING_VAT_STATUSES[3]}>Umsatzsteuerpflichtig 7%</option>
-              <option value={PROVIDER_BILLING_VAT_STATUSES[4]}>Steuerbefreit/Gemeinnützig</option>
+              <option value="small_business">Kleinunternehmer*in</option>
+              <option value="vat_registered">Umsatzsteuerpflichtig (Steuersatz noch offen)</option>
+              <option value="vat_19">Umsatzsteuerpflichtig 19%</option>
+              <option value="vat_7">Umsatzsteuerpflichtig 7%</option>
+              <option value="tax_exempt">Steuerbefreit/Gemeinnützig</option>
             </select>
           </label>
           <label className="space-y-1 sm:col-span-2">

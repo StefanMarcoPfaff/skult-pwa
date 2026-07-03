@@ -30,6 +30,7 @@ export type SaveProfileState = {
   warning?: string;
   error?: string;
   redirectTo?: string;
+  vat_status?: string | null;
   debug?: UnifiedProfileSaveDebug;
 };
 
@@ -60,6 +61,7 @@ type SavedPayoutProfileDebug = {
   stripe_terms_accepted_user_agent: string | null;
   business_profile_url: string | null;
   business_profile_product_description: string | null;
+  vat_status: string | null;
 };
 
 type ExistingPayoutProfile = {
@@ -251,6 +253,7 @@ function verifySavedPayoutProfile(input: {
   legal_country: string | null;
   business_profile_url: string | null;
   business_profile_product_description: string | null;
+  vat_status: string | null;
   consentAccepted: boolean;
 }): string[] {
   const row = input.row;
@@ -280,6 +283,9 @@ function verifySavedPayoutProfile(input: {
   }
   if (row.business_profile_product_description !== input.business_profile_product_description) {
     failures.push("business_profile_product_description wurde nicht gespeichert");
+  }
+  if (row.vat_status !== input.vat_status) {
+    failures.push("vat_status wurde nicht gespeichert");
   }
   if (input.consentAccepted && !row.stripe_terms_accepted_at) {
     failures.push("stripe_terms_accepted_at wurde nicht gespeichert");
@@ -698,6 +704,7 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       "stripe_terms_accepted_user_agent",
       "business_profile_url",
       "business_profile_product_description",
+      "vat_status",
     ].join(",");
 
     const { data: existingPayoutProfiles, error: existingPayoutProfileError } = await payoutProfileAdmin
@@ -856,6 +863,7 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       savedLegalAddressLine1: savedPayoutProfile?.legal_address_line1 ?? null,
       savedStripeTermsAcceptedAt: savedPayoutProfile?.stripe_terms_accepted_at ?? null,
       savedPayoutMethod: savedPayoutProfile?.payout_method ?? null,
+      savedVatStatus: savedPayoutProfile?.vat_status ?? null,
       reloadedProfileCount: reloadedPayoutProfiles?.length ?? 0,
       reloadedProfileIds: reloadedPayoutProfiles?.map((profile) => profile.id) ?? [],
       reloadedProfileId: reloadedPayoutProfile?.id ?? null,
@@ -868,6 +876,7 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       reloadedLegalAddressLine1: reloadedPayoutProfile?.legal_address_line1 ?? null,
       reloadedStripeTermsAcceptedAt: reloadedPayoutProfile?.stripe_terms_accepted_at ?? null,
       reloadedPayoutMethod: reloadedPayoutProfile?.payout_method ?? null,
+      reloadedVatStatus: reloadedPayoutProfile?.vat_status ?? null,
       reloadError: reloadedPayoutProfileError?.message ?? null,
     });
 
@@ -892,6 +901,7 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       legal_country,
       business_profile_url,
       business_profile_product_description,
+      vat_status: vat_status_raw,
       consentAccepted,
     });
     const saveDebug = buildSaveDebug({
@@ -1056,12 +1066,14 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
       return {
         success: "Profil gespeichert.",
         warning: combinedWarning,
+        vat_status: reloadedPayoutProfile.vat_status,
         debug: saveDebug,
       };
     }
 
     return {
       success: "Profil gespeichert.",
+      vat_status: reloadedPayoutProfile.vat_status,
       debug: saveDebug,
     };
   } catch (error: unknown) {
