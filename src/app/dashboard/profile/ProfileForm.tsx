@@ -271,11 +271,11 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
             <input name="business_profile_url" defaultValue={initialValues.business_profile_url} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
           <label className="block space-y-1">
-            <span className="text-sm font-medium">Produktbeschreibung</span>
+            <span className="text-sm font-medium">Angebotsbeschreibung</span>
             <input name="business_profile_product_description" defaultValue={initialValues.business_profile_product_description} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
           <label className="block space-y-1">
-            <span className="text-sm font-medium">Beschreibung / Bio</span>
+            <span className="text-sm font-medium">Bio bzw. detaillierte Beschreibung</span>
             <textarea name="bio" rows={5} defaultValue={initialValues.bio} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -361,29 +361,30 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
       <details open={sectionIsOpen(initialSection, "rechnung")} className="rounded-2xl border p-5">
         <summary className="cursor-pointer text-base font-semibold">Adresse &amp; Rechnungsdaten</summary>
         <p className="mt-3 text-sm text-muted-foreground">
-          Wenn du deine Rechnungs- und Steuerdaten vollstaendig hinterlegst, kann RESER automatische Belege fuer deine
+          Wenn du deine Rechnungs- und Steuerdaten vollständig hinterlegst, kann RESER automatische Belege für deine
           Buchhaltung und Steuerunterlagen erstellen. Bitte achte darauf, dass deine Angaben korrekt und aktuell sind.
+          Unvollständige Angaben können dazu führen, dass Belege steuerlich nicht vollständig nutzbar sind.
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm font-medium">Straße + Hausnummer *</span>
-            <input name="billing_address_line_1" required defaultValue={initialValues.address_line_1} className="w-full rounded-xl border px-3 py-2 text-sm" />
+            <span className="text-sm font-medium">Straße + Hausnummer</span>
+            <input name="billing_address_line_1" defaultValue={initialValues.address_line_1} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
           <label className="space-y-1 sm:col-span-2">
             <span className="text-sm font-medium">Adresszusatz</span>
             <input name="billing_address_line_2" defaultValue={initialValues.address_line_2} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
           <label className="space-y-1">
-            <span className="text-sm font-medium">PLZ *</span>
-            <input name="billing_postal_code" required defaultValue={initialValues.postal_code} className="w-full rounded-xl border px-3 py-2 text-sm" />
+            <span className="text-sm font-medium">PLZ</span>
+            <input name="billing_postal_code" defaultValue={initialValues.postal_code} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
           <label className="space-y-1">
-            <span className="text-sm font-medium">Ort *</span>
-            <input name="billing_city" required defaultValue={initialValues.city} className="w-full rounded-xl border px-3 py-2 text-sm" />
+            <span className="text-sm font-medium">Ort</span>
+            <input name="billing_city" defaultValue={initialValues.city} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
           <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm font-medium">Land *</span>
-            <input name="billing_country" required defaultValue={initialValues.country} className="w-full rounded-xl border px-3 py-2 text-sm" />
+            <span className="text-sm font-medium">Land</span>
+            <input name="billing_country" defaultValue={initialValues.country} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
           <label className="space-y-1">
             <span className="text-sm font-medium">Steuernummer</span>
@@ -428,7 +429,7 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
             <input name="account_holder_name" required defaultValue={initialValues.account_holder_name} className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
           <label className="block space-y-1">
-            <span className="text-sm font-medium">IBAN</span>
+            <span className="text-sm font-medium">IBAN{initialValues.iban_last4 ? "" : " *"}</span>
             <input name="payout_iban" required={!initialValues.iban_last4} autoComplete="off" className="w-full rounded-xl border px-3 py-2 text-sm" />
           </label>
           {maskedIban ? <p className="text-xs text-muted-foreground">Bereits hinterlegt: {maskedIban}</p> : null}
@@ -478,7 +479,8 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
               an die jeweils eingebundenen Zahlungsdienstleister weitergeben darf.{" "}
               <Link href="/zahlungsdienstleister" className="font-medium underline underline-offset-4">
                 Mehr Informationen
-              </Link>
+              </Link>{" "}
+              *
             </span>
           </label>
         </div>
@@ -490,6 +492,7 @@ export default function ProfileForm({ initialSection, initialValues }: ProfileFo
       {state.warning ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{state.warning}</p> : null}
       {state.success && !state.redirectTo ? <p className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{state.success}</p> : null}
 
+      <p className="text-xs text-muted-foreground">* Pflichtfeld</p>
       <button type="submit" disabled={isSaving || Boolean(fileError) || Boolean(videoUrlError)} className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
         {isSaving ? "Speichert..." : "Profil speichern"}
       </button>

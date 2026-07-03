@@ -475,9 +475,6 @@ export async function saveUnifiedProviderProfile(formData: FormData): Promise<Sa
     if (intro_video_url && !/^https?:\/\//i.test(intro_video_url)) {
       return { error: "Bitte gib einen gültigen Video-Link mit http:// oder https:// an." };
     }
-    if (!billing_address_line_1 || !billing_postal_code || !billing_city || !billing_country) {
-      return { error: "Bitte gib deine vollständige Adresse an." };
-    }
     if (!consentAccepted) {
       return { error: "Bitte bestätige die Datenweitergabe für die Zahlungsabwicklung." };
     }

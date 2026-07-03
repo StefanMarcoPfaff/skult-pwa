@@ -319,15 +319,13 @@ export function PayButton({
       ) : null}
 
       {!isFreeOffer ? (
-        <div className="space-y-3 rounded-xl border p-4">
-          <div className="space-y-1">
-            <h3 className="text-sm font-semibold">Rechnungsadresse</h3>
-            <p className="text-xs text-muted-foreground">
-              Wenn du einen vollständigen Beleg für deine Unterlagen oder Buchhaltung erhalten
-              möchtest, kannst du hier optional deine Rechnungsadresse angeben.
-            </p>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+        <details className="rounded-xl border p-4">
+          <summary className="cursor-pointer text-sm font-semibold">Rechnungsadresse (optional)</summary>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Wenn du einen vollständigen Beleg für deine Unterlagen oder Buchhaltung erhalten möchtest, kannst du hier
+            optional deine Rechnungsadresse angeben.
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="space-y-1 sm:col-span-2">
               <span className="text-sm font-medium">Firma / Organisation</span>
               <input
@@ -385,7 +383,7 @@ export function PayButton({
               />
             </label>
           </div>
-        </div>
+        </details>
       ) : null}
 
       <BookingConsentFields

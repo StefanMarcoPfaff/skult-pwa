@@ -470,19 +470,19 @@ export function getPaidOfferPublicationReadiness(
     !profile.billingCity ||
     !profile.billingCountry
   ) {
-    missingFields.push("Es fehlt: vollstaendige Rechnungsadresse");
+    warnings.push("Rechnungsadresse fehlt oder ist unvollstaendig; Belege sind steuerlich ggf. nicht vollstaendig nutzbar");
   }
 
   if (!profile.vatStatus) {
-    missingFields.push("Es fehlt: Steuerstatus");
+    warnings.push("Steuerstatus fehlt; Belege sind steuerlich ggf. nicht vollstaendig nutzbar");
   }
 
   if (profile.vatStatus === "vat_registered") {
-    missingFields.push("Bitte 7% oder 19% Umsatzsteuer auswaehlen");
+    warnings.push("Umsatzsteuerstatus ist ohne konkreten Steuersatz hinterlegt; Belege sind steuerlich ggf. nicht vollstaendig nutzbar");
   }
 
   if ((profile.vatStatus === "vat_19" || profile.vatStatus === "vat_7") && !profile.taxNumber && !profile.vatId) {
-    missingFields.push("Es fehlt: USt-ID oder Steuernummer");
+    warnings.push("USt-ID oder Steuernummer fehlt; Belege sind steuerlich ggf. nicht vollstaendig nutzbar");
   }
 
   if (!profile.accountHolderName) {
