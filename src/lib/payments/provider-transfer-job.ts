@@ -5,11 +5,16 @@ import {
   processPayableOneTimeProviderTransfers,
   type ProcessProviderTransfersResult,
 } from "@/lib/payments/provider-transfer-processor";
+import {
+  processProviderTransferPostProcessing,
+  type ProcessProviderTransferPostProcessingResult,
+} from "@/lib/payments/provider-transfer-post-processing";
 
 export type ProviderTransferJobResult = {
   stripeMode: "test" | "live" | "unknown";
   markedPayable: Awaited<ReturnType<typeof markEligibleLedgerEntriesAsPayable>>;
   transfers: ProcessProviderTransfersResult;
+  postTransfer: ProcessProviderTransferPostProcessingResult;
 };
 
 function getStripeMode(): ProviderTransferJobResult["stripeMode"] {
@@ -36,10 +41,18 @@ export async function runPayableOneTimeProviderTransferJob(input?: {
   const stripeMode = assertStripeModeAllowed();
   const markedPayable = await markEligibleLedgerEntriesAsPayable({ scope: "one_time_stripe_custom_v2" });
   const transfers = await processPayableOneTimeProviderTransfers({ limit: input?.limit });
+  const createdLedgerEntryIds = transfers.results
+    .filter((result) => result.status === "created")
+    .map((result) => result.ledgerEntryId);
+  const postTransfer = await processProviderTransferPostProcessing({
+    ledgerEntryIds: createdLedgerEntryIds.length > 0 ? createdLedgerEntryIds : undefined,
+    limit: input?.limit,
+  });
 
   return {
     stripeMode,
     markedPayable,
     transfers,
+    postTransfer,
   };
 }

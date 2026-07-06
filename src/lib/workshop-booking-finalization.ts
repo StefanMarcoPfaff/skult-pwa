@@ -497,6 +497,15 @@ async function finalizeWorkshopBookingRecord(input: {
         .eq("id", booking.id)
         .is("workshop_confirmation_email_sent_at", null);
 
+      if (paymentTransactionId && attachments.length > 0) {
+        await admin
+          .from("financial_documents")
+          .update({ sent_at: new Date().toISOString() } as never)
+          .eq("document_type", "customer_receipt")
+          .eq("payment_transaction_id", paymentTransactionId)
+          .is("sent_at", null);
+      }
+
       logWorkshopFinalization("customer mail sent", {
         bookingId: booking.id,
         recipient: customerEmail,

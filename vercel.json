@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/payments-v2/provider-transfers",
-      "schedule": "12 * * * *"
+      "schedule": "*/15 * * * *"
     }
   ]
 }

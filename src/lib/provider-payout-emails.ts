@@ -8,6 +8,11 @@ function formatMoney(cents: number, currency: string | null | undefined): string
   }).format(cents / 100);
 }
 
+function normalizeText(value: string | null | undefined, fallback: string): string {
+  const trimmed = String(value ?? "").trim();
+  return trimmed || fallback;
+}
+
 export async function sendProviderPayoutReceivedEmail(input: {
   to: string;
   payoutAmountCents: number;
@@ -15,6 +20,11 @@ export async function sendProviderPayoutReceivedEmail(input: {
   payoutBatchId: string | null;
   payoutItemId: string | null;
   ledgerEntryId: string;
+  offerTitle?: string | null;
+  seatCount?: number | null;
+  grossAmountCents?: number | null;
+  platformFeeCents?: number | null;
+  requireAttachments?: boolean;
 }) {
   const attachments = await loadProviderPayoutAttachmentsForMail({
     context: "provider_payout_received",
@@ -24,25 +34,43 @@ export async function sendProviderPayoutReceivedEmail(input: {
       payoutItemId: input.payoutItemId,
     },
   });
+  if (input.requireAttachments && attachments.length < 2) {
+    throw new Error(`Provider payout attachments missing for ledger entry ${input.ledgerEntryId}`);
+  }
+
   const amount = formatMoney(input.payoutAmountCents, input.currency);
+  const offerTitle = normalizeText(input.offerTitle, "dein Angebot");
+  const grossAmount = formatMoney(input.grossAmountCents ?? 0, input.currency);
+  const platformFee = formatMoney(input.platformFeeCents ?? 0, input.currency);
+  const seatCount = Math.max(0, input.seatCount ?? 0);
+  const seatLine = seatCount > 0 ? `<li>Gebuchte Plaetze: <b>${seatCount}</b></li>` : "";
+  const textSeatLine = seatCount > 0 ? [`Gebuchte Plaetze: ${seatCount}`] : [];
 
   return sendResendEmail({
     to: input.to,
-    subject: "Dein Anteil wurde dokumentiert",
+    subject: "Du hast eine Auszahlung erhalten",
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827; max-width: 640px;">
-        <h2 style="margin: 0 0 18px; font-size: 24px;">Dein Anteil wurde dokumentiert</h2>
-        <p style="margin: 0 0 14px;">Fuer deine Buchungen wurde dein Anteil in Hoehe von <b>${amount}</b> dokumentiert.</p>
-        <p style="margin: 0 0 14px;">Die Zahlungsabwicklung erfolgt ueber den eingebundenen Zahlungsdienstleister. RESER stellt die Buchungs- und Abrechnungsdokumentation bereit.</p>
-        <p style="margin: 0;">Die Abrechnungsdokumente findest du im Anhang, sofern sie bereits als PDF vorliegen.</p>
+        <h2 style="margin: 0 0 18px; font-size: 24px;">Du hast eine Auszahlung erhalten</h2>
+        <p style="margin: 0 0 14px;">Die Auszahlung fuer <b>${offerTitle}</b> wurde 24 Stunden nach Angebotsende ausgelost.</p>
+        <ul style="margin: 0 0 14px; padding-left: 18px;">
+          ${seatLine}
+          <li>Bruttoeinnahmen: <b>${grossAmount}</b></li>
+          <li>RESER-Plattformgebuehr: <b>${platformFee}</b></li>
+          <li>Auszahlungsbetrag: <b>${amount}</b></li>
+        </ul>
+        <p style="margin: 0;">Im Anhang findest du deinen Auszahlungs-/Abrechnungsbeleg und den Beleg ueber die RESER-Plattformgebuehr.</p>
       </div>
     `,
     text: [
-      "Dein Anteil wurde dokumentiert",
+      "Du hast eine Auszahlung erhalten",
       "",
-      `Fuer deine Buchungen wurde dein Anteil in Hoehe von ${amount} dokumentiert.`,
-      "Die Zahlungsabwicklung erfolgt ueber den eingebundenen Zahlungsdienstleister. RESER stellt die Buchungs- und Abrechnungsdokumentation bereit.",
-      "Die Abrechnungsdokumente findest du im Anhang, sofern sie bereits als PDF vorliegen.",
+      `Die Auszahlung fuer ${offerTitle} wurde 24 Stunden nach Angebotsende ausgelost.`,
+      ...textSeatLine,
+      `Bruttoeinnahmen: ${grossAmount}`,
+      `RESER-Plattformgebuehr: ${platformFee}`,
+      `Auszahlungsbetrag: ${amount}`,
+      "Im Anhang findest du deinen Auszahlungs-/Abrechnungsbeleg und den Beleg ueber die RESER-Plattformgebuehr.",
     ].join("\n"),
     attachments,
   });
