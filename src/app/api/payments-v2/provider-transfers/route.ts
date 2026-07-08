@@ -13,6 +13,10 @@ function isAuthorized(request: Request): boolean {
 
 async function handleProviderTransfersCron(request: Request) {
   if (!isAuthorized(request)) {
+    console.warn("[provider-transfers-cron] unauthorized request", {
+      hasCronSecret: Boolean(process.env.CRON_SECRET),
+      userAgent: request.headers.get("user-agent"),
+    });
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
@@ -21,6 +25,7 @@ async function handleProviderTransfersCron(request: Request) {
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Serverfehler";
+    console.error("[provider-transfers-cron] failed", { error: message });
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

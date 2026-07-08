@@ -49,6 +49,24 @@ export async function runPayableOneTimeProviderTransferJob(input?: {
     limit: input?.limit,
   });
 
+  console.info("[provider-transfer-job] completed", {
+    stripeMode,
+    markedPayable: {
+      checkedCount: markedPayable.checkedCount,
+      markedCount: markedPayable.markedCount,
+    },
+    transfers: {
+      consideredCount: transfers.consideredCount,
+      createdCount: transfers.createdCount,
+      skippedCount: transfers.skippedCount,
+    },
+    postTransfer: {
+      consideredCount: postTransfer.consideredCount,
+      processedCount: postTransfer.processedCount,
+      failedCount: postTransfer.failedCount,
+    },
+  });
+
   return {
     stripeMode,
     markedPayable,

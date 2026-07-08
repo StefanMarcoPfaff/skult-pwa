@@ -10,6 +10,7 @@ import { sendProviderPayoutReceivedEmail } from "@/lib/provider-payout-emails";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 const POST_TRANSFER_RETRY_LIMIT = 25;
+const POST_TRANSFER_SCAN_MULTIPLIER = 10;
 
 type LedgerEntryRow = {
   id: string;
@@ -244,6 +245,28 @@ async function markDocumentMailError(input: {
   }
 }
 
+async function clearDocumentMailError(input: {
+  documentIds: string[];
+  sentAt: string;
+  supabase: SupabaseClient;
+}) {
+  for (const documentId of input.documentIds) {
+    const document = await findFinancialDocumentById({ documentId, supabase: input.supabase });
+    if (!document) continue;
+
+    const { postTransferMailError, postTransferMailErrorAt, ...metadata } = document.metadata ?? {};
+    if (!postTransferMailError && !postTransferMailErrorAt) continue;
+
+    await input.supabase
+      .from("financial_documents")
+      .update({
+        metadata,
+      } as never)
+      .eq("id", documentId)
+      .eq("sent_at", input.sentAt);
+  }
+}
+
 async function sendProviderEmailOnce(input: {
   context: TransferContext;
   providerPayoutStatementDocumentId: string;
@@ -252,11 +275,46 @@ async function sendProviderEmailOnce(input: {
 }): Promise<boolean> {
   if (!input.context.providerEmail) return false;
 
-  const statement = await findFinancialDocumentById({
-    documentId: input.providerPayoutStatementDocumentId,
-    supabase: input.supabase,
-  });
-  if (!statement || statement.sent_at) return false;
+  const [statement, invoice] = await Promise.all([
+    findFinancialDocumentById({
+      documentId: input.providerPayoutStatementDocumentId,
+      supabase: input.supabase,
+    }),
+    findFinancialDocumentById({
+      documentId: input.providerPlatformFeeInvoiceDocumentId,
+      supabase: input.supabase,
+    }),
+  ]);
+  if (!statement || !invoice) return false;
+  if (statement.sent_at && invoice.sent_at) return false;
+
+  if (statement.sent_at && !invoice.sent_at) {
+    await claimDocumentMail({
+      documentId: invoice.id,
+      sentAt: statement.sent_at,
+      supabase: input.supabase,
+    });
+    console.warn("[provider-transfer-post-processing] repaired provider invoice sent_at from statement", {
+      ledgerEntryId: input.context.ledgerEntry.id,
+      providerPayoutStatementDocumentId: statement.id,
+      providerPlatformFeeInvoiceDocumentId: invoice.id,
+    });
+    return false;
+  }
+
+  if (!statement.sent_at && invoice.sent_at) {
+    await claimDocumentMail({
+      documentId: statement.id,
+      sentAt: invoice.sent_at,
+      supabase: input.supabase,
+    });
+    console.warn("[provider-transfer-post-processing] repaired provider statement sent_at from invoice", {
+      ledgerEntryId: input.context.ledgerEntry.id,
+      providerPayoutStatementDocumentId: statement.id,
+      providerPlatformFeeInvoiceDocumentId: invoice.id,
+    });
+    return false;
+  }
 
   const sentAt = new Date().toISOString();
   const claimed = await claimDocumentMail({
@@ -267,13 +325,22 @@ async function sendProviderEmailOnce(input: {
   if (!claimed) return false;
 
   const invoiceClaimed = await claimDocumentMail({
-    documentId: input.providerPlatformFeeInvoiceDocumentId,
+    documentId: invoice.id,
     sentAt,
     supabase: input.supabase,
   });
+  if (!invoiceClaimed) {
+    await markDocumentMailError({
+      documentIds: [statement.id],
+      sentAt,
+      message: "Provider platform fee invoice mail claim failed.",
+      supabase: input.supabase,
+    });
+    return false;
+  }
   const claimedDocumentIds = [
-    input.providerPayoutStatementDocumentId,
-    ...(invoiceClaimed ? [input.providerPlatformFeeInvoiceDocumentId] : []),
+    statement.id,
+    invoice.id,
   ];
 
   try {
@@ -292,6 +359,11 @@ async function sendProviderEmailOnce(input: {
     });
 
     if (result?.error) throw result.error;
+    await clearDocumentMailError({
+      documentIds: claimedDocumentIds,
+      sentAt,
+      supabase: input.supabase,
+    });
     return true;
   } catch (error) {
     await markDocumentMailError({
@@ -336,6 +408,11 @@ async function sendCustomerReceiptOnce(input: {
     });
 
     if (result?.error) throw result.error;
+    await clearDocumentMailError({
+      documentIds: [receipt.id],
+      sentAt,
+      supabase: input.supabase,
+    });
     return true;
   } catch (error) {
     await markDocumentMailError({
@@ -424,6 +501,7 @@ async function loadPendingPostProcessingLedgerEntryIds(input: {
   limit: number;
   supabase: SupabaseClient;
 }): Promise<string[]> {
+  const scanLimit = input.limit * POST_TRANSFER_SCAN_MULTIPLIER;
   const { data: ledgerEntries, error } = await input.supabase
     .from("ledger_entries")
     .select("id,source_id")
@@ -432,7 +510,7 @@ async function loadPendingPostProcessingLedgerEntryIds(input: {
     .eq("payout_status", "transfer_created")
     .not("stripe_transfer_id", "is", null)
     .order("created_at", { ascending: true, nullsFirst: false })
-    .limit(input.limit)
+    .limit(scanLimit)
     .returns<Array<{ id: string; source_id: string }>>();
   if (error) throw error;
 
@@ -466,6 +544,9 @@ async function loadPendingPostProcessingLedgerEntryIds(input: {
       const hasSentProviderStatement = providerDocuments.some(
         (document) => document.document_type === "provider_payout_statement" && document.sent_at
       );
+      const hasSentProviderFeeInvoice = providerDocuments.some(
+        (document) => document.document_type === "provider_platform_fee_invoice" && document.sent_at
+      );
       const hasSentCustomerReceipt = customerReceipts.some((document) => document.sent_at);
       const hasProviderStatement = providerDocuments.some(
         (document) => document.document_type === "provider_payout_statement"
@@ -480,10 +561,12 @@ async function loadPendingPostProcessingLedgerEntryIds(input: {
         !hasProviderFeeInvoice ||
         !hasCustomerReceipt ||
         !hasSentProviderStatement ||
+        !hasSentProviderFeeInvoice ||
         !hasSentCustomerReceipt
       );
     })
-    .map((row) => row.id);
+    .map((row) => row.id)
+    .slice(0, input.limit);
 }
 
 export async function processProviderTransferPostProcessing(input?: {
@@ -500,12 +583,15 @@ export async function processProviderTransferPostProcessing(input?: {
 
   const results: ProviderTransferPostProcessingResult[] = [];
   for (const ledgerEntryId of ledgerEntryIds) {
-    results.push(
-      await processProviderTransferPostProcessingForLedgerEntry({
-        ledgerEntryId,
-        supabase,
-      })
-    );
+    const result = await processProviderTransferPostProcessingForLedgerEntry({
+      ledgerEntryId,
+      supabase,
+    });
+    results.push(result);
+
+    if (result.error) {
+      console.warn("[provider-transfer-post-processing] retryable ledger post-processing error", result);
+    }
   }
 
   return {
