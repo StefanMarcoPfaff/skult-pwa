@@ -129,6 +129,7 @@ export type FinancialDocumentMetadata = {
     paymentTransactionId: string | null;
     refundRecordId: string | null;
     ledgerEntryId: string | null;
+    stripeTransferId?: string | null;
   };
   [key: string]: unknown;
 };

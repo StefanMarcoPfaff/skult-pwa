@@ -4,7 +4,10 @@ import {
   setFinancialDocumentPdfAsset,
 } from "@/lib/documents/financial-documents";
 import { FINANCIAL_DOCUMENTS_STORAGE_BUCKET } from "@/lib/documents/pdf/constants";
-import { renderFinancialDocumentPdfByType } from "@/lib/documents/pdf/renderers";
+import {
+  FINANCIAL_DOCUMENT_PDF_RENDERER_VERSION,
+  renderFinancialDocumentPdfByType,
+} from "@/lib/documents/pdf/renderers";
 import type {
   FinancialDocumentMetadata,
   FinancialDocumentRecord,
@@ -56,6 +59,7 @@ function buildMetadataWithDocumentModel(
     documentLocale: document.document_locale,
     documentCurrency: document.currency,
     documentTemplateVersion: document.document_template_version,
+    pdfRendererVersion: FINANCIAL_DOCUMENT_PDF_RENDERER_VERSION,
     taxRegime: document.tax_regime ?? (metadata.taxRegime as string | null | undefined) ?? null,
     taxStatus: (metadata.taxStatus as string | null | undefined) ?? document.tax_regime ?? null,
     issuedAt: document.issued_at ?? (metadata.issuedAt as string | null | undefined) ?? null,
@@ -65,6 +69,11 @@ function buildMetadataWithDocumentModel(
       offer?.startsAt ??
       null,
   };
+}
+
+function hasCurrentPdfRendererVersion(document: FinancialDocumentRecord): boolean {
+  const metadata = getDocumentMetadata(document);
+  return metadata?.pdfRendererVersion === FINANCIAL_DOCUMENT_PDF_RENDERER_VERSION;
 }
 
 async function ensurePersistedDocumentNumber(input: {
@@ -161,7 +170,7 @@ export async function generateFinancialDocumentPdf(input: {
   }
   const pdfPath = numberedDocument.pdf_path ?? buildDocumentPdfPath(numberedDocument, documentNumber);
 
-  if (numberedDocument.pdf_path) {
+  if (numberedDocument.pdf_path && hasCurrentPdfRendererVersion(numberedDocument)) {
     const record =
       numberedDocument.document_number && numberedDocument.pdf_path === pdfPath
         ? numberedDocument
@@ -184,7 +193,7 @@ export async function generateFinancialDocumentPdf(input: {
     };
   }
 
-  const metadata = getDocumentMetadata(numberedDocument);
+  const metadata = buildMetadataWithDocumentModel(numberedDocument, documentNumber) as FinancialDocumentMetadata;
   const pdfBuffer = renderFinancialDocumentPdfByType({
     document: numberedDocument,
     metadata,
@@ -201,21 +210,26 @@ export async function generateFinancialDocumentPdf(input: {
     throw uploadError;
   }
 
-  const record =
-    (await setFinancialDocumentPdfAsset(
-      {
-        documentId: numberedDocument.id,
-        pdfPath,
-        documentNumber,
-      },
-      supabase
-    )) ?? numberedDocument;
+  const { data: record, error: updateError } = await supabase
+    .from("financial_documents")
+    .update({
+      pdf_path: pdfPath,
+      document_number: documentNumber,
+      metadata,
+    } as never)
+    .eq("id", numberedDocument.id)
+    .select("*")
+    .maybeSingle<FinancialDocumentRecord>();
+
+  if (updateError) {
+    throw updateError;
+  }
 
   return {
-    documentId: record.id,
+    documentId: record?.id ?? numberedDocument.id,
     documentNumber,
     pdfPath,
-    record,
+    record: record ?? numberedDocument,
     pdfGenerated: true,
   };
 }

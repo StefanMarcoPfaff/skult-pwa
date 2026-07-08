@@ -58,6 +58,7 @@ export type BuildFinancialDocumentDataInput = {
   } | null;
   refundRecordId?: string | null;
   ledgerEntryId?: string | null;
+  stripeTransferId?: string | null;
   currency?: string | null;
   grossAmountCents: number;
   platformFeeCents?: number | null;
@@ -280,6 +281,7 @@ async function buildFinancialDocumentData(
       paymentTransactionId: input.paymentTransactionId ?? null,
       refundRecordId: input.refundRecordId ?? null,
       ledgerEntryId: input.ledgerEntryId ?? null,
+      stripeTransferId: input.stripeTransferId ?? null,
     },
     ...input.metadata,
   };

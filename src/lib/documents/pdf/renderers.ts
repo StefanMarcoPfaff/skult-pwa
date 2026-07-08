@@ -14,6 +14,8 @@ type RenderPdfInput = {
   metadata: FinancialDocumentMetadata | null;
 };
 
+export const FINANCIAL_DOCUMENT_PDF_RENDERER_VERSION = "5g-6-v1";
+
 function formatMoney(amountCents: number, currency: string | null | undefined): string {
   const normalizedCurrency = currency?.trim().toUpperCase() || "EUR";
   return new Intl.NumberFormat("de-DE", {
@@ -59,7 +61,7 @@ function formatPercent(value: number | null | undefined): string {
 
 function platformFeeLabel(metadata: FinancialDocumentMetadata | null): string {
   const overrideLabel = metadata?.platformFeeOverrideApplied === true ? " individuell" : "";
-  return `Plattformgebuehr (${formatPercent(metadata?.amounts.platformFeePercent)}${overrideLabel})`;
+  return `Plattformgebühr (${formatPercent(metadata?.amounts.platformFeePercent)}${overrideLabel})`;
 }
 
 function buildPeriodLabel(document: FinancialDocumentRecord, metadata: FinancialDocumentMetadata | null): string {
@@ -157,7 +159,7 @@ function netAmountLabel(amountCents: number, document: FinancialDocumentRecord, 
 function buildVatNotice(metadata: FinancialDocumentMetadata | null): string {
   switch (metadata?.providerBillingProfile?.vatStatus) {
     case "small_business":
-      return "Gemaess § 19 UStG wird keine Umsatzsteuer berechnet.";
+      return "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.";
     case "tax_exempt":
       return "Keine Umsatzsteuer ausgewiesen, da im Anbieterprofil steuerbefreit/gemeinnuetzig hinterlegt ist.";
     case "vat_registered":
@@ -193,7 +195,7 @@ function buildPlatformFeeTaxLines(
     [
       "Steuerhinweis",
       metadata?.taxHint ??
-        "Steuerangaben zur RESER-Plattformgebuehr sind noch nicht vollstaendig hinterlegt; es werden keine Werte geraten.",
+        "Steuerangaben zur RESER-Plattformgebühr sind noch nicht vollständig hinterlegt; es werden keine Werte geraten.",
     ],
   ];
 }
@@ -220,7 +222,7 @@ function buildOfferEntries(document: FinancialDocumentRecord, metadata: Financia
   ];
 
   if (typeof metadata?.offer?.seatCount === "number" && metadata.offer.seatCount > 0) {
-    entries.push(["Gebuchte Plaetze", String(metadata.offer.seatCount)]);
+    entries.push(["Gebuchte Plätze", String(metadata.offer.seatCount)]);
   }
 
   const participantNames = participantNamesLabel(metadata);
@@ -320,7 +322,7 @@ function buildFooterLines(metadata: FinancialDocumentMetadata | null): PdfLine[]
       leading: 15,
     },
     {
-      text: normalizeText(metadata?.taxHint, "Steuerberechnung bleibt unveraendert; das Dokument spiegelt nur die vorhandenen Betraege."),
+      text: normalizeText(metadata?.taxHint, "Steuerberechnung bleibt unverändert; das Dokument spiegelt nur die vorhandenen Beträge."),
       fontSize: 10.5,
       color: [0.18, 0.20, 0.24],
       leading: 15,
@@ -344,8 +346,8 @@ function buildCustomerReceiptLines(input: RenderPdfInput): PdfLine[] {
 
   return [
     ...buildHeaderLines(
-      "Beleg fuer gebuchtes Angebot",
-      `Rechnungs-/Abrechnungsbeleg fuer deine Unterlagen | ${normalizeText(document.document_number, document.id)}`
+      "Beleg für gebuchtes Angebot",
+      `Rechnungs-/Abrechnungsbeleg für deine Unterlagen | ${normalizeText(document.document_number, document.id)}`
     ),
     ...buildKeyValueLines("Aussteller / Leistungserbringer", [
       ["Name", normalizeText(provider?.documentRecipientName ?? provider?.providerDisplayName)],
@@ -355,7 +357,7 @@ function buildCustomerReceiptLines(input: RenderPdfInput): PdfLine[] {
       ["USt-ID", normalizeText(provider?.vatId, "-")],
       ["Steuerstatus", normalizeText(providerTaxStatus, "-")],
     ]),
-    ...buildKeyValueLines("Empfaenger*in", [
+    ...buildKeyValueLines("Empfänger*in", [
       ["Firma / Organisation", normalizeText(customer?.billingCompanyName, "-")],
       ["Name", normalizeText(customer?.billingName ?? customer?.name)],
       ["E-Mail", normalizeText(customer?.email ?? document.customer_email)],
@@ -365,7 +367,7 @@ function buildCustomerReceiptLines(input: RenderPdfInput): PdfLine[] {
     ...buildKeyValueLines("Zahlung", buildPaymentEntries(document, metadata)),
     ...buildKeyValueLines("Betrag / Steuer", [
       ...buildTaxLines(document, metadata),
-      ["Hinweis", "Die Zahlung wurde ueber RESER abgewickelt."],
+      ["Hinweis", "Die Zahlung wurde über RESER abgewickelt."],
     ]),
     ...buildFooterLines(metadata),
     ...buildDocumentFooterLines(document),
@@ -380,7 +382,7 @@ function buildProviderPayoutStatementLines(input: RenderPdfInput): PdfLine[] {
   return [
     ...buildHeaderLines(
       "Auszahlungs-/Abrechnungsbeleg",
-      `Auszahlungs-/Abrechnungsbeleg ueber vermittelte Zahlung | ${normalizeText(document.document_number, document.id)}`
+      `Auszahlungs-/Abrechnungsbeleg über vermittelte Zahlung | ${normalizeText(document.document_number, document.id)}`
     ),
     ...buildKeyValueLines("Aussteller", [
       ["Plattform", RESER_COMPANY.brand],
@@ -388,7 +390,7 @@ function buildProviderPayoutStatementLines(input: RenderPdfInput): PdfLine[] {
       ["Adresse", RESER_COMPANY.addressLines.join(", ")],
       ["Kontakt", RESER_COMPANY.email],
     ]),
-    ...buildKeyValueLines("Empfaenger*in", [
+    ...buildKeyValueLines("Empfänger*in", [
       ["Name", normalizeText(provider?.documentRecipientName ?? provider?.providerDisplayName)],
       ["Adresse", normalizeText(provider?.billingAddressFormatted?.replace(/\n/g, ", "))],
       ["Steuernummer", normalizeText(provider?.taxNumber, "-")],
@@ -401,9 +403,10 @@ function buildProviderPayoutStatementLines(input: RenderPdfInput): PdfLine[] {
       ["Zahlungen von Teilnehmenden", formatMoney(document.gross_amount_cents, document.currency)],
       [platformFeeLabel(metadata), formatMoney(document.platform_fee_cents, document.currency)],
       ["Auszahlungsbetrag", formatMoney(document.provider_payout_cents, document.currency)],
+      ["Stripe Transfer ID", normalizeText(metadata?.source?.stripeTransferId)],
       [
         "Hinweis",
-        "Die Zahlungsabwicklung erfolgt ueber den eingebundenen Zahlungsdienstleister. RESER stellt die Buchungs- und Abrechnungsdokumentation bereit.",
+        "Die Auszahlung wurde nach Angebotsende ausgelöst. Die Zahlungsabwicklung erfolgt über den eingebundenen Zahlungsdienstleister.",
       ],
     ]),
     ...buildKeyValueLines("Betrag / Steuer", buildTaxLines(document, metadata)),
@@ -418,8 +421,8 @@ function buildProviderPlatformFeeInvoiceLines(input: RenderPdfInput): PdfLine[] 
 
   return [
     ...buildHeaderLines(
-      "Plattformgebuehren-Beleg",
-      `Beleg ueber RESER-Plattform-/Vermittlungsgebuehr | ${normalizeText(document.document_number, document.id)}`
+      "Plattformgebühren-Beleg",
+      `Beleg über RESER-Plattform-/Vermittlungsgebühr | ${normalizeText(document.document_number, document.id)}`
     ),
     ...buildKeyValueLines("Aussteller", [
       ["Plattform", RESER_COMPANY.brand],
@@ -429,21 +432,21 @@ function buildProviderPlatformFeeInvoiceLines(input: RenderPdfInput): PdfLine[] 
       ["Steuernummer", normalizeText(RESER_COMPANY.taxNumber, "-")],
       ["USt-ID", normalizeText(RESER_COMPANY.vatId, "-")],
     ]),
-    ...buildKeyValueLines("Empfaenger*in", [
+    ...buildKeyValueLines("Empfänger*in", [
       ["Name", normalizeText(provider?.documentRecipientName ?? provider?.providerDisplayName)],
       ["Adresse", normalizeText(provider?.billingAddressFormatted?.replace(/\n/g, ", "))],
       ["Steuernummer", normalizeText(provider?.taxNumber, "-")],
       ["USt-ID", normalizeText(provider?.vatId, "-")],
     ]),
     ...buildKeyValueLines("Leistung", [
-      ["Beschreibung", "Plattform- und Vermittlungsgebuehr fuer Buchung/Angebot"],
+      ["Beschreibung", "Plattform- und Vermittlungsgebühr für Buchung/Angebot"],
       ...buildOfferEntries(document, metadata),
     ]),
     ...buildKeyValueLines("Zahlung", buildPaymentEntries(document, metadata)),
-    ...buildKeyValueLines("Gebuehrendaten", [
+    ...buildKeyValueLines("Gebührendaten", [
       ["Zahlungen von Teilnehmenden", formatMoney(document.gross_amount_cents, document.currency)],
       [platformFeeLabel(metadata), formatMoney(document.platform_fee_cents, document.currency)],
-      ["Hinweis", "Die Zahlung wurde ueber RESER abgewickelt."],
+      ["Hinweis", "Die Zahlung wurde über RESER abgewickelt."],
     ]),
     ...buildKeyValueLines("Betrag / Steuer", buildPlatformFeeTaxLines(document, metadata)),
     ...buildFooterLines(metadata),
@@ -485,14 +488,14 @@ function buildRefundReceiptLines(input: RenderPdfInput): PdfLine[] {
   const { document, metadata } = input;
   return [
     ...buildHeaderLines(
-      "Rueckerstattungsbeleg",
+      "Rückerstattungsbeleg",
       `Refund-Dokument | Erstellt ${formatDate(document.issued_at ?? document.created_at)}`
     ),
     ...buildKeyValueLines("Belegdaten", [
       ["Angebot", normalizeText(metadata?.offer?.title)],
       ["Zeitraum", buildPeriodLabel(document, metadata)],
       ["Mail Teilnehmende", normalizeText(metadata?.customer?.email ?? document.customer_email)],
-      ["Rueckerstattungsbetrag", formatMoney(document.gross_amount_cents, document.currency)],
+      ["Rückerstattungsbetrag", formatMoney(document.gross_amount_cents, document.currency)],
       ["Dokumentnummer", normalizeText(document.document_number, "Noch nicht vergeben")],
       ["Refund-Referenz", normalizeText(document.refund_record_id ?? metadata?.source?.refundRecordId)],
       ["Zahlungsreferenz", normalizeText(metadata?.payment?.paymentTransactionId ?? metadata?.source?.paymentTransactionId)],

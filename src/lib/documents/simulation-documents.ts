@@ -85,6 +85,7 @@ type LedgerEntryDocumentRow = {
   currency: string;
   payout_status: string;
   payout_batch_id: string | null;
+  stripe_transfer_id: string | null;
   subscription_contract_id: string | null;
   service_period_start: string | null;
   service_period_end: string | null;
@@ -519,6 +520,7 @@ async function ensureProviderPayoutDocumentRecord(input: {
         }
       : null,
     ledgerEntryId: input.ledgerEntry.id,
+    stripeTransferId: input.ledgerEntry.stripe_transfer_id,
     currency: input.ledgerEntry.currency,
     grossAmountCents: input.ledgerEntry.gross_amount_cents,
     platformFeeCents: input.ledgerEntry.platform_fee_cents,
@@ -557,7 +559,7 @@ export async function ensurePlatformRevenueDocumentForLedgerEntry(input: {
   const { data: ledgerEntry, error: ledgerError } = await supabase
     .from("ledger_entries")
     .select(
-      "id,source_type,source_id,gross_amount_cents,platform_fee_cents,net_amount_cents,currency,payout_status,payout_batch_id,subscription_contract_id,service_period_start,service_period_end"
+      "id,source_type,source_id,gross_amount_cents,platform_fee_cents,net_amount_cents,currency,payout_status,payout_batch_id,stripe_transfer_id,subscription_contract_id,service_period_start,service_period_end"
     )
     .eq("id", input.ledgerEntryId)
     .maybeSingle<LedgerEntryDocumentRow>();
@@ -630,6 +632,7 @@ export async function ensurePlatformRevenueDocumentForLedgerEntry(input: {
         }
       : null,
     ledgerEntryId: ledgerEntry.id,
+    stripeTransferId: ledgerEntry.stripe_transfer_id,
     currency: ledgerEntry.currency,
     grossAmountCents: ledgerEntry.gross_amount_cents,
     platformFeeCents: ledgerEntry.platform_fee_cents,
@@ -666,7 +669,7 @@ export async function ensureProviderPayoutDocumentsForLedgerEntry(input: {
   const { data: ledgerEntry, error: ledgerError } = await supabase
     .from("ledger_entries")
     .select(
-      "id,source_type,source_id,gross_amount_cents,platform_fee_cents,net_amount_cents,currency,payout_status,payout_batch_id,subscription_contract_id,service_period_start,service_period_end"
+      "id,source_type,source_id,gross_amount_cents,platform_fee_cents,net_amount_cents,currency,payout_status,payout_batch_id,stripe_transfer_id,subscription_contract_id,service_period_start,service_period_end"
     )
     .eq("id", input.ledgerEntryId)
     .maybeSingle<LedgerEntryDocumentRow>();
