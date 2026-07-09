@@ -189,6 +189,8 @@ export type Database = {
           subscription_period_id: string | null;
           payment_transaction_id: string | null;
           ledger_entry_id: string | null;
+          provider_payout_profile_id: string | null;
+          payout_batch_id: string | null;
           provider: string;
           provider_charge_id: string | null;
           provider_invoice_id: string | null;
@@ -219,6 +221,11 @@ export type Database = {
           failure_code: string | null;
           failure_message: string | null;
           next_payment_attempt: string | null;
+          transfer_status: "pending" | "payout_scheduled" | "transfer_created" | "transfer_failed";
+          stripe_transfer_id: string | null;
+          transferred_at: string | null;
+          transfer_attempted_at: string | null;
+          transfer_error: string | null;
           metadata: Record<string, unknown>;
           created_at: string;
           updated_at: string;
@@ -229,6 +236,8 @@ export type Database = {
           subscription_period_id?: string | null;
           payment_transaction_id?: string | null;
           ledger_entry_id?: string | null;
+          provider_payout_profile_id?: string | null;
+          payout_batch_id?: string | null;
           provider: string;
           provider_charge_id?: string | null;
           provider_invoice_id?: string | null;
@@ -259,6 +268,11 @@ export type Database = {
           failure_code?: string | null;
           failure_message?: string | null;
           next_payment_attempt?: string | null;
+          transfer_status?: "pending" | "payout_scheduled" | "transfer_created" | "transfer_failed";
+          stripe_transfer_id?: string | null;
+          transferred_at?: string | null;
+          transfer_attempted_at?: string | null;
+          transfer_error?: string | null;
           metadata?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
@@ -268,6 +282,8 @@ export type Database = {
           subscription_period_id: string | null;
           payment_transaction_id: string | null;
           ledger_entry_id: string | null;
+          provider_payout_profile_id: string | null;
+          payout_batch_id: string | null;
           provider: string;
           provider_charge_id: string | null;
           provider_invoice_id: string | null;
@@ -298,6 +314,11 @@ export type Database = {
           failure_code: string | null;
           failure_message: string | null;
           next_payment_attempt: string | null;
+          transfer_status: "pending" | "payout_scheduled" | "transfer_created" | "transfer_failed";
+          stripe_transfer_id: string | null;
+          transferred_at: string | null;
+          transfer_attempted_at: string | null;
+          transfer_error: string | null;
           metadata: Record<string, unknown>;
           updated_at: string;
         }>;

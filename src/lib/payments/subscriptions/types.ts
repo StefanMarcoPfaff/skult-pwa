@@ -38,6 +38,14 @@ export const SUBSCRIPTION_CHARGE_STATUSES = [
 ] as const;
 export type SubscriptionChargeStatus = (typeof SUBSCRIPTION_CHARGE_STATUSES)[number];
 
+export const SUBSCRIPTION_CHARGE_TRANSFER_STATUSES = [
+  "pending",
+  "payout_scheduled",
+  "transfer_created",
+  "transfer_failed",
+] as const;
+export type SubscriptionChargeTransferStatus = (typeof SUBSCRIPTION_CHARGE_TRANSFER_STATUSES)[number];
+
 export const SUBSCRIPTION_CHARGE_TYPES = [
   "initial_proration",
   "monthly_recurring",
@@ -132,6 +140,8 @@ export type SubscriptionCharge = {
   subscriptionPeriodId: string | null;
   paymentTransactionId: string | null;
   ledgerEntryId: string | null;
+  providerPayoutProfileId: string | null;
+  payoutBatchId: string | null;
   provider: SubscriptionProvider;
   providerChargeId: string | null;
   providerInvoiceId: string | null;
@@ -149,6 +159,11 @@ export type SubscriptionCharge = {
   failureCode: string | null;
   failureMessage: string | null;
   nextPaymentAttempt: SubscriptionTimestampString | null;
+  transferStatus: SubscriptionChargeTransferStatus;
+  stripeTransferId: string | null;
+  transferredAt: SubscriptionTimestampString | null;
+  transferAttemptedAt: SubscriptionTimestampString | null;
+  transferError: string | null;
   metadata: SubscriptionMetadata;
   createdAt: SubscriptionTimestampString;
   updatedAt: SubscriptionTimestampString;
@@ -230,6 +245,8 @@ export type CreateSubscriptionChargeInput = {
   subscriptionPeriodId?: string | null;
   paymentTransactionId?: string | null;
   ledgerEntryId?: string | null;
+  providerPayoutProfileId?: string | null;
+  payoutBatchId?: string | null;
   provider: SubscriptionProvider;
   providerChargeId?: string | null;
   providerInvoiceId?: string | null;
@@ -247,6 +264,11 @@ export type CreateSubscriptionChargeInput = {
   failureCode?: string | null;
   failureMessage?: string | null;
   nextPaymentAttempt?: SubscriptionTimestampString | null;
+  transferStatus?: SubscriptionChargeTransferStatus;
+  stripeTransferId?: string | null;
+  transferredAt?: SubscriptionTimestampString | null;
+  transferAttemptedAt?: SubscriptionTimestampString | null;
+  transferError?: string | null;
   metadata?: SubscriptionMetadata;
 };
 

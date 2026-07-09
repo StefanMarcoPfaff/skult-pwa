@@ -5,6 +5,7 @@ import type {
   CreateSubscriptionChargeInput,
   SubscriptionCharge,
   SubscriptionChargeStatus,
+  SubscriptionChargeTransferStatus,
 } from "@/lib/payments/subscriptions/types";
 
 type SubscriptionChargeRow = {
@@ -13,6 +14,8 @@ type SubscriptionChargeRow = {
   subscription_period_id: string | null;
   payment_transaction_id: string | null;
   ledger_entry_id: string | null;
+  provider_payout_profile_id: string | null;
+  payout_batch_id: string | null;
   provider: string;
   provider_charge_id: string | null;
   provider_invoice_id: string | null;
@@ -30,6 +33,11 @@ type SubscriptionChargeRow = {
   failure_code: string | null;
   failure_message: string | null;
   next_payment_attempt: string | null;
+  transfer_status: SubscriptionChargeTransferStatus;
+  stripe_transfer_id: string | null;
+  transferred_at: string | null;
+  transfer_attempted_at: string | null;
+  transfer_error: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -41,6 +49,8 @@ const SUBSCRIPTION_CHARGE_SELECT_FIELDS = [
   "subscription_period_id",
   "payment_transaction_id",
   "ledger_entry_id",
+  "provider_payout_profile_id",
+  "payout_batch_id",
   "provider",
   "provider_charge_id",
   "provider_invoice_id",
@@ -58,6 +68,11 @@ const SUBSCRIPTION_CHARGE_SELECT_FIELDS = [
   "failure_code",
   "failure_message",
   "next_payment_attempt",
+  "transfer_status",
+  "stripe_transfer_id",
+  "transferred_at",
+  "transfer_attempted_at",
+  "transfer_error",
   "metadata",
   "created_at",
   "updated_at",
@@ -70,6 +85,8 @@ function mapRow(row: SubscriptionChargeRow): SubscriptionCharge {
     subscriptionPeriodId: row.subscription_period_id,
     paymentTransactionId: row.payment_transaction_id,
     ledgerEntryId: row.ledger_entry_id,
+    providerPayoutProfileId: row.provider_payout_profile_id,
+    payoutBatchId: row.payout_batch_id,
     provider: row.provider,
     providerChargeId: row.provider_charge_id,
     providerInvoiceId: row.provider_invoice_id,
@@ -87,6 +104,11 @@ function mapRow(row: SubscriptionChargeRow): SubscriptionCharge {
     failureCode: row.failure_code,
     failureMessage: row.failure_message,
     nextPaymentAttempt: row.next_payment_attempt,
+    transferStatus: row.transfer_status,
+    stripeTransferId: row.stripe_transfer_id,
+    transferredAt: row.transferred_at,
+    transferAttemptedAt: row.transfer_attempted_at,
+    transferError: row.transfer_error,
     metadata: row.metadata,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -102,6 +124,8 @@ export async function createSubscriptionCharge(input: CreateSubscriptionChargeIn
       subscription_period_id: input.subscriptionPeriodId ?? null,
       payment_transaction_id: input.paymentTransactionId ?? null,
       ledger_entry_id: input.ledgerEntryId ?? null,
+      provider_payout_profile_id: input.providerPayoutProfileId ?? null,
+      payout_batch_id: input.payoutBatchId ?? null,
       provider: input.provider,
       provider_charge_id: input.providerChargeId ?? null,
       provider_invoice_id: input.providerInvoiceId ?? null,
@@ -119,6 +143,11 @@ export async function createSubscriptionCharge(input: CreateSubscriptionChargeIn
       failure_code: input.failureCode ?? null,
       failure_message: input.failureMessage ?? null,
       next_payment_attempt: input.nextPaymentAttempt ?? null,
+      transfer_status: input.transferStatus ?? "pending",
+      stripe_transfer_id: input.stripeTransferId ?? null,
+      transferred_at: input.transferredAt ?? null,
+      transfer_attempted_at: input.transferAttemptedAt ?? null,
+      transfer_error: input.transferError ?? null,
       metadata: input.metadata ?? {},
     })
     .select(SUBSCRIPTION_CHARGE_SELECT_FIELDS)
@@ -227,6 +256,8 @@ export async function updateSubscriptionCharge(
       subscription_period_id: patch.subscriptionPeriodId,
       payment_transaction_id: patch.paymentTransactionId,
       ledger_entry_id: patch.ledgerEntryId,
+      provider_payout_profile_id: patch.providerPayoutProfileId,
+      payout_batch_id: patch.payoutBatchId,
       provider: patch.provider,
       provider_charge_id: patch.providerChargeId,
       provider_invoice_id: patch.providerInvoiceId,
@@ -244,6 +275,11 @@ export async function updateSubscriptionCharge(
       failure_code: patch.failureCode,
       failure_message: patch.failureMessage,
       next_payment_attempt: patch.nextPaymentAttempt,
+      transfer_status: patch.transferStatus,
+      stripe_transfer_id: patch.stripeTransferId,
+      transferred_at: patch.transferredAt,
+      transfer_attempted_at: patch.transferAttemptedAt,
+      transfer_error: patch.transferError,
       metadata: patch.metadata,
     })
     .eq("id", id)

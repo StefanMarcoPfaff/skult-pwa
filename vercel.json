@@ -15,6 +15,10 @@
     {
       "path": "/api/payments-v2/provider-transfers",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/payments-v2/subscription-provider-transfers",
+      "schedule": "15 3 * * *"
     }
   ]
 }
