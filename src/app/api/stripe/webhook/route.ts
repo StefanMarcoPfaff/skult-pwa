@@ -15,6 +15,7 @@ import {
   recordStripeWebhookEvent,
   updateStripePaymentTransactionStatus,
 } from "@/lib/payments/ledger";
+import { materializeStripeSubscriptionInvoice } from "@/lib/payments/subscriptions/invoice-materialization";
 import { paymentService } from "@/lib/payments/payment-service";
 import { finalizeWorkshopBookingBySession } from "@/lib/workshop-booking-finalization";
 
@@ -224,11 +225,17 @@ export async function POST(req: Request) {
       case "invoice.payment_succeeded":
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice;
+        const status = event.type === "invoice.payment_succeeded" ? "paid" : "failed";
         const mirrored = await mirrorStripeInvoiceEventToLedger({
           invoice,
-          status: event.type === "invoice.payment_succeeded" ? "paid" : "failed",
+          status,
         });
-        return complete(mirrored ? "processed" : "ignored");
+        const materialized = await materializeStripeSubscriptionInvoice({
+          invoice,
+          status,
+          paymentTransactionId: mirrored,
+        });
+        return complete(mirrored || materialized ? "processed" : "ignored");
       }
       case "refund.created":
       case "refund.updated": {

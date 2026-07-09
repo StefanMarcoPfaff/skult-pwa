@@ -188,6 +188,7 @@ export type Database = {
           subscription_contract_id: string;
           subscription_period_id: string | null;
           payment_transaction_id: string | null;
+          ledger_entry_id: string | null;
           provider: string;
           provider_charge_id: string | null;
           provider_invoice_id: string | null;
@@ -199,6 +200,8 @@ export type Database = {
             | "refund_adjustment"
             | "manual_adjustment";
           gross_amount_cents: number;
+          platform_fee_cents: number;
+          provider_net_cents: number;
           currency: string;
           status:
             | "draft"
@@ -210,6 +213,12 @@ export type Database = {
             | "credited"
             | "cancelled";
           charged_at: string | null;
+          stripe_invoice_id: string | null;
+          stripe_payment_intent_id: string | null;
+          stripe_charge_id: string | null;
+          failure_code: string | null;
+          failure_message: string | null;
+          next_payment_attempt: string | null;
           metadata: Record<string, unknown>;
           created_at: string;
           updated_at: string;
@@ -219,6 +228,7 @@ export type Database = {
           subscription_contract_id: string;
           subscription_period_id?: string | null;
           payment_transaction_id?: string | null;
+          ledger_entry_id?: string | null;
           provider: string;
           provider_charge_id?: string | null;
           provider_invoice_id?: string | null;
@@ -230,6 +240,8 @@ export type Database = {
             | "refund_adjustment"
             | "manual_adjustment";
           gross_amount_cents: number;
+          platform_fee_cents?: number;
+          provider_net_cents?: number;
           currency: string;
           status?:
             | "draft"
@@ -241,6 +253,12 @@ export type Database = {
             | "credited"
             | "cancelled";
           charged_at?: string | null;
+          stripe_invoice_id?: string | null;
+          stripe_payment_intent_id?: string | null;
+          stripe_charge_id?: string | null;
+          failure_code?: string | null;
+          failure_message?: string | null;
+          next_payment_attempt?: string | null;
           metadata?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
@@ -249,6 +267,7 @@ export type Database = {
           subscription_contract_id: string;
           subscription_period_id: string | null;
           payment_transaction_id: string | null;
+          ledger_entry_id: string | null;
           provider: string;
           provider_charge_id: string | null;
           provider_invoice_id: string | null;
@@ -260,6 +279,8 @@ export type Database = {
             | "refund_adjustment"
             | "manual_adjustment";
           gross_amount_cents: number;
+          platform_fee_cents: number;
+          provider_net_cents: number;
           currency: string;
           status:
             | "draft"
@@ -271,6 +292,12 @@ export type Database = {
             | "credited"
             | "cancelled";
           charged_at: string | null;
+          stripe_invoice_id: string | null;
+          stripe_payment_intent_id: string | null;
+          stripe_charge_id: string | null;
+          failure_code: string | null;
+          failure_message: string | null;
+          next_payment_attempt: string | null;
           metadata: Record<string, unknown>;
           updated_at: string;
         }>;
