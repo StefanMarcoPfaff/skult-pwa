@@ -13,6 +13,8 @@ import {
 } from "@/lib/course-subscription-checkout";
 import { isPaymentsV2SubscriptionsDualWriteEnabled } from "@/lib/payments/config";
 import { paymentService } from "@/lib/payments/payment-service";
+import { getBerlinTodayDate } from "@/lib/payments/subscriptions/dates";
+import { calculateProratedFirstSubscriptionAmount } from "@/lib/payments/subscriptions/proration";
 import {
   findSubscriptionContractById,
   findSubscriptionContractByIntentId,
@@ -283,6 +285,10 @@ export async function GET(req: Request) {
   const siteUrl = getSiteUrl(req.url);
   const sessionCurrency = getCourseSubscriptionCheckoutCurrency().toLowerCase();
   const billingCycleAnchor = getCourseSubscriptionBillingCycleAnchor();
+  const firstPaymentProration = calculateProratedFirstSubscriptionAmount({
+    monthlyAmountCents: course.price_cents,
+    contractStartDate: getBerlinTodayDate(),
+  });
   const subscriptionContractId = await ensureDraftSubscriptionContractForCheckout({
     admin,
     intent,
@@ -326,6 +332,12 @@ export async function GET(req: Request) {
         registrationToken: token,
         providerStripeAccountId: readyProviderProfile.providerAccountId,
         checkoutFlow: "course_registration",
+        first_payment_full_month_amount_cents: String(firstPaymentProration.full_month_amount_cents),
+        first_payment_prorated_amount_cents: String(firstPaymentProration.prorated_amount_cents),
+        first_payment_period_start: firstPaymentProration.period_start,
+        first_payment_period_end: firstPaymentProration.period_end,
+        first_payment_days_in_month: String(firstPaymentProration.days_in_month),
+        first_payment_billable_days: String(firstPaymentProration.billable_days),
         ...(subscriptionContractId ? { subscriptionContractId } : {}),
       },
       clientReferenceId: intent.id,

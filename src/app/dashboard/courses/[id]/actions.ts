@@ -14,6 +14,10 @@ import { sendCoursePauseNotificationEmail, sendCourseStopNotificationEmail } fro
 import { formatMoney } from "@/lib/course-display";
 import { mirrorStripeRefundToLedger } from "@/lib/payments/ledger";
 import { paymentService } from "@/lib/payments/payment-service";
+import {
+  mirrorCourseEndToSubscriptionModel,
+  mirrorCoursePauseToSubscriptionModel,
+} from "@/lib/payments/subscriptions/lifecycle-materialization";
 import { getStripe } from "@/lib/stripe";
 import {
   CourseStatus,
@@ -594,6 +598,24 @@ export async function scheduleCoursePauseAction(formData: FormData) {
   const activeRecipients = (recipients ?? []).filter((recipient) =>
     ["active", "pause_scheduled", "paused"].includes(recipient.subscription_status ?? "active")
   );
+  const pauseEndDateInclusive = getPreviousDate(pauseEndDate);
+  if (pauseEndDateInclusive) {
+    try {
+      await mirrorCoursePauseToSubscriptionModel({
+        courseId,
+        courseRegistrationIntentIds: activeRecipients.map((recipient) => recipient.id),
+        pauseStartDate,
+        pauseEndDateInclusive,
+      });
+    } catch (error) {
+      console.error("[course-subscription-lifecycle] pause materialization failed", {
+        courseId,
+        pauseStartDate,
+        pauseEndDate,
+        error,
+      });
+    }
+  }
 
   const pauseStartDateLabel = formatCourseLifecycleDate(pauseStartDate) ?? pauseStartDate;
   const pauseEndDateLabel = formatCourseLifecycleDate(pauseEndDate) ?? pauseEndDate;
@@ -729,6 +751,21 @@ export async function scheduleCourseStopAction(formData: FormData) {
     } catch {
       hadSubscriptionErrors = true;
     }
+  }
+
+  try {
+    await mirrorCourseEndToSubscriptionModel({
+      courseId,
+      courseRegistrationIntentIds: activeRegistrationIntents.map((intent) => intent.id),
+      courseEndDate: stopDate,
+      source: "course_stop",
+    });
+  } catch (error) {
+    console.error("[course-subscription-lifecycle] course stop materialization failed", {
+      courseId,
+      stopDate,
+      error,
+    });
   }
 
   const participantEmails = new Set(

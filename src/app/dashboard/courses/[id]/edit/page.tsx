@@ -21,6 +21,7 @@ type OfferRow = {
   max_guest_count_per_booking: number | null;
   kind: string | null;
   starts_at: string | null;
+  ends_at: string | null;
   weekday: number | null;
   start_time: string | null;
   duration_minutes: number | null;
@@ -92,7 +93,7 @@ export default async function EditOfferPage({
   const { data, error } = await supabase
     .from("courses")
     .select(
-      "id,teacher_id,title,description,location,location_details,capacity,max_guest_count_per_booking,kind,starts_at,weekday,start_time,duration_minutes,recurrence_type,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,price_cents,currency,visibility,internal_note,reservation_notice,offer_image_url"
+      "id,teacher_id,title,description,location,location_details,capacity,max_guest_count_per_booking,kind,starts_at,ends_at,weekday,start_time,duration_minutes,recurrence_type,trial_mode,instructor_name,cancellation_model,workshop_storno_policy,price_cents,currency,visibility,internal_note,reservation_notice,offer_image_url"
     )
     .eq("id", id)
     .eq("teacher_id", user.id)
@@ -138,6 +139,7 @@ export default async function EditOfferPage({
     internal_note: data.internal_note ?? "",
     weekday: data.weekday !== null ? String(data.weekday) : "1",
     start_date: toDateInputValue(data.starts_at),
+    end_date: toDateInputValue(data.ends_at),
     start_time: data.start_time ?? "18:00",
     duration_minutes: data.duration_minutes !== null ? String(data.duration_minutes) : "90",
     recurrence_type: data.recurrence_type ?? "weekly",

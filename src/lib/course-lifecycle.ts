@@ -1,5 +1,11 @@
 import "server-only";
 import { getBerlinTodayDate } from "@/lib/course-lifecycle-shared";
+import {
+  mirrorCourseEndToSubscriptionModel,
+  mirrorCoursePauseToSubscriptionModel,
+  mirrorParticipantCancellationToSubscriptionModel,
+  mirrorParticipantPauseToSubscriptionModel,
+} from "@/lib/payments/subscriptions/lifecycle-materialization";
 import { getStripe } from "@/lib/stripe";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -9,6 +15,15 @@ function toStopDateEndIso(stopDate: string): string {
 
 function toDateStartUnix(date: string): number {
   return Math.floor(new Date(`${date}T00:00:00+01:00`).getTime() / 1000);
+}
+
+function getPreviousDate(date: string): string | null {
+  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const value = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (Number.isNaN(value.getTime())) return null;
+  value.setUTCDate(value.getUTCDate() - 1);
+  return value.toISOString().slice(0, 10);
 }
 
 type SyncIntentRow = {
@@ -176,6 +191,23 @@ export async function runCourseLifecycleJob(referenceDate: Date = new Date()) {
   for (const id of await collectIntentIdsForCourses((coursesDueToPause ?? []).map((row) => row.id))) {
     intentIdsToSync.add(id);
   }
+  for (const course of coursesDueToPause ?? []) {
+    const courseId = course.id;
+    const { data: coursePauseWindow } = await admin
+      .from("courses")
+      .select("pause_start_date,pause_end_date")
+      .eq("id", courseId)
+      .maybeSingle<{ pause_start_date: string | null; pause_end_date: string | null }>();
+    const pauseEndDateInclusive = getPreviousDate(coursePauseWindow?.pause_end_date ?? "");
+    if (coursePauseWindow?.pause_start_date && pauseEndDateInclusive) {
+      await mirrorCoursePauseToSubscriptionModel({
+        courseId,
+        courseRegistrationIntentIds: await collectIntentIdsForCourses([courseId]),
+        pauseStartDate: coursePauseWindow.pause_start_date,
+        pauseEndDateInclusive,
+      });
+    }
+  }
 
   const { data: dueToEnd, error: dueToEndError } = await admin
     .from("courses")
@@ -210,6 +242,12 @@ export async function runCourseLifecycleJob(referenceDate: Date = new Date()) {
     }
 
     endedCount += 1;
+    await mirrorCourseEndToSubscriptionModel({
+      courseId: course.id,
+      courseRegistrationIntentIds: await collectIntentIdsForCourses([course.id]),
+      courseEndDate: course.stop_date,
+      source: "course_stop",
+    });
   }
 
   const { data: resumedParticipants, error: participantResumeError } = await admin
@@ -237,13 +275,21 @@ export async function runCourseLifecycleJob(referenceDate: Date = new Date()) {
     })
     .eq("subscription_status", "pause_scheduled")
     .lte("subscription_pause_start_date", today)
-    .select("id");
+    .select("id,subscription_pause_start_date,subscription_pause_end_date");
 
   if (participantPauseError) {
     throw new Error(`participant pause transition failed: ${participantPauseError.message}`);
   }
   for (const row of pausedParticipants ?? []) {
     intentIdsToSync.add(row.id);
+    const pauseEndDateInclusive = getPreviousDate(row.subscription_pause_end_date ?? "");
+    if (row.subscription_pause_start_date && pauseEndDateInclusive) {
+      await mirrorParticipantPauseToSubscriptionModel({
+        courseRegistrationIntentId: row.id,
+        pauseStartDate: row.subscription_pause_start_date,
+        pauseEndDateInclusive,
+      });
+    }
   }
 
   const { data: cancelledParticipants, error: participantCancelError } = await admin
@@ -256,13 +302,20 @@ export async function runCourseLifecycleJob(referenceDate: Date = new Date()) {
     })
     .eq("subscription_status", "cancel_scheduled")
     .lte("subscription_stop_date", today)
-    .select("id");
+    .select("id,subscription_stop_date");
 
   if (participantCancelError) {
     throw new Error(`participant cancellation transition failed: ${participantCancelError.message}`);
   }
   for (const row of cancelledParticipants ?? []) {
     intentIdsToSync.add(row.id);
+    if (row.subscription_stop_date) {
+      await mirrorParticipantCancellationToSubscriptionModel({
+        courseRegistrationIntentId: row.id,
+        cancelEffectiveDate: row.subscription_stop_date,
+        source: "participant_button",
+      });
+    }
   }
 
   await syncStripePauseStateForIntents(Array.from(intentIdsToSync));

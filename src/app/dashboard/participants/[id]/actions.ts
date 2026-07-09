@@ -14,6 +14,10 @@ import {
   sendParticipantPauseConfirmationEmail,
 } from "@/lib/participant-subscription-emails";
 import { buildOfferViewModel } from "@/lib/offers/offer-view-model";
+import {
+  mirrorParticipantCancellationToSubscriptionModel,
+  mirrorParticipantPauseToSubscriptionModel,
+} from "@/lib/payments/subscriptions/lifecycle-materialization";
 import { getStripe } from "@/lib/stripe";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -164,6 +168,24 @@ export async function pauseParticipantSubscriptionAction(formData: FormData) {
     redirect(withSavedParam(redirectTo, "participant_pause_error"));
   }
 
+  const pauseEndDateInclusive = getPreviousDate(pauseEndDate);
+  if (pauseEndDateInclusive) {
+    try {
+      await mirrorParticipantPauseToSubscriptionModel({
+        courseRegistrationIntentId: subscription.id,
+        pauseStartDate,
+        pauseEndDateInclusive,
+      });
+    } catch (error) {
+      console.error("[participant-subscription-lifecycle] pause materialization failed", {
+        intentId: subscription.id,
+        pauseStartDate,
+        pauseEndDate,
+        error,
+      });
+    }
+  }
+
   const recipientEmail = subscription.email?.trim();
   if (recipientEmail && subscription.participant_pause_notification_sent_for_start_date !== pauseStartDate) {
     try {
@@ -235,6 +257,20 @@ export async function stopParticipantSubscriptionAction(formData: FormData) {
 
   if (error) {
     redirect(withSavedParam(redirectTo, "participant_stop_error"));
+  }
+
+  try {
+    await mirrorParticipantCancellationToSubscriptionModel({
+      courseRegistrationIntentId: subscription.id,
+      cancelEffectiveDate: stopDate,
+      source: "participant_button",
+    });
+  } catch (error) {
+    console.error("[participant-subscription-lifecycle] cancellation materialization failed", {
+      intentId: subscription.id,
+      stopDate,
+      error,
+    });
   }
 
   const recipientEmail = subscription.email?.trim();

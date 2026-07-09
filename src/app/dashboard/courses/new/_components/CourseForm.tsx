@@ -27,6 +27,7 @@ export type CourseFormValues = {
   internal_note?: string;
   weekday?: string;
   start_date?: string;
+  end_date?: string;
   start_time?: string;
   duration_minutes?: string;
   recurrence_type?: string;
@@ -162,6 +163,7 @@ export default function CourseForm({
     const title = String(formData.get("title") ?? "").trim();
     const weekdayValue = String(formData.get("weekday") ?? "").trim();
     const startDateValue = String(formData.get("start_date") ?? "").trim();
+    const endDateValue = String(formData.get("course_end_date") ?? "").trim();
     const startTimeValue = String(formData.get("start_time") ?? "").trim();
     const duration = String(formData.get("duration_minutes") ?? "").trim();
     const recurrence = String(formData.get("recurrence_type") ?? "").trim();
@@ -218,6 +220,11 @@ export default function CourseForm({
     }
     if (selectedWeekday !== startDateWeekday) {
       setError("Das Startdatum muss zum gewählten Wochentag passen.");
+      return;
+    }
+
+    if (endDateValue && endDateValue < startDateValue) {
+      setError("Das Ende des laufenden Angebots darf nicht vor dem Startdatum liegen.");
       return;
     }
 
@@ -495,6 +502,19 @@ export default function CourseForm({
           pausieren oder stoppen.
         </p>
       </section>
+
+      <label className="block space-y-1">
+        <span className="text-sm font-medium">Ende des laufenden Angebots (optional)</span>
+        <input
+          type="date"
+          name="course_end_date"
+          defaultValue={initialValues?.end_date ?? ""}
+          className="w-full rounded-xl border px-3 py-2 text-sm"
+        />
+        <span className="block text-xs text-muted-foreground">
+          Wenn dein laufendes Angebot nur bis zu einem bestimmten Monat läuft, kannst du hier ein Enddatum setzen. Ab dem Folgemonat werden keine weiteren Zahlungen mehr geplant.
+        </span>
+      </label>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <label className="space-y-1 sm:col-span-1">

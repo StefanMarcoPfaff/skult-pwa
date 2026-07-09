@@ -9,6 +9,13 @@ import {
 import { generateRecurringCourseSessions } from "@/lib/course-sessions";
 import { getOfferImageUrl, validateOfferImageFile } from "@/lib/offer-image-upload";
 import { uploadOfferImage } from "@/lib/offer-image-storage";
+import {
+  mirrorCourseEndToSubscriptionModel,
+  normalizeCourseEndDateToBerlinEndIso,
+  normalizeCourseEndDateToMonthEnd,
+} from "@/lib/payments/subscriptions/lifecycle-materialization";
+import { getStripe } from "@/lib/stripe";
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   getWorkshopCheckoutCurrency,
@@ -246,6 +253,58 @@ function combineCourseStartsAtISO(startDate: string, startTime: string): string 
 
   const candidate = new Date(date.year, date.month - 1, date.day, time.hour, time.minute, 0, 0);
   return candidate.toISOString();
+}
+
+function toCourseEndUnix(endDate: string): number {
+  return Math.floor(new Date(`${endDate}T23:59:59.999+01:00`).getTime() / 1000);
+}
+
+async function syncFixedCourseEndForActiveSubscriptions(input: {
+  courseId: string;
+  courseEndDate: string | null;
+}) {
+  if (!input.courseEndDate) return;
+
+  const admin = createSupabaseAdmin();
+  const { data: intents } = await admin
+    .from("course_registration_intents")
+    .select("id,stripe_subscription_id,subscription_status")
+    .eq("course_id", input.courseId)
+    .eq("status", "checkout_completed")
+    .returns<Array<{ id: string; stripe_subscription_id: string | null; subscription_status: string | null }>>();
+  const activeIntents = (intents ?? []).filter((intent) =>
+    ["active", "pause_scheduled", "paused", "cancel_scheduled"].includes(intent.subscription_status ?? "active")
+  );
+  const stripe = getStripe();
+  const cancelAt = toCourseEndUnix(input.courseEndDate);
+
+  for (const intent of activeIntents) {
+    if (!intent.stripe_subscription_id) continue;
+    try {
+      await stripe.subscriptions.update(intent.stripe_subscription_id, {
+        cancel_at: cancelAt,
+        proration_behavior: "none",
+      });
+      await admin
+        .from("course_registration_intents")
+        .update({ subscription_end_scheduled_at: `${input.courseEndDate}T23:59:59.999+01:00` })
+        .eq("id", intent.id);
+    } catch (error) {
+      console.error("[course-fixed-end] stripe cancellation sync failed", {
+        courseId: input.courseId,
+        intentId: intent.id,
+        courseEndDate: input.courseEndDate,
+        error,
+      });
+    }
+  }
+
+  await mirrorCourseEndToSubscriptionModel({
+    courseId: input.courseId,
+    courseRegistrationIntentIds: activeIntents.map((intent) => intent.id),
+    courseEndDate: input.courseEndDate,
+    source: "course_fixed_end",
+  });
 }
 
 function parseSessionsJson(formData: FormData): WorkshopSession[] | null {
@@ -719,6 +778,9 @@ async function createOrUpdateCourse(
   const start_time = String(formData.get("start_time") || "").trim();
   const duration_minutes = parseOptionalInt(formData.get("duration_minutes"));
   const recurrence_type = String(formData.get("recurrence_type") || "").trim();
+  const rawCourseEndDate = String(formData.get("course_end_date") || "").trim();
+  const courseEndDate = rawCourseEndDate ? normalizeCourseEndDateToMonthEnd(rawCourseEndDate) : null;
+  const courseEndsAt = rawCourseEndDate ? normalizeCourseEndDateToBerlinEndIso(rawCourseEndDate) : null;
   const trial_mode = String(formData.get("trial_mode") || "all_sessions").trim().toLowerCase();
   const visibility = parseOfferVisibility(formData.get("visibility"));
   const internal_note = parseOptionalString(formData.get("internal_note"));
@@ -743,6 +805,12 @@ async function createOrUpdateCourse(
     return { error: "Bitte gib eine gültige Dauer in Minuten an." };
   }
   if (!recurrence_type) return { error: "Bitte wähle eine Wiederholung." };
+  if (rawCourseEndDate && (!courseEndDate || !courseEndsAt)) {
+    return { error: "Bitte wähle ein gültiges Enddatum für das laufende Angebot." };
+  }
+  if (courseEndDate && courseEndDate < start_date) {
+    return { error: "Das Ende des laufenden Angebots darf nicht vor dem Startdatum liegen." };
+  }
   if (trial_mode !== "all_sessions" && trial_mode !== "manual") {
     return { error: "Bitte wähle eine gültige Probestunden-Regel." };
   }
@@ -832,6 +900,7 @@ async function createOrUpdateCourse(
         instructor_name,
         cancellation_model,
         starts_at,
+        ends_at: courseEndsAt,
         price_cents,
         currency,
         status: "draft",
@@ -901,6 +970,7 @@ async function createOrUpdateCourse(
       starts_at,
       price_cents,
       currency,
+      ends_at: courseEndsAt,
       visibility,
       internal_note,
       offer_image_url: offerImageResult.url,
@@ -912,6 +982,19 @@ async function createOrUpdateCourse(
   if (error) {
     logSupabaseError("update.courses(course)", error);
     return { error: formatUserSupabaseError(error) };
+  }
+
+  try {
+    await syncFixedCourseEndForActiveSubscriptions({
+      courseId: options.courseId,
+      courseEndDate,
+    });
+  } catch (syncError) {
+    console.error("[course-fixed-end] subscription sync failed", {
+      courseId: options.courseId,
+      courseEndDate,
+      error: syncError,
+    });
   }
 
   const { error: deleteTrialSlotsError } = await supabase

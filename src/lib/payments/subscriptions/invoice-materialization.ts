@@ -6,6 +6,8 @@ import {
   calculateProviderPayoutCents,
   getPlatformFeeConfigForProvider,
 } from "@/lib/platform-fees";
+import { planInitialProrationCharge } from "@/lib/payments/subscriptions/charge-planner";
+import { shouldMaterializeServicePeriodForCourse } from "@/lib/payments/subscriptions/lifecycle-materialization";
 import {
   createSubscriptionCharge,
   findSubscriptionChargeByProviderReference,
@@ -81,6 +83,7 @@ type CourseMirrorRow = {
   teacher_id: string | null;
   price_cents: number | null;
   currency: string | null;
+  ends_at: string | null;
 };
 
 type StripeInvoiceLineWithSubscriptionPeriod = Stripe.InvoiceLineItem & {
@@ -290,7 +293,7 @@ async function loadCourse(courseId: string | null): Promise<CourseMirrorRow | nu
 
   const { data } = await createSupabaseAdmin()
     .from("courses")
-    .select("id,teacher_id,price_cents,currency")
+    .select("id,teacher_id,price_cents,currency,ends_at")
     .eq("id", courseId)
     .maybeSingle<CourseMirrorRow>();
 
@@ -471,6 +474,7 @@ async function ensureCharge(input: {
   platformFeeCents: number;
   providerNetCents: number;
   chargedAt: string | null;
+  servicePeriod: ServicePeriod;
 }): Promise<SubscriptionCharge> {
   const existing = await findSubscriptionChargeByProviderReference({
     provider: "stripe",
@@ -480,6 +484,14 @@ async function ensureCharge(input: {
   const stripePaymentIntentId =
     input.paymentTransaction?.stripe_payment_intent_id ?? input.ledgerEntry?.stripe_payment_intent_id ?? null;
   const stripeChargeId = input.paymentTransaction?.stripe_charge_id ?? input.ledgerEntry?.stripe_charge_id ?? null;
+  const isInitialProration = input.servicePeriod.periodStart > input.servicePeriod.serviceMonth;
+  const prorationMetadata = isInitialProration
+    ? planInitialProrationCharge({
+        monthlyAmountCents: input.contract.baseAmountCents,
+        contractStartDate: input.servicePeriod.periodStart,
+        currency: input.currency,
+      }).metadata
+    : {};
   const payload = {
     subscriptionContractId: input.contract.id,
     subscriptionPeriodId: input.period.id,
@@ -489,7 +501,7 @@ async function ensureCharge(input: {
     providerChargeId: stripeChargeId,
     providerInvoiceId: input.invoice.id,
     providerPaymentReference: input.invoice.id,
-    chargeType: "monthly_recurring" as const,
+    chargeType: isInitialProration ? ("initial_proration" as const) : ("monthly_recurring" as const),
     grossAmountCents: input.amountCents,
     platformFeeCents: input.ledgerEntry?.platform_fee_cents ?? input.platformFeeCents,
     providerNetCents: input.ledgerEntry?.net_amount_cents ?? input.providerNetCents,
@@ -505,9 +517,11 @@ async function ensureCharge(input: {
       input.status === "failed" ? normalizeUnixTimestamp(input.invoice.next_payment_attempt) : null,
     metadata: {
       ...(existing?.metadata ?? {}),
+      ...prorationMetadata,
       stripeBillingReason: input.invoice.billing_reason ?? null,
       stripeInvoiceStatus: input.invoice.status ?? null,
       stripeCollectionMethod: input.invoice.collection_method ?? null,
+      actualStripeInvoiceAmountCents: input.amountCents,
     },
   };
 
@@ -587,6 +601,17 @@ export async function materializeStripeSubscriptionInvoice(
     return null;
   }
 
+  const course = await loadCourse(contract.courseId);
+  if (
+    course?.ends_at &&
+    !shouldMaterializeServicePeriodForCourse({
+      courseEndsAt: course.ends_at,
+      periodStart: servicePeriod.periodStart,
+    })
+  ) {
+    return null;
+  }
+
   const ledgerEntry = await findLedgerEntry(paymentTransaction?.id);
   const platformFeeConfig = await getPlatformFeeConfigForProvider(createSupabaseAdmin(), contract.teacherId);
   const platformFeeCents = calculatePlatformFeeCents(amountCents, platformFeeConfig.platformFeePercent);
@@ -611,6 +636,7 @@ export async function materializeStripeSubscriptionInvoice(
     platformFeeCents,
     providerNetCents,
     chargedAt,
+    servicePeriod,
   });
   await ensureInvoiceEvent({
     contract,
