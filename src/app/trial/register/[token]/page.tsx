@@ -138,20 +138,28 @@ export default async function TrialRegistrationTokenPage({
       : null;
 
   const stopDateLabel = formatCourseLifecycleDate(course?.stop_date ?? null);
-  const checkoutError =
-    error === "course_unavailable"
-      ? "Dieses laufende Angebot ist aktuell nicht fuer die Online-Anmeldung verfuegbar."
-        : error === "course_ending"
-        ? `Dieses laufende Angebot endet am ${stopDateLabel ?? formatCourseEndDate(course?.ends_at ?? null) ?? "dem geplanten Termin"} und nimmt keine neuen verbindlichen Anmeldungen mehr an.`
-        : error === "provider_payment_missing"
-          ? "Der Anbieter hat noch keine vollstaendigen Zahlungsdaten hinterlegt."
-          : error === "provider_payment_incomplete"
-            ? "Das verknuepfte Stripe-Konto ist noch nicht vollstaendig eingerichtet."
-            : error === "subscription_creation_failed"
-              ? "Die Stripe-Subscription konnte nicht erstellt werden. Bitte versuche es erneut."
-            : error
-              ? error
-              : null;
+  const checkoutError = (() => {
+    switch (error) {
+      case "course_unavailable":
+        return "Dieses laufende Angebot ist aktuell nicht fuer die Online-Anmeldung verfuegbar.";
+      case "course_ending":
+        return `Dieses laufende Angebot endet am ${stopDateLabel ?? formatCourseEndDate(course?.ends_at ?? null) ?? "dem geplanten Termin"} und nimmt keine neuen verbindlichen Anmeldungen mehr an.`;
+      case "provider_custom_profile_missing":
+        return "Fuer kostenpflichtige laufende Angebote muss zuerst die automatische Zahlungsabwicklung im Profil eingerichtet werden.";
+      case "provider_custom_profile_legacy":
+        return "Das Anbieterprofil nutzt noch eine veraltete Zahlungsanbindung. Neue laufende Anmeldungen sind erst nach Einrichtung der automatischen RESER-Zahlungsabwicklung moeglich.";
+      case "provider_custom_profile_incomplete":
+        return "Das Anbieterprofil ist noch nicht fuer neue laufende Zahlungen bereit. Bitte schliesse die automatische Zahlungsabwicklung im Profil ab.";
+      case "provider_payment_missing":
+        return "Der Anbieter hat noch keine vollstaendigen Zahlungsdaten hinterlegt.";
+      case "provider_payment_incomplete":
+        return "Das verknuepfte Stripe-Konto ist noch nicht vollstaendig eingerichtet.";
+      case "subscription_creation_failed":
+        return "Die Stripe-Subscription konnte nicht erstellt werden. Bitte versuche es erneut.";
+      default:
+        return error || null;
+    }
+  })();
   const isEditMode = isCompletedRegistration && edit === "1";
   const registrationClosed =
     !isCompletedRegistration &&

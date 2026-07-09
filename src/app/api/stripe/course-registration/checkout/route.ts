@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import type Stripe from "stripe";
 import {
   ACTIVE_BOOKING_DUPLICATE_MESSAGE,
   hasActiveCourseParticipationForEmail,
@@ -12,10 +11,7 @@ import {
   getCourseSubscriptionCheckoutCurrencyError,
   isCourseSubscriptionCheckoutCurrencySupported,
 } from "@/lib/course-subscription-checkout";
-import {
-  isPaymentsV2StripePlatformChargesEnabled,
-  isPaymentsV2SubscriptionsDualWriteEnabled,
-} from "@/lib/payments/config";
+import { isPaymentsV2SubscriptionsDualWriteEnabled } from "@/lib/payments/config";
 import { paymentService } from "@/lib/payments/payment-service";
 import {
   findSubscriptionContractById,
@@ -23,13 +19,12 @@ import {
 } from "@/lib/payments/subscriptions/contracts-repo";
 import { createPendingInitialPaymentContract } from "@/lib/payments/subscriptions/contracts-service";
 import {
+  type ProviderBillingProfile,
   getProviderBillingProfile,
   isProviderCustomConnectPaymentProcessingConfigured,
 } from "@/lib/provider-billing-profile";
 import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
-import { getStripe } from "@/lib/stripe";
-import { getSiteUrl, isStripeDestinationChargeReady } from "@/lib/stripe-connect";
-import type { ProviderType } from "@/lib/provider-profiles";
+import { getSiteUrl } from "@/lib/stripe-connect";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 
 type IntentRow = {
@@ -61,10 +56,53 @@ type CourseRow = {
   status: CourseStatus;
 };
 
+type ReadySubscriptionProviderProfile = ProviderBillingProfile & {
+  providerPayoutProfileId: string;
+  providerAccountId: string;
+  stripeAccountType: "custom";
+};
+
 function isExpired(value: string | null): boolean {
   if (!value) return true;
   const expiresAt = new Date(value);
   return Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() < Date.now();
+}
+
+function isReadySubscriptionProviderProfile(
+  profile: ProviderBillingProfile | null
+): profile is ReadySubscriptionProviderProfile {
+  return Boolean(
+    profile?.providerPayoutProfileId &&
+      profile.providerAccountId &&
+      profile.stripeAccountType === "custom" &&
+      isProviderCustomConnectPaymentProcessingConfigured(profile)
+  );
+}
+
+function getProviderSubscriptionCheckoutError(
+  profile: ProviderBillingProfile | null
+):
+  | "provider_custom_profile_missing"
+  | "provider_custom_profile_legacy"
+  | "provider_custom_profile_incomplete"
+  | null {
+  if (!profile?.providerPayoutProfileId) {
+    return "provider_custom_profile_missing";
+  }
+
+  if (!profile.providerAccountId) {
+    return "provider_custom_profile_missing";
+  }
+
+  if (profile.stripeAccountType !== "custom") {
+    return "provider_custom_profile_legacy";
+  }
+
+  if (!isReadySubscriptionProviderProfile(profile)) {
+    return "provider_custom_profile_incomplete";
+  }
+
+  return null;
 }
 
 async function ensureDraftSubscriptionContractForCheckout(input: {
@@ -145,7 +183,6 @@ export async function GET(req: Request) {
   }
 
   const admin = createSupabaseAdmin();
-  const platformChargesFlagEnabled = isPaymentsV2StripePlatformChargesEnabled();
 
   const { data: intent } = await admin
     .from("course_registration_intents")
@@ -211,39 +248,36 @@ export async function GET(req: Request) {
     );
   }
 
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("stripe_account_id,provider_type")
-    .eq("id", course.teacher_id)
-    .maybeSingle<{ stripe_account_id: string | null; provider_type: ProviderType | null }>();
-
   const providerBillingProfile = await getProviderBillingProfile(admin, course.teacher_id);
-  const useCustomConnectPlatformCharge =
-    isProviderCustomConnectPaymentProcessingConfigured(providerBillingProfile);
-  const usePlatformCharge = platformChargesFlagEnabled || useCustomConnectPlatformCharge;
-  const stripeAccountIdForMetadata =
-    providerBillingProfile?.providerAccountId ?? profile?.stripe_account_id ?? null;
+  const readyProviderProfile = isReadySubscriptionProviderProfile(providerBillingProfile)
+    ? providerBillingProfile
+    : null;
+  const providerCheckoutError = readyProviderProfile
+    ? null
+    : getProviderSubscriptionCheckoutError(providerBillingProfile);
 
-  if (!profile || (!usePlatformCharge && !profile.stripe_account_id)) {
-    return NextResponse.redirect(new URL(`/trial/register/${token}?error=provider_payment_missing`, url));
+  if (providerCheckoutError) {
+    console.warn("[stripe-course-registration-checkout]", {
+      context: "provider_custom_connect_not_ready",
+      intentId: intent.id,
+      courseId: intent.course_id,
+      teacherId: course.teacher_id,
+      providerPayoutProfileId: providerBillingProfile?.providerPayoutProfileId ?? null,
+      providerAccountIdPresent: Boolean(providerBillingProfile?.providerAccountId),
+      stripeAccountType: providerBillingProfile?.stripeAccountType ?? null,
+      stripeChargesEnabled: providerBillingProfile?.stripeChargesEnabled ?? null,
+      stripePayoutsEnabled: providerBillingProfile?.stripePayoutsEnabled ?? null,
+      stripeDetailsSubmitted: providerBillingProfile?.stripeDetailsSubmitted ?? null,
+      stripeRequirementsCurrentlyDue: providerBillingProfile?.stripeRequirementsCurrentlyDue ?? [],
+      error: providerCheckoutError,
+    });
+    return NextResponse.redirect(new URL(`/trial/register/${token}?error=${providerCheckoutError}`, url));
   }
 
-  if (!usePlatformCharge) {
-    const stripe = getStripe();
-    let account: Stripe.Account;
-    try {
-      account = await stripe.accounts.retrieve(profile.stripe_account_id!);
-    } catch (error: unknown) {
-      console.error("[stripe-course-registration-connect]", {
-        context: "account.retrieve.failed",
-        stripeAccountId: profile.stripe_account_id,
-        message: error instanceof Error ? error.message : String(error),
-      });
-      return NextResponse.redirect(new URL(`/trial/register/${token}?error=provider_payment_missing`, url));
-    }
-    if (!isStripeDestinationChargeReady(account)) {
-      return NextResponse.redirect(new URL(`/trial/register/${token}?error=provider_payment_incomplete`, url));
-    }
+  if (!readyProviderProfile) {
+    return NextResponse.redirect(
+      new URL(`/trial/register/${token}?error=provider_custom_profile_incomplete`, url)
+    );
   }
 
   const siteUrl = getSiteUrl(req.url);
@@ -277,25 +311,20 @@ export async function GET(req: Request) {
       ],
       successUrl: `${siteUrl}/trial/register/${token}/success?session_id={CHECKOUT_SESSION_ID}&intentId=${intent.id}`,
       cancelUrl: `${siteUrl}/trial/register/${token}/cancel?intentId=${intent.id}`,
-      providerContext: usePlatformCharge
-        ? undefined
-        : {
-            connectedAccountId: profile.stripe_account_id,
-            providerType: profile.provider_type,
-          },
       billingCycleAnchorUnix: billingCycleAnchor,
       metadata: {
-        payment_model: usePlatformCharge ? "platform_charge" : "connect_destination_charge",
-        ledger_mode: usePlatformCharge ? "separate_charges_and_transfers" : "stripe_connect_destination_split",
-        connect_path: useCustomConnectPlatformCharge ? "custom_v2" : usePlatformCharge ? "platform_charge" : "legacy_express",
+        payment_model: "platform_charge",
+        ledger_mode: "separate_charges_and_transfers",
+        connect_path: "custom_v2",
         provider_id: course.teacher_id,
+        provider_payout_profile_id: readyProviderProfile.providerPayoutProfileId,
         course_id: intent.course_id,
         course_registration_intent_id: intent.id,
         registrationIntentId: intent.id,
         trialReservationId: intent.trial_reservation_id,
         courseId: intent.course_id,
         registrationToken: token,
-        ...(stripeAccountIdForMetadata ? { teacherStripeAccountId: stripeAccountIdForMetadata } : {}),
+        providerStripeAccountId: readyProviderProfile.providerAccountId,
         checkoutFlow: "course_registration",
         ...(subscriptionContractId ? { subscriptionContractId } : {}),
       },
