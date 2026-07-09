@@ -5,6 +5,7 @@ import { PROVIDER_PAYOUT_PROFILE_PROVIDER } from "@/lib/payout-profile";
 import { getStripe } from "@/lib/stripe";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { shouldMaterializeServicePeriodForCourse } from "@/lib/payments/subscriptions/lifecycle-materialization";
+import { processSubscriptionMonthlyDocumentsForTransferredBatches } from "@/lib/payments/subscriptions/monthly-documents";
 
 const TRANSFER_IDEMPOTENCY_VERSION = "v1";
 const MAX_TRANSFER_GROUPS = 10;
@@ -155,6 +156,7 @@ export type SubscriptionProviderTransferJobResult = {
   stripeMode: StripeMode;
   cutoffHours: number;
   transfers: ProcessSubscriptionProviderTransfersResult;
+  documents: Awaited<ReturnType<typeof processSubscriptionMonthlyDocumentsForTransferredBatches>> | null;
 };
 
 function getStripeMode(): StripeMode {
@@ -916,6 +918,24 @@ export async function runSubscriptionProviderTransferJob(input?: {
 }): Promise<SubscriptionProviderTransferJobResult> {
   const stripeMode = assertStripeModeAllowed();
   const transfers = await processPayableSubscriptionProviderTransfers({ limit: input?.limit });
+  const createdPayoutBatchIds = transfers.results
+    .filter((result) => result.status === "created" && result.payoutBatchId)
+    .map((result) => result.payoutBatchId as string);
+  let documents: SubscriptionProviderTransferJobResult["documents"] = null;
+
+  if (createdPayoutBatchIds.length > 0) {
+    try {
+      documents = await processSubscriptionMonthlyDocumentsForTransferredBatches({
+        payoutBatchIds: createdPayoutBatchIds,
+        limit: input?.limit,
+      });
+    } catch (error) {
+      console.warn("[subscription-provider-transfer-job] document post-processing failed", {
+        payoutBatchIds: createdPayoutBatchIds,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   console.info("[subscription-provider-transfer-job] completed", {
     stripeMode,
@@ -926,11 +946,19 @@ export async function runSubscriptionProviderTransferJob(input?: {
       createdCount: transfers.createdCount,
       skippedCount: transfers.skippedCount,
     },
+    documents: documents
+      ? {
+          consideredCount: documents.consideredCount,
+          processedCount: documents.processedCount,
+          failedCount: documents.failedCount,
+        }
+      : null,
   });
 
   return {
     stripeMode,
     cutoffHours: TRANSFER_CUTOFF_HOURS,
     transfers,
+    documents,
   };
 }

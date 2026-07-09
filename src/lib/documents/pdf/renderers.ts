@@ -14,7 +14,7 @@ type RenderPdfInput = {
   metadata: FinancialDocumentMetadata | null;
 };
 
-export const FINANCIAL_DOCUMENT_PDF_RENDERER_VERSION = "5g-6-v1";
+export const FINANCIAL_DOCUMENT_PDF_RENDERER_VERSION = "subscription-monthly-v1";
 
 function formatMoney(amountCents: number, currency: string | null | undefined): string {
   const normalizedCurrency = currency?.trim().toUpperCase() || "EUR";
@@ -77,6 +77,26 @@ function buildPeriodLabel(document: FinancialDocumentRecord, metadata: Financial
   }
 
   return formatDate(document.issued_at ?? document.created_at);
+}
+
+function serviceMonthLabel(metadata: FinancialDocumentMetadata | null): string | null {
+  const serviceMonth = typeof metadata?.serviceMonth === "string" ? metadata.serviceMonth : null;
+  if (!serviceMonth) return null;
+  const date = new Date(serviceMonth);
+  if (Number.isNaN(date.getTime())) return serviceMonth;
+  return date.toLocaleDateString("de-DE", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function documentScope(metadata: FinancialDocumentMetadata | null): string | null {
+  return typeof metadata?.documentScope === "string" ? metadata.documentScope : null;
+}
+
+function isSubscriptionMonthlyScope(metadata: FinancialDocumentMetadata | null, scope?: string): boolean {
+  const currentScope = documentScope(metadata);
+  return scope ? currentScope === scope : Boolean(currentScope?.startsWith("subscription_monthly_"));
 }
 
 function formatOfferKind(kind: string | null | undefined): string {
@@ -245,6 +265,25 @@ function buildPaymentEntries(document: FinancialDocumentRecord, metadata: Financ
   ];
 }
 
+function buildSubscriptionEntries(metadata: FinancialDocumentMetadata | null): Array<[string, string]> {
+  if (!isSubscriptionMonthlyScope(metadata)) return [];
+
+  const entries: Array<[string, string]> = [
+    ["Service-Monat", normalizeText(serviceMonthLabel(metadata), "-")],
+  ];
+  const stripeInvoiceId = typeof metadata?.stripeInvoiceId === "string" ? metadata.stripeInvoiceId : null;
+  const subscriptionChargeId = typeof metadata?.subscriptionChargeId === "string" ? metadata.subscriptionChargeId : null;
+  const subscriptionPeriodId = typeof metadata?.subscriptionPeriodId === "string" ? metadata.subscriptionPeriodId : null;
+  const chargeType = typeof metadata?.chargeType === "string" ? metadata.chargeType : null;
+  if (stripeInvoiceId) entries.push(["Stripe Invoice", stripeInvoiceId]);
+  if (subscriptionChargeId) entries.push(["Subscription-Charge-ID", subscriptionChargeId]);
+  if (subscriptionPeriodId) entries.push(["Subscription-Period-ID", subscriptionPeriodId]);
+  if (chargeType === "initial_proration") {
+    entries.push(["Hinweis", "Anteilig berechneter erster Monat"]);
+  }
+  return entries;
+}
+
 function buildDocumentEntries(document: FinancialDocumentRecord): Array<[string, string]> {
   return [
     ["Dokumentnummer", normalizeText(document.document_number, "Systemnummer noch nicht vergeben")],
@@ -306,6 +345,10 @@ function buildKeyValueLines(sectionTitle: string, entries: Array<[string, string
   return lines;
 }
 
+function buildOptionalKeyValueLines(sectionTitle: string, entries: Array<[string, string]>): PdfLine[] {
+  return entries.length > 0 ? buildKeyValueLines(sectionTitle, entries) : [];
+}
+
 function buildFooterLines(metadata: FinancialDocumentMetadata | null): PdfLine[] {
   return [
     {
@@ -332,6 +375,31 @@ function buildFooterLines(metadata: FinancialDocumentMetadata | null): PdfLine[]
 
 function buildDocumentFooterLines(document: FinancialDocumentRecord): PdfLine[] {
   return buildKeyValueLines("Dokument", buildDocumentEntries(document));
+}
+
+function buildCourseBreakdownLines(document: FinancialDocumentRecord, metadata: FinancialDocumentMetadata | null): PdfLine[] {
+  const rawBreakdown = metadata?.courseBreakdown;
+  if (!Array.isArray(rawBreakdown) || rawBreakdown.length === 0) {
+    return [];
+  }
+
+  const entries: Array<[string, string]> = rawBreakdown
+    .map((item): [string, string] | null => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+      const row = item as Record<string, unknown>;
+      const title = normalizeText(typeof row.courseTitle === "string" ? row.courseTitle : null, "Laufendes Angebot");
+      const chargeCount = typeof row.chargeCount === "number" ? row.chargeCount : 0;
+      const grossAmountCents = typeof row.grossAmountCents === "number" ? row.grossAmountCents : 0;
+      const platformFeeCents = typeof row.platformFeeCents === "number" ? row.platformFeeCents : 0;
+      const providerNetCents = typeof row.providerNetCents === "number" ? row.providerNetCents : 0;
+      return [
+        title,
+        `${chargeCount} Zahlungen | Brutto ${formatMoney(grossAmountCents, document.currency)} | Plattformgebühr ${formatMoney(platformFeeCents, document.currency)} | Auszahlung ${formatMoney(providerNetCents, document.currency)}`,
+      ];
+    })
+    .filter((entry): entry is [string, string] => Boolean(entry));
+
+  return buildOptionalKeyValueLines("Kursaufschlüsselung", entries);
 }
 
 function renderPdf(lines: PdfLine[]): Buffer {
@@ -364,6 +432,7 @@ function buildCustomerReceiptLines(input: RenderPdfInput): PdfLine[] {
       ["Adresse", normalizeText(customer?.billingAddressFormatted?.replace(/\n/g, ", "))],
     ]),
     ...buildKeyValueLines("Leistung", buildOfferEntries(document, metadata)),
+    ...buildOptionalKeyValueLines("Abo-Monat", buildSubscriptionEntries(metadata)),
     ...buildKeyValueLines("Zahlung", buildPaymentEntries(document, metadata)),
     ...buildKeyValueLines("Betrag / Steuer", [
       ...buildTaxLines(document, metadata),
@@ -398,6 +467,7 @@ function buildProviderPayoutStatementLines(input: RenderPdfInput): PdfLine[] {
       ["Steuerstatus", normalizeText(providerTaxStatus, "-")],
     ]),
     ...buildKeyValueLines("Leistung", buildOfferEntries(document, metadata)),
+    ...buildOptionalKeyValueLines("Abo-Monat", buildSubscriptionEntries(metadata)),
     ...buildKeyValueLines("Zahlung", buildPaymentEntries(document, metadata)),
     ...buildKeyValueLines("Abrechnungsdaten", [
       ["Zahlungen von Teilnehmenden", formatMoney(document.gross_amount_cents, document.currency)],
@@ -409,6 +479,7 @@ function buildProviderPayoutStatementLines(input: RenderPdfInput): PdfLine[] {
         "Die Auszahlung wurde nach Angebotsende ausgelöst. Die Zahlungsabwicklung erfolgt über den eingebundenen Zahlungsdienstleister.",
       ],
     ]),
+    ...buildCourseBreakdownLines(document, metadata),
     ...buildKeyValueLines("Betrag / Steuer", buildTaxLines(document, metadata)),
     ...buildFooterLines(metadata),
     ...buildDocumentFooterLines(document),
@@ -442,12 +513,14 @@ function buildProviderPlatformFeeInvoiceLines(input: RenderPdfInput): PdfLine[] 
       ["Beschreibung", "Plattform- und Vermittlungsgebühr für Buchung/Angebot"],
       ...buildOfferEntries(document, metadata),
     ]),
+    ...buildOptionalKeyValueLines("Abo-Monat", buildSubscriptionEntries(metadata)),
     ...buildKeyValueLines("Zahlung", buildPaymentEntries(document, metadata)),
     ...buildKeyValueLines("Gebührendaten", [
       ["Zahlungen von Teilnehmenden", formatMoney(document.gross_amount_cents, document.currency)],
       [platformFeeLabel(metadata), formatMoney(document.platform_fee_cents, document.currency)],
       ["Hinweis", "Die Zahlung wurde über RESER abgewickelt."],
     ]),
+    ...buildCourseBreakdownLines(document, metadata),
     ...buildKeyValueLines("Betrag / Steuer", buildPlatformFeeTaxLines(document, metadata)),
     ...buildFooterLines(metadata),
     ...buildDocumentFooterLines(document),

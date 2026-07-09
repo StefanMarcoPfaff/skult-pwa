@@ -538,6 +538,15 @@ async function processLedgerEntryTransfer(ledgerEntryId: string): Promise<Provid
     // to payable, but no transfer id is persisted and payout_status is not moved
     // to transfer_created. There is intentionally no new failed payout status here;
     // retries stay operator-visible without changing the existing status model.
+    console.warn("[provider-transfer-processor] stripe transfer failed", {
+      ledgerEntryId: claimedEntry.id,
+      paymentTransactionId: claimedEntry.source_id,
+      providerPayoutProfileId: claimedEntry.provider_payout_profile_id,
+      amountCents: Math.max(0, claimedEntry.net_amount_cents),
+      currency: normalizeCurrency(claimedEntry.currency),
+      error: error instanceof Error ? error.message : String(error),
+    });
+
     return buildSkippedResult({
       ledgerEntry: claimedEntry,
       paymentTransactionId: claimedEntry.source_id,

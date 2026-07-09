@@ -78,6 +78,7 @@ export type Database = {
           course_id: string | null;
           course_registration_intent_id: string | null;
           subscription_contract_id: string | null;
+          subscription_charge_id: string | null;
           payout_batch_id: string | null;
           payout_item_id: string | null;
           payment_transaction_id: string | null;
@@ -117,6 +118,7 @@ export type Database = {
           course_id?: string | null;
           course_registration_intent_id?: string | null;
           subscription_contract_id?: string | null;
+          subscription_charge_id?: string | null;
           payout_batch_id?: string | null;
           payout_item_id?: string | null;
           payment_transaction_id?: string | null;
@@ -155,6 +157,7 @@ export type Database = {
           course_id: string | null;
           course_registration_intent_id: string | null;
           subscription_contract_id: string | null;
+          subscription_charge_id: string | null;
           payout_batch_id: string | null;
           payout_item_id: string | null;
           payment_transaction_id: string | null;

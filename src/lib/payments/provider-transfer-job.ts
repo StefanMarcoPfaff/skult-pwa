@@ -48,6 +48,29 @@ export async function runPayableOneTimeProviderTransferJob(input?: {
     ledgerEntryIds: createdLedgerEntryIds.length > 0 ? createdLedgerEntryIds : undefined,
     limit: input?.limit,
   });
+  const skippedTransfers = transfers.results.filter((result) => result.status === "skipped");
+  const transferErrorCount = skippedTransfers.filter((result) =>
+    result.skipReason === "stripe_error" || result.skipReason === "finalize_failed"
+  ).length;
+
+  if (skippedTransfers.length > 0) {
+    console.warn("[provider-transfer-job] skipped transfer results", {
+      skippedCount: skippedTransfers.length,
+      errorCount: transferErrorCount,
+      results: skippedTransfers.map((result) => ({
+        ledgerEntryId: result.ledgerEntryId,
+        paymentTransactionId: result.paymentTransactionId,
+        providerPayoutProfileId: result.providerPayoutProfileId,
+        providerId: result.providerId,
+        bookingId: result.bookingId,
+        courseId: result.courseId,
+        amountCents: result.amountCents,
+        currency: result.currency,
+        skipReason: result.skipReason,
+        message: result.message,
+      })),
+    });
+  }
 
   console.info("[provider-transfer-job] completed", {
     stripeMode,
@@ -59,6 +82,7 @@ export async function runPayableOneTimeProviderTransferJob(input?: {
       consideredCount: transfers.consideredCount,
       createdCount: transfers.createdCount,
       skippedCount: transfers.skippedCount,
+      errorCount: transferErrorCount,
     },
     postTransfer: {
       consideredCount: postTransfer.consideredCount,
