@@ -35,6 +35,7 @@ import {
 } from "@/lib/workshop-booking-guests";
 import { getWorkshopCancellationPolicyValue } from "@/lib/offer-policies";
 import { shouldShowWorkshopCancellationPolicy } from "@/lib/workshop-offer-display";
+import { assertPaidOffersAllowed, PILOT_PAID_OFFERS_MESSAGE } from "@/lib/pilot-mode";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
@@ -179,6 +180,13 @@ export async function POST(req: Request) {
 
     const normalizedPriceCents = typeof course.price_cents === "number" ? course.price_cents : 0;
     const isFreeOffer = normalizedPriceCents <= 0;
+    if (!isFreeOffer) {
+      try {
+        assertPaidOffersAllowed(normalizedPriceCents);
+      } catch {
+        return NextResponse.json({ error: PILOT_PAID_OFFERS_MESSAGE }, { status: 400 });
+      }
+    }
 
     const capacity = typeof course.capacity === "number" ? course.capacity : null;
     const bookingGuests = parseWorkshopBookingGuests(guests);

@@ -36,6 +36,7 @@ import {
   getPaidOfferPublicationReadiness,
   getProviderBillingProfile,
 } from "@/lib/provider-billing-profile";
+import { assertPaidOffersAllowed } from "@/lib/pilot-mode";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { sendTrialCourseStopNotificationEmail } from "@/lib/trial-reservation-emails";
@@ -120,6 +121,7 @@ export type OfferActivationActionResult =
         | "not_found"
         | "invalid_status"
         | "missing_policy"
+        | "pilot_paid_offers_blocked"
         | "missing_paid_offer_profile"
         | "update_failed"
         | "unknown";
@@ -340,6 +342,17 @@ export async function setCoursePublishStateAction(formData: FormData) {
       return { ok: false, error: "missing_policy" } satisfies OfferActivationActionResult;
     }
 
+    try {
+      assertPaidOffersAllowed(course.price_cents);
+    } catch {
+      console.error("[activate_offer_error]", {
+        courseId,
+        userId: user.id,
+        reason: "pilot_paid_offers_blocked",
+      });
+      return { ok: false, error: "pilot_paid_offers_blocked" } satisfies OfferActivationActionResult;
+    }
+
     if ((course.kind === "workshop" || course.kind === "exclusive_offer") && (course.price_cents ?? 0) > 0) {
       const providerProfile = await getProviderBillingProfile(admin, user.id);
       const paidOfferReadiness = getPaidOfferPublicationReadiness(providerProfile);
@@ -434,6 +447,12 @@ export async function duplicateCourseAction(formData: FormData) {
 
   if (!sourceCourse) {
     redirect("/dashboard/courses");
+  }
+
+  try {
+    assertPaidOffersAllowed(sourceCourse.price_cents);
+  } catch {
+    redirect(withSavedParam(`/dashboard/courses/${courseId}`, "pilot_paid_offers_blocked"));
   }
 
   const { data: copiedCourse, error: insertError } = await admin

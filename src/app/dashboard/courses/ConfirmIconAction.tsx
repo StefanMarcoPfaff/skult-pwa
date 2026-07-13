@@ -36,6 +36,8 @@ function getErrorMessage(errorCode: string | undefined, missingFields?: string[]
       return "Dieses Angebot kann in seinem aktuellen Status nicht aktiviert werden.";
     case "missing_policy":
       return "Vor der Aktivierung muss zuerst eine Storno- bzw. Kündigungsregel hinterlegt sein.";
+    case "pilot_paid_offers_blocked":
+      return "Kostenpflichtige Angebote sind während der Pilotphase noch nicht verfügbar.\nAktuell kannst du RESER vollständig mit kostenlosen Angeboten testen.";
     case "missing_paid_offer_profile": {
       const details = formatMissingFields(missingFields);
       const warningDetails = formatMissingFields(warnings);

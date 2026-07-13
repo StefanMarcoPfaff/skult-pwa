@@ -100,6 +100,7 @@ export default function CourseForm({
   providerType,
   providerDisplayName,
   platformFeePercent = DEFAULT_PLATFORM_FEE_PERCENT,
+  pilotModeEnabled = false,
 }: {
   initialValues?: CourseFormValues;
   submitActionOverride?: (formData: FormData) => Promise<{ error?: string } | void>;
@@ -107,11 +108,12 @@ export default function CourseForm({
   providerType: ProviderType;
   providerDisplayName: string;
   platformFeePercent?: number;
+  pilotModeEnabled?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [offerImageError, setOfferImageError] = useState<string | null>(null);
-  const [priceEur, setPriceEur] = useState(initialValues?.price_eur ?? "");
+  const [priceEur, setPriceEur] = useState(pilotModeEnabled ? "0.00" : initialValues?.price_eur ?? "");
   const [currency, setCurrency] = useState(initialValues?.currency ?? "EUR");
   const [weekday, setWeekday] = useState(initialValues?.weekday ?? "1");
   const [startDate, setStartDate] = useState(initialValues?.start_date ?? "");
@@ -124,7 +126,11 @@ export default function CourseForm({
   );
 
   const platformFeePercentLabel = platformFeePercent * 100;
-  const priceBreakdown = calculateCoursePriceBreakdown(parsePriceToCents(priceEur), providerType, platformFeePercent);
+  const priceBreakdown = calculateCoursePriceBreakdown(
+    pilotModeEnabled ? 0 : parsePriceToCents(priceEur),
+    providerType,
+    platformFeePercent
+  );
   const availableManualTrialSlots = useMemo(() => {
     const startsAt = combineCourseStartsAtISO(startDate, startTime);
     const weekdayValue = Number(weekday);
@@ -226,6 +232,11 @@ export default function CourseForm({
     if (endDateValue && endDateValue < startDateValue) {
       setError("Das Ende des laufenden Angebots darf nicht vor dem Startdatum liegen.");
       return;
+    }
+
+    if (pilotModeEnabled) {
+      formData.set("price_eur", "0.00");
+      formData.set("price_cents", "0");
     }
 
     const priceEurRaw = String(formData.get("price_eur") ?? "").trim();
@@ -538,12 +549,18 @@ export default function CourseForm({
             step="0.01"
             inputMode="decimal"
             value={priceEur}
-            onChange={(event) => setPriceEur(event.target.value)}
+            onChange={(event) => {
+              if (!pilotModeEnabled) setPriceEur(event.target.value);
+            }}
+            disabled={pilotModeEnabled}
             className="w-full rounded-xl border px-3 py-2 text-sm"
             placeholder="0.00"
           />
+          {pilotModeEnabled ? <input type="hidden" name="price_eur" value="0.00" readOnly /> : null}
           <span className="block text-xs text-muted-foreground">
-            Wiederkehrender Monatsbeitrag. Wird intern in Cent gespeichert.
+            {pilotModeEnabled
+              ? "Während der Pilotphase sind ausschließlich kostenlose Angebote möglich."
+              : "Wiederkehrender Monatsbeitrag. Wird intern in Cent gespeichert."}
           </span>
         </label>
 
@@ -576,8 +593,9 @@ export default function CourseForm({
           </div>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Die voraussichtliche Auszahlung pro Monat berechnet sich aus dem Monatsbeitrag abzüglich
-          der Plattformgebühr von {platformFeePercentLabel} %.
+          {pilotModeEnabled
+            ? "Kostenpflichtige Buchungen und Zahlungen werden in Kürze freigeschaltet."
+            : `Die voraussichtliche Auszahlung pro Monat berechnet sich aus dem Monatsbeitrag abzüglich der Plattformgebühr von ${platformFeePercentLabel} %.`}
         </p>
       </div>
 

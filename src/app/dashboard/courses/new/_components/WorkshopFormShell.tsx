@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getPlatformFeeConfigForProvider } from "@/lib/platform-fees";
+import { isPilotModeEnabled } from "@/lib/pilot-mode";
 import { getProviderDisplayName, type ProviderType } from "@/lib/provider-profiles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import WorkshopForm from "./WorkshopForm";
@@ -35,6 +36,7 @@ export default async function WorkshopFormShell() {
     organization_name: profile?.organization_name,
   });
   const platformFeeConfig = await getPlatformFeeConfigForProvider(supabase, user.id);
+  const pilotModeEnabled = isPilotModeEnabled();
 
   return (
     <div className="space-y-4 rounded-2xl border p-6">
@@ -55,6 +57,7 @@ export default async function WorkshopFormShell() {
         providerType={providerType}
         providerDisplayName={providerDisplayName}
         platformFeePercent={platformFeeConfig.platformFeePercent}
+        pilotModeEnabled={pilotModeEnabled}
       />
     </div>
   );

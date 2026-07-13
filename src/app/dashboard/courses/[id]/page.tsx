@@ -31,6 +31,7 @@ import {
   getPaidOfferPublicationReadiness,
   getProviderBillingProfile,
 } from "@/lib/provider-billing-profile";
+import { isPilotModeEnabled, PILOT_PAID_OFFERS_MESSAGE } from "@/lib/pilot-mode";
 import { normalizeOfferVisibility } from "@/lib/public-offer-visibility";
 import { getPublicCourseById } from "@/lib/public-offers";
 import { getSiteUrl } from "@/lib/site-url";
@@ -450,9 +451,14 @@ export default async function DashboardCourseDetailPage({
       !getWorkshopCancellationPolicyValue({ cancellation_policy: data.workshop_storno_policy }));
   const providerBillingProfile = await getProviderBillingProfile(admin, user.id);
   const paidOfferReadiness = getPaidOfferPublicationReadiness(providerBillingProfile);
+  const pilotModeEnabled = isPilotModeEnabled();
+  const publishBlockedForPilotPaidOffer = (data.price_cents ?? 0) > 0 && pilotModeEnabled;
   const publishBlockedForMissingPaidOfferProfile =
-    isOneTimeOfferKind(data.kind) && (data.price_cents ?? 0) > 0 && !paidOfferReadiness.isReady;
-  const publishBlocked = publishBlockedForMissingPolicy || publishBlockedForMissingPaidOfferProfile;
+    !publishBlockedForPilotPaidOffer &&
+    isOneTimeOfferKind(data.kind) &&
+    (data.price_cents ?? 0) > 0 &&
+    !paidOfferReadiness.isReady;
+  const publishBlocked = publishBlockedForMissingPolicy || publishBlockedForPilotPaidOffer || publishBlockedForMissingPaidOfferProfile;
 
   const ticketByTrialReservationId = new Map(
     (trialTickets ?? [])
@@ -786,6 +792,11 @@ export default async function DashboardCourseDetailPage({
           {formatPaidOfferReadinessMessage(paidOfferReadiness.missingFields)}
         </p>
       ) : null}
+      {savedParam === "pilot_paid_offers_blocked" ? (
+        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {PILOT_PAID_OFFERS_MESSAGE}
+        </p>
+      ) : null}
       {savedParam === "pause_scheduled" ? (
         <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
           Pause für das laufende Angebot wurde geplant.
@@ -869,6 +880,11 @@ export default async function DashboardCourseDetailPage({
       {normalizedStatus === "draft" && publishBlockedForMissingPaidOfferProfile ? (
         <p className="mt-3 text-sm text-red-700">
           {formatPaidOfferReadinessMessage(paidOfferReadiness.missingFields)}
+        </p>
+      ) : null}
+      {normalizedStatus === "draft" && publishBlockedForPilotPaidOffer ? (
+        <p className="mt-3 text-sm text-amber-800">
+          {PILOT_PAID_OFFERS_MESSAGE}
         </p>
       ) : null}
       {showOfferMailWarning ? (

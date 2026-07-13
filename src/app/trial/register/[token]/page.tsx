@@ -7,6 +7,7 @@ import {
 } from "@/lib/course-lifecycle-shared";
 import { formatRecurringCoursePrice } from "@/lib/course-display";
 import { getProviderDisplayName } from "@/lib/provider-profiles";
+import { PILOT_PAID_OFFERS_MESSAGE } from "@/lib/pilot-mode";
 import { loadTicketBySubscriptionId } from "@/lib/tickets";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import RegistrationForm from "./RegistrationForm";
@@ -154,6 +155,8 @@ export default async function TrialRegistrationTokenPage({
         return "Der Anbieter hat noch keine vollstaendigen Zahlungsdaten hinterlegt.";
       case "provider_payment_incomplete":
         return "Das verknuepfte Stripe-Konto ist noch nicht vollstaendig eingerichtet.";
+      case "paid_offers_pilot":
+        return PILOT_PAID_OFFERS_MESSAGE;
       case "subscription_creation_failed":
         return "Die Stripe-Subscription konnte nicht erstellt werden. Bitte versuche es erneut.";
       default:

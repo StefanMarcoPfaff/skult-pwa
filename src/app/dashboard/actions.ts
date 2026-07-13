@@ -6,6 +6,7 @@ import {
   getPaidOfferPublicationReadiness,
   getProviderBillingProfile,
 } from "@/lib/provider-billing-profile";
+import { assertPaidOffersAllowed } from "@/lib/pilot-mode";
 
 export async function setPublishedAction(courseId: string, publish: boolean) {
   const supabase = await createSupabaseServerClient();
@@ -25,6 +26,8 @@ export async function setPublishedAction(courseId: string, publish: boolean) {
     if (!course) {
       throw new Error("Angebot nicht gefunden.");
     }
+
+    assertPaidOffersAllowed(course.price_cents);
 
     if ((course.kind === "workshop" || course.kind === "exclusive_offer") && (course.price_cents ?? 0) > 0) {
       const profile = await getProviderBillingProfile(admin, data.user.id);

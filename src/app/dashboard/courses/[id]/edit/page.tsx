@@ -5,6 +5,7 @@ import {
   type WorkshopStornoPolicy,
   type ProviderType,
 } from "@/lib/provider-profiles";
+import { isPilotModeEnabled } from "@/lib/pilot-mode";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import CourseForm, { type CourseFormValues } from "../../new/_components/CourseForm";
 import WorkshopForm, { type WorkshopFormValues } from "../../new/_components/WorkshopForm";
@@ -115,6 +116,7 @@ export default async function EditOfferPage({
     last_name: profile?.last_name,
     organization_name: profile?.organization_name,
   });
+  const pilotModeEnabled = isPilotModeEnabled();
 
   const { data: sessions } = await supabase
     .from("course_sessions")
@@ -204,6 +206,7 @@ export default async function EditOfferPage({
             submitActionOverride={updateCourseAction.bind(null, id)}
             providerType={providerType}
             providerDisplayName={providerDisplayName}
+            pilotModeEnabled={pilotModeEnabled}
           />
         ) : (
           <WorkshopForm
@@ -213,6 +216,7 @@ export default async function EditOfferPage({
             providerType={providerType}
             providerDisplayName={providerDisplayName}
             offerKind={data.kind === "exclusive_offer" ? "exclusive_offer" : "workshop"}
+            pilotModeEnabled={pilotModeEnabled}
           />
         )}
       </div>

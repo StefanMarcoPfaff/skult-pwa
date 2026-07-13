@@ -28,6 +28,7 @@ import {
 import { buildOfferAvailability, loadOccupiedCourseSeats } from "@/lib/public-offer-availability";
 import { getSiteUrl } from "@/lib/stripe-connect";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { assertPaidOffersAllowed } from "@/lib/pilot-mode";
 
 type IntentRow = {
   id: string;
@@ -214,6 +215,12 @@ export async function GET(req: Request) {
 
   if (!course?.teacher_id || !course.price_cents || course.price_cents <= 0) {
     return NextResponse.redirect(new URL(`/trial/register/${token}?error=course_unavailable`, url));
+  }
+
+  try {
+    assertPaidOffersAllowed(course.price_cents);
+  } catch {
+    return NextResponse.redirect(new URL(`/trial/register/${token}?error=paid_offers_pilot`, url));
   }
 
   if (!isCourseSubscriptionCheckoutCurrencySupported(course.currency)) {

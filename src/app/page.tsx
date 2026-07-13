@@ -1,5 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
+import { isPilotModeEnabled } from "@/lib/pilot-mode";
+
+export const dynamic = "force-dynamic";
 
 const audienceCards = [
   {
@@ -18,6 +21,8 @@ const audienceCards = [
 ];
 
 export default function Home() {
+  const pilotModeEnabled = isPilotModeEnabled();
+
   return (
     <main className="min-h-screen bg-white px-5 py-8 text-slate-950 sm:px-8 sm:py-12">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-4xl flex-col items-center justify-center text-center">
@@ -40,6 +45,16 @@ export default function Home() {
             <p>RESER verbindet unabhängige Anbieter*innen mit den Menschen, die danach suchen.</p>
           </div>
         </div>
+
+        {pilotModeEnabled ? (
+          <section className="mt-7 max-w-2xl rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-left text-sm leading-6 text-amber-950">
+            <p className="font-semibold">RESER befindet sich aktuell in der Pilotphase.</p>
+            <p className="mt-1">
+              Derzeit können kostenlose Angebote erstellt, veröffentlicht und reserviert werden.
+              Kostenpflichtige Buchungen und Zahlungen werden in Kürze freigeschaltet.
+            </p>
+          </section>
+        ) : null}
 
         <div className="mt-10 flex w-full max-w-xl flex-col justify-center gap-3 sm:flex-row">
           <Link

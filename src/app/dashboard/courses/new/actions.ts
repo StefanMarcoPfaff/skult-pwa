@@ -22,6 +22,7 @@ import {
   isWorkshopCheckoutCurrencySupported,
   normalizeWorkshopCurrency,
 } from "@/lib/workshop-checkout";
+import { assertPaidOffersAllowed, PILOT_PAID_OFFERS_MESSAGE } from "@/lib/pilot-mode";
 
 type WorkshopSection =
   | "basic"
@@ -476,6 +477,11 @@ async function createOrUpdateWorkshop(
   const parsedPrice = parseWorkshopPriceCents(formData);
   if ("error" in parsedPrice) validationErrors.push(validationIssue("price_eur", parsedPrice.error));
   const price_cents = "error" in parsedPrice ? null : parsedPrice.value;
+  try {
+    assertPaidOffersAllowed(price_cents);
+  } catch {
+    validationErrors.push(validationIssue("price_eur", PILOT_PAID_OFFERS_MESSAGE));
+  }
   const currency = normalizeWorkshopCurrency(String(formData.get("currency") || ""));
   const workshop_storno_policy = String(formData.get("workshop_storno_policy") || "").trim();
   const offerKind = parseSinglePaymentOfferKind(formData.get("offer_kind"));
@@ -864,6 +870,11 @@ async function createOrUpdateCourse(
 
   const price_cents = parseOptionalInt(formData.get("price_cents"));
   const currency = String(formData.get("currency") || "EUR").trim() || "EUR";
+  try {
+    assertPaidOffersAllowed(price_cents);
+  } catch {
+    return { error: PILOT_PAID_OFFERS_MESSAGE };
+  }
 
   const providerProfileResult = await loadProviderProfile(supabase, user.id);
   if (providerProfileResult.error) return { error: providerProfileResult.error };

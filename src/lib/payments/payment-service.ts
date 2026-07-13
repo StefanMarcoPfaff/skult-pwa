@@ -6,6 +6,7 @@ import {
   type PaymentProviderRegistry,
 } from "@/lib/payments/provider";
 import { createStripePaymentProvider } from "@/lib/payments/stripe-provider";
+import { assertPaidOffersAllowed, getPaymentLineItemsTotalCents } from "@/lib/pilot-mode";
 import type {
   CreateCheckoutSessionInput,
   CreateCheckoutSessionResult,
@@ -23,6 +24,7 @@ export class PaymentService {
   constructor(private readonly registry: PaymentProviderRegistry) {}
 
   async createCheckoutSession(input: CreateCheckoutSessionInput): Promise<CreateCheckoutSessionResult> {
+    assertPaidOffersAllowed(getPaymentLineItemsTotalCents(input.lineItems));
     const result = await getPaymentProvider(this.registry, input.provider).createCheckoutSession(input);
     await paymentLedger.record({
       provider: result.provider,
@@ -35,6 +37,7 @@ export class PaymentService {
   }
 
   async createRecurringPayment(input: CreateRecurringPaymentInput): Promise<CreateRecurringPaymentResult> {
+    assertPaidOffersAllowed(getPaymentLineItemsTotalCents(input.lineItems));
     const result = await getPaymentProvider(this.registry, input.provider).createRecurringPayment(input);
     await paymentLedger.record({
       provider: result.provider,

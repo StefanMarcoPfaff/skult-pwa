@@ -143,6 +143,7 @@ export default function WorkshopForm({
   providerDisplayName,
   platformFeePercent = DEFAULT_PLATFORM_FEE_PERCENT,
   offerKind = "workshop",
+  pilotModeEnabled = false,
 }: {
   initialValues?: WorkshopFormValues;
   submitActionOverride?: (formData: FormData) => Promise<WorkshopActionResult | void>;
@@ -151,6 +152,7 @@ export default function WorkshopForm({
   providerDisplayName: string;
   platformFeePercent?: number;
   offerKind?: SinglePaymentOfferKind;
+  pilotModeEnabled?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -161,7 +163,7 @@ export default function WorkshopForm({
   const [openSections, setOpenSections] = useState<WorkshopSection[]>(["basic"]);
   const [offerImageError, setOfferImageError] = useState<string | null>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
-  const [priceEur, setPriceEur] = useState(initialValues?.price_eur ?? "");
+  const [priceEur, setPriceEur] = useState(pilotModeEnabled ? "0.00" : initialValues?.price_eur ?? "");
   const [capacityValue, setCapacityValue] = useState(initialValues?.capacity ?? "");
   const [currency] = useState(workshopCurrency);
   const [sessions, setSessions] = useState<SessionInput[]>(() =>
@@ -200,12 +202,13 @@ export default function WorkshopForm({
   }, [sessions]);
 
   const priceCentsOrEmpty = useMemo(() => {
+    if (pilotModeEnabled) return "0";
     const raw = priceEur.trim();
     if (!raw) return "";
     const parsed = Number(raw.replace(",", "."));
     if (!Number.isFinite(parsed) || parsed < 0) return "";
     return String(Math.round(parsed * 100));
-  }, [priceEur]);
+  }, [pilotModeEnabled, priceEur]);
 
   const platformFeePercentLabel = platformFeePercent * 100;
   const priceBreakdown = calculateCoursePriceBreakdown(
@@ -287,6 +290,11 @@ export default function WorkshopForm({
 
     if (sessions.length === 0) {
       nextFieldErrors.sessions = "Bitte mindestens einen Termin angeben.";
+    }
+
+    if (pilotModeEnabled) {
+      formData.set("price_eur", "0.00");
+      formData.set("price_cents", "0");
     }
 
     const priceRaw = String(formData.get("price_eur") ?? "").trim();
@@ -696,14 +704,20 @@ export default function WorkshopForm({
             step="0.01"
             inputMode="decimal"
             value={priceEur}
-            onChange={(event) => setPriceEur(event.target.value)}
+            onChange={(event) => {
+              if (!pilotModeEnabled) setPriceEur(event.target.value);
+            }}
+            disabled={pilotModeEnabled}
             aria-invalid={Boolean(getFieldError("price_eur"))}
             className={fieldInputClass("price_eur")}
             placeholder="49.00"
           />
+          {pilotModeEnabled ? <input type="hidden" name="price_eur" value="0.00" readOnly /> : null}
           {renderFieldError("price_eur")}
           <span className="block text-xs text-muted-foreground">
-            0,00 ist erlaubt. Kostenlose einmalige Angebote werden ohne Stripe direkt bestätigt.
+            {pilotModeEnabled
+              ? "Während der Pilotphase sind ausschließlich kostenlose Angebote möglich. Kostenlose Reservierungen werden ohne Stripe direkt bestätigt."
+              : "0,00 ist erlaubt. Kostenlose einmalige Angebote werden ohne Stripe direkt bestätigt."}
           </span>
         </label>
 
@@ -775,8 +789,9 @@ export default function WorkshopForm({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Kostenpflichtige Einmalangebote nutzen aktuell Checkout in {workshopCurrency}. Kostenlose
-        Einmalangebote werden direkt bestätigt.
+        {pilotModeEnabled
+          ? "Kostenpflichtige Buchungen und Zahlungen werden in Kürze freigeschaltet."
+          : `Kostenpflichtige Einmalangebote nutzen aktuell Checkout in ${workshopCurrency}. Kostenlose Einmalangebote werden direkt bestätigt.`}
       </p>
 
       </WorkshopFormSection>
