@@ -28,6 +28,7 @@ import {
   normalizeEmailRecipients,
   shouldWarnAboutLargeMailingGroup,
 } from "../src/lib/mailto";
+import { collectWorkshopMailRecipientEmails } from "../src/lib/manual-mailto-recipients";
 import {
   createSessionCheckInToken,
   verifySessionCheckInToken,
@@ -231,6 +232,76 @@ const cases: TestCase[] = [
         href,
         "mailto:?subject=Information%20zu%20deinem%20einmaliges%20Angebot%3A%20Malen%20%26%20Musik&bcc=test%40example.com%2Czwei%40example.com"
       );
+    },
+  },
+  {
+    name: "workshop mailto recipients include active free bookings and keep exclusions",
+    run() {
+      const recipients = collectWorkshopMailRecipientEmails({
+        bookings: [
+          {
+            id: "active-booking",
+            status: "paid",
+            customer_email: "wsobirey@gmail..com",
+            archived_at: null,
+            refunded_at: null,
+            stripe_refund_id: null,
+          },
+          {
+            id: "cancelled-booking",
+            status: "cancelled",
+            customer_email: "cancelled@example.com",
+            archived_at: null,
+            refunded_at: null,
+            stripe_refund_id: null,
+          },
+          {
+            id: "invalid-booking",
+            status: "paid",
+            customer_email: "keine-mailadresse",
+            archived_at: null,
+            refunded_at: null,
+            stripe_refund_id: null,
+          },
+          {
+            id: "duplicate-booking",
+            status: "paid",
+            customer_email: "WSOBIREY@gmail.com",
+            archived_at: null,
+            refunded_at: null,
+            stripe_refund_id: null,
+          },
+        ],
+        tickets: [
+          {
+            booking_id: "active-booking",
+            workshop_booking_guest_id: null,
+            customer_email: "wsobirey@gmail..com",
+            status: "issued",
+          },
+          {
+            booking_id: "cancelled-booking",
+            workshop_booking_guest_id: null,
+            customer_email: "cancelled@example.com",
+            status: "cancelled",
+          },
+          {
+            booking_id: "invalid-booking",
+            workshop_booking_guest_id: null,
+            customer_email: "keine-mailadresse",
+            status: "issued",
+          },
+          {
+            booking_id: "duplicate-booking",
+            workshop_booking_guest_id: null,
+            customer_email: "WSOBIREY@gmail.com",
+            status: "issued",
+          },
+        ],
+        guests: [],
+      });
+
+      assert.deepEqual(recipients, ["wsobirey@gmail.com"]);
     },
   },
   {

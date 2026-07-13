@@ -5,8 +5,15 @@ function normalizeEmail(email: string): string | null {
   const trimmed = email.trim();
   if (!trimmed) return null;
   const normalized = trimmed.toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return null;
-  return normalized;
+  const parts = normalized.split("@");
+  if (parts.length !== 2) return null;
+
+  const [localPart, rawDomain] = parts;
+  const domain = rawDomain.replace(/\.{2,}/g, ".");
+  const repaired = `${localPart}@${domain}`;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(repaired)) return null;
+  if (domain.split(".").some((label) => !label)) return null;
+  return repaired;
 }
 
 export function normalizeEmailRecipients(emails: Array<string | null | undefined>): string[] {

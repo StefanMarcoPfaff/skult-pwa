@@ -25,6 +25,7 @@ import {
   normalizeEmailRecipients,
   shouldWarnAboutLargeMailingGroup,
 } from "@/lib/mailto";
+import { collectWorkshopMailRecipientEmails } from "@/lib/manual-mailto-recipients";
 import { getProviderDisplayName, type ProviderType } from "@/lib/provider-profiles";
 import {
   getPaidOfferPublicationReadiness,
@@ -182,7 +183,6 @@ type WorkshopParticipantEntry = {
   mailHref: string | null;
 };
 
-const ACTIVE_WORKSHOP_TICKET_STATUSES = new Set(["issued", "checked_in"]);
 const ACTIVE_COURSE_REGISTRATION_STATUSES = new Set([
   "active",
   "pause_scheduled",
@@ -205,20 +205,6 @@ function formatName(firstName: string | null, lastName: string | null, fallback:
 
 function resolveCourseParticipantEmail(participant: TrialParticipantRow): string | null {
   return participant.email;
-}
-
-function isActiveWorkshopBookingForMail(booking: WorkshopBookingRow): boolean {
-  return (
-    !booking.archived_at &&
-    booking.status === "paid" &&
-    !booking.refunded_at &&
-    !booking.stripe_refund_id
-  );
-}
-
-function isActiveWorkshopTicketForMail(ticket: WorkshopTicketRow | undefined, allowMissingTicket: boolean): boolean {
-  if (!ticket) return allowMissingTicket;
-  return ACTIVE_WORKSHOP_TICKET_STATUSES.has(String(ticket.status ?? "").toLowerCase());
 }
 
 function isActiveTrialReservationForMail(participant: TrialParticipantRow): boolean {
@@ -651,27 +637,13 @@ export default async function DashboardCourseDetailPage({
       : [];
   void workshopParticipants;
 
-  const workshopMailRecipientEmails = normalizeEmailRecipients(
-    isOneTimeOfferKind(data.kind)
-      ? (workshopBookings ?? []).flatMap((booking) => {
-          if (!isActiveWorkshopBookingForMail(booking)) return [];
-
-          const bookingTicket = workshopTicketByBookingId.get(booking.id);
-          const recipients: Array<string | null | undefined> = [];
-          if (isActiveWorkshopTicketForMail(bookingTicket, true)) {
-            recipients.push(booking.customer_email ?? bookingTicket?.customer_email);
-          }
-
-          for (const guest of workshopGuestsByBookingId.get(booking.id) ?? []) {
-            const guestTicket = workshopTicketByGuestId.get(guest.id);
-            if (!isActiveWorkshopTicketForMail(guestTicket, true)) continue;
-            recipients.push(guest.email);
-          }
-
-          return recipients;
-        })
-      : []
-  );
+  const workshopMailRecipientEmails = isOneTimeOfferKind(data.kind)
+    ? collectWorkshopMailRecipientEmails({
+        bookings: workshopBookings ?? [],
+        tickets: workshopTickets ?? [],
+        guests: workshopGuests ?? [],
+      })
+    : [];
 
   const offerRecipientEmails =
     isOneTimeOfferKind(data.kind)
