@@ -215,6 +215,7 @@ const cases: TestCase[] = [
         "Test@Example.com ",
         "test@example.com",
         "",
+        "ungueltig",
         null,
         "zwei@example.com",
       ]);

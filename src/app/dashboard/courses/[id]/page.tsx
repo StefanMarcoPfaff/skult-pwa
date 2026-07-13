@@ -119,9 +119,11 @@ type TrialTicketRow = {
 
 type RegistrationIntentRow = {
   id: string;
+  course_id: string;
   trial_reservation_id: string | null;
   status: string | null;
   subscription_status?: string | null;
+  email: string | null;
   archived_at?: string | null;
 };
 
@@ -181,6 +183,12 @@ type WorkshopParticipantEntry = {
 };
 
 const ACTIVE_WORKSHOP_TICKET_STATUSES = new Set(["issued", "checked_in"]);
+const ACTIVE_COURSE_REGISTRATION_STATUSES = new Set([
+  "active",
+  "pause_scheduled",
+  "paused",
+  "cancel_scheduled",
+]);
 
 function formatDateTime(dt: string | null) {
   return formatBerlinDateTime(dt);
@@ -211,6 +219,16 @@ function isActiveWorkshopBookingForMail(booking: WorkshopBookingRow): boolean {
 function isActiveWorkshopTicketForMail(ticket: WorkshopTicketRow | undefined, allowMissingTicket: boolean): boolean {
   if (!ticket) return allowMissingTicket;
   return ACTIVE_WORKSHOP_TICKET_STATUSES.has(String(ticket.status ?? "").toLowerCase());
+}
+
+function isActiveTrialReservationForMail(participant: TrialParticipantRow): boolean {
+  return !participant.archived_at && !participant.cancelled_at && participant.decision_status !== "rejected";
+}
+
+function isActiveCourseRegistrationForMail(intent: RegistrationIntentRow | undefined): boolean {
+  if (!intent) return false;
+  if (intent.archived_at || intent.status !== "checkout_completed") return false;
+  return ACTIVE_COURSE_REGISTRATION_STATUSES.has(intent.subscription_status ?? "active");
 }
 
 function formatDateTimeRange(start: string | null, end: string | null): string | null {
@@ -348,17 +366,19 @@ export default async function DashboardCourseDetailPage({
 
   const trialReservationIds = (trialParticipants ?? []).map((participant) => participant.id);
   const [{ data: trialTickets }, { data: registrationIntents }] =
-    data?.kind === "course" && trialReservationIds.length > 0
+    data?.kind === "course"
       ? await Promise.all([
-          admin
-            .from("tickets")
-            .select("trial_reservation_id,status,checked_in_at")
-            .in("trial_reservation_id", trialReservationIds)
-            .returns<TrialTicketRow[]>(),
+          trialReservationIds.length > 0
+            ? admin
+                .from("tickets")
+                .select("trial_reservation_id,status,checked_in_at")
+                .in("trial_reservation_id", trialReservationIds)
+                .returns<TrialTicketRow[]>()
+            : Promise.resolve({ data: [] as TrialTicketRow[] }),
           admin
             .from("course_registration_intents")
-            .select("id,trial_reservation_id,status,subscription_status,archived_at")
-            .in("trial_reservation_id", trialReservationIds)
+            .select("id,course_id,trial_reservation_id,status,subscription_status,email,archived_at")
+            .eq("course_id", id)
             .returns<RegistrationIntentRow[]>(),
         ])
       : [{ data: [] as TrialTicketRow[] }, { data: [] as RegistrationIntentRow[] }];
@@ -564,6 +584,7 @@ export default async function DashboardCourseDetailPage({
             }),
         }
       : null;
+  void groupedCourseParticipants;
 
   const workshopTicketByBookingId = new Map(
     (workshopTickets ?? [])
@@ -656,10 +677,15 @@ export default async function DashboardCourseDetailPage({
     isOneTimeOfferKind(data.kind)
       ? workshopMailRecipientEmails
       : normalizeEmailRecipients([
-          ...(groupedCourseParticipants?.firmlyRegistered.map((entry) => entry.email) ?? []),
-          ...(groupedCourseParticipants?.attendedApproved.map((entry) => entry.email) ?? []),
-          ...(groupedCourseParticipants?.attendedPending.map((entry) => entry.email) ?? []),
-          ...(groupedCourseParticipants?.notYetAttended.map((entry) => entry.email) ?? []),
+          ...(trialParticipants ?? [])
+            .filter((participant) => {
+              const intent = intentByTrialReservationId.get(participant.id);
+              return isActiveTrialReservationForMail(participant) && !isActiveCourseRegistrationForMail(intent);
+            })
+            .map((participant) => resolveCourseParticipantEmail(participant)),
+          ...(registrationIntents ?? [])
+            .filter((intent) => isActiveCourseRegistrationForMail(intent))
+            .map((intent) => intent.email),
         ]);
   const contactMailHref = buildMailtoHref({
     bcc: offerRecipientEmails,

@@ -4,7 +4,9 @@ const LARGE_MAILTO_HREF_LENGTH = 1800;
 function normalizeEmail(email: string): string | null {
   const trimmed = email.trim();
   if (!trimmed) return null;
-  return trimmed.toLowerCase();
+  const normalized = trimmed.toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return null;
+  return normalized;
 }
 
 export function normalizeEmailRecipients(emails: Array<string | null | undefined>): string[] {
